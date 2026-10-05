@@ -35,7 +35,7 @@ wayland-csd-adwaita-notitle = ["sctk-adwaita"]
 cfg_aliases = "0.2.0"
 
 [target.'cfg(target_os = "macos")'.build-dependencies]
-bindgen = "0.72.1"
+bindgen = "0.73.2"
 
 [dependencies]
 bitflags = { workspace = true }
@@ -155,7 +155,7 @@ features = [
 ahash = { version = "0.8.7", features = ["no-rng"], optional = true }
 bytemuck = { version = "1.13.1", default-features = false, optional = true }
 # This adapter and sctk 0.19 share calloop 0.13 types. Upgrade together.
-calloop = "0.13.0"
+calloop = "0.14.4"
 zbus = { workspace = true, features = ["blocking"] }
 libc = { workspace = true }
 memmap2 = { workspace = true, optional = true }
@@ -170,7 +170,7 @@ sctk = { package = "smithay-client-toolkit", version = "0.19.2", default-feature
     "calloop",
 ], optional = true }
 # Adwaita 0.12 requires sctk 0.21; preserve the adapter's native type generation.
-sctk-adwaita = { version = "=0.10.1", default-features = false, optional = true }
+sctk-adwaita = { version = "=0.12.0", default-features = false, optional = true }
 wayland-backend = { version = "0.3.10", default-features = false, features = [
     "client_system",
 ], optional = true }

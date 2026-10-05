@@ -14,7 +14,7 @@ image_rs = { workspace = true, optional = true }
 tracing = { workspace = true }
 rustc-hash = { workspace = true }
 # Match the renderer/Swash parser generation without widening glyph authority.
-skrifa = { version = "=0.44.0", optional = true }
+skrifa = { version = "=0.47.0", optional = true }
 parking_lot = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
 
