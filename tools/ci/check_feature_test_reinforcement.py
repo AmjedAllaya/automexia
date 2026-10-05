@@ -530,9 +530,15 @@ def _validate_child_exit_sources(sources: dict[str, str]) -> None:
     _require_order(paste_error,
                    ("self.finish_child_exit(&mut state, &mut buf);", "break 'event_loop;"),
                    "paste fatal reconciliation")
-    if worker.count("self.finish_child_exit(&mut state, &mut buf);") != 5:
+    word_error = _source_slice(spawn, "if let Err(err) = self.resolve_pending_word_delete(",
+                               "if state.needs_write()", "word edit fatal reconciliation")
+    _require_order(word_error,
+                   ("self.finish_child_exit(&mut state, &mut buf);", "break 'event_loop;"),
+                   "word edit fatal reconciliation")
+    if worker.count("self.finish_child_exit(&mut state, &mut buf);") != 6:
         raise ReinforcementError("every fatal I/O path must reconcile an already arrived child exit")
     _require_fragments(sources["pty_exit_tests"], (
+        "cmd_word_delete_drains_output_revalidates_and_is_a_queue_barrier",
         "confirmed_child_exit_precedes_queued_input_failure",
         "confirmed_child_exit_survives_final_read_failure",
         "child_exit_arriving_during_failed_write_is_published_once",

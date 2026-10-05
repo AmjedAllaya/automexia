@@ -28,6 +28,7 @@ serde = { workspace = true }
 rio-graphics = { workspace = true }
 rio-grapheme-width = { workspace = true }
 unicode-width = { workspace = true }
+unicode-segmentation = { workspace = true }
 regex-automata = "0.4.16"
 cursor-icon = { version = "1.1.0", default-features = false }
 smallvec = { workspace = true }

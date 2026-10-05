@@ -2498,6 +2498,32 @@ impl Screen<'_> {
                             ignore_chars = Some(false);
                         }
                     }
+                    Act::ShellWordDelete { forward } => {
+                        let current = self.context_manager.current_mut();
+                        let terminal = current.terminal.lock();
+                        if let Some(sequence) =
+                            terminal.shell_word_delete_sequence(*forward)
+                        {
+                            current.messenger.send_write(sequence.as_bytes());
+                        } else if cfg!(windows)
+                            && *forward
+                            && current.launch_descriptor.is_native_command_prompt_active(
+                                current.renderable_content.shell_name.as_deref(),
+                            )
+                        {
+                            if let Some(receipt) = terminal.cmd_word_delete_receipt() {
+                                let _ = current.messenger.channel.send(
+                                    rio_backend::event::Msg::CmdWordDelete(receipt),
+                                );
+                            } else {
+                                ignore_chars = Some(false);
+                            }
+                        } else {
+                            // Preserve the original Win32/Kitty key, modifiers
+                            // and release for native editors and applications.
+                            ignore_chars = Some(false);
+                        }
+                    }
                     Act::Paste => {
                         self.paste_from_clipboard(clipboard, ClipboardType::Clipboard);
                     }

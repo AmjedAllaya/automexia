@@ -6,6 +6,17 @@ use super::{ActivePromptPhase, Column, Crosswords, EventListener, Line, Mode, Po
 
 const MAX_ROWS: usize = 16_384;
 
+/// Text-free, one-use identity for a local native-console word edit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CmdWordDeleteReceipt {
+    generation: u64,
+    scope: u64,
+    input_revision: u64,
+    prompt: Option<u64>,
+    cursor: Pos,
+    count: u16,
+}
+
 /// A one-use, pane-local input receipt for an explicitly approved workflow.
 /// It contains no command text or credential and never authenticates a peer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,6 +35,170 @@ pub(super) struct WorkflowInputState {
 }
 
 impl<U: EventListener> Crosswords<U> {
+    /// Only integrated legacy shell editors receive compatibility word keys.
+    /// Foreground applications and enhanced keyboard protocols keep their keys.
+    pub fn shell_word_delete_sequence(&self, forward: bool) -> Option<&'static str> {
+        if self
+            .mode
+            .intersects(Mode::ALT_SCREEN | Mode::VI | Mode::KITTY_KEYBOARD_PROTOCOL)
+            || !self
+                .active_semantic_prompt
+                .as_ref()
+                .is_some_and(|p| p.phase == ActivePromptPhase::Input)
+            || self
+                .user_vars
+                .get("automexia_env_pending")
+                .map(String::as_str)
+                == Some("1")
+        {
+            return None;
+        }
+        let shell = if self.integration_scope_active() {
+            self.integration_scope().map(|scope| scope.shell.as_str())
+        } else {
+            self.user_vars
+                .get("automexia_shell_name")
+                .map(String::as_str)
+        };
+        matches!(shell, Some("bash" | "zsh" | "fish")).then_some(if forward {
+            "\x1bd"
+        } else {
+            "\x17"
+        })
+    }
+
+    pub fn cmd_word_delete_receipt(&self) -> Option<CmdWordDeleteReceipt> {
+        use super::grid::row::PromptInputShell;
+        use super::square::Wide;
+        use unicode_segmentation::UnicodeSegmentation;
+
+        const MAX_EDIT_CELLS: usize = 8192;
+        if !self.mode.contains(Mode::WIN32_INPUT)
+            || self
+                .mode
+                .intersects(Mode::ALT_SCREEN | Mode::VI | Mode::KITTY_KEYBOARD_PROTOCOL)
+            || !self.host_clear_input_prompt_active()
+            || self.workflow_input.input_revision == u64::MAX
+            || !matches!(
+                self.user_vars
+                    .get("automexia_shell_name")
+                    .map(String::as_str),
+                Some("CMD" | "cmd")
+            )
+        {
+            return None;
+        }
+        let cursor = self.grid.cursor.pos;
+        let active = self.active_semantic_prompt.as_ref()?;
+        // Find the exact input boundary through soft wraps only. Never infer
+        // input from a prompt-looking string or a secondary/hard-line prompt.
+        let mut first = cursor.row;
+        let mut budget = MAX_EDIT_CELLS;
+        let input = loop {
+            let row = &self.grid[first];
+            if row.semantic_prompt_id != active.id {
+                return None;
+            }
+            if let Some(input) = row.semantic_input.filter(|i| !i.continuation) {
+                break input;
+            }
+            budget = budget.checked_sub(self.grid.columns())?;
+            if first <= self.grid.topmost_line() {
+                return None;
+            }
+            first -= 1;
+            if !self.grid[first][self.grid.last_column()].wrapline() {
+                return None;
+            }
+        };
+        if input.shell != PromptInputShell::Cmd
+            || input.command_complete
+            || (first == cursor.row && cursor.col.0 < input.column)
+            || self.grid.cursor.should_wrap
+            || matches!(self.grid[cursor].wide(), Wide::Spacer | Wide::LeadingSpacer)
+        {
+            return None;
+        }
+        // This bounded temporary projection is discarded immediately. The shell
+        // remains the only editor; no command buffer or history is maintained.
+        let mut suffix = String::new();
+        let mut line = cursor.row;
+        let mut column = cursor.col.0;
+        loop {
+            let row = &self.grid[line];
+            if row.semantic_prompt_id != active.id {
+                return None;
+            }
+            for col in column..self.grid.columns() {
+                budget = budget.checked_sub(1)?;
+                let pos = Pos::new(line, Column(col));
+                let cell = self.grid[pos];
+                if self.grid.style_of(&cell).flags.contains(StyleFlags::HIDDEN) {
+                    return None;
+                }
+                if matches!(cell.wide(), Wide::Spacer | Wide::LeadingSpacer) {
+                    continue;
+                }
+                for c in self.grid.cell_text(pos) {
+                    if c.is_control() && c != '\0' {
+                        return None;
+                    }
+                    if suffix.len() >= MAX_EDIT_CELLS * 4 {
+                        return None;
+                    }
+                    suffix.push(if c == '\0' { ' ' } else { c });
+                }
+            }
+            if !row[self.grid.last_column()].wrapline() {
+                break;
+            }
+            line += 1;
+            column = 0;
+            if line > self.grid.bottommost_line() {
+                return None;
+            }
+        }
+        let mut word = false;
+        let count = suffix
+            .trim_end()
+            .graphemes(true)
+            .take_while(|g| {
+                let space = g.chars().all(char::is_whitespace);
+                if word && space {
+                    return false;
+                }
+                word |= !space;
+                true
+            })
+            .count();
+        Some(CmdWordDeleteReceipt {
+            generation: self.command_action_generation,
+            scope: self.integration_scope_revision(),
+            input_revision: self.workflow_input.input_revision,
+            prompt: active.id,
+            cursor,
+            count: u16::try_from(count).ok()?,
+        })
+    }
+
+    /// The sole PTY writer calls this after bounded output draining. Stale
+    /// input, cursor motion, shell changes, resize and replay consume no keys.
+    pub fn accept_cmd_word_delete(
+        &mut self,
+        receipt: CmdWordDeleteReceipt,
+    ) -> Option<Vec<u8>> {
+        let accepted = self.cmd_word_delete_receipt() == Some(receipt);
+        self.note_interactive_input();
+        if !accepted || receipt.count == 0 {
+            return None;
+        }
+        // VK_DELETE, scan 0x53, enhanced key, without Ctrl. Never Enter or text.
+        Some(
+            format!("\x1b[46;83;0;1;256;{}_\x1b[46;83;0;0;256;1_", receipt.count)
+                .into_bytes(),
+        )
+    }
+
     pub fn workflow_input_revision(&self) -> u64 {
         self.workflow_input.input_revision
     }

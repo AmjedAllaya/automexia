@@ -37,6 +37,7 @@ param(
     [switch]$OutputColorsOnly,
     [switch]$CommandInputColorsOnly,
     [switch]$ClearShortcutOnly,
+    [switch]$WordDeletionOnly,
     [string]$CommandInputWslDistro,
     [switch]$CommandInputPowerShell7,
     [switch]$ConnectionHubOnly,
@@ -46,7 +47,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if ($ClearShortcutOnly) { $CommandInputColorsOnly = $true }
+if ($ClearShortcutOnly -or $WordDeletionOnly) { $CommandInputColorsOnly = $true }
 if ($TagShapesOnly) { $TagCustomizationOnly = $true }
 # A Windows PowerShell child can inherit PowerShell 7's module search paths.
 # Resolve Get-FileHash from the executing host for saved-file preservation checks.

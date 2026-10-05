@@ -136,6 +136,9 @@ pub enum Msg {
     /// Paste text whose terminal-mode-dependent encoding belongs to this PTY worker.
     Paste(PasteRequest),
 
+    /// A local CMD edit, validated by the grid owner immediately before delivery.
+    CmdWordDelete(crate::crosswords::command_actions::CmdWordDeleteReceipt),
+
     #[allow(dead_code)]
     Shutdown,
 

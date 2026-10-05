@@ -393,6 +393,11 @@ pub enum Action {
     /// display action only for native CMD. User bindings replace this default.
     ShellClearScreen,
 
+    /// Default word editing belongs to the active shell, not the paste path.
+    ShellWordDelete {
+        forward: bool,
+    },
+
     /// Run given command.
     Run(Program),
 
@@ -807,6 +812,8 @@ fn key_bindings_with_platform(
         Key::Named(ArrowRight), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; SelectionMotion::WordRight;
         Key::Character("l".into()), ModifiersState::CONTROL; Action::ClearLogNotice;
         "l",  ModifiersState::CONTROL, ~BindingMode::VI; Action::ShellClearScreen;
+        Key::Named(Backspace), ModifiersState::CONTROL, ~BindingMode::VI, ~BindingMode::SEARCH, ~BindingMode::ALT_SCREEN; Action::ShellWordDelete { forward: false };
+        Key::Named(Delete), ModifiersState::CONTROL, ~BindingMode::VI, ~BindingMode::SEARCH, ~BindingMode::ALT_SCREEN; Action::ShellWordDelete { forward: true };
         Key::Named(Home),     ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN; Action::ScrollToTop;
         Key::Named(End),      ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN; Action::ScrollToBottom;
         Key::Named(PageUp),   ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN; Action::ScrollPageUp;
@@ -1441,7 +1448,6 @@ fn automexia_windows_key_bindings(
         "k", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::ClearHistory;
         Key::Named(F11); Action::ToggleFullscreen;
         Key::Named(Enter), ModifiersState::ALT; Action::ToggleFullscreen;
-        Key::Named(Backspace), ModifiersState::CONTROL, ~BindingMode::VI; Action::Esc("\u{0017}".into());
     );
 
     key_bindings.extend(scoped_tab_key_bindings());
@@ -2900,6 +2906,69 @@ mod tests {
                 .collect::<Vec<_>>();
             assert_eq!(matching.len(), 1);
             assert_eq!(matching[0].action, Action::ReceiveChar);
+        }
+    }
+
+    #[test]
+    fn word_delete_defaults_are_cross_platform_scoped_and_overridable() {
+        use automexia_keybindings::PlatformFamily;
+        for platform in [
+            PlatformFamily::Windows,
+            PlatformFamily::LinuxBsd,
+            PlatformFamily::Macos,
+        ] {
+            for (name, key, forward) in
+                [("backspace", Backspace, false), ("delete", Delete, true)]
+            {
+                let trigger = BindingKey::Keycode {
+                    key: Key::Named(key),
+                    location: KeyLocation::Standard,
+                };
+                let defaults = test_platform_defaults(
+                    &rio_backend::config::Config::default(),
+                    platform,
+                );
+                let matches = |bindings: &[KeyBinding], mode: BindingMode| {
+                    bindings
+                        .iter()
+                        .filter(|b| {
+                            b.is_triggered_by(
+                                mode.clone(),
+                                ModifiersState::CONTROL,
+                                &trigger,
+                            )
+                        })
+                        .map(|b| b.action.clone())
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(
+                    matches(&defaults, BindingMode::empty()),
+                    vec![Action::ShellWordDelete { forward }]
+                );
+                for mode in [
+                    BindingMode::VI,
+                    BindingMode::SEARCH,
+                    BindingMode::ALT_SCREEN,
+                ] {
+                    assert!(!matches(&defaults, mode)
+                        .iter()
+                        .any(|a| matches!(a, Action::ShellWordDelete { .. })));
+                }
+                let overridden = config_key_bindings(
+                    vec![ConfigKeyBinding {
+                        key: name.into(),
+                        action: "receivechar".into(),
+                        with: "control".into(),
+                        esc: String::new(),
+                        mode: String::new(),
+                    }],
+                    defaults,
+                );
+                assert_eq!(
+                    matches(&overridden, BindingMode::empty()),
+                    vec![Action::ReceiveChar]
+                );
+            }
         }
     }
 

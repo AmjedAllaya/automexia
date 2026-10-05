@@ -131,6 +131,26 @@
       "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"l\"), location: Standard }"
     },
     {
+      "action": "ShellWordDelete { forward: false }",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Named(Backspace), location: Standard }"
+    },
+    {
+      "action": "ShellWordDelete { forward: true }",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Named(Delete), location: Standard }"
+    },
+    {
       "action": "ScrollToTop",
       "effective": true,
       "mode": "BindingMode(0x0)",
@@ -1319,16 +1339,6 @@
       "platform": "Windows",
       "profile": "automexia",
       "trigger": "ModifiersState(ALT)+Keycode { key: Named(Enter), location: Standard }"
-    },
-    {
-      "action": "Esc(\"\\u{17}\")",
-      "effective": true,
-      "mode": "BindingMode(0x0)",
-      "not_mode": "BindingMode(VI)",
-      "origin": "built_in_or_legacy_user",
-      "platform": "Windows",
-      "profile": "automexia",
-      "trigger": "ModifiersState(CONTROL)+Keycode { key: Named(Backspace), location: Standard }"
     },
     {
       "action": "TabCreateNew",

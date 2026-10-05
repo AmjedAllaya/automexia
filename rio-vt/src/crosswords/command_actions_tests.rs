@@ -19,6 +19,161 @@ fn completed(t: &mut Crosswords<VoidListener>) {
     feed(t, "\x1b]133;A;aid=1\x07prefix> \x1b]133;B\x07echo hello\r\n\x1b]133;C\x07hello\r\n\x1b]133;D;0\x07\x1b]133;A;aid=2\x07prefix> \x1b]133;B\x07");
 }
 
+fn cmd_edit(t: &mut Crosswords<VoidListener>, text: &str) {
+    for (key, value) in [
+        ("automexia_shell", "1"),
+        ("automexia_shell_name", "CMD"),
+        ("automexia_prompt_active", "1"),
+    ] {
+        t.user_vars.insert(key.into(), value.into());
+    }
+    feed(t, "\x1b[?9001h\x1b]133;A;aid=1\x07> \x1b]133;B\x07");
+    feed(t, text);
+    feed(t, "\r\x1b[2C");
+}
+
+#[test]
+fn cmd_word_delete_uses_live_input_graphemes_and_never_submits() {
+    for (text, count) in [
+        ("alpha beta", 5),
+        ("  alpha beta", 7),
+        ("", 0),
+        ("caf\u{301}é next", 4),
+        ("界面 next", 2),
+        ("👩\u{200d}💻 next", 1),
+    ] {
+        let mut t = terminal();
+        cmd_edit(&mut t, text);
+        let receipt = t.cmd_word_delete_receipt().unwrap();
+        let bytes = t.accept_cmd_word_delete(receipt);
+        if count == 0 {
+            assert!(bytes.is_none());
+        } else {
+            assert_eq!(
+                bytes.unwrap(),
+                format!("\x1b[46;83;0;1;256;{count}_\x1b[46;83;0;0;256;1_").into_bytes(),
+                "{text}"
+            );
+        }
+        assert!(
+            t.accept_cmd_word_delete(receipt).is_none(),
+            "receipt is one use"
+        );
+    }
+}
+
+#[test]
+fn cmd_word_delete_rejects_stale_and_unowned_edits() {
+    for change in 0..9 {
+        let mut t = terminal();
+        cmd_edit(&mut t, "alpha beta");
+        let receipt = t.cmd_word_delete_receipt().unwrap();
+        match change {
+            0 => t.note_interactive_input(),
+            1 => feed(&mut t, "\x1b[C"),
+            2 => t.clear_screen_and_history(),
+            3 => feed(&mut t, "\x1b[?1049h"),
+            4 => feed(&mut t, "\x1b]133;C\x07"),
+            5 => {
+                t.user_vars
+                    .insert("automexia_env_pending".into(), "1".into());
+            }
+            6 => {
+                t.user_vars
+                    .insert("automexia_shell_name".into(), "bash".into());
+            }
+            7 => feed(&mut t, "\x1b[?9001l"),
+            _ => feed(&mut t, "\x1b[8malpha"),
+        }
+        assert!(
+            t.accept_cmd_word_delete(receipt).is_none(),
+            "change {change}"
+        );
+    }
+}
+
+#[test]
+fn cmd_word_delete_respects_prefix_middle_end_and_soft_wrap() {
+    let mut t = terminal();
+    cmd_edit(&mut t, "alpha beta");
+    feed(&mut t, "\x1b[2C");
+    let receipt = t.cmd_word_delete_receipt().unwrap();
+    assert!(
+        String::from_utf8(t.accept_cmd_word_delete(receipt).unwrap())
+            .unwrap()
+            .contains("256;3_")
+    );
+    feed(&mut t, "\r");
+    assert!(
+        t.cmd_word_delete_receipt().is_none(),
+        "prefix belongs to shell"
+    );
+    feed(&mut t, "\x1b[12C");
+    let receipt = t.cmd_word_delete_receipt().unwrap();
+    assert!(
+        t.accept_cmd_word_delete(receipt).is_none(),
+        "end cannot recall history"
+    );
+
+    let mut t = terminal();
+    cmd_edit(&mut t, &format!("{} tail", "x".repeat(45)));
+    feed(&mut t, "\x1b[H\x1b[2C");
+    let receipt = t.cmd_word_delete_receipt().unwrap();
+    assert!(
+        String::from_utf8(t.accept_cmd_word_delete(receipt).unwrap())
+            .unwrap()
+            .contains("256;45_")
+    );
+}
+
+#[test]
+fn shell_word_delete_preserves_foreground_and_enhanced_key_ownership() {
+    for shell in ["bash", "zsh", "fish"] {
+        let mut t = terminal();
+        t.user_vars
+            .insert("automexia_shell_name".into(), shell.into());
+        assert_eq!(t.shell_word_delete_sequence(true), None);
+        feed(&mut t, "\x1b]133;A;aid=1\x07> \x1b]133;B\x07");
+        assert_eq!(t.shell_word_delete_sequence(true), Some("\x1bd"));
+        assert_eq!(t.shell_word_delete_sequence(false), Some("\x17"));
+        for mode in [
+            Mode::ALT_SCREEN,
+            Mode::VI,
+            Mode::DISAMBIGUATE_ESC_CODES,
+            Mode::REPORT_EVENT_TYPES,
+        ] {
+            t.mode.insert(mode);
+            assert_eq!(t.shell_word_delete_sequence(true), None);
+            t.mode.remove(mode);
+        }
+        feed(&mut t, "\x1b]133;C\x07");
+        assert_eq!(t.shell_word_delete_sequence(true), None);
+    }
+}
+
+#[test]
+fn cmd_word_delete_rejects_hidden_remote_and_oversized_input() {
+    let mut t = terminal();
+    cmd_edit(&mut t, "\x1b[8mhidden\x1b[0m tail");
+    assert!(t.cmd_word_delete_receipt().is_none());
+    let mut t = terminal();
+    cmd_edit(&mut t, "alpha beta");
+    let receipt = t.cmd_word_delete_receipt().unwrap();
+    t.apply_integration_scope("AMXSCOPE1|begin|66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925|1|2|bash");
+    assert!(t.accept_cmd_word_delete(receipt).is_none());
+    let mut t = Crosswords::new(
+        CrosswordsSize::new(100, 100),
+        CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0),
+        0,
+        256,
+    );
+    cmd_edit(&mut t, &"x".repeat(8200));
+    feed(&mut t, "\x1b[H\x1b[2C");
+    assert!(t.cmd_word_delete_receipt().is_none());
+}
+
 #[test]
 fn quick_action_workflow_receipts_reject_replay_input_reset_and_alternate_screen() {
     for change in 0..5 {

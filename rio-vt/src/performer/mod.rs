@@ -170,7 +170,9 @@ fn coalesce_channel_messages(messages: impl IntoIterator<Item = Msg>) -> Vec<Msg
                 coalesced.push(Msg::Shutdown);
                 break;
             }
-            input @ (Msg::Input(_) | Msg::Paste(_)) => coalesced.push(input),
+            input @ (Msg::Input(_) | Msg::Paste(_) | Msg::CmdWordDelete(_)) => {
+                coalesced.push(input)
+            }
         }
     }
     coalesced
@@ -189,7 +191,10 @@ fn next_channel_batch(
         }
         let message = receiver.recv()?;
         remaining -= 1;
-        if matches!(message, Msg::Input(_) | Msg::Paste(_) | Msg::Shutdown) {
+        if matches!(
+            message,
+            Msg::Input(_) | Msg::Paste(_) | Msg::CmdWordDelete(_) | Msg::Shutdown
+        ) {
             remaining = 0;
         }
         Some(message)
@@ -201,6 +206,10 @@ trait PtyMessageSink {
     fn resize(&mut self, size: crate::event::WindowSize) -> io::Result<()>;
     fn input(&mut self, input: Cow<'static, [u8]>);
     fn paste(&mut self, paste: PasteRequest);
+    fn word_delete(
+        &mut self,
+        receipt: crate::crosswords::command_actions::CmdWordDeleteReceipt,
+    );
     fn shutdown(&mut self);
 }
 
@@ -210,6 +219,8 @@ struct LivePtyMessageSink<'a, T, U: EventListener> {
     terminal: &'a Arc<FairMutex<Crosswords<U>>>,
     write_list: &'a mut VecDeque<Cow<'static, [u8]>>,
     pending_paste: &'a mut Option<PasteRequest>,
+    pending_word_delete:
+        &'a mut Option<crate::crosswords::command_actions::CmdWordDeleteReceipt>,
     #[cfg(windows)]
     resize_input_not_before: &'a mut Option<Instant>,
 }
@@ -258,6 +269,13 @@ impl<T: teletypewriter::EventedPty, U: EventListener> PtyMessageSink
             );
         }
     }
+
+    fn word_delete(
+        &mut self,
+        receipt: crate::crosswords::command_actions::CmdWordDeleteReceipt,
+    ) {
+        *self.pending_word_delete = Some(receipt);
+    }
 }
 
 /// Deliver a coalesced channel batch to the PTY boundary. Keeping this policy
@@ -274,6 +292,7 @@ fn deliver_channel_messages(
         match msg {
             Msg::Input(input) => sink.input(input),
             Msg::Paste(paste) => sink.paste(paste),
+            Msg::CmdWordDelete(receipt) => sink.word_delete(receipt),
             Msg::Resize(window_size) => {
                 if *last_window_size == Some(window_size) {
                     continue;
@@ -323,6 +342,8 @@ pub struct State {
     writing: Option<Writing>,
     parser: handler::Processor,
     pending_paste: Option<PasteRequest>,
+    pending_word_delete: Option<crate::crosswords::command_actions::CmdWordDeleteReceipt>,
+    word_delete_drain_rounds: u8,
     paste_drain_rounds: u8,
     resize_input_not_before: Option<Instant>,
 }
@@ -590,7 +611,10 @@ where
             }
             return false;
         }
-        if state.needs_write() || state.pending_paste.is_some() {
+        if state.needs_write()
+            || state.pending_paste.is_some()
+            || state.pending_word_delete.is_some()
+        {
             return true;
         }
         let messages = next_channel_batch(&mut self.receiver);
@@ -599,6 +623,7 @@ where
             terminal: &self.terminal,
             write_list: &mut state.write_list,
             pending_paste: &mut state.pending_paste,
+            pending_word_delete: &mut state.pending_word_delete,
             #[cfg(windows)]
             resize_input_not_before: &mut state.resize_input_not_before,
         };
@@ -632,6 +657,32 @@ where
                 }
             }
             state.paste_drain_rounds = 0;
+        }
+        Ok(())
+    }
+
+    fn resolve_pending_word_delete(
+        &mut self,
+        state: &mut State,
+        buf: &mut [u8],
+    ) -> io::Result<()> {
+        if state.pending_word_delete.is_none() {
+            return Ok(());
+        }
+        let (_, drained) = self.pty_read_bounded(state, buf, true, MAX_LOCKED_READ)?;
+        state.word_delete_drain_rounds += 1;
+        if drained || state.word_delete_drain_rounds >= MAX_PASTE_DRAIN_ROUNDS {
+            if let Some(receipt) = state.pending_word_delete.take() {
+                let mut terminal = self.terminal.lock();
+                if drained {
+                    if let Some(bytes) = terminal.accept_cmd_word_delete(receipt) {
+                        state.write_list.push_back(Cow::Owned(bytes));
+                    }
+                } else {
+                    terminal.note_interactive_input();
+                }
+            }
+            state.word_delete_drain_rounds = 0;
         }
         Ok(())
     }
@@ -769,6 +820,7 @@ where
                 }
                 if self.sender.shutdown_requested()
                     || state.pending_paste.is_some()
+                    || state.pending_word_delete.is_some()
                     || (!state.needs_write() && self.receiver.peek().is_some())
                 {
                     timeout = Some(std::time::Duration::ZERO);
@@ -837,6 +889,11 @@ where
                 }
                 if let Err(err) = self.resolve_pending_paste(&mut state, &mut buf) {
                     error!("Error draining output before paste: {err}");
+                    self.finish_child_exit(&mut state, &mut buf);
+                    break 'event_loop;
+                }
+                if let Err(err) = self.resolve_pending_word_delete(&mut state, &mut buf) {
+                    error!("Error draining output before word edit: {err}");
                     self.finish_child_exit(&mut state, &mut buf);
                     break 'event_loop;
                 }
@@ -1087,7 +1144,7 @@ mod tests {
                 ResizeQueueModelOutput::Resize(window_size.cols, window_size.rows)
             }
             Msg::Input(input) => ResizeQueueModelOutput::Input(input[0]),
-            Msg::Paste(_) => {
+            Msg::Paste(_) | Msg::CmdWordDelete(_) => {
                 unreachable!("model generates only input, resize, and shutdown")
             }
             Msg::Shutdown => ResizeQueueModelOutput::Shutdown,
@@ -1125,6 +1182,13 @@ mod tests {
 
         fn paste(&mut self, _: PasteRequest) {
             panic!("this recording fixture does not send paste messages");
+        }
+
+        fn word_delete(
+            &mut self,
+            _: crate::crosswords::command_actions::CmdWordDeleteReceipt,
+        ) {
+            panic!("this resize recording fixture does not send word edits");
         }
 
         fn shutdown(&mut self) {

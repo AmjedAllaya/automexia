@@ -181,6 +181,60 @@ fn machine() -> Machine<BoundaryPty, VoidListener> {
 }
 
 #[test]
+fn cmd_word_delete_drains_output_revalidates_and_is_a_queue_barrier() {
+    for changed in [false, true] {
+        let mut machine = machine();
+        {
+            let mut terminal = machine.terminal.lock();
+            for (key, value) in [
+                ("automexia_shell", "1"),
+                ("automexia_shell_name", "CMD"),
+                ("automexia_prompt_active", "1"),
+            ] {
+                terminal.user_vars.insert(key.into(), value.into());
+            }
+            handler::Processor::default().advance(
+                &mut *terminal,
+                b"\x1b[?9001h\x1b]133;A;aid=1\x07> \x1b]133;B\x07alpha beta\r\x1b[2C",
+            );
+        }
+        let receipt = machine.terminal.lock().cmd_word_delete_receipt().unwrap();
+        if changed {
+            machine.pty.reader.final_bytes = Some(b"\x1b]133;C\x07output".to_vec());
+        }
+        machine.pty.writable_bytes = 256;
+        machine.channel().send(Msg::CmdWordDelete(receipt)).unwrap();
+        machine
+            .channel()
+            .send(Msg::Input(Cow::Borrowed(b"after")))
+            .unwrap();
+        let mut state = State::default();
+        assert!(machine.drain_recv_channel(&mut state));
+        assert!(state.pending_word_delete.is_some());
+        assert!(machine.drain_recv_channel(&mut state));
+        assert!(
+            state.write_list.is_empty(),
+            "following input cannot overtake edit"
+        );
+        machine
+            .resolve_pending_word_delete(&mut state, &mut [0; 128])
+            .unwrap();
+        machine.pty_write(&mut state).unwrap();
+        assert_eq!(
+            machine.pty.output,
+            if changed {
+                b"".as_slice()
+            } else {
+                b"\x1b[46;83;0;1;256;5_\x1b[46;83;0;0;256;1_".as_slice()
+            }
+        );
+        assert!(machine.drain_recv_channel(&mut state));
+        machine.pty_write(&mut state).unwrap();
+        assert!(machine.pty.output.ends_with(b"after"));
+    }
+}
+
+#[test]
 fn quick_action_workflow_submission_is_atomic_and_revalidated_after_output_drain() {
     for changed in [false, true] {
         let mut machine = machine();

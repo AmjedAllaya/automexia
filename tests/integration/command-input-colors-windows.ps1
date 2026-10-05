@@ -1,5 +1,6 @@
 # Runs inside the existing isolated native-window/input/snapshot/cleanup owner.
 function Test-AutomexiaCommandInputColors {
+    $wordFailures = [Collections.Generic.List[string]]::new()
     if ($ClearShortcutOnly) {
         . (Join-Path $PSScriptRoot 'clear-shortcut-windows.ps1')
         $script:clearFailures = @()
@@ -33,6 +34,7 @@ function Test-AutomexiaCommandInputColors {
         Send-AutomexiaTestControl ('write-line:' + $Id + '-submit:')
     }
     function Assert-InputColors([string]$Name, [string]$Draft = 'docker ps -a', [int[]]$CommandRgb = @(181, 140, 255), [int[]]$OptionRgb = @(181, 140, 255)) {
+        if ($WordDeletionOnly) { Test-WordDeletion $Name; return }
         if ($ClearShortcutOnly) { Test-AutomexiaClearShortcut $Name; return }
         # A shell identity receipt can precede its new prompt after nested CMD
         # exits. Capture the erase oracle only from the completed empty prompt.
@@ -72,6 +74,53 @@ function Test-AutomexiaCommandInputColors {
         Write-Host "${Name}: typed command and option colors passed"
         Clear-InputDraft $Draft $empty
     }
+    function Test-WordDeletion([string]$Name) {
+        $script:testStage = "word deletion empty prompt: $Name"
+        $baseline = Wait-InputState { param($s)
+            $p = Get-ActiveAutomexiaPanel $s
+            $p.shell_prompt_active -and ([string]$p.raw_cursor_line_text).Trim() -eq [string][char]0x03bb
+        }
+        $draft = 'echo alpha beta gamma'
+        foreach ($case in @(
+            @{ Name = 'backward'; Key = 0x08; Offset = -1; Expected = 'echo alpha beta ' },
+            @{ Name = 'backward-start'; Key = 0x08; Offset = 0; Expected = $draft },
+            @{ Name = 'backward-repeat'; Key = 0x08; Offset = -1; Count = 2; Expected = 'echo alpha ' },
+            @{ Name = 'forward'; Key = 0x2e; Offset = 5; Expected = 'echo  beta gamma' },
+            @{ Name = 'forward-middle'; Key = 0x2e; Offset = 7; Expected = 'echo al beta gamma' },
+            @{ Name = 'forward-repeat'; Key = 0x2e; Offset = 5; Count = 2; Expected = 'echo  gamma' },
+            @{ Name = 'forward-end'; Key = 0x2e; Offset = -1; Expected = $draft }
+        )) {
+            $script:testStage = "$Name word deletion $($case.Name)"
+            Send-AutomexiaTestControl ('write-text:word-' + $Name + '-' + $case.Name + ':' + $draft)
+            $null = Wait-InputState { param($s)
+                ([string](Get-ActiveAutomexiaPanel $s).raw_cursor_line_text).TrimEnd() -eq ([string][char]0x03bb + ' ' + $draft)
+            }
+            if ($case.Offset -ge 0) {
+                for ($i = $draft.Length; $i -gt $case.Offset; $i--) {
+                    if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x25, $true, $false, $false)) { throw 'Cannot move owned input cursor' }
+                }
+                $null = Wait-InputState { param($s) $s.cursor_column -eq (2 + $case.Offset) }
+            }
+            $count = if ($case.ContainsKey('Count')) { $case.Count } else { 1 }
+            for ($keyIndex = 0; $keyIndex -lt $count; $keyIndex++) {
+                if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, $case.Key, ($case.Key -eq 0x2e), $true, $false)) { throw 'Cannot send word deletion key to owned window' }
+                Start-Sleep -Milliseconds 80
+            }
+            Start-Sleep -Milliseconds 500
+            $p = Get-ActiveAutomexiaPanel (Read-AutomexiaSnapshot)
+            $actual = ([string]$p.raw_cursor_line_text).TrimEnd()
+            $expected = ([string][char]0x03bb + ' ' + $case.Expected).TrimEnd()
+            if ($actual -ne $expected) {
+                $wordFailures.Add("$script:testStage expected <$expected>, actual <$actual>")
+            }
+            Write-Host "$script:testStage : <$actual>"
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x43, $false, $true, $false)) { throw 'Cannot cancel disposable input through owned window' }
+            $null = Wait-InputState { param($s)
+                $p = Get-ActiveAutomexiaPanel $s
+                $p.shell_prompt_active -and ([string]$p.raw_cursor_line_text).Trim() -eq [string][char]0x03bb
+            }
+        }
+    }
     [void][AutomexiaResizeDriver]::MoveWindow($window, 20, 20, 1200, 780, $true)
     [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)
     try {
@@ -110,6 +159,9 @@ function Test-AutomexiaCommandInputColors {
         } else { Write-Host 'EXTERNAL: WSL Bash/Zsh/Fish not requested; pass -CommandInputWslDistro to exercise them.' }
         if ($ClearShortcutOnly -and $script:clearFailures.Count -gt 0) {
             throw ('Ctrl+L regressions: ' + ($script:clearFailures -join '; '))
+        }
+        if ($WordDeletionOnly -and $wordFailures.Count -gt 0) {
+            throw ('Word-deletion regressions: ' + ($wordFailures -join '; '))
         }
     } finally {
         [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)

@@ -427,6 +427,9 @@ class FeatureTestReinforcementTests(unittest.TestCase):
         for old, new in [
             ("&& self.finish_child_exit(&mut state, &mut buf)", "&& false"),
             ("self.pty.next_child_event()", "None"),
+            ("self.resolve_pending_word_delete(&mut state, &mut buf)", "unowned_word_edit()"),
+            ('error!("Error draining output before word edit: {err}");\n                    self.finish_child_exit(&mut state, &mut buf);',
+             'error!("Error draining output before word edit: {err}");'),
             ("self.finish_child_exit(&mut state, &mut buf);", "// omitted"),
             ("RioEvent::ChildExited(self.route_id, status)", "RioEvent::Render"),
             ("self.terminal.lock().exit();", "// omitted"),

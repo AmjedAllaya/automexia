@@ -64,6 +64,8 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `Shift+Insert` | Paste the primary selection when the platform provides one. |
 | `Shift+Arrow` | Start at the terminal insertion cursor, then extend/reverse selection by one cell or row. |
 | `Ctrl+Shift+Left/Right` | Extend/reverse selection by a Unicode word boundary. |
+| `Ctrl+Backspace` | Delete the previous input word in the active shell editor. |
+| `Ctrl+Delete` (`Ctrl+Suppr`) | Delete the next input word in the active shell editor. On a Mac keyboard without forward Delete, use `Ctrl+Fn+Delete`. |
 | `Ctrl+Shift+A` | Select all on Windows. |
 | `Ctrl+0`, `Ctrl+=` or `Ctrl++`, `Ctrl+-` | Clear the saved override, increase, or decrease the application-wide font size; the result is restored next launch. |
 | `Shift+Home/End` | Scroll to history top / bottom outside the alternate screen. |

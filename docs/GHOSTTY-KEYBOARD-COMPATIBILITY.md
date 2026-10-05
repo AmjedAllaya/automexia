@@ -17,6 +17,14 @@ change the pinned Ghostty tables or user tombstones. See
 
 ## Current status
 
+The default Automexia profile routes Ctrl+Backspace and Ctrl+Delete to the
+integrated shell editor. Explicit bindings still win. Native Windows editors
+retain their key records; Bash, Zsh and Fish receive legacy word-edit commands.
+CMD's missing forward-word operation is adapted only at its local integrated
+prompt. Alternate screens and enhanced keyboard protocols retain key ownership.
+These defaults do not modify the pinned Ghostty profile or add palette actions:
+word deletion is input editing, not a command launcher.
+
 | Area | Status | Result |
 |---|---|---|
 | Linux/BSD Ghostty 1.3 profile | **Fully done locally** | 72 normalized bindings and 85 upstream actions are generated from the reviewed 1.3.1 binary and checksum-verified offline. Native release smoke evidence is still required before an exact release claim. |

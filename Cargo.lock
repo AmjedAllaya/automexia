@@ -5113,6 +5113,7 @@ dependencies = [
  "teletypewriter",
  "tempfile",
  "tracing",
+ "unicode-segmentation",
  "unicode-width-16",
  "web-time",
  "windows-sys 0.61.2",
