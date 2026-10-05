@@ -323,6 +323,7 @@ impl Route<'_> {
                     &mut self.window.screen.context_manager,
                 );
                 if consumed {
+                    self.window.screen.open_requested_tab_color();
                     self.request_overlay_redraw();
                     return RouteKeyIntent::Consumed;
                 }

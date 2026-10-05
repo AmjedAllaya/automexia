@@ -514,6 +514,7 @@ struct NativeWindowSnapshot {
     grid_margin: Margin,
     active_tab_profile: Option<String>,
     window_tab_titles: Vec<String>,
+    tab_appearance_open: bool,
     palette_enabled: bool,
     palette_scroll_offset: usize,
     palette_selected_index: usize,
@@ -736,6 +737,7 @@ fn write_native_resize_snapshot(
     snapshot["recovery_active"] = serde_json::json!(window.recovery_active);
     snapshot["recovery_ready"] = serde_json::json!(window.recovery_ready);
     snapshot["window_tab_titles"] = serde_json::json!(window.window_tab_titles);
+    snapshot["tab_appearance_open"] = serde_json::json!(window.tab_appearance_open);
     snapshot["semantic_rows"] = serde_json::json!(semantic_rows);
     snapshot["renderer_backend"] = serde_json::json!(window.renderer_backend);
     snapshot["renderer_grid_count"] = serde_json::json!(window.renderer_grid_count);
@@ -4920,6 +4922,7 @@ impl Screen<'_> {
             &mut self.context_manager,
         );
         if consumed {
+            self.open_requested_tab_color();
             self.mark_dirty();
         }
         consumed
@@ -5031,6 +5034,7 @@ impl Screen<'_> {
                     &mut self.context_manager,
                 );
                 if consumed {
+                    self.open_requested_tab_color();
                     self.mark_dirty();
                     return true;
                 }
@@ -6793,6 +6797,7 @@ impl Screen<'_> {
                     active_tab_profile: self
                         .context_manager
                         .tab_profile_identity(self.context_manager.current_index()),
+                    tab_appearance_open: self.renderer.island.as_ref().is_some_and(|island| island.is_color_picker_open()),
                     window_tab_titles: self.renderer.island.as_ref().map_or_else(
                         Vec::new,
                         |island| island.native_test_tab_titles(&self.context_manager),

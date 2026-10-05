@@ -312,6 +312,16 @@ state examples; run with `visual-test-hooks,wgpu` and repeat with
 The explicit `window_style_choices_paint_benchmark` test (`--ignored --show-output`)
 reports production paint p50/p95 JSON at two viewports, excluding GPU/presentation.
 
+Shared color selection has `shared_color_picker_` application tests for real
+keyboard/pointer edits, cancellation, contextual alpha, stale clicks, tab identity,
+accessible selection and built-in-theme/scaling layouts. Preference tests cover
+v11 migration, exact RGBA favorites, bounds, deduplication, transactional recovery
+and asynchronous coalescing. The Windows mode
+`resize-stress-windows.ps1 -SharedColorPickerOnly` exercises Fonts and tab accents,
+draft cancellation, saving/removing favorites and the current preference file.
+Run a `visual-test-hooks,wgpu` build with both WGPU and `-UseCpuRenderer`;
+`-ModalCaptureDirectory` keeps screenshots for private inspection.
+
 Close confirmation replaces both pending modal geometry and labels after all
 other overlay producers. Covered editors keep their state until cancellation.
 The focused native `resize-stress-windows.ps1` modes `-TagCustomizationOnly` and

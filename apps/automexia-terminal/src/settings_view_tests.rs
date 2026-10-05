@@ -5173,6 +5173,29 @@ fn opened_color(alpha: bool) -> SettingsView {
     assert!(view.take_edit().is_none());
     view
 }
+
+#[test]
+fn shared_color_picker_keyboard_offers_swatches_without_implicit_apply() {
+    let mut view = opened_color(false);
+    view.paint(&mut Raster::new(1.0), theme());
+    named(&mut view, NamedKey::ArrowDown);
+    assert_ne!(
+        view.color_editor.as_ref().unwrap().focus,
+        ColorFocus::Hex,
+        "Down from custom input must reach suggested colors"
+    );
+    named(&mut view, NamedKey::Enter);
+    assert!(
+        view.take_edit().is_none(),
+        "choosing a swatch only updates the draft"
+    );
+    assert_eq!(view.color_editor.as_ref().unwrap().focus, ColorFocus::Hex);
+    named(&mut view, NamedKey::Enter);
+    assert!(matches!(
+        view.take_edit().map(|edit| edit.change),
+        Some(Change::Set(SettingValue::Color(_)))
+    ));
+}
 fn replace_color(view: &mut SettingsView, text: &str) -> bool {
     view.key(
         &Key::Character("a".into()),
@@ -7568,4 +7591,206 @@ fn dependent_settings_refresh_paint_benchmark() {
         reports.push(serde_json::json!({"viewport": [width, height], "samples": samples.len(), "warmup": 20, "refresh_and_paint_ns": {"p50": samples[99], "p95": samples[189]}, "scope": "production catalog, dependency projection, focus/layout/shaping/draw emission; excludes GPU/present"}));
     }
     println!("{}", serde_json::json!({"dependent_settings": reports}));
+}
+
+#[test]
+fn shared_color_picker_custom_apply_favorites_cancel_reset_and_invalid_are_distinct() {
+    for action in [ColorFocus::Apply, ColorFocus::Cancel, ColorFocus::Reset] {
+        let mut view = opened_color(true);
+        assert!(replace_color(&mut view, "#12345678"));
+        view.activate_color(action);
+        if action == ColorFocus::Apply {
+            assert!(matches!(
+                view.take_color_favorite_intent(),
+                Some(ColorFavoriteIntent::Remember([18, 52, 86, 120]))
+            ));
+            assert!(view.take_edit().is_some());
+        } else {
+            assert!(view.take_color_favorite_intent().is_none());
+            assert!(view.take_edit().is_none());
+        }
+    }
+    let mut view = opened_color(false);
+    assert!(replace_color(&mut view, "invalid"));
+    view.activate_color(ColorFocus::Apply);
+    view.activate_color(ColorFocus::FavoriteToggle);
+    assert!(view.take_color_favorite_intent().is_none());
+    assert!(view.take_edit().is_none());
+    assert!(view.color_editor.is_some());
+}
+
+#[test]
+fn shared_color_picker_favorites_are_exact_contextual_and_removable() {
+    for alpha in [false, true] {
+        let mut view = opened_color(alpha);
+        view.set_color_favorites(&[[1, 2, 3, 4], [5, 6, 7, 255]]);
+        view.activate_color(ColorFocus::Favorites);
+        view.paint(&mut Raster::new(1.0), theme());
+        let colors = view.color_palette_colors();
+        assert_eq!(colors.len(), if alpha { 2 } else { 1 });
+        let first = colors[0];
+        let bounds = view
+            .color_palette_controls()
+            .into_iter()
+            .find(|(f, _)| *f == ColorFocus::Swatch(0))
+            .unwrap()
+            .1;
+        pointer_event(&mut view, bounds, 1.0, ElementState::Pressed);
+        pointer_event(&mut view, bounds, 1.0, ElementState::Released);
+        assert_eq!(
+            editor_value(view.color_editor.as_ref().unwrap()),
+            Some(SettingValue::Color(first))
+        );
+        assert!(view.take_edit().is_none());
+        assert!(view.take_color_favorite_intent().is_none());
+        view.activate_color(ColorFocus::FavoriteToggle);
+        assert!(
+            matches!(view.take_color_favorite_intent(), Some(ColorFavoriteIntent::Forget(c)) if c == first)
+        );
+        view.color_editor.as_mut().unwrap().focus = ColorFocus::Swatch(0);
+        named(&mut view, NamedKey::Delete);
+        assert!(
+            matches!(view.take_color_favorite_intent(), Some(ColorFavoriteIntent::Forget(c)) if c == first)
+        );
+        view.set_color_favorites(&[]);
+        assert_eq!(
+            view.color_editor.as_ref().unwrap().focus,
+            ColorFocus::Favorites
+        );
+        assert!(view.color_palette_colors().is_empty());
+    }
+}
+
+#[test]
+fn shared_color_picker_ignores_stale_pointer_and_text_editor_has_no_palette() {
+    let mut view = opened_color(false);
+    view.set_color_favorites(&[[1, 2, 3, 255]]);
+    view.activate_color(ColorFocus::Favorites);
+    view.paint(&mut Raster::new(1.0), theme());
+    let old = view.color_editor.as_ref().unwrap().draft.clone();
+    let rect = view
+        .color_palette_controls()
+        .into_iter()
+        .find(|(f, _)| *f == ColorFocus::Swatch(0))
+        .unwrap()
+        .1;
+    pointer_event(&mut view, rect, 1.0, ElementState::Pressed);
+    view.set_color_favorites(&[[4, 5, 6, 255]]);
+    pointer_event(&mut view, rect, 1.0, ElementState::Released);
+    assert_eq!(view.color_editor.as_ref().unwrap().draft, old);
+    let mut text = opened();
+    text.refresh(text_catalog(2));
+    named(&mut text, NamedKey::Tab);
+    named(&mut text, NamedKey::Enter);
+    text.paint(&mut Raster::new(1.0), theme());
+    assert!(text.color_palette_controls().is_empty());
+    named(&mut text, NamedKey::ArrowDown);
+    assert_eq!(text.color_editor.as_ref().unwrap().focus, ColorFocus::Hex);
+    assert!(text.take_color_favorite_intent().is_none());
+}
+
+#[test]
+fn shared_color_picker_layout_and_semantics_across_themes_and_scales() {
+    for descriptor in crate::automexia::theme_gallery::builtins() {
+        let theme = UiTheme::from_colors(&descriptor.theme.unwrap().colors);
+        for (width, height, font, scale) in [
+            (720., 560., 14., 1.),
+            (340., 540., 16., 1.5),
+            (960., 740., 24., 2.),
+        ] {
+            let mut view = opened_color(true);
+            view.fit(width, height, font);
+            let mut raster = Raster::new(scale);
+            view.paint(&mut raster, theme);
+            assert!(!view.color_requires_larger_window());
+            let g = view.color_geometry;
+            assert!(
+                g.palette.y >= g.help.y + g.help.height,
+                "help must not overlap suggestions"
+            );
+            assert!(
+                g.palette.y >= g.preview.y + g.preview.height,
+                "preview must not overlap suggestions"
+            );
+            assert!(g.palette.y + g.palette.height <= g.apply.y);
+            for (_, rect) in view.color_palette_controls() {
+                assert!(rect.width >= 24.0 && rect.height >= 24.0);
+                assert!(
+                    rect.x >= g.card.x && rect.x + rect.width <= g.card.x + g.card.width
+                );
+                assert!(
+                    rect.y >= g.card.y
+                        && rect.y + rect.height <= g.card.y + g.card.height
+                );
+            }
+            assert!(view.color_palette_snapshot().is_object());
+            named(&mut view, NamedKey::ArrowDown);
+            named(&mut view, NamedKey::Enter);
+            view.paint(&mut Raster::new(scale), theme);
+            let surface = view.accessibility_surface(
+                scale,
+                accesskit::Rect::new(
+                    0.,
+                    0.,
+                    f64::from(width * scale),
+                    f64::from(height * scale),
+                ),
+            );
+            let swatches: Vec<_> = surface
+                .elements
+                .iter()
+                .filter(|e| {
+                    e.node
+                        .label()
+                        .is_some_and(|label| label.starts_with("Color #"))
+                })
+                .collect();
+            assert_eq!(swatches.len(), view.color_palette_colors().len());
+            assert_eq!(
+                swatches
+                    .iter()
+                    .filter(|e| e.node.toggled() == Some(accesskit::Toggled::True))
+                    .count(),
+                1
+            );
+            assert!(surface
+                .elements
+                .iter()
+                .any(|e| e.node.label() == Some("Save favorite")));
+        }
+    }
+}
+
+#[test]
+fn shared_color_picker_selection_keeps_swatch_pixels_and_small_windows_keep_hex() {
+    let mut view = opened_color(false);
+    view.set_color_favorites(&[[203, 74, 35, 255]]);
+    view.activate_color(ColorFocus::Favorites);
+    view.paint(&mut Raster::new(1.), theme());
+    view.activate_color(ColorFocus::Swatch(0));
+    let mut raster = Raster::new(1.);
+    view.paint(&mut raster, theme());
+    let bounds = view
+        .color_palette_controls()
+        .into_iter()
+        .find(|(focus, _)| *focus == ColorFocus::Swatch(0))
+        .unwrap()
+        .1;
+    let pixel = raster.pixels(720, 560, false)
+        [(bounds.y as usize + 14) * 720 + bounds.x as usize + 4];
+    assert_eq!(
+        pixel, 0x00cb4a23,
+        "selection must not paint over the color being chosen"
+    );
+    view.fit(320., 360., 18.);
+    view.paint(&mut Raster::new(1.), theme());
+    assert!(view.color_palette_controls().is_empty());
+    assert!(replace_color(&mut view, "#112233"));
+    named(&mut view, NamedKey::ArrowDown);
+    assert_eq!(view.color_editor.as_ref().unwrap().focus, ColorFocus::Hex);
+    named(&mut view, NamedKey::Enter);
+    assert!(matches!(
+        view.take_edit().unwrap().change,
+        Change::Set(SettingValue::Color([17, 34, 51, 255]))
+    ));
 }

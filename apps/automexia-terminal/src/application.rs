@@ -3471,6 +3471,13 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::RedrawRequested => {
+                if route.window.screen.settings_view.is_open() {
+                    route
+                        .window
+                        .screen
+                        .settings_view
+                        .set_color_favorites(&self.user_preferences.color_favorites);
+                }
                 let maximized = route.window.winit_window.is_maximized();
                 if let Some(island) = route.window.screen.renderer.island.as_mut() {
                     island.set_window_maximized(maximized);

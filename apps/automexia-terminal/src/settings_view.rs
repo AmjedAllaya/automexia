@@ -31,6 +31,9 @@ use rio_window::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
+#[path = "settings_color_picker.rs"]
+mod color_picker;
+
 #[path = "settings_accessibility.rs"]
 mod accessibility;
 
@@ -125,6 +128,10 @@ enum ColorFocus {
     Apply,
     Cancel,
     Reset,
+    Suggested,
+    Favorites,
+    FavoriteToggle,
+    Swatch(usize),
 }
 #[derive(Clone, Debug)]
 struct ColorEditor {
@@ -138,7 +145,15 @@ struct ColorEditor {
     focus: ColorFocus,
     composing: bool,
     last_valid_color: Option<[u8; 4]>,
+    show_favorites: bool,
+    custom_input: bool,
     feedback: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ColorFavoriteIntent {
+    Remember([u8; 4]),
+    Forget([u8; 4]),
 }
 
 #[derive(Clone, Debug)]
@@ -210,6 +225,7 @@ fn editor_matches(entry: &SettingDescriptor, editor: &ColorEditor) -> bool {
 }
 #[derive(Clone, Copy, Debug, Default)]
 struct ColorGeometry {
+    palette: Rect,
     card: Rect,
     title: Rect,
     name: Rect,
@@ -341,6 +357,10 @@ pub(crate) struct SettingsView {
     confirmation_geometry: ConfirmationGeometry,
     temporary_customizations: bool,
     color_editor: Option<ColorEditor>,
+    color_favorites: Vec<[u8; 4]>,
+    color_suggestions: Vec<[u8; 4]>,
+    pending_color_favorite: Option<ColorFavoriteIntent>,
+    standalone_color_route: Option<crate::context::TabColorTarget>,
     numeric_editor: Option<NumericEditor>,
     color_geometry: ColorGeometry,
     preedit: String,
@@ -611,6 +631,8 @@ impl SettingsView {
         self.reveal_focus = true;
     }
     pub(crate) fn close(&mut self) {
+        self.standalone_color_route = None;
+        self.pending_color_favorite = None;
         self.back_to_menu = false;
         self.profiles = None;
         self.gallery = None;
@@ -732,6 +754,8 @@ impl SettingsView {
                 "input": self.color_geometry.input.array(),
                 "apply": self.color_geometry.apply.array(),
                 "cancel": self.color_geometry.cancel.array(),
+                "palette": self.color_palette_snapshot(),
+                "draft_color": match editor_value(editor) { Some(SettingValue::Color(color)) => Some(color), _ => None },
             })),
             "numeric_editor": self.numeric_editor.as_ref().map(|editor| serde_json::json!({
                 "id": editor.id.as_str(),
@@ -780,7 +804,7 @@ impl SettingsView {
         packages: Option<PackageCustomizationPages>,
         slot_pages: Option<SlotPageSnapshot>,
     ) {
-        if self.profiles.is_some() {
+        if self.profiles.is_some() || self.standalone_color_route.is_some() {
             return;
         }
         if !self.is_open() {
@@ -3249,768 +3273,6 @@ impl SettingsView {
         }
         self.layout_dirty = true;
     }
-    fn color_requires_larger_window(&self) -> bool {
-        let font = self.font.max(10.0);
-        self.width < font * 13.0 + 32.0 || self.height < font * 1.45 * 10.0 + 72.0
-    }
-    fn open_color(&mut self) {
-        if self.pending.is_some() {
-            return;
-        }
-        let Some(entry) = self.focused_entry() else {
-            return;
-        };
-        let (alpha, text_limits) = match (&entry.kind, &entry.value) {
-            (SettingKind::Color { alpha }, SettingValue::Color(_)) => (*alpha, None),
-            (
-                SettingKind::Text {
-                    max_bytes,
-                    allow_empty,
-                },
-                SettingValue::Text(_),
-            ) => (false, Some((*max_bytes, *allow_empty))),
-            _ => return,
-        };
-        if let Some(reason) = entry.availability.reason() {
-            self.status = reason.into();
-            return;
-        }
-        if self.color_requires_larger_window() {
-            self.set_status("Enlarge the window to edit this color.");
-            return;
-        }
-        let draft = match &entry.value {
-            SettingValue::Text(value) => value.clone(),
-            _ => display_value(entry),
-        };
-        self.color_editor = Some(ColorEditor {
-            id: entry.id.clone(),
-            revision: self.catalog.as_ref().map_or(0, Catalog::revision),
-            alpha,
-            text_limits,
-            caret: draft.len(),
-            anchor: Some(0),
-            draft,
-            focus: ColorFocus::Hex,
-            composing: false,
-            last_valid_color: match &entry.value {
-                SettingValue::Color(color) => Some(*color),
-                _ => None,
-            },
-            feedback: None,
-        });
-        self.preedit.clear();
-        self.pressed = None;
-        self.touch = None;
-        self.layout_dirty = true;
-    }
-    fn cancel_color(&mut self) {
-        if self.color_editor.take().is_none() {
-            return;
-        }
-        self.restore_gallery_catalog();
-        self.preedit.clear();
-        self.pressed = None;
-        self.touch = None;
-        self.caret_rect = Rect::default();
-        self.focus = Focus::List;
-        self.layout_dirty = true;
-        self.reveal_focus = true;
-    }
-    fn paste_color(&mut self, text: &str) -> bool {
-        if self.color_requires_larger_window() {
-            return false;
-        }
-        let Some(editor) = &mut self.color_editor else {
-            return false;
-        };
-        let max = editor.text_limits.map_or(MAX_COLOR_BYTES, |(max, _)| max);
-        if text.len() > max
-            || if editor.text_limits.is_some() {
-                !safe_editor_text(text, max, true)
-            } else {
-                !text.bytes().all(|byte| byte.is_ascii_graphic())
-            }
-        {
-            return false;
-        }
-        if editor.focus != ColorFocus::Hex || editor.composing {
-            return false;
-        }
-        let start = editor.anchor.unwrap_or(editor.caret).min(editor.caret);
-        let end = editor.anchor.unwrap_or(editor.caret).max(editor.caret);
-        if editor.draft.len() - (end - start) + text.len() > max {
-            return false;
-        }
-        // Keyboard and mouse paths maintain UTF-8 boundaries for this draft.
-        if !editor.draft.is_char_boundary(start) || !editor.draft.is_char_boundary(end) {
-            return false;
-        }
-        editor.draft.replace_range(start..end, text);
-        if editor.text_limits.is_none() {
-            if let Some(color) = parse_color(&editor.draft, editor.alpha) {
-                editor.last_valid_color = Some(color);
-            }
-        }
-        editor.caret = start + text.len();
-        editor.anchor = None;
-        editor.feedback = None;
-        self.pressed = None;
-        self.layout_dirty = true;
-        true
-    }
-    fn activate_color(&mut self, focus: ColorFocus) {
-        if focus == ColorFocus::Cancel {
-            self.cancel_color();
-            return;
-        }
-        let Some(editor) = &self.color_editor else {
-            return;
-        };
-        let change = match focus {
-            ColorFocus::Apply => {
-                if editor.composing {
-                    return;
-                }
-                let Some(value) = editor_value(editor) else {
-                    return;
-                };
-                Change::Set(value)
-            }
-            ColorFocus::Reset => Change::Reset,
-            _ => return,
-        };
-        let edit = Edit {
-            revision: editor.revision,
-            id: editor.id.clone(),
-            change,
-        };
-        if self.pending.is_none()
-            && self
-                .catalog
-                .as_ref()
-                .is_some_and(|catalog| catalog.validate_edit(&edit).is_ok())
-        {
-            if focus == ColorFocus::Reset {
-                let title = self
-                    .catalog
-                    .as_ref()
-                    .and_then(|catalog| catalog.get(&edit.id))
-                    .map_or_else(
-                        || "Reset this value?".into(),
-                        |entry| format!("Reset {}?", entry.label),
-                    );
-                self.ask_confirmation(
-                    ConfirmedSettingsAction::Setting(edit),
-                    title,
-                    "Restore this value to its configured default.",
-                    "Reset",
-                );
-                return;
-            }
-            self.pending = Some(edit);
-            self.status.clear();
-            self.cancel_color();
-        }
-    }
-    fn color_key(
-        &mut self,
-        key: &Key,
-        text: Option<&str>,
-        modifiers: ModifiersState,
-        repeat: bool,
-    ) {
-        if matches!(key, Key::Named(NamedKey::Escape)) {
-            if self
-                .color_editor
-                .as_ref()
-                .is_some_and(|editor| editor.composing)
-            {
-                self.preedit.clear();
-                if let Some(editor) = &mut self.color_editor {
-                    editor.composing = false;
-                }
-            } else {
-                self.cancel_color();
-            }
-            return;
-        }
-        if self
-            .color_editor
-            .as_ref()
-            .is_some_and(|editor| editor.composing)
-            || self.color_requires_larger_window()
-        {
-            return;
-        }
-        let Some(editor) = &mut self.color_editor else {
-            return;
-        };
-        let command = modifiers.control_key() || modifiers.super_key();
-        if command
-            && matches!(key, Key::Character(value) if value.eq_ignore_ascii_case("a"))
-            && editor.focus == ColorFocus::Hex
-        {
-            editor.anchor = Some(0);
-            editor.caret = editor.draft.len();
-            return;
-        }
-        let cycle = match key {
-            Key::Named(NamedKey::Tab) => Some(if modifiers.shift_key() { -1 } else { 1 }),
-            Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowUp)
-                if editor.focus != ColorFocus::Hex =>
-            {
-                Some(-1)
-            }
-            Key::Named(NamedKey::ArrowRight | NamedKey::ArrowDown)
-                if editor.focus != ColorFocus::Hex =>
-            {
-                Some(1)
-            }
-            _ => None,
-        };
-        if let Some(direction) = cycle {
-            let index = match editor.focus {
-                ColorFocus::Hex => 0,
-                ColorFocus::Apply => 1,
-                ColorFocus::Cancel => 2,
-                ColorFocus::Reset => 3,
-            };
-            editor.focus = [
-                ColorFocus::Hex,
-                ColorFocus::Apply,
-                ColorFocus::Cancel,
-                ColorFocus::Reset,
-            ][((index + direction + 4) % 4) as usize];
-            self.preedit.clear();
-            self.pressed = None;
-            return;
-        }
-        if command || modifiers.alt_key() {
-            return;
-        }
-        if !repeat && matches!(key, Key::Named(NamedKey::Enter)) {
-            let focus = if editor.focus == ColorFocus::Hex {
-                ColorFocus::Apply
-            } else {
-                editor.focus
-            };
-            self.activate_color(focus);
-            return;
-        }
-        if editor.focus != ColorFocus::Hex {
-            if !repeat
-                && matches!(key, Key::Character(value) if value.eq_ignore_ascii_case("r"))
-            {
-                self.activate_color(ColorFocus::Reset);
-                return;
-            }
-            if !repeat
-                && matches!(key, Key::Character(value) if value.eq_ignore_ascii_case("a"))
-            {
-                self.activate_color(ColorFocus::Apply);
-                return;
-            }
-            if !repeat && matches!(key, Key::Named(NamedKey::Space)) {
-                let focus = editor.focus;
-                self.activate_color(focus);
-            }
-            return;
-        }
-        let old = editor.caret;
-        match key {
-            Key::Named(NamedKey::ArrowLeft) => {
-                editor.caret = editor.draft[..editor.caret]
-                    .grapheme_indices(true)
-                    .next_back()
-                    .map_or(0, |(index, _)| index);
-            }
-            Key::Named(NamedKey::ArrowRight) => {
-                editor.caret = editor.draft[editor.caret..]
-                    .graphemes(true)
-                    .next()
-                    .map_or(editor.caret, |next| editor.caret + next.len());
-            }
-            Key::Named(NamedKey::Home) => editor.caret = 0,
-            Key::Named(NamedKey::End) => editor.caret = editor.draft.len(),
-            Key::Named(NamedKey::Backspace | NamedKey::Delete) => {
-                if editor.anchor == Some(editor.caret) {
-                    editor.anchor = None;
-                }
-                if editor.anchor.is_none() {
-                    editor.anchor =
-                        Some(if matches!(key, Key::Named(NamedKey::Backspace)) {
-                            editor.draft[..editor.caret]
-                                .grapheme_indices(true)
-                                .next_back()
-                                .map_or(0, |(index, _)| index)
-                        } else {
-                            editor.draft[editor.caret..]
-                                .graphemes(true)
-                                .next()
-                                .map_or(editor.caret, |next| editor.caret + next.len())
-                        });
-                }
-                self.paste_color("");
-                return;
-            }
-            _ => {
-                if let Some(text) = text {
-                    self.paste_color(text);
-                }
-                return;
-            }
-        }
-        if modifiers.shift_key() {
-            editor.anchor.get_or_insert(old);
-        } else {
-            editor.anchor = None;
-        }
-        self.pressed = None;
-    }
-    fn prepare_color(&mut self, viewport: Rect) {
-        let line = self.font.max(10.0) * 1.45;
-        let width = (self.font.max(10.0) * 13.0 + 16.0)
-            .max(520.0)
-            .min(self.width - 32.0);
-        let height = line * 10.0 + 40.0;
-        let card = Rect {
-            x: (self.width - width) * 0.5,
-            y: (self.height - height) * 0.5,
-            width,
-            height,
-        };
-        let area = Rect {
-            x: card.x + 8.0,
-            y: card.y + 8.0,
-            width: width - 16.0,
-            height: line,
-        };
-        let split = width >= 480.0;
-        let form = if split {
-            Rect {
-                width: (area.width - 12.0) * 0.5,
-                ..area
-            }
-        } else {
-            area
-        };
-        let input = Rect {
-            y: form.y + line * 3.0 + 8.0,
-            height: line + 8.0,
-            ..form
-        };
-        let preview = if split {
-            Rect {
-                x: form.x + form.width + 12.0,
-                y: area.y + line + 4.0,
-                width: form.width,
-                height: line * 6.0 + 12.0,
-            }
-        } else {
-            Rect {
-                y: input.y + input.height + 8.0,
-                height: line + 8.0,
-                ..area
-            }
-        };
-        let button_width = (area.width - 16.0) / 3.0;
-        let apply = Rect {
-            y: card.y + height - line - 16.0,
-            height: line + 8.0,
-            width: button_width,
-            ..area
-        };
-        self.color_geometry = ColorGeometry {
-            card,
-            title: area,
-            name: Rect {
-                y: form.y + line + 4.0,
-                height: line * 2.0,
-                ..form
-            },
-            input,
-            preview,
-            help: Rect {
-                y: if split {
-                    input.y + input.height + 8.0
-                } else {
-                    preview.y + preview.height + 8.0
-                },
-                height: line * 2.0,
-                ..form
-            },
-            apply,
-            cancel: Rect {
-                x: apply.x + button_width + 8.0,
-                ..apply
-            },
-            reset: Rect {
-                x: apply.x + (button_width + 8.0) * 2.0,
-                ..apply
-            },
-        };
-        self.geometry.viewport = viewport;
-        self.rows.clear();
-        self.caret_rect = Rect::default();
-    }
-    fn paint_color(&mut self, canvas: &mut impl Canvas, theme: UiTheme) {
-        let Some(editor) = &self.color_editor else {
-            return;
-        };
-        let Some(entry) = self
-            .catalog
-            .as_ref()
-            .and_then(|catalog| catalog.get(&editor.id))
-        else {
-            return;
-        };
-        let g = self.color_geometry;
-        let viewport = self.geometry.viewport;
-        let font = self.font.max(10.0);
-        let line = font * 1.45;
-        rounded_surface(canvas, g.card, theme.surface, viewport);
-        label(
-            canvas,
-            g.title,
-            if editor.text_limits.is_some() {
-                "Edit text"
-            } else {
-                "Edit color"
-            },
-            font,
-            theme.text,
-            true,
-            g.card,
-        );
-        let opts = DrawOpts {
-            font_size: font,
-            color: color_u8(theme.text),
-            ..DrawOpts::default()
-        };
-        let mut names = wrapped(&entry.label, g.name.width - 8.0, canvas.text(), &opts);
-        if names.len() > 2 {
-            names.truncate(2);
-            if let Some(last) = names.last_mut() {
-                while !last.is_empty()
-                    && canvas.text().measure(&format!("{last}…"), &opts)
-                        > g.name.width - 8.0
-                {
-                    let end = last
-                        .grapheme_indices(true)
-                        .next_back()
-                        .map_or(0, |(start, _)| start);
-                    last.truncate(end);
-                }
-                last.push('…');
-            }
-        }
-        for (index, name) in names.iter().enumerate() {
-            label(
-                canvas,
-                Rect {
-                    y: g.name.y + index as f32 * line,
-                    height: line,
-                    ..g.name
-                },
-                name,
-                font,
-                theme.text,
-                false,
-                g.name,
-            );
-        }
-        control(
-            canvas,
-            g.input,
-            editor.focus == ColorFocus::Hex,
-            theme,
-            g.card,
-        );
-        let display = format!(
-            "{}{}{}",
-            &editor.draft[..editor.caret],
-            self.preedit,
-            &editor.draft[editor.caret..]
-        );
-        let caret_width = canvas.text().measure(&editor.draft[..editor.caret], &opts);
-        let shift = (caret_width - (g.input.width - 16.0)).max(0.0);
-        self.caret_rect = Rect {
-            x: g.input.x + 8.0 + caret_width - shift,
-            y: g.input.y + 3.0,
-            width: 1.0,
-            height: g.input.height - 6.0,
-        };
-        if let Some(anchor) = editor.anchor.filter(|anchor| *anchor != editor.caret) {
-            let left = canvas
-                .text()
-                .measure(&editor.draft[..anchor.min(editor.caret)], &opts);
-            let right = canvas
-                .text()
-                .measure(&editor.draft[..anchor.max(editor.caret)], &opts);
-            rect(
-                canvas,
-                Rect {
-                    x: g.input.x + 8.0 + left - shift,
-                    y: g.input.y + 3.0,
-                    width: right - left,
-                    height: g.input.height - 6.0,
-                },
-                theme.raised,
-                g.input,
-            );
-        }
-        canvas.text().draw_clipped(
-            g.input.x + 8.0 - shift,
-            g.input.y + 2.0,
-            &display,
-            &opts,
-            g.input.array(),
-        );
-        if editor.focus == ColorFocus::Hex && self.preedit.is_empty() {
-            rect(canvas, self.caret_rect, theme.outline, g.input);
-        }
-        let draft = editor_value(editor);
-        if editor.text_limits.is_some() {
-            label(
-                canvas,
-                g.preview,
-                if self.profiles.is_some() {
-                    "Saved text · no shell expansion"
-                } else {
-                    "Display text only · never evaluated"
-                },
-                font * 0.85,
-                theme.muted_text,
-                false,
-                g.preview,
-            );
-        } else {
-            let color = match &entry.value {
-                SettingValue::Color(color) => *color,
-                _ => return,
-            };
-            let draft_color = draft
-                .as_ref()
-                .and_then(|value| match value {
-                    SettingValue::Color(color) => Some(*color),
-                    _ => None,
-                })
-                .or(editor.last_valid_color);
-            for (index, (value, caption)) in [
-                (Some(color), "Current"),
-                (
-                    draft_color,
-                    if draft.is_some() {
-                        "Draft"
-                    } else {
-                        "Last valid draft"
-                    },
-                ),
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                let split = g.preview.x > g.input.x + g.input.width;
-                let section = if split {
-                    Rect {
-                        y: g.preview.y + index as f32 * g.preview.height * 0.5,
-                        height: g.preview.height * 0.5,
-                        ..g.preview
-                    }
-                } else {
-                    Rect {
-                        x: g.preview.x + index as f32 * g.preview.width * 0.5,
-                        width: g.preview.width * 0.5,
-                        ..g.preview
-                    }
-                };
-                if let Some(value) = value {
-                    self.paint_color_graphic(
-                        canvas,
-                        section,
-                        editor.id.as_str(),
-                        value,
-                        theme,
-                    );
-                }
-                label(
-                    canvas,
-                    Rect {
-                        x: section.x + 4.0,
-                        width: (section.width - 8.0).max(0.0),
-                        ..section
-                    },
-                    caption,
-                    (font * 0.58).max(8.0),
-                    theme.muted_text,
-                    false,
-                    g.preview,
-                );
-            }
-        }
-        let text_help = editor.text_limits.map(|(max, allow_empty)| {
-            let prompt = if allow_empty {
-                "Optional text."
-            } else {
-                "Enter text."
-            };
-            format!("{prompt} Up to {max} UTF-8 bytes.")
-        });
-        let help = if let Some(feedback) = editor.feedback.as_deref() {
-            feedback
-        } else if let Some(text_help) = text_help.as_deref() {
-            if draft.is_none() {
-                "Text is too long or contains a control character. Apply unavailable."
-            } else {
-                text_help
-            }
-        } else if draft.is_none() {
-            if editor.alpha {
-                "Use #RRGGBB or #RRGGBBAA. Apply unavailable."
-            } else {
-                "Use #RRGGBB. Apply unavailable."
-            }
-        } else if editor.alpha {
-            "#RRGGBBAA includes opacity (00–FF)."
-        } else {
-            "#RRGGBB uses an opaque color."
-        };
-        for (index, value) in wrapped(help, g.help.width - 8.0, canvas.text(), &opts)
-            .iter()
-            .take(2)
-            .enumerate()
-        {
-            label(
-                canvas,
-                Rect {
-                    y: g.help.y + index as f32 * line,
-                    height: line,
-                    ..g.help
-                },
-                value,
-                font * 0.85,
-                theme.muted_text,
-                false,
-                g.help,
-            );
-        }
-        for (bounds, focus, caption, key) in [
-            (g.apply, ColorFocus::Apply, "Apply", "A"),
-            (g.cancel, ColorFocus::Cancel, "Cancel", "Esc"),
-            (g.reset, ColorFocus::Reset, "Reset", "R"),
-        ] {
-            action_button(
-                canvas,
-                bounds,
-                (caption, key),
-                font,
-                (
-                    editor.focus == focus,
-                    focus != ColorFocus::Apply || draft.is_some(),
-                ),
-                theme,
-                g.card,
-            );
-        }
-    }
-    fn paint_color_graphic(
-        &self,
-        canvas: &mut impl Canvas,
-        bounds: Rect,
-        id: &str,
-        color: [u8; 4],
-        theme: UiTheme,
-    ) {
-        let (terminal_background, terminal_foreground) = self
-            .customizations
-            .as_ref()
-            .and_then(|navigation| navigation.slot_pages.as_ref())
-            .map_or(
-                (theme.background, theme.text),
-                SlotPageSnapshot::preview_terminal_colors,
-            );
-        let graphic = Rect {
-            x: bounds.x + 4.0,
-            y: bounds.y + 11.0,
-            width: (bounds.width - 8.0).max(0.0),
-            height: (bounds.height - 13.0).clamp(0.0, 24.0),
-        };
-        if graphic.width <= 0.0 || graphic.height <= 0.0 {
-            return;
-        }
-        rect(canvas, graphic, terminal_background, bounds);
-        if id.starts_with("tags.colors.") || id.starts_with("tags.slot.") {
-            let name = tag_color_graphic_name(id);
-            let style = self
-                .customizations
-                .as_ref()
-                .and_then(|navigation| navigation.slot_pages.as_ref())
-                .map_or(BarVisualStyle::Capsule, |snapshot| {
-                    snapshot.preview_recipe().visual
-                });
-            let opacity = self
-                .customizations
-                .as_ref()
-                .and_then(|navigation| navigation.slot_pages.as_ref())
-                .map_or(75, |snapshot| {
-                    let appearance = snapshot.preview_appearance();
-                    if appearance.style
-                        == rio_backend::config::presentation::TagStyle::Plain
-                        || style == BarVisualStyle::Underline
-                    {
-                        0
-                    } else {
-                        appearance.opacity.get()
-                    }
-                });
-            let tag = automexia_ui_model::context_tag_colors(
-                terminal_background,
-                [color[0], color[1], color[2]],
-                opacity,
-            );
-            paint_sample_tag_surface(canvas, graphic, style, tag);
-            label(
-                canvas,
-                graphic,
-                &format!("{name} tag"),
-                (self.font * 0.64).max(9.0),
-                tag.foreground,
-                false,
-                graphic,
-            );
-        } else if id.starts_with("output.backgrounds.") {
-            rect(
-                canvas,
-                graphic,
-                color.map(|channel| f32::from(channel) / 255.0),
-                graphic,
-            );
-            let severity = id.strip_prefix("output.backgrounds.").unwrap_or("status");
-            label(
-                canvas,
-                graphic,
-                &format!("{severity}: sample"),
-                (self.font * 0.64).max(9.0),
-                terminal_foreground,
-                false,
-                graphic,
-            );
-        } else if id.starts_with("output.colors.") {
-            let severity = id.strip_prefix("output.colors.").unwrap_or("status");
-            label(
-                canvas,
-                graphic,
-                &format!("{severity}: sample"),
-                (self.font * 0.64).max(9.0),
-                color.map(|channel| f32::from(channel) / 255.0),
-                false,
-                graphic,
-            );
-        } else {
-            color_swatch(canvas, graphic, color, theme, graphic);
-        }
-    }
     fn target_at(&self, x: f32, y: f32) -> Option<Target> {
         if self.confirmation.is_some() {
             if self.layout_dirty {
@@ -4025,6 +3287,11 @@ impl SettingsView {
         if let Some(editor) = &self.color_editor {
             if self.layout_dirty {
                 return None;
+            }
+            if editor.text_limits.is_none() {
+                if let Some(target) = self.color_palette_target(x, y) {
+                    return Some(Target::Color(target));
+                }
             }
             let g = self.color_geometry;
             return [

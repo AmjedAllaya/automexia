@@ -197,7 +197,7 @@ function Test-AutomexiaThemeGallery {
         $null = Wait-ThemeState {param($s) -not $s.search_active}
     }
     function Preference-Text {
-        $path = Join-Path $configRoot 'state/user-preferences-v11.toml'
+        $path = Join-Path $configRoot 'state/user-preferences-v12.toml'
         for ($attempt = 0; $attempt -lt 80; $attempt++) {
             $stream = $null
             $reader = $null

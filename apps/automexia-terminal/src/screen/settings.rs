@@ -4,6 +4,53 @@ use automexia_ui_model::settings::Catalog;
 use rio_window::event::WindowEvent;
 
 impl Screen<'_> {
+    /// The tab menu delegates to the same descriptor-driven editor as settings.
+    pub(crate) fn open_requested_tab_color(&mut self) {
+        use automexia_ui_model::settings::{
+            Section, SettingDescriptor, SettingId, SettingKind, SettingValue,
+        };
+        let Some(index) = self
+            .renderer
+            .island
+            .as_mut()
+            .and_then(|island| island.take_color_request())
+        else {
+            return;
+        };
+        let Some(target) = self.context_manager.tab_color_target(index) else {
+            return;
+        };
+        let Ok(id) = SettingId::new("tab.color") else {
+            return;
+        };
+        let fallback =
+            crate::renderer::ui_theme::UiTheme::from_colors(&self.renderer.named_colors)
+                .blue;
+        let current = self.context_manager.custom_color(index).unwrap_or(fallback);
+        let mut entry = SettingDescriptor::boolean(
+            id,
+            Section::Appearance,
+            "Tab color",
+            "Choose a tab accent. Reset inherits the theme.",
+            true,
+            true,
+        );
+        entry.kind = SettingKind::Color { alpha: false };
+        entry.value = SettingValue::Color(
+            current.map(|value| (value.clamp(0.0, 1.0) * 255.0).round() as u8),
+        );
+        entry.default = SettingValue::Color(
+            fallback.map(|value| (value.clamp(0.0, 1.0) * 255.0).round() as u8),
+        );
+        let Ok(catalog) = Catalog::new(1, vec![entry]) else {
+            return;
+        };
+        self.open_settings_view(catalog);
+        self.settings_view.open_tab_color_editor(target);
+        self.fit_settings_view();
+        self.mark_dirty();
+    }
+
     pub(crate) fn open_settings_view(&mut self, catalog: Catalog) {
         self.open_settings_view_for_section(catalog, None, None, None);
     }

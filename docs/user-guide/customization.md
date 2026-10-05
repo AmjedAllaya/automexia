@@ -205,9 +205,26 @@ press Enter or click its center value to type or paste the value directly. Enter
 applies a valid value, Tab applies it and moves focus, and Escape cancels the
 draft. The minus and plus buttons remain available. Values outside the control's
 range or step cannot be applied. Select a color row in an item editor to open
-its Current/Draft preview. Shift+Arrow/Home/End selects field text; Ctrl+C/X/V
-(Cmd+C/X/V on macOS) copies, cuts, or pastes it. A clipboard failure keeps the
-draft and selection available to retry. **Reset all** on the feature list previews
+the shared **Choose a color** editor, also used by themes, profiles, extension
+color settings and tab accents. **Suggested** offers theme colors and additional
+swatches; **Favorites** offers colors saved across editors and restarts. Click a
+swatch, or press Down from the input and use arrows then Enter, to change the
+Current/Draft preview. **Apply** or Enter in the input commits it; **Escape**
+cancels the draft. Typing and applying a valid custom hex color automatically
+adds it to Favorites. **Save favorite** (☆ Save in a narrow window) saves the draft
+without applying it; **Remove favorite** or Delete on a focused favorite removes
+it without changing the active color. The list keeps the latest 16 distinct
+colors. RGB-only controls omit translucent favorites; opacity-capable controls
+preserve all RGBA bytes. Extremely short windows retain hex editing and ask you
+to enlarge the window for swatches.
+
+Right-click a tab and choose **Choose color…**, or press **F2** in its appearance
+menu, to use this same editor. Reset inherits the theme again. Tab accents retain
+their existing session ownership; favorites are shared preferences.
+
+Shift+Arrow/Home/End selects field text; Ctrl+C/X/V (Cmd+C/X/V on macOS) copies,
+cuts, or pastes it. A clipboard failure keeps the draft and selection available
+to retry. **Reset all** on the feature list previews
 defaults across Customizations, enabling the core feature switches; installed
 extension features use their declared defaults. **Reset default** on a feature
 page previews that feature's defaults, and **Reset tag** affects only the
@@ -492,8 +509,8 @@ that value's saved override when no temporary preview is active.
 For a deliberate persistent reset, first close every Automexia instance. Back up
 and move only these snapshots out of the configuration root's `state/` directory:
 
-- `user-preferences-v11.toml` and `user-preferences-v11.previous.toml`;
-- any retained `user-preferences-v10.toml`, `user-preferences-v9.toml`, `user-preferences-v8.toml`, `user-preferences-v7.toml`, `user-preferences-v6.toml`, `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
+- `user-preferences-v12.toml` and `user-preferences-v12.previous.toml`;
+- any retained `user-preferences-v11.toml`, `user-preferences-v10.toml`, `user-preferences-v9.toml`, `user-preferences-v8.toml`, `user-preferences-v7.toml`, `user-preferences-v6.toml`, `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
   `user-preferences-v1.toml`, and their matching `.previous.toml` files.
 
 Moving both current and older snapshots prevents recovery or migration from

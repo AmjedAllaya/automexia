@@ -52,7 +52,7 @@ impl SettingsView {
             if !enabled {
                 node.set_disabled();
             }
-            if role == Role::CheckBox {
+            if matches!(role, Role::CheckBox | Role::RadioButton) {
                 node.set_toggled(if value == "On" {
                     Toggled::True
                 } else {
@@ -142,6 +142,33 @@ impl SettingsView {
                     rect,
                     editor.focus == focus,
                     focus != ColorFocus::Apply || editor_value(editor).is_some(),
+                );
+            }
+            let colors = self.color_palette_colors();
+            for (index, (focus, rect)) in
+                self.color_palette_controls().into_iter().enumerate()
+            {
+                let (label, role, selected) = match focus {
+                    ColorFocus::Suggested => ("Suggested colors".to_owned(), Role::RadioButton, !editor.show_favorites),
+                    ColorFocus::Favorites => ("Favorite colors".to_owned(), Role::RadioButton, editor.show_favorites),
+                    ColorFocus::FavoriteToggle => (
+                        if editor_value(editor).is_some_and(|v| matches!(v, SettingValue::Color(c) if self.color_favorites.contains(&c))) { "Remove favorite" } else { "Save favorite" }.to_owned(), Role::Button, false),
+                    ColorFocus::Swatch(i) => {
+                        let Some([r,g,b,a]) = colors.get(i) else { continue; };
+                        (format!("Color #{r:02X}{g:02X}{b:02X}{a:02X}"), Role::RadioButton,
+                            parse_color(&editor.draft, editor.alpha) == colors.get(i).copied())
+                    }
+                    _ => continue,
+                };
+                add(
+                    30 + index as u64,
+                    role,
+                    &label,
+                    if selected { "On" } else { "Off" },
+                    "Enter chooses a draft; Apply commits the color",
+                    rect,
+                    editor.focus == focus,
+                    focus != ColorFocus::FavoriteToggle || editor_value(editor).is_some(),
                 );
             }
             return surface;

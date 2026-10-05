@@ -29,9 +29,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-const SCHEMA_VERSION: u16 = 11;
+const SCHEMA_VERSION: u16 = 12;
+pub const MAX_COLOR_FAVORITES: usize = 16;
 const STATE_DIRECTORY: &str = "state";
-const PRIMARY_FILE: &str = "user-preferences-v11.toml";
+const PRIMARY_FILE: &str = "user-preferences-v12.toml";
+const VERSION11_PRIMARY_FILE: &str = "user-preferences-v11.toml";
 const VERSION10_PRIMARY_FILE: &str = "user-preferences-v10.toml";
 const VERSION9_PRIMARY_FILE: &str = "user-preferences-v9.toml";
 const VERSION8_PRIMARY_FILE: &str = "user-preferences-v8.toml";
@@ -42,7 +44,8 @@ const VERSION4_PRIMARY_FILE: &str = "user-preferences-v4.toml";
 const VERSION3_PRIMARY_FILE: &str = "user-preferences-v3.toml";
 const PREDECESSOR_PRIMARY_FILE: &str = "user-preferences-v2.toml";
 const LEGACY_PRIMARY_FILE: &str = "user-preferences-v1.toml";
-const PREVIOUS_FILE: &str = "user-preferences-v11.previous.toml";
+const PREVIOUS_FILE: &str = "user-preferences-v12.previous.toml";
+const VERSION11_PREVIOUS_FILE: &str = "user-preferences-v11.previous.toml";
 const VERSION10_PREVIOUS_FILE: &str = "user-preferences-v10.previous.toml";
 const VERSION9_PREVIOUS_FILE: &str = "user-preferences-v9.previous.toml";
 const VERSION8_PREVIOUS_FILE: &str = "user-preferences-v8.previous.toml";
@@ -53,7 +56,7 @@ const VERSION4_PREVIOUS_FILE: &str = "user-preferences-v4.previous.toml";
 const VERSION3_PREVIOUS_FILE: &str = "user-preferences-v3.previous.toml";
 const PREDECESSOR_PREVIOUS_FILE: &str = "user-preferences-v2.previous.toml";
 const LEGACY_PREVIOUS_FILE: &str = "user-preferences-v1.previous.toml";
-const LOCK_FILE: &str = "user-preferences-v11.lock";
+const LOCK_FILE: &str = "user-preferences-v12.lock";
 const STAGING_PREFIX: &str = ".user-preferences-";
 pub const MAX_PREFERENCE_BYTES: usize = 16 * 1024;
 pub const MAX_PACKAGE_PREFERENCE_BYTES: usize = 8 * 1024 * 1024;
@@ -432,6 +435,8 @@ fn validate_extension_features(
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct UserPreferences {
+    /// Bounded reusable swatches; never part of terminal configuration.
+    pub color_favorites: Vec<[u8; 4]>,
     pub theme_selection: Option<super::theme_gallery::ThemeSelection>,
     pub fonts: super::font_preferences::FontPreferences,
     pub font_size: Option<f32>,
@@ -444,6 +449,16 @@ pub struct UserPreferences {
 }
 
 impl UserPreferences {
+    pub fn remember_color(&mut self, color: [u8; 4]) {
+        self.color_favorites.retain(|item| *item != color);
+        self.color_favorites.insert(0, color);
+        self.color_favorites.truncate(MAX_COLOR_FAVORITES);
+    }
+
+    pub fn forget_color(&mut self, color: [u8; 4]) {
+        self.color_favorites.retain(|item| *item != color);
+    }
+
     pub fn apply_to(&self, base: &Config) -> Config {
         let mut effective = base.clone();
         if let Some(selection) = &self.theme_selection {
@@ -511,6 +526,15 @@ impl UserPreferences {
     }
 
     fn validate(&self) -> Result<(), PreferenceError> {
+        if self.color_favorites.len() > MAX_COLOR_FAVORITES
+            || self
+                .color_favorites
+                .iter()
+                .enumerate()
+                .any(|(index, color)| self.color_favorites[..index].contains(color))
+        {
+            return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
+        }
         validate_extension_features(&self.extension_features)?;
         if self
             .theme_selection
@@ -540,6 +564,12 @@ impl UserPreferences {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct StoredPreferences {
+    #[serde(
+        default,
+        rename = "color-favorites",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    color_favorites: Vec<[u8; 4]>,
     #[serde(
         default,
         rename = "theme-selection",
@@ -688,6 +718,7 @@ impl TryFrom<StoredPreferences> for UserPreferences {
             return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
         }
         let preferences = Self {
+            color_favorites: stored.color_favorites,
             theme_selection: stored.theme_selection,
             fonts: stored.fonts,
             font_size: stored.font_size,
@@ -718,6 +749,7 @@ impl TryFrom<Version4Preferences> for UserPreferences {
             return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
         }
         let preferences = Self {
+            color_favorites: Vec::new(),
             theme_selection: None,
             fonts: Default::default(),
             font_size: stored.font_size,
@@ -750,6 +782,7 @@ impl TryFrom<Version3Preferences> for UserPreferences {
             return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
         }
         let preferences = Self {
+            color_favorites: Vec::new(),
             theme_selection: None,
             fonts: Default::default(),
             font_size: stored.font_size,
@@ -778,6 +811,7 @@ impl TryFrom<Version2Preferences> for UserPreferences {
             return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
         }
         let preferences = Self {
+            color_favorites: Vec::new(),
             theme_selection: None,
             fonts: Default::default(),
             font_size: stored.font_size,
@@ -797,6 +831,7 @@ impl From<&UserPreferences> for StoredPreferences {
     fn from(preferences: &UserPreferences) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
+            color_favorites: preferences.color_favorites.clone(),
             theme_selection: preferences.theme_selection.clone(),
             fonts: preferences.fonts.clone(),
             shortcuts: preferences.shortcuts.clone(),
@@ -814,6 +849,8 @@ pub enum PreferenceSource {
     Defaults,
     Primary,
     Previous,
+    Version11,
+    Version11Previous,
     Version10,
     Version10Previous,
     Version9,
@@ -902,9 +939,47 @@ fn read_version4_snapshot(
         })
 }
 
+fn reject_color_favorites_predecessor(
+    value: &toml::Value,
+) -> Result<(), PreferenceError> {
+    if value.get("color-favorites").is_some() {
+        return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
+    }
+    Ok(())
+}
+
+fn parse_version11_snapshot(bytes: &[u8]) -> Result<UserPreferences, PreferenceError> {
+    let text = std::str::from_utf8(bytes)
+        .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
+    let value: toml::Value = toml::from_str(text)
+        .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
+    reject_color_favorites_predecessor(&value)?;
+    let mut stored: StoredPreferences = value
+        .try_into()
+        .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
+    if stored.schema_version != 11 {
+        return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
+    }
+    stored.schema_version = SCHEMA_VERSION;
+    stored.try_into()
+}
+
+fn read_version11_snapshot(
+    path: &Path,
+) -> Result<Option<UserPreferences>, PreferenceError> {
+    private_fs::read_bounded_regular(path, MAX_PREFERENCE_BYTES)
+        .map_err(Into::into)
+        .and_then(|bytes| {
+            bytes
+                .map(|bytes| parse_version11_snapshot(&bytes))
+                .transpose()
+        })
+}
+
 fn reject_window_controls_predecessor(
     value: &toml::Value,
 ) -> Result<(), PreferenceError> {
+    reject_color_favorites_predecessor(value)?;
     if value
         .get("visual")
         .and_then(|v| v.get("window-controls"))
@@ -1241,6 +1316,15 @@ pub fn load_from_root(root: &Path) -> LoadOutcome {
     )
     .or_else(|| {
         load_pair(
+            &state_root(root).join(VERSION11_PRIMARY_FILE),
+            &state_root(root).join(VERSION11_PREVIOUS_FILE),
+            read_version11_snapshot,
+            PreferenceSource::Version11,
+            PreferenceSource::Version11Previous,
+        )
+    })
+    .or_else(|| {
+        load_pair(
             &state_root(root).join(VERSION10_PRIMARY_FILE),
             &state_root(root).join(VERSION10_PREVIOUS_FILE),
             read_version10_snapshot,
@@ -1490,56 +1574,64 @@ fn write_to_root_with_package(
     // Present invalid/future current data cannot be hidden by a predecessor.
     let previous = read_snapshot(&previous_path(root))?;
     if current.is_none() && previous.is_none() {
-        let version10 = read_version10_snapshot(&state.join(VERSION10_PRIMARY_FILE))?;
-        let version10_previous =
-            read_version10_snapshot(&state.join(VERSION10_PREVIOUS_FILE))?;
-        if version10.is_none() && version10_previous.is_none() {
-            let version9 = read_version9_snapshot(&state.join(VERSION9_PRIMARY_FILE))?;
-            let version9_previous =
-                read_version9_snapshot(&state.join(VERSION9_PREVIOUS_FILE))?;
-            if version9.is_none() && version9_previous.is_none() {
-                let version8 =
-                    read_version8_snapshot(&state.join(VERSION8_PRIMARY_FILE))?;
-                let version8_previous =
-                    read_version8_snapshot(&state.join(VERSION8_PREVIOUS_FILE))?;
-                if version8.is_none() && version8_previous.is_none() {
-                    let version7 =
-                        read_version7_snapshot(&state.join(VERSION7_PRIMARY_FILE))?;
-                    let version7_previous =
-                        read_version7_snapshot(&state.join(VERSION7_PREVIOUS_FILE))?;
-                    if version7.is_none() && version7_previous.is_none() {
-                        let version6 =
-                            read_version6_snapshot(&state.join(VERSION6_PRIMARY_FILE))?;
-                        let version6_previous =
-                            read_version6_snapshot(&state.join(VERSION6_PREVIOUS_FILE))?;
-                        if version6.is_none() && version6_previous.is_none() {
-                            let version5 = read_version5_snapshot(
-                                &state.join(VERSION5_PRIMARY_FILE),
+        let version11 = read_version11_snapshot(&state.join(VERSION11_PRIMARY_FILE))?;
+        let version11_previous =
+            read_version11_snapshot(&state.join(VERSION11_PREVIOUS_FILE))?;
+        if version11.is_none() && version11_previous.is_none() {
+            let version10 = read_version10_snapshot(&state.join(VERSION10_PRIMARY_FILE))?;
+            let version10_previous =
+                read_version10_snapshot(&state.join(VERSION10_PREVIOUS_FILE))?;
+            if version10.is_none() && version10_previous.is_none() {
+                let version9 =
+                    read_version9_snapshot(&state.join(VERSION9_PRIMARY_FILE))?;
+                let version9_previous =
+                    read_version9_snapshot(&state.join(VERSION9_PREVIOUS_FILE))?;
+                if version9.is_none() && version9_previous.is_none() {
+                    let version8 =
+                        read_version8_snapshot(&state.join(VERSION8_PRIMARY_FILE))?;
+                    let version8_previous =
+                        read_version8_snapshot(&state.join(VERSION8_PREVIOUS_FILE))?;
+                    if version8.is_none() && version8_previous.is_none() {
+                        let version7 =
+                            read_version7_snapshot(&state.join(VERSION7_PRIMARY_FILE))?;
+                        let version7_previous =
+                            read_version7_snapshot(&state.join(VERSION7_PREVIOUS_FILE))?;
+                        if version7.is_none() && version7_previous.is_none() {
+                            let version6 = read_version6_snapshot(
+                                &state.join(VERSION6_PRIMARY_FILE),
                             )?;
-                            let version5_previous = read_version5_snapshot(
-                                &state.join(VERSION5_PREVIOUS_FILE),
+                            let version6_previous = read_version6_snapshot(
+                                &state.join(VERSION6_PREVIOUS_FILE),
                             )?;
-                            if version5.is_none() && version5_previous.is_none() {
-                                // Only an absent current pair permits migration. Preserve strict v4,
-                                // v3 and v2 rollback bytes, including failed transactions.
-                                read_version4_snapshot(
-                                    &state.join(VERSION4_PRIMARY_FILE),
+                            if version6.is_none() && version6_previous.is_none() {
+                                let version5 = read_version5_snapshot(
+                                    &state.join(VERSION5_PRIMARY_FILE),
                                 )?;
-                                read_version4_snapshot(
-                                    &state.join(VERSION4_PREVIOUS_FILE),
+                                let version5_previous = read_version5_snapshot(
+                                    &state.join(VERSION5_PREVIOUS_FILE),
                                 )?;
-                                read_version3_snapshot(
-                                    &state.join(VERSION3_PRIMARY_FILE),
-                                )?;
-                                read_version3_snapshot(
-                                    &state.join(VERSION3_PREVIOUS_FILE),
-                                )?;
-                                read_version2_snapshot(
-                                    &state.join(PREDECESSOR_PRIMARY_FILE),
-                                )?;
-                                read_version2_snapshot(
-                                    &state.join(PREDECESSOR_PREVIOUS_FILE),
-                                )?;
+                                if version5.is_none() && version5_previous.is_none() {
+                                    // Only an absent current pair permits migration. Preserve strict v4,
+                                    // v3 and v2 rollback bytes, including failed transactions.
+                                    read_version4_snapshot(
+                                        &state.join(VERSION4_PRIMARY_FILE),
+                                    )?;
+                                    read_version4_snapshot(
+                                        &state.join(VERSION4_PREVIOUS_FILE),
+                                    )?;
+                                    read_version3_snapshot(
+                                        &state.join(VERSION3_PRIMARY_FILE),
+                                    )?;
+                                    read_version3_snapshot(
+                                        &state.join(VERSION3_PREVIOUS_FILE),
+                                    )?;
+                                    read_version2_snapshot(
+                                        &state.join(PREDECESSOR_PRIMARY_FILE),
+                                    )?;
+                                    read_version2_snapshot(
+                                        &state.join(PREDECESSOR_PREVIOUS_FILE),
+                                    )?;
+                                }
                             }
                         }
                     }
@@ -1998,7 +2090,7 @@ mod tests {
         write_to_root(root.path(), &second).unwrap();
         std::fs::write(
             primary_path(root.path()),
-            b"schema-version = 11\nfont-size = nan",
+            b"schema-version = 12\nfont-size = nan",
         )
         .unwrap();
 
@@ -2015,9 +2107,9 @@ mod tests {
         let cases = [
             b"not toml".to_vec(),
             format!("schema-version = {}", SCHEMA_VERSION + 1).into_bytes(),
-            b"schema-version = 11\nunknown = true".to_vec(),
-            b"schema-version = 11\nfont-size = 5.99".to_vec(),
-            b"schema-version = 11\nfont-size = 100.01".to_vec(),
+            b"schema-version = 12\nunknown = true".to_vec(),
+            b"schema-version = 12\nfont-size = 5.99".to_vec(),
+            b"schema-version = 12\nfont-size = 100.01".to_vec(),
             vec![b'x'; MAX_PREFERENCE_BYTES + 1],
         ];
 
@@ -2358,3 +2450,7 @@ mod version10_tests;
 #[cfg(test)]
 #[path = "preferences_v11_tests.rs"]
 mod version11_tests;
+
+#[cfg(test)]
+#[path = "preferences_v12_tests.rs"]
+mod color_favorites_tests;

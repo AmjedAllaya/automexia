@@ -273,6 +273,46 @@ impl Application<'_> {
         event_loop: &ActiveEventLoop,
         window_id: rio_backend::event::WindowId,
     ) {
+        if let Some(intent) = self.router.routes.get_mut(&window_id).and_then(|route| {
+            route
+                .window
+                .screen
+                .settings_view
+                .take_color_favorite_intent()
+        }) {
+            match intent {
+                crate::settings_view::ColorFavoriteIntent::Remember(color) => {
+                    self.user_preferences.remember_color(color)
+                }
+                crate::settings_view::ColorFavoriteIntent::Forget(color) => {
+                    self.user_preferences.forget_color(color)
+                }
+            }
+            for route in self.router.routes.values_mut() {
+                route
+                    .window
+                    .screen
+                    .settings_view
+                    .set_color_favorites(&self.user_preferences.color_favorites);
+                if route.window.screen.settings_view.is_open() {
+                    route.request_overlay_redraw();
+                }
+            }
+            self.save_settings_preferences();
+        }
+        if let Some(route) = self.router.routes.get_mut(&window_id) {
+            if let Some((target, color)) =
+                route.window.screen.settings_view.take_tab_color_edit()
+            {
+                route
+                    .window
+                    .screen
+                    .context_manager
+                    .apply_tab_color(&target, color);
+                route.request_overlay_redraw();
+                return;
+            }
+        }
         if let Some(intent) = self
             .router
             .routes

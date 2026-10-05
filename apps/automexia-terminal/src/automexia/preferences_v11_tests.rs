@@ -22,7 +22,7 @@ fn window_controls_v11_migrates_v10_preserves_rollback_and_each_style() {
     assert!(
         String::from_utf8(fs::read(primary_path(root.path())).unwrap())
             .unwrap()
-            .contains("schema-version = 11")
+            .contains(&format!("schema-version = {SCHEMA_VERSION}"))
     );
     let before = prefs.clone();
     prefs.visual.window_controls.style = Some(WindowControlStyle::Soft);
@@ -69,7 +69,10 @@ fn window_controls_v11_rejects_malformed_profiles_and_legacy_injection() {
         "[visual.window-controls.glass]\nclose = 'invalid'",
     ] {
         assert!(parse_snapshot(
-            format!("schema-version = 11\n[visual.window-controls]\n{body}\n").as_bytes()
+            format!(
+                "schema-version = {SCHEMA_VERSION}\n[visual.window-controls]\n{body}\n"
+            )
+            .as_bytes()
         )
         .is_err());
     }

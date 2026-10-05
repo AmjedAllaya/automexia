@@ -62,6 +62,7 @@ fn preference_child_write() {
     };
     let preferences = match std::env::var(CHILD_MODE).as_deref() {
         Ok("set") => UserPreferences {
+            color_favorites: vec![[12,34,56,78], [90,123,234,255]],
             font_size: Some(23.5),
             fonts: automexia_terminal::automexia::font_preferences::FontPreferences {
                 family: Some("Example Mono".into()), line_height: Some(1.5), ligatures: Some(false),
@@ -190,6 +191,10 @@ fn saved_preferences_survive_real_process_restart_and_reset_without_config_mutat
     run_child(root.path(), "set");
     let restarted = load_from_root(root.path());
     assert_eq!(restarted.source, PreferenceSource::Primary);
+    assert_eq!(
+        restarted.preferences.color_favorites,
+        vec![[12, 34, 56, 78], [90, 123, 234, 255]]
+    );
     let mut base = Config::default();
     base.fonts.size = 15.25;
     base.force_theme = Some(AppearanceTheme::Dark);
@@ -372,11 +377,11 @@ fn legacy_v4_import_survives_restart_and_keeps_kubernetes_independent() {
     // Create fixture permissions through the real private writer, then retain
     // only fields supported by the predecessor. This is test data, not migration.
     write_to_root(root.path(), &legacy).unwrap();
-    let current = root.path().join("state/user-preferences-v11.toml");
+    let current = root.path().join("state/user-preferences-v12.toml");
     let previous = root.path().join("state/user-preferences-v4.toml");
     let original = std::fs::read_to_string(&current)
         .unwrap()
-        .replace("schema-version = 11", "schema-version = 4");
+        .replace("schema-version = 12", "schema-version = 4");
     std::fs::write(&current, &original).unwrap();
     std::fs::rename(&current, &previous).unwrap();
     assert!(!current.exists());

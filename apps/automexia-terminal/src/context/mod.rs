@@ -325,6 +325,10 @@ struct RestoredTopLevel {
     route_id: usize,
     index: usize,
 }
+/// A tab color edit follows tab reordering, but rejects changed pane ownership.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TabColorTarget(Vec<usize>);
+
 pub struct ContextManager<T: EventListener> {
     contexts: SmallVec<[ContextGrid<T>; DEFAULT_CONTEXT_CAPACITY]>,
     current_index: usize,
@@ -1548,6 +1552,32 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     #[inline]
     pub fn custom_color(&self, index: usize) -> Option<[f32; 4]> {
         self.contexts.get(index).and_then(|grid| grid.custom_color)
+    }
+
+    pub(crate) fn tab_color_target(&self, index: usize) -> Option<TabColorTarget> {
+        let mut routes = self.contexts.get(index)?.route_ids();
+        if routes.is_empty() || routes.len() > 256 {
+            return None;
+        }
+        routes.sort_unstable();
+        Some(TabColorTarget(routes))
+    }
+
+    pub(crate) fn apply_tab_color(
+        &mut self,
+        target: &TabColorTarget,
+        color: Option<[u8; 4]>,
+    ) -> bool {
+        for grid in &mut self.contexts {
+            let mut routes = grid.route_ids();
+            routes.sort_unstable();
+            if routes == target.0 {
+                grid.custom_color =
+                    color.map(|color| color.map(|value| value as f32 / 255.0));
+                return true;
+            }
+        }
+        false
     }
 
     #[inline]
@@ -3658,6 +3688,31 @@ pub mod test {
         // Clearing with None removes the override.
         cm.set_custom_title(1, None);
         assert_eq!(cm.custom_title(1), None);
+    }
+
+    #[test]
+    fn shared_color_picker_tab_identity_survives_reorder_and_rejects_removed_target() {
+        let mut cm =
+            ContextManager::start_with_capacity(5, VoidListener {}, WindowId::from(0))
+                .unwrap();
+        for _ in 0..3 {
+            cm.add_context(false, 0);
+        }
+        // Synthetic contexts otherwise share the test stub's route ID.
+        for (index, grid) in cm.contexts.iter_mut().enumerate() {
+            grid.current_mut().route_id = index + 10;
+        }
+        let target = cm.tab_color_target(2).unwrap();
+        cm.set_current(1);
+        cm.move_current_tab_to(3);
+        assert!(cm.apply_tab_color(&target, Some([255, 0, 0, 255])));
+        assert_eq!(cm.custom_color(1), Some([1., 0., 0., 1.]));
+        assert_eq!(cm.custom_color(2), None);
+        assert!(cm.apply_tab_color(&target, None));
+        assert_eq!(cm.custom_color(1), None);
+        cm.contexts.remove(1);
+        assert!(!cm.apply_tab_color(&target, Some([0, 255, 0, 255])));
+        assert!(cm.contexts.iter().all(|grid| grid.custom_color.is_none()));
     }
 
     #[test]

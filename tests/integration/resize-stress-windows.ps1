@@ -49,6 +49,7 @@ param(
     [switch]$LiveBackdropOnly,
     [switch]$DependentControlsOnly,
     [switch]$WindowControlChoicesOnly,
+    [switch]$SharedColorPickerOnly,
     [switch]$AccessibilityOnly
 )
 
@@ -447,6 +448,12 @@ public static class AutomexiaResizeDriver {
         uint count, [In] NativeInput[] inputs, int size);
 
     public static bool SendPhysicalLeftClick(IntPtr hWnd, int clientX, int clientY) {
+        return SendPhysicalClick(hWnd, clientX, clientY, false);
+    }
+    public static bool SendPhysicalRightClick(IntPtr hWnd, int clientX, int clientY) {
+        return SendPhysicalClick(hWnd, clientX, clientY, true);
+    }
+    private static bool SendPhysicalClick(IntPtr hWnd, int clientX, int clientY, bool right) {
         // WM_LBUTTONDOWN via PostMessage does not establish real OS button
         // state/capture. Use one bounded hardware-style click after checking
         // that the owned foreground window contains the physical pointer.
@@ -464,9 +471,9 @@ public static class AutomexiaResizeDriver {
                 Math.Abs(pointer.Y - clientY) > 2) return false;
             var inputs = new NativeInput[2];
             inputs[0].Type = 0;
-            inputs[0].Data.Mouse.Flags = 0x0002;
+            inputs[0].Data.Mouse.Flags = right ? 0x0008u : 0x0002u;
             inputs[1].Type = 0;
-            inputs[1].Data.Mouse.Flags = 0x0004;
+            inputs[1].Data.Mouse.Flags = right ? 0x0010u : 0x0004u;
             uint sent = SendInput(2, inputs, Marshal.SizeOf(typeof(NativeInput)));
             if (sent == 2) return true;
             if (sent == 1) {
@@ -1716,6 +1723,11 @@ $wallpaperConfig
         Test-AutomexiaDependentControls
         return
     }
+    if ($SharedColorPickerOnly) {
+        . (Join-Path $PSScriptRoot 'shared-color-picker-windows.ps1')
+        Test-AutomexiaSharedColorPicker
+        return
+    }
     if ($WindowControlChoicesOnly) {
         . (Join-Path $PSScriptRoot 'window-control-choices-windows.ps1')
         Test-AutomexiaWindowControlChoices
@@ -1802,7 +1814,7 @@ $wallpaperConfig
                 }
                 $script:testStage = 'menu navigation baseline'
                 function Get-MenuPreferenceHashes {
-                    foreach ($relative in @('config.toml', 'state/user-preferences-v11.toml')) {
+                    foreach ($relative in @('config.toml', 'state/user-preferences-v12.toml')) {
                         $path = Join-Path $configRoot $relative
                         if (Test-Path -LiteralPath $path) { (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
                         else { 'absent' }
@@ -1927,7 +1939,7 @@ $wallpaperConfig
             # Ordinary edits above may still be saving. Establish disk baseline
             # only after that receipt, then exercise the real temporary owner.
             $roster = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.save_pending }
-            $preferencePath = Join-Path $configRoot 'state/user-preferences-v11.toml'
+            $preferencePath = Join-Path $configRoot 'state/user-preferences-v12.toml'
             if (-not (Test-Path -LiteralPath $preferencePath -PathType Leaf)) {
                 throw 'The native customization baseline was not saved'
             }

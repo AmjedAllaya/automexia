@@ -46,7 +46,6 @@ const ISLAND_MARGIN_RIGHT: f32 = 8.0;
 /// Tab-appearance picker geometry in logical pixels. Interactive targets
 /// satisfy the project's 24×24 minimum without depending on display scale.
 const PICKER_SWATCH_SIZE: f32 = 24.0;
-const PICKER_SWATCH_GAP: f32 = 6.0;
 const PICKER_PADDING: f32 = 10.0;
 const PICKER_LABEL_HEIGHT: f32 = 18.0;
 const PICKER_INPUT_HEIGHT: f32 = 32.0;
@@ -60,36 +59,17 @@ const PICKER_HEIGHT: f32 = PICKER_PADDING * 2.0
     + PICKER_INPUT_HEIGHT
     + PICKER_FOOTER_HEIGHT;
 const PICKER_MAX_RENAME_BYTES: usize = 256;
-const PICKER_COLORS: [[f32; 4]; 6] = [
-    // red
-    [0.86, 0.26, 0.27, 1.0],
-    // orange
-    [0.90, 0.57, 0.22, 1.0],
-    // yellow
-    [0.85, 0.78, 0.25, 1.0],
-    // green
-    [0.34, 0.70, 0.38, 1.0],
-    // blue
-    [0.30, 0.55, 0.85, 1.0],
-    // purple
-    [0.68, 0.40, 0.80, 1.0],
-];
-
 #[derive(Clone, Copy)]
 struct PickerRenderContext {
     tab_x: f32,
     tab_width: f32,
-    selected_color: Option<[f32; 4]>,
     header_height: f32,
     logical_width: f32,
     theme: UiTheme,
 }
 
 fn picker_width() -> f32 {
-    let slot_count = PICKER_COLORS.len() + 1;
-    slot_count as f32 * PICKER_SWATCH_SIZE
-        + (slot_count - 1) as f32 * PICKER_SWATCH_GAP
-        + PICKER_PADDING * 2.0
+    224.0
 }
 
 fn picker_fits(logical_width: f32, logical_height: f32, header_height: f32) -> bool {
@@ -746,6 +726,7 @@ pub struct Island {
     pub progress_bar_error_color: [f32; 4],
     /// Which tab has the color picker open (None = closed)
     color_picker_tab: Option<usize>,
+    pending_color_request: Option<usize>,
     /// Current rename input text while picker is open
     rename_input: String,
     /// Caret blink timer
@@ -788,6 +769,7 @@ impl Island {
             // Default error color (red-ish)
             progress_bar_error_color: [1.0, 0.3, 0.3, 1.0],
             color_picker_tab: None,
+            pending_color_request: None,
             rename_input: String::new(),
             rename_caret_time: Instant::now(),
             drag: None,
@@ -1806,13 +1788,11 @@ impl Island {
                 && picker_fits(logical_width, logical_height, metrics.header_height)
             {
                 let picker_tab_x = left_margin + picker_tab as f32 * tab_width;
-                let selected = context_manager.custom_color(picker_tab);
                 self.render_color_picker(
                     sugarloaf,
                     PickerRenderContext {
                         tab_x: picker_tab_x,
                         tab_width,
-                        selected_color: selected,
                         header_height: metrics.header_height,
                         logical_width,
                         theme: *theme,
@@ -1871,7 +1851,17 @@ impl Island {
     /// tab set changes underneath it (e.g. a tab close), where the anchored
     /// index may no longer point at the same tab.
     pub fn dismiss_color_picker(&mut self) {
+        self.pending_color_request = None;
         self.color_picker_tab = None;
+    }
+
+    pub(crate) fn take_color_request(&mut self) -> Option<usize> {
+        self.pending_color_request.take()
+    }
+
+    fn request_color_editor(&mut self, context_manager: &mut ContextManager<EventProxy>) {
+        self.apply_rename(context_manager);
+        self.pending_color_request = self.color_picker_tab.take();
     }
 
     /// Apply the rename input as a custom title for the current picker tab
@@ -1902,6 +1892,9 @@ impl Island {
         }
 
         match &key_event.logical_key {
+            Key::Named(NamedKey::F2) if !key_event.repeat => {
+                self.request_color_editor(context_manager);
+            }
             Key::Named(NamedKey::Escape) => {
                 // Cancel — discard input, close picker
                 self.color_picker_tab = None;
@@ -1982,44 +1975,16 @@ impl Island {
             return true;
         }
 
-        // Total picker width — N color swatches + 1 reset swatch
-        let slot_count = PICKER_COLORS.len() + 1;
-        let total_swatches_width = slot_count as f32 * PICKER_SWATCH_SIZE
-            + (slot_count - 1) as f32 * PICKER_SWATCH_GAP;
-        let bg_width = total_swatches_width + PICKER_PADDING * 2.0;
+        let bg_width = picker_width();
         let bg_x = (tab_x + (tab_width - bg_width) / 2.0)
             .clamp(0.0, (logical_width - bg_width).max(0.0));
-        let picker_start_x = bg_x + PICKER_PADDING;
-
-        // Check each swatch
-        let swatch_y = picker_y + PICKER_PADDING + PICKER_LABEL_HEIGHT;
-        let swatch_y_end = swatch_y + PICKER_SWATCH_SIZE;
-        for (i, color) in PICKER_COLORS.iter().enumerate() {
-            let swatch_x =
-                picker_start_x + i as f32 * (PICKER_SWATCH_SIZE + PICKER_SWATCH_GAP);
-            if mouse_x_unscaled >= swatch_x
-                && mouse_x_unscaled <= swatch_x + PICKER_SWATCH_SIZE
-                && mouse_y_unscaled >= swatch_y
-                && mouse_y_unscaled <= swatch_y_end
-            {
-                context_manager.set_custom_color(picker_tab, Some(*color));
-                self.apply_rename(context_manager);
-                self.color_picker_tab = None;
-                return true;
-            }
-        }
-
-        // Reset swatch — clears any custom color for this tab
-        let reset_x = picker_start_x
-            + PICKER_COLORS.len() as f32 * (PICKER_SWATCH_SIZE + PICKER_SWATCH_GAP);
-        if mouse_x_unscaled >= reset_x
-            && mouse_x_unscaled <= reset_x + PICKER_SWATCH_SIZE
-            && mouse_y_unscaled >= swatch_y
-            && mouse_y_unscaled <= swatch_y_end
+        let button_y = picker_y + PICKER_PADDING + PICKER_LABEL_HEIGHT;
+        if mouse_x_unscaled >= bg_x + PICKER_PADDING
+            && mouse_x_unscaled <= bg_x + bg_width - PICKER_PADDING
+            && mouse_y_unscaled >= button_y
+            && mouse_y_unscaled <= button_y + PICKER_SWATCH_SIZE
         {
-            context_manager.set_custom_color(picker_tab, None);
-            self.apply_rename(context_manager);
-            self.color_picker_tab = None;
+            self.request_color_editor(context_manager);
             return true;
         }
 
@@ -2036,7 +2001,6 @@ impl Island {
         let PickerRenderContext {
             tab_x,
             tab_width,
-            selected_color,
             header_height,
             logical_width,
             theme,
@@ -2097,92 +2061,29 @@ impl Island {
         );
 
         let swatch_y = bg_y + PICKER_PADDING + PICKER_LABEL_HEIGHT;
-        for (index, color) in PICKER_COLORS.iter().enumerate() {
-            let x = content_x + index as f32 * (PICKER_SWATCH_SIZE + PICKER_SWATCH_GAP);
-            let selected = selected_color == Some(*color);
-            if selected {
-                sugarloaf.rounded_rect(
-                    None,
-                    x - 2.0,
-                    swatch_y - 2.0,
-                    PICKER_SWATCH_SIZE + 4.0,
-                    PICKER_SWATCH_SIZE + 4.0,
-                    theme.accent,
-                    0.0,
-                    7.0,
-                    10,
-                );
-            }
-            sugarloaf.rounded_rect(
-                None,
-                x,
-                swatch_y,
-                PICKER_SWATCH_SIZE,
-                PICKER_SWATCH_SIZE,
-                *color,
-                0.0,
-                5.0,
-                10,
-            );
-            if selected {
-                sugarloaf.rounded_rect(
-                    None,
-                    x + 5.0,
-                    swatch_y + 5.0,
-                    14.0,
-                    14.0,
-                    theme.background,
-                    0.0,
-                    7.0,
-                    10,
-                );
-                let check = DrawOpts {
-                    font_size: 10.0,
-                    color: theme_color_u8(theme.text),
-                    bold: true,
-                    ..DrawOpts::default()
-                };
-                sugarloaf
-                    .text_mut()
-                    .draw(x + 7.0, swatch_y + 5.0, "✓", &check);
-            }
-        }
-
-        let reset_x = content_x
-            + PICKER_COLORS.len() as f32 * (PICKER_SWATCH_SIZE + PICKER_SWATCH_GAP);
-        if selected_color.is_none() {
-            sugarloaf.rounded_rect(
-                None,
-                reset_x - 2.0,
-                swatch_y - 2.0,
-                PICKER_SWATCH_SIZE + 4.0,
-                PICKER_SWATCH_SIZE + 4.0,
-                theme.accent,
-                0.0,
-                7.0,
-                10,
-            );
-        }
         sugarloaf.rounded_rect(
             None,
-            reset_x,
+            content_x,
             swatch_y,
-            PICKER_SWATCH_SIZE,
+            inner_width,
             PICKER_SWATCH_SIZE,
             theme.raised,
             0.0,
             5.0,
             10,
         );
-        let reset = DrawOpts {
-            font_size: 15.0,
+        let choose = DrawOpts {
+            font_size: 12.0,
             color: theme_color_u8(theme.text),
             bold: true,
             ..DrawOpts::default()
         };
-        sugarloaf
-            .text_mut()
-            .draw(reset_x + 7.0, swatch_y + 3.0, "×", &reset);
+        sugarloaf.text_mut().draw(
+            content_x + 8.0,
+            swatch_y + 3.0,
+            "Choose color…     F2",
+            &choose,
+        );
 
         let input_y = swatch_y + PICKER_SWATCH_SIZE + PICKER_INPUT_MARGIN_TOP;
         sugarloaf.rounded_rect(
@@ -3913,12 +3814,7 @@ mod tests {
         const {
             assert!(PICKER_SWATCH_SIZE >= 24.0);
         }
-        assert_eq!(
-            picker_width(),
-            (PICKER_COLORS.len() + 1) as f32 * PICKER_SWATCH_SIZE
-                + PICKER_COLORS.len() as f32 * PICKER_SWATCH_GAP
-                + PICKER_PADDING * 2.0
-        );
+        assert!(picker_width() >= 224.0);
         assert!(picker_fits(
             picker_width(),
             48.0 + PICKER_HEIGHT + 8.0,
