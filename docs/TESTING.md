@@ -301,6 +301,17 @@ Two tests emit JSON p50/p95 samples: catalog projection and production
 refresh/layout/paint at two viewports. These are same-host diagnostics with no
 GPU or presentation timing; they are not cross-machine latency claims.
 
+Window-button style choices have a separate `window_style_choices_` test group.
+It exercises real catalog edits, mouse/keyboard selection, selected radio
+semantics, all built-in themes, compact layouts, scaling, bounded drawing and
+repeated refresh. State examples must never become window-action targets.
+The native Windows mode `resize-stress-windows.ps1 -WindowControlChoicesOnly`
+checks repeated style selection, saved refresh, keyboard activation and inert
+state examples; run with `visual-test-hooks,wgpu` and repeat with
+`-UseCpuRenderer`. Use `-ModalCaptureDirectory` for private visual review.
+The explicit `window_style_choices_paint_benchmark` test (`--ignored --show-output`)
+reports production paint p50/p95 JSON at two viewports, excluding GPU/presentation.
+
 Close confirmation replaces both pending modal geometry and labels after all
 other overlay producers. Covered editors keep their state until cancellation.
 The focused native `resize-stress-windows.ps1` modes `-TagCustomizationOnly` and

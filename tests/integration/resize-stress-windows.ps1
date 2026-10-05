@@ -48,6 +48,7 @@ param(
     [switch]$QuickActionsOnly,
     [switch]$LiveBackdropOnly,
     [switch]$DependentControlsOnly,
+    [switch]$WindowControlChoicesOnly,
     [switch]$AccessibilityOnly
 )
 
@@ -1713,6 +1714,11 @@ $wallpaperConfig
     if ($DependentControlsOnly) {
         . (Join-Path $PSScriptRoot 'dependent-controls-windows.ps1')
         Test-AutomexiaDependentControls
+        return
+    }
+    if ($WindowControlChoicesOnly) {
+        . (Join-Path $PSScriptRoot 'window-control-choices-windows.ps1')
+        Test-AutomexiaWindowControlChoices
         return
     }
     if ($TagCustomizationOnly) {

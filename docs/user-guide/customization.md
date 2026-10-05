@@ -140,11 +140,19 @@ uses the terminal font baseline, preserving descenders beside dense borders.
 Turning inline tables off keeps your choices for when you enable them again.
 
 **Window controls** offers Soft, Glass, Outline and Circles for the title-bar
-buttons. Each style remembers its own size, spacing, icon size and weight, colors,
+buttons. Under **Choose a style**, click a card or press **E**, move with the arrow
+keys, and press **Enter**. The current style has a full-card highlight and a
+checkmark; keyboard focus has a separate outline. The **Button style** setting
+also remains available for keyboard selection.
+
+The separate **Live preview** section shows the selected style in normal, hover,
+pressed/restore and inactive states. These examples update with your edits;
+they are not additional styles or working window buttons. Compact layouts retain
+the style setting and fit as many state examples as space permits.
+
+Each style remembers its own size, spacing, icon size and weight, colors,
 background and border opacity, hover tint and inactive intensity. Soft, Glass and
-Outline also offer corner roundness. The live preview compares designs and shows
-hover, pressed/restore and inactive states when space allows; its buttons cannot
-minimize or close the window. Actual click targets remain unchanged. Colors follow
+Outline also offer corner roundness. Colors follow
 the theme until edited, with readable icon contrast on custom fills. Reset default
 temporarily resets all four profiles; Restore saved returns to your saved choices.
 These options apply to Automexia's own title bar, not platform-native decorations.

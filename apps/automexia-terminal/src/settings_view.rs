@@ -1208,6 +1208,9 @@ impl SettingsView {
     }
 
     fn preview_item_label(&self, key: &SettingId) -> Option<String> {
+        if let Some(style) = window_controls_preview::choice_style(key) {
+            return Some(format!("{} button style", style.label()));
+        }
         if key.as_str() == "tags.add-slot" {
             return Some("Add custom tag".into());
         }
@@ -1251,6 +1254,9 @@ impl SettingsView {
             .as_ref()
             .and_then(|navigation| navigation.active_key.as_ref())
             .is_some_and(|key| match key.as_str() {
+                crate::settings_catalog::WINDOW_CONTROLS => self
+                    .preview_entry(crate::settings_catalog::WINDOW_CONTROLS)
+                    .is_some_and(|entry| entry.availability.reason().is_none()),
                 crate::automexia::presentation::TAG_ENABLED
                 | automexia_ui_model::settings::KUBERNETES_HIGHLIGHTING => {
                     self.preview_controls_enabled(key.as_str())
@@ -1289,12 +1295,23 @@ impl SettingsView {
             }
         }
         let items = self.preview_items();
+        if items.is_empty() && self.is_window_controls_preview() {
+            return;
+        }
         if self
             .preview_selected
             .as_ref()
             .is_none_or(|selected| !items.iter().any(|(id, _)| id == selected))
         {
-            self.preview_selected = items.first().map(|(id, _)| id.clone());
+            self.preview_selected = items
+                .iter()
+                .find(|(id, _)| {
+                    self.is_window_controls_preview()
+                        && window_controls_preview::choice_style(id)
+                            == Some(self.selected_window_control_style())
+                })
+                .or_else(|| items.first())
+                .map(|(id, _)| id.clone());
             self.preview_scroll = 0;
         }
         self.preview_edit_mode = true;
@@ -1380,6 +1397,29 @@ impl SettingsView {
     }
 
     fn enter_preview_item(&mut self, key: SettingId) {
+        if let Some(style) = window_controls_preview::choice_style(&key) {
+            if self.is_window_controls_preview() && self.pending.is_none() {
+                if let Some(catalog) = &self.catalog {
+                    if let Ok(id) =
+                        SettingId::new(crate::settings_catalog::WINDOW_CONTROLS)
+                    {
+                        let edit = Edit {
+                            revision: catalog.revision(),
+                            id,
+                            change: Change::Set(SettingValue::Choice(style.id().into())),
+                        };
+                        if let Ok(edit) = catalog.validate_edit(&edit) {
+                            self.pending = Some(edit);
+                            self.preview_selected = Some(key);
+                            self.preview_edit_mode = true;
+                            self.focus = Focus::Preview;
+                            self.status.clear();
+                        }
+                    }
+                }
+            }
+            return;
+        }
         if key.as_str() == "tags.add-slot" {
             if self.pending.is_none() {
                 if let Some(catalog) = self.catalog.as_ref() {
@@ -4032,7 +4072,10 @@ impl SettingsView {
             return Some(Target::PreviewButton);
         }
         if self.geometry.preview.contains(x, y) {
-            if !self.preview_edit_mode && !self.is_tag_preview() {
+            if !self.preview_edit_mode
+                && !self.is_tag_preview()
+                && !self.is_window_controls_preview()
+            {
                 return None;
             }
             return self
@@ -5320,6 +5363,8 @@ impl SettingsView {
         if self.preview_selector_available() {
             let button_label = if self.preview_edit_mode {
                 "Esc: Done"
+            } else if self.is_window_controls_preview() {
+                "E: Choose"
             } else {
                 "E: Edit"
             };
@@ -5356,7 +5401,9 @@ impl SettingsView {
         label(
             canvas,
             title,
-            if self.preview_edit_mode {
+            if self.is_window_controls_preview() {
+                "Styles & preview"
+            } else if self.preview_edit_mode {
                 "Editing"
             } else {
                 "Preview"
@@ -5443,7 +5490,7 @@ impl SettingsView {
                 self.paint_kubernetes_preview(canvas, sample, theme, &mut interactive)
             }
             Some(crate::settings_catalog::WINDOW_CONTROLS) => {
-                self.paint_window_controls_preview(canvas, sample, theme);
+                interactive = self.paint_window_controls_preview(canvas, sample, theme);
             }
             Some(automexia_ui_model::settings::INLINE_TABLES) => {
                 self.paint_table_preview(canvas, sample, theme)
@@ -5472,12 +5519,14 @@ impl SettingsView {
         let kubernetes = self.preview_controls_enabled(
             automexia_ui_model::settings::KUBERNETES_HIGHLIGHTING,
         );
+        let window_controls = self.is_window_controls_preview();
         let active = |id: &SettingId| {
             let id = id.as_str();
             (tags && id.starts_with("tags."))
                 || (commands && id.starts_with("command_output.band."))
                 || (output && id.starts_with("output.severity."))
                 || (kubernetes && id.starts_with("kubernetes.severity."))
+                || (window_controls && id.starts_with("window-controls.choose."))
         };
         self.preview_targets.retain(|(id, _)| active(id));
         self.preview_order.retain(&active);

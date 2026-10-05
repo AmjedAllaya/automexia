@@ -1943,8 +1943,10 @@ fn window_controls_preview_is_bounded_nonexecuting_and_keyboard_editable() {
         let mut raster = Raster::new(1.25);
         view.paint(&mut raster, theme());
         assert!(
-            view.preview_targets.is_empty(),
-            "caption samples never become window-action targets"
+            view.preview_targets
+                .iter()
+                .all(|(id, _)| window_controls_preview::choice_style(id).is_some()),
+            "only style choices have targets, never caption actions"
         );
         assert!(view.take_edit().is_none());
         for sample in [
@@ -1976,6 +1978,258 @@ fn window_controls_preview_is_bounded_nonexecuting_and_keyboard_editable() {
         named(&mut view, NamedKey::Escape);
         assert!(view.is_open());
         assert!(view.customizations.as_ref().unwrap().active_key.is_none());
+    }
+}
+
+#[test]
+fn window_style_choices_are_selectable_cards_separate_from_state_examples() {
+    let base = rio_backend::config::Config::default();
+    let mut view = dependent_settings_view(
+        &base,
+        &Default::default(),
+        crate::settings_catalog::WINDOW_CONTROLS,
+    );
+    view.fit(1280.0, 900.0, 16.0);
+    view.paint(&mut Raster::new(1.0), UiTheme::from_colors(&base.colors));
+    assert_eq!(
+        view.preview_targets.len(),
+        4,
+        "four style choices, no caption state action targets"
+    );
+    let glass = view
+        .preview_targets
+        .iter()
+        .find(|(id, _)| id.as_str() == "window-controls.choose.glass")
+        .unwrap()
+        .1;
+    pointer_event(&mut view, glass, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, glass, 1.0, ElementState::Released);
+    let edit = view.take_edit().unwrap();
+    assert_eq!(edit.id.as_str(), crate::settings_catalog::WINDOW_CONTROLS);
+    assert_eq!(
+        edit.change,
+        Change::Set(SettingValue::Choice("glass".into()))
+    );
+    assert!(view.is_open());
+}
+
+#[test]
+fn window_style_choices_support_preview_keyboard_and_reject_unknown_choices() {
+    let base = rio_backend::config::Config::default();
+    let mut view = dependent_settings_view(
+        &base,
+        &Default::default(),
+        crate::settings_catalog::WINDOW_CONTROLS,
+    );
+    view.fit(1280.0, 900.0, 16.0);
+    view.paint(&mut Raster::new(1.0), UiTheme::from_colors(&base.colors));
+    preview_edit_key(&mut view);
+    assert_eq!(view.focus, Focus::Preview);
+    named(&mut view, NamedKey::ArrowRight);
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(
+        view.take_edit().unwrap().change,
+        Change::Set(SettingValue::Choice("glass".into()))
+    );
+    view.enter_preview_item(SettingId::new("window-controls.choose.unknown").unwrap());
+    assert!(view.take_edit().is_none());
+    named(&mut view, NamedKey::Escape);
+    assert!(view.is_open());
+}
+
+#[test]
+fn window_style_choices_highlight_whole_card_and_expose_one_selected_radio() {
+    use rio_backend::config::presentation::WindowControlStyle;
+    for entry in crate::automexia::theme_gallery::builtins() {
+        let base = rio_backend::config::Config {
+            colors: entry.theme.unwrap().colors,
+            ..Default::default()
+        };
+        let theme = UiTheme::from_colors(&base.colors);
+        for &style in WindowControlStyle::ALL {
+            let mut prefs = crate::automexia::preferences::UserPreferences::default();
+            prefs.visual.window_controls.style = Some(style);
+            for (width, height, scale) in [
+                (960.0, 740.0, 1.0),
+                (1280.0, 900.0, 1.5),
+                (1920.0, 1080.0, 2.0),
+            ] {
+                let mut view = dependent_settings_view(
+                    &base,
+                    &prefs,
+                    crate::settings_catalog::WINDOW_CONTROLS,
+                );
+                view.fit(width, height, 16.0);
+                let mut raster = Raster::new(scale);
+                view.paint(&mut raster, theme);
+                assert_eq!(view.preview_targets.len(), 4);
+                for (id, card) in &view.preview_targets {
+                    assert!(card.width >= 96.0 && card.height >= 28.0);
+                    let fill = raster
+                        .rects
+                        .iter()
+                        .find(|(rect, _)| *rect == card.array())
+                        .unwrap()
+                        .1;
+                    if window_controls_preview::choice_style(id) == Some(style) {
+                        assert_ne!(
+                            fill, theme.surface,
+                            "selected highlight covers the whole card"
+                        );
+                        assert_eq!(fill[3], 1.0);
+                        let strokes = raster
+                            .rects
+                            .iter()
+                            .filter(|(rect, color)| {
+                                rect[0] >= card.x
+                                    && rect[1] >= card.y
+                                    && rect[0] + rect[2] <= card.x + card.width + 0.01
+                                    && rect[1] + rect[3] <= card.y + card.height + 0.01
+                                    && automexia_ui_model::contrast_ratio(*color, fill)
+                                        >= 3.0
+                            })
+                            .count();
+                        assert!(
+                            strokes >= 4,
+                            "visible border and non-color selection mark"
+                        );
+                    } else {
+                        assert_eq!(fill, theme.surface);
+                    }
+                }
+                let surface = view.accessibility_surface(
+                    scale,
+                    accesskit::Rect::new(
+                        0.0,
+                        0.0,
+                        (width * scale) as f64,
+                        (height * scale) as f64,
+                    ),
+                );
+                let radios: Vec<_> = surface
+                    .elements
+                    .iter()
+                    .filter(|e| e.node.role() == accesskit::Role::RadioButton)
+                    .collect();
+                assert_eq!(radios.len(), 4);
+                let selected: Vec<_> = radios
+                    .iter()
+                    .filter(|e| e.node.toggled() == Some(accesskit::Toggled::True))
+                    .collect();
+                assert_eq!(selected.len(), 1);
+                assert_eq!(
+                    selected[0].node.author_id(),
+                    Some(format!("window-controls.choose.{}", style.id()).as_str())
+                );
+                let bottom = view
+                    .preview_targets
+                    .iter()
+                    .map(|(_, r)| r.y + r.height)
+                    .fold(0.0, f32::max);
+                assert!(
+                    view.target_at(view.geometry.preview.x + 24.0, bottom + 75.0)
+                        .is_none(),
+                    "state examples cannot execute window actions"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn window_style_choices_compact_layout_and_refresh_preserve_one_selection() {
+    use rio_backend::config::presentation::WindowControlStyle;
+    let base = rio_backend::config::Config::default();
+    let mut prefs = crate::automexia::preferences::UserPreferences::default();
+    let mut view =
+        dependent_settings_view(&base, &prefs, crate::settings_catalog::WINDOW_CONTROLS);
+    for (width, height) in [(150.0, 74.0), (260.0, 280.0), (400.0, 560.0)] {
+        let sample = Rect {
+            x: 10.0,
+            y: 10.0,
+            width,
+            height,
+        };
+        let mut raster = Raster::new(1.25);
+        let targets = view.paint_window_controls_preview(
+            &mut raster,
+            sample,
+            UiTheme::from_colors(&base.colors),
+        );
+        assert_eq!(targets.len(), if height < 100.0 { 0 } else { 4 });
+        assert!(!raster.shapes.is_empty());
+        for ([x, y, w, h], _) in raster.rects {
+            assert!(
+                x >= sample.x - 0.01
+                    && y >= sample.y - 0.01
+                    && x + w <= sample.x + width + 0.01
+                    && y + h <= sample.y + height + 0.01
+            );
+        }
+    }
+    view.fit(1280.0, 900.0, 16.0);
+    for (index, &style) in WindowControlStyle::ALL.iter().cycle().take(12).enumerate() {
+        prefs.visual.window_controls.style = Some(style);
+        view.refresh_with_resources(
+            crate::settings_catalog::catalog(index as u64 + 2, &base, &prefs, &[])
+                .unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot_with_config(
+                &prefs,
+                &prefs.apply_to(&base),
+                &base,
+            )),
+        );
+        view.paint(&mut Raster::new(1.0), UiTheme::from_colors(&base.colors));
+        assert_eq!(view.selected_window_control_style(), style);
+        assert_eq!(
+            view.preview_targets.len(),
+            4,
+            "redraws never accumulate choices"
+        );
+    }
+    named(&mut view, NamedKey::Escape);
+    view.enter_preview_item(SettingId::new("window-controls.choose.glass").unwrap());
+    assert!(
+        view.take_edit().is_none(),
+        "a stale style card cannot edit another page"
+    );
+}
+
+#[test]
+#[ignore = "same-host production style choice and state preview paint benchmark"]
+fn window_style_choices_paint_benchmark() {
+    let base = rio_backend::config::Config::default();
+    let mut view = dependent_settings_view(
+        &base,
+        &Default::default(),
+        crate::settings_catalog::WINDOW_CONTROLS,
+    );
+    let mut raster = Raster::new(1.0);
+    for (width, height) in [(960.0, 740.0), (1920.0, 1080.0)] {
+        view.fit(width, height, 16.0);
+        let mut samples = Vec::with_capacity(200);
+        for iteration in 0..220 {
+            raster.rects.clear();
+            raster.shapes.clear();
+            raster.text.clear();
+            let start = std::time::Instant::now();
+            view.paint(
+                std::hint::black_box(&mut raster),
+                UiTheme::from_colors(&base.colors),
+            );
+            let ns = start.elapsed().as_nanos();
+            assert_eq!(view.preview_targets.len(), 4);
+            assert!(raster.rects.len() < 1200, "preview draw work is bounded");
+            if iteration >= 20 {
+                samples.push(ns);
+            }
+        }
+        samples.sort_unstable();
+        println!(
+            "{}",
+            serde_json::json!({"benchmark":"window_style_choices_paint","viewport":[width,height],"samples":200,"p50_ns":samples[99],"p95_ns":samples[189],"excludes":["GPU","presentation"]})
+        );
     }
 }
 

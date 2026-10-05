@@ -261,6 +261,34 @@ impl SettingsView {
                 true,
             );
         }
+        if self.is_window_controls_preview() {
+            for (index, (id, rect)) in self.preview_targets.iter().enumerate() {
+                let Some(style) = window_controls_preview::choice_style(id) else {
+                    continue;
+                };
+                let Some(bounds) = physical_bounds(rect.array(), scale, viewport) else {
+                    continue;
+                };
+                let mut node = Node::new(Role::RadioButton);
+                node.set_author_id(id.as_str());
+                node.set_label(format!("{} button style", style.label()));
+                node.set_description(
+                    "Choose a style. Live state examples below are not controls.",
+                );
+                node.set_toggled(if style == self.selected_window_control_style() {
+                    Toggled::True
+                } else {
+                    Toggled::False
+                });
+                node.set_bounds(bounds);
+                surface.push(
+                    500 + index as u64,
+                    node,
+                    self.focus == Focus::Preview
+                        && self.preview_selected.as_ref() == Some(id),
+                );
+            }
+        }
         surface
     }
 }
