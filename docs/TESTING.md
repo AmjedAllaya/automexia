@@ -313,12 +313,15 @@ The explicit `window_style_choices_paint_benchmark` test (`--ignored --show-outp
 reports production paint p50/p95 JSON at two viewports, excluding GPU/presentation.
 
 Shared color selection has `shared_color_picker_` application tests for real
-keyboard/pointer edits, cancellation, contextual alpha, stale clicks, tab identity,
+keyboard/pointer edits, palette-first Tab order, F1/F2/F3 shortcuts, wrapping
+swatch navigation, two-stage Escape, empty palettes, favorite refresh/removal,
+resize focus recovery, cancellation, contextual alpha, stale clicks, tab identity,
 accessible selection and built-in-theme/scaling layouts. Preference tests cover
 v11 migration, exact RGBA favorites, bounds, deduplication, transactional recovery
 and asynchronous coalescing. The Windows mode
 `resize-stress-windows.ps1 -SharedColorPickerOnly` exercises Fonts and tab accents,
-draft cancellation, saving/removing favorites and the current preference file.
+palette shortcuts and focus loops, draft cancellation, saving/removing favorites
+and the current preference file.
 Run a `visual-test-hooks,wgpu` build with both WGPU and `-UseCpuRenderer`;
 `-ModalCaptureDirectory` keeps screenshots for private inspection.
 

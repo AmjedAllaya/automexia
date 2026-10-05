@@ -2,6 +2,7 @@
 use super::*;
 
 const PALETTE_COLUMNS: usize = 8;
+const PALETTE_HEIGHT: f32 = 148.0;
 
 fn hex_color([r, g, b, a]: [u8; 4], alpha: bool) -> String {
     if alpha {
@@ -53,13 +54,12 @@ impl SettingsView {
             }
         }
         if bounded != self.color_favorites {
+            let previous = self.focused_palette_color();
             self.color_favorites = bounded;
             self.pressed = None;
             self.layout_dirty = true;
-            if let Some(editor) = &mut self.color_editor {
-                if matches!(editor.focus, ColorFocus::Swatch(_)) {
-                    editor.focus = ColorFocus::Favorites;
-                }
+            if self.color_editor.as_ref().is_some_and(|e| e.show_favorites) {
+                self.reconcile_palette_focus(previous);
             }
         }
     }
@@ -97,9 +97,49 @@ impl SettingsView {
             }
         }
         if colors != self.color_suggestions {
+            let previous = self.focused_palette_color();
             self.color_suggestions = colors;
             self.pressed = None;
+            if self
+                .color_editor
+                .as_ref()
+                .is_some_and(|e| !e.show_favorites)
+            {
+                self.reconcile_palette_focus(previous);
+            }
         }
+    }
+
+    fn focused_palette_color(&self) -> Option<[u8; 4]> {
+        let ColorFocus::Swatch(index) = self.color_editor.as_ref()?.focus else {
+            return None;
+        };
+        self.color_palette_colors().get(index).copied()
+    }
+
+    fn reconcile_palette_focus(&mut self, previous: Option<[u8; 4]>) {
+        let colors = self.color_palette_colors();
+        let Some(editor) = &mut self.color_editor else {
+            return;
+        };
+        if !editor.palette_browsing {
+            return;
+        }
+        let index = previous
+            .and_then(|color| colors.iter().position(|c| *c == color))
+            .unwrap_or_else(|| match editor.focus {
+                ColorFocus::Swatch(index) => index.min(colors.len().saturating_sub(1)),
+                _ => 0,
+            });
+        editor.focus = if colors.is_empty() {
+            if editor.show_favorites {
+                ColorFocus::Favorites
+            } else {
+                ColorFocus::Suggested
+            }
+        } else {
+            ColorFocus::Swatch(index)
+        };
     }
 
     pub(super) fn color_palette_colors(&self) -> Vec<[u8; 4]> {
@@ -208,11 +248,14 @@ impl SettingsView {
                     } else {
                         ColorFavoriteIntent::Remember(color)
                     });
-                editor.focus = focus;
+                if !editor.palette_browsing {
+                    editor.focus = focus;
+                }
             }
             ColorFocus::Suggested | ColorFocus::Favorites => {
                 editor.show_favorites = focus == ColorFocus::Favorites;
                 editor.focus = focus;
+                editor.palette_browsing = true;
             }
             ColorFocus::Swatch(index) => {
                 let Some(color) = colors.get(index).copied() else {
@@ -225,9 +268,11 @@ impl SettingsView {
                 editor.custom_input = false;
                 editor.feedback = None;
                 editor.focus = ColorFocus::Hex;
+                editor.palette_browsing = false;
             }
             _ => return,
         }
+        self.reconcile_palette_focus(None);
         self.preedit.clear();
         self.pressed = None;
         self.layout_dirty = true;
@@ -242,22 +287,59 @@ impl SettingsView {
         let Some(editor) = &self.color_editor else {
             return false;
         };
-        if editor.text_limits.is_some() || !modifiers.is_empty() {
+        if editor.text_limits.is_some() || self.color_geometry.palette.height < 120.0 {
             return false;
+        }
+        if modifiers.is_empty() {
+            let shortcut = match key {
+                Key::Named(NamedKey::F1) => Some(ColorFocus::Suggested),
+                Key::Named(NamedKey::F2) => Some(ColorFocus::Favorites),
+                Key::Named(NamedKey::F3) => Some(ColorFocus::FavoriteToggle),
+                _ => None,
+            };
+            if let Some(focus) = shortcut {
+                if !repeat {
+                    self.activate_color_palette(focus);
+                }
+                return true;
+            }
         }
         let colors = self.color_palette_colors();
         if key == &Key::Named(NamedKey::ArrowDown)
+            && modifiers.is_empty()
             && editor.focus == ColorFocus::Hex
             && !colors.is_empty()
         {
             if let Some(editor) = &mut self.color_editor {
                 editor.focus = ColorFocus::Swatch(0);
+                editor.palette_browsing = true;
             }
             self.pressed = None;
             return true;
         }
-        if let ColorFocus::Swatch(index) = editor.focus {
-            if key == &Key::Named(NamedKey::Delete) && editor.show_favorites {
+        if editor.palette_browsing {
+            // Palette navigation is its own focus scope, including an empty
+            // favorites list. Only Escape or choosing a swatch ends keyboard
+            // browsing; Apply/Reset mnemonics cannot leak through from here.
+            let index = match editor.focus {
+                ColorFocus::Swatch(i) => i,
+                _ => 0,
+            };
+            if !modifiers.is_empty() && modifiers != ModifiersState::SHIFT {
+                return true;
+            }
+            if modifiers.is_empty()
+                && matches!(key, Key::Named(NamedKey::Enter | NamedKey::Space))
+            {
+                if !repeat && !colors.is_empty() {
+                    self.activate_color_palette(ColorFocus::Swatch(index));
+                }
+                return true;
+            }
+            if modifiers.is_empty()
+                && key == &Key::Named(NamedKey::Delete)
+                && editor.show_favorites
+            {
                 if !repeat {
                     if let Some(color) = colors.get(index) {
                         self.pending_color_favorite =
@@ -267,11 +349,22 @@ impl SettingsView {
                 return true;
             }
             let delta = match key {
+                Key::Named(NamedKey::Tab) => {
+                    if modifiers.shift_key() {
+                        -1
+                    } else {
+                        1
+                    }
+                }
                 Key::Named(NamedKey::ArrowLeft) => -1,
                 Key::Named(NamedKey::ArrowRight) => 1,
                 Key::Named(NamedKey::ArrowUp) => -(PALETTE_COLUMNS as isize),
                 Key::Named(NamedKey::ArrowDown) => PALETTE_COLUMNS as isize,
-                _ => return false,
+                Key::Named(NamedKey::Home) => -(index as isize),
+                Key::Named(NamedKey::End) => {
+                    colors.len().saturating_sub(1) as isize - index as isize
+                }
+                _ => return true,
             };
             if !colors.is_empty() {
                 if let Some(editor) = &mut self.color_editor {
@@ -304,45 +397,58 @@ impl SettingsView {
                 | ColorFocus::FavoriteToggle => {
                     let selected = focus != ColorFocus::FavoriteToggle
                         && editor.show_favorites == (focus == ColorFocus::Favorites);
-                    control(canvas, bounds, editor.focus == focus, theme, clip);
+                    let mut button_theme = theme;
                     if selected {
-                        rounded_fill(
-                            canvas,
-                            Rect {
-                                x: bounds.x + 2.0,
-                                y: bounds.y + 2.0,
-                                width: bounds.width - 4.0,
-                                height: bounds.height - 4.0,
-                            },
-                            6.0,
-                            theme.raised,
-                            clip,
-                        );
+                        button_theme.background = theme.raised;
                     }
                     let favorite = editor_value(editor).is_some_and(|v| matches!(v, SettingValue::Color(color) if self.color_favorites.contains(&color)));
-                    label(
+                    let caption = if focus == ColorFocus::FavoriteToggle {
+                        if bounds.width < 110.0 {
+                            if favorite {
+                                "Remove"
+                            } else {
+                                "Save"
+                            }
+                        } else if bounds.width < 190.0 {
+                            if favorite {
+                                "★ Remove"
+                            } else {
+                                "☆ Save"
+                            }
+                        } else if favorite {
+                            "Remove favorite"
+                        } else {
+                            "Save favorite"
+                        }
+                    } else if focus == ColorFocus::Suggested {
+                        if bounds.width < 110.0 {
+                            "Suggest"
+                        } else {
+                            "Suggested"
+                        }
+                    } else if bounds.width < 110.0 {
+                        "Saved"
+                    } else {
+                        "Favorites"
+                    };
+                    action_button(
                         canvas,
                         bounds,
-                        if focus == ColorFocus::FavoriteToggle {
-                            if bounds.width < 130.0 {
-                                if favorite {
-                                    "★ Remove"
-                                } else {
-                                    "☆ Save"
-                                }
-                            } else if favorite {
-                                "Remove favorite"
-                            } else {
-                                "Save favorite"
-                            }
-                        } else if focus == ColorFocus::Suggested {
-                            "Suggested"
-                        } else {
-                            "Favorites"
-                        },
+                        (
+                            caption,
+                            match focus {
+                                ColorFocus::Suggested => "F1",
+                                ColorFocus::Favorites => "F2",
+                                _ => "F3",
+                            },
+                        ),
                         font,
-                        theme.text,
-                        selected,
+                        (
+                            editor.focus == focus,
+                            focus != ColorFocus::FavoriteToggle
+                                || editor_value(editor).is_some(),
+                        ),
+                        button_theme,
                         clip,
                     );
                 }
@@ -392,10 +498,10 @@ impl SettingsView {
                 .get(index)
                 .map(|color| {
                     format!(
-                        "{} | Enter: choose{}",
+                        "{}{}",
                         hex_color(*color, editor.alpha),
                         if editor.show_favorites {
-                            " | Del: remove"
+                            " | Del: remove favorite"
                         } else {
                             ""
                         }
@@ -403,25 +509,45 @@ impl SettingsView {
                 })
                 .unwrap_or_default()
         } else if editor.show_favorites && colors.is_empty() {
-            "Apply a custom color to save a favorite.".into()
-        } else if self.color_geometry.palette.width < 400.0 {
-            "Tab / Arrows: focus | Enter: choose".into()
+            if editor.palette_browsing {
+                "No favorites. F3: save the draft".into()
+            } else {
+                "No favorites. F3: save the draft color".into()
+            }
         } else {
-            "Tab: focus | Arrows: colors | Enter: choose".into()
+            "F1: suggested | F2: favorites | F3: favorite".into()
         };
         let area = self.color_geometry.palette;
-        shortcut_hint(
-            canvas,
-            Rect {
-                y: area.y + 102.0,
-                height: 22.0,
-                ..area
-            },
-            &message,
-            font,
-            theme,
-            clip,
-        );
+        let compact = area.width < 400.0;
+        let navigation = if editor.palette_browsing {
+            if compact {
+                "Tab/Arrows | Enter: pick | Esc: back"
+            } else {
+                "Tab / Arrows: colors | Enter: choose | Esc: back"
+            }
+        } else if compact {
+            "Tab: controls | Enter: open | Esc: exit"
+        } else {
+            "Tab: controls | Enter: browse | Esc: cancel"
+        };
+        for (line, hint) in [&message, navigation].into_iter().enumerate() {
+            shortcut_hint(
+                canvas,
+                Rect {
+                    y: area.y + 102.0 + line as f32 * 22.0,
+                    height: 22.0,
+                    ..area
+                },
+                hint,
+                if compact {
+                    (font * 0.8).max(10.0)
+                } else {
+                    font
+                },
+                theme,
+                clip,
+            );
+        }
     }
 
     #[cfg(any(test, feature = "visual-test-hooks"))]
@@ -429,6 +555,8 @@ impl SettingsView {
         let colors = self.color_palette_colors();
         serde_json::json!({
             "favorites": self.color_editor.as_ref().is_some_and(|e| e.show_favorites),
+            "browsing": self.color_editor.as_ref().is_some_and(|e| e.palette_browsing),
+            "focus": self.color_editor.as_ref().map(|e| format!("{:?}", e.focus)),
             "controls": self.color_palette_controls().into_iter().map(|(focus, rect)| serde_json::json!({
                 "focus": format!("{focus:?}"), "bounds": rect.array(),
                 "value": if let ColorFocus::Swatch(index) = focus { colors.get(index).copied() } else { None },
@@ -483,6 +611,7 @@ impl SettingsView {
             focus: ColorFocus::Hex,
             composing: false,
             show_favorites: false,
+            palette_browsing: false,
             custom_input: false,
             last_valid_color: match &entry.value {
                 SettingValue::Color(color) => Some(*color),
@@ -642,6 +771,18 @@ impl SettingsView {
                 if let Some(editor) = &mut self.color_editor {
                     editor.composing = false;
                 }
+            } else if let Some(editor) = &mut self.color_editor {
+                if editor.palette_browsing {
+                    editor.palette_browsing = false;
+                    editor.focus = if editor.show_favorites {
+                        ColorFocus::Favorites
+                    } else {
+                        ColorFocus::Suggested
+                    };
+                    self.pressed = None;
+                } else {
+                    self.cancel_color();
+                }
             } else {
                 self.cancel_color();
             }
@@ -658,7 +799,6 @@ impl SettingsView {
         if self.color_palette_key(key, modifiers, repeat) {
             return;
         }
-        let palette_count = self.color_palette_colors().len();
         let Some(editor) = &mut self.color_editor else {
             return;
         };
@@ -669,6 +809,9 @@ impl SettingsView {
         {
             editor.anchor = Some(0);
             editor.caret = editor.draft.len();
+            return;
+        }
+        if command || modifiers.alt_key() {
             return;
         }
         let cycle = match key {
@@ -686,7 +829,7 @@ impl SettingsView {
             _ => None,
         };
         if let Some(direction) = cycle {
-            let mut order = vec![ColorFocus::Hex, ColorFocus::Apply, ColorFocus::Cancel];
+            let mut order = vec![ColorFocus::Hex];
             if editor.text_limits.is_none() && self.color_geometry.palette.height >= 120.0
             {
                 order.extend([
@@ -694,9 +837,8 @@ impl SettingsView {
                     ColorFocus::Favorites,
                     ColorFocus::FavoriteToggle,
                 ]);
-                order.extend((0..palette_count).map(ColorFocus::Swatch));
             }
-            order.push(ColorFocus::Reset);
+            order.extend([ColorFocus::Apply, ColorFocus::Cancel, ColorFocus::Reset]);
             let index = order
                 .iter()
                 .position(|focus| *focus == editor.focus)
@@ -705,9 +847,6 @@ impl SettingsView {
                 order[(index + direction).rem_euclid(order.len() as i32) as usize];
             self.preedit.clear();
             self.pressed = None;
-            return;
-        }
-        if command || modifiers.alt_key() {
             return;
         }
         if !repeat && matches!(key, Key::Named(NamedKey::Enter)) {
@@ -798,13 +937,27 @@ impl SettingsView {
             .color_editor
             .as_ref()
             .is_some_and(|e| e.text_limits.is_none())
-            && self.height >= line * 10.0 + 72.0 + 124.0
+            && self.height >= line * 10.0 + 72.0 + PALETTE_HEIGHT
             && self.width >= 320.0
         {
-            124.0
+            PALETTE_HEIGHT
         } else {
             0.0
         };
+        if palette_height == 0.0 {
+            if let Some(editor) = &mut self.color_editor {
+                if matches!(
+                    editor.focus,
+                    ColorFocus::Suggested
+                        | ColorFocus::Favorites
+                        | ColorFocus::FavoriteToggle
+                        | ColorFocus::Swatch(_)
+                ) {
+                    editor.focus = ColorFocus::Hex;
+                }
+                editor.palette_browsing = false;
+            }
+        }
         let height = (line * 10.0 + 40.0 + palette_height).min(self.height - 32.0);
         let card = Rect {
             x: (self.width - width) * 0.5,
@@ -1140,9 +1293,36 @@ impl SettingsView {
             self.paint_color_palette(canvas, theme);
         }
         for (bounds, focus, caption, key) in [
-            (g.apply, ColorFocus::Apply, "Apply", "A"),
-            (g.cancel, ColorFocus::Cancel, "Cancel", "Esc"),
-            (g.reset, ColorFocus::Reset, "Reset", "R"),
+            (
+                g.apply,
+                ColorFocus::Apply,
+                "Apply",
+                if editor.palette_browsing {
+                    "Esc→A"
+                } else {
+                    "A"
+                },
+            ),
+            (
+                g.cancel,
+                ColorFocus::Cancel,
+                "Cancel",
+                if editor.palette_browsing {
+                    "Esc×2"
+                } else {
+                    "Esc"
+                },
+            ),
+            (
+                g.reset,
+                ColorFocus::Reset,
+                "Reset",
+                if editor.palette_browsing {
+                    "Esc→R"
+                } else {
+                    "R"
+                },
+            ),
         ] {
             action_button(
                 canvas,

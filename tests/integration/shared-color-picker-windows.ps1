@@ -13,6 +13,9 @@ function Test-AutomexiaSharedColorPicker {
     function Color-Key([int]$Key) {
         if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, $Key, $false, $false, $false)) { throw 'Color key lost focus' }
     }
+    function Color-Focus([string]$Focus) {
+        $null = Wait-Color { param($s) $s.settings.ready -and $s.settings.color_editor.palette.focus -eq $Focus }
+    }
     function Color-Click($Bounds, $Scale) {
         $x = [int][Math]::Round(($Bounds[0] + $Bounds[2] * 0.5) * $Scale)
         $y = [int][Math]::Round(($Bounds[1] + $Bounds[3] * 0.5) * $Scale)
@@ -42,9 +45,37 @@ function Test-AutomexiaSharedColorPicker {
     $null = Wait-Color { param($s) $s.settings.search_bytes -eq 10 }
     Color-Row 'fonts.colors.foreground'
     $state = Wait-Color { param($s) $s.settings.ready -and $s.settings.color_editor.id -eq 'fonts.colors.foreground' }
+    $script:testStage = 'palette-first Tab order'
+    foreach ($focus in @('Suggested', 'Favorites', 'FavoriteToggle')) {
+        Color-Key 0x09
+        Color-Focus $focus
+    }
+    $script:testStage = 'F2 and empty favorites stay in their navigation scope'
+    Color-Key 0x71
+    $null = Wait-Color { param($s) $s.settings.color_editor.palette.browsing -and $s.settings.color_editor.palette.favorites }
+    Color-Key 0x09
+    Color-Key 0x27
+    Color-Focus 'Favorites'
+    Color-Key 0x1B
+    $null = Wait-Color { param($s) $null -ne $s.settings.color_editor -and -not $s.settings.color_editor.palette.browsing }
+    $script:testStage = 'F1 and wrapping suggested swatches'
+    Color-Key 0x70
+    $state = Wait-Color { param($s) $s.settings.color_editor.palette.browsing -and $s.settings.color_editor.palette.focus -eq 'Swatch(0)' }
+    $count = @($state.settings.color_editor.palette.controls | Where-Object focus -like 'Swatch*').Count
+    for ($index = 1; $index -le $count * 2; $index++) {
+        Color-Key 0x09
+        Color-Focus ('Swatch({0})' -f ($index % $count))
+    }
+    Color-Key 0x25
+    Color-Focus ('Swatch({0})' -f ($count - 1))
+    Color-Key 0x27
+    Color-Focus 'Swatch(0)'
+    Color-Key 0x1B
+    Color-Focus 'Suggested'
+    Color-Key 0x0D
+    Color-Focus 'Swatch(0)'
     $script:testStage = "suggestion draft and cancellation"
     $old = $state.settings.color_editor.draft_color -join ','
-    Color-Key 0x28
     Color-Key 0x0D
     $state = Wait-Color { param($s) $s.settings.ready -and $null -ne $s.settings.color_editor -and ($s.settings.color_editor.draft_color -join ',') -ne $old }
     Color-Key 0x1B
@@ -54,22 +85,31 @@ function Test-AutomexiaSharedColorPicker {
     $script:testStage = 'custom color and persisted favorite'
     if (-not [AutomexiaResizeDriver]::ReplaceColorHex($window, '#ABCDEF')) { throw 'Color custom input failed' }
     $state = Wait-Color { param($s) $s.settings.ready -and ($s.settings.color_editor.draft_color -join ',') -eq '171,205,239,255' }
-    Color-Key 0x0D
+    Color-Key 0x72
+    Color-Focus 'FavoriteToggle'
+    $null = Wait-Color { param($s) -not $s.settings.save_pending -and $null -ne $s.settings.color_editor }
+    Color-Key 0x41
     $null = Wait-Color { param($s) $s.settings.ready -and -not $s.settings.save_pending -and $null -eq $s.settings.color_editor }
     $preferences = Join-Path $configRoot 'state/user-preferences-v12.toml'
     if ((Get-Content -LiteralPath $preferences -Raw) -notmatch 'color-favorites\s*=\s*\[\s*\[\s*171,\s*205,\s*239,\s*255') { throw 'Custom color did not persist as favorite' }
     Color-Row 'fonts.colors.foreground'
     Color-Control 'Favorites'
     $state = Wait-Color { param($s) $s.settings.ready -and $s.settings.color_editor.palette.favorites -and @($s.settings.color_editor.palette.controls | Where-Object focus -like 'Swatch*').Count -eq 1 }
+    Color-Focus 'Swatch(0)'
+    Color-Key 0x09
+    Color-Focus 'Swatch(0)'
     if (-not [string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
         $null = New-Item -ItemType Directory -Force -Path $ModalCaptureDirectory
         $null = [AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $ModalCaptureDirectory 'favorites.png'))
     }
-    Color-Control 'FavoriteToggle'
+    Color-Key 0x72
     $null = Wait-Color { param($s) $s.settings.ready -and -not $s.settings.save_pending -and @($s.settings.color_editor.palette.controls | Where-Object focus -like 'Swatch*').Count -eq 0 }
+    Color-Key 0x09
+    Color-Focus 'Favorites'
     Color-Control 'Suggested'
     $state = Wait-Color { param($s) $s.settings.ready -and -not $s.settings.color_editor.palette.favorites }
     if (-not [string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) { $null = [AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $ModalCaptureDirectory 'suggested.png')) }
+    Color-Key 0x1B
     Color-Key 0x1B
     Color-Key 0x1B
     Color-Key 0x1B
@@ -98,5 +138,5 @@ function Test-AutomexiaSharedColorPicker {
     $state = Wait-Color { param($s) $s.settings.ready -and $s.settings.color_editor.id -eq 'tab.color' -and ($s.settings.color_editor.draft_color -join ',') -eq '120,154,188,255' }
     Color-Key 0x1B
     $null = Wait-Color { param($s) -not $s.settings.open }
-    Write-Output 'PASS: shared suggestions, draft cancellation, custom apply, persisted favorites, removal and tab color delegation'
+    Write-Output 'PASS: palette-first Tab, F1/F2/F3, empty/single/wrapping swatches, nested Escape, draft cancellation, persisted favorites and tab color delegation'
 }

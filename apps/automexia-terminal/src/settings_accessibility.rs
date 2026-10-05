@@ -165,7 +165,12 @@ impl SettingsView {
                     role,
                     &label,
                     if selected { "On" } else { "Off" },
-                    "Enter chooses a draft; Apply commits the color",
+                    match focus {
+                        ColorFocus::Suggested => "F1: browse suggested colors. Tab and arrows wrap inside colors; Escape returns here.",
+                        ColorFocus::Favorites => "F2: browse favorite colors. Tab and arrows wrap inside colors; Escape returns here, including when empty.",
+                        ColorFocus::FavoriteToggle => "F3: save or remove the draft favorite without applying it.",
+                        _ => "Tab, Shift+Tab and arrows wrap through colors. Enter or Space chooses a draft; Escape returns to the palette button. Apply commits the color.",
+                    },
                     rect,
                     editor.focus == focus,
                     focus != ColorFocus::FavoriteToggle || editor_value(editor).is_some(),

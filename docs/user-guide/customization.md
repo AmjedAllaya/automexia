@@ -207,10 +207,19 @@ draft. The minus and plus buttons remain available. Values outside the control's
 range or step cannot be applied. Select a color row in an item editor to open
 the shared **Choose a color** editor, also used by themes, profiles, extension
 color settings and tab accents. **Suggested** offers theme colors and additional
-swatches; **Favorites** offers colors saved across editors and restarts. Click a
-swatch, or press Down from the input and use arrows then Enter, to change the
-Current/Draft preview. **Apply** or Enter in the input commits it; **Escape**
-cancels the draft. Typing and applying a valid custom hex color automatically
+swatches; **Favorites** offers colors saved across editors and restarts.
+The hex field starts selected for immediate typing. The first three Tab presses
+visit **Suggested**, **Favorites**, and **Save/Remove favorite**, before the
+Apply, Cancel and Reset buttons. **F1** opens Suggested, **F2** opens Favorites,
+and **F3** saves or removes the draft from Favorites without applying it.
+Click either palette button, or focus it and press Enter, to browse its colors.
+Tab, Shift+Tab and arrows wrap inside the swatches, including at either end;
+Home/End select the first/last swatch. **Escape** returns to the palette button
+without discarding the draft, even when Favorites is empty. Enter, Space or a
+click chooses a swatch and returns to the hex field for review. Down from the
+hex field also enters the visible palette. **Apply** or Enter in the hex field
+commits it; **Escape** outside the swatches cancels the draft.
+Typing and applying a valid custom hex color automatically
 adds it to Favorites. **Save favorite** (☆ Save in a narrow window) saves the draft
 without applying it; **Remove favorite** or Delete on a focused favorite removes
 it without changing the active color. The list keeps the latest 16 distinct

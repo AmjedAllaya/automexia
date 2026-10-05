@@ -5175,6 +5175,293 @@ fn opened_color(alpha: bool) -> SettingsView {
 }
 
 #[test]
+fn shared_color_picker_keyboard_tab_starts_with_palette_actions() {
+    let mut view = opened_color(false);
+    view.paint(&mut Raster::new(1.0), theme());
+    for expected in [
+        ColorFocus::Suggested,
+        ColorFocus::Favorites,
+        ColorFocus::FavoriteToggle,
+        ColorFocus::Apply,
+        ColorFocus::Cancel,
+        ColorFocus::Reset,
+        ColorFocus::Hex,
+    ] {
+        named(&mut view, NamedKey::Tab);
+        assert_eq!(view.color_editor.as_ref().unwrap().focus, expected);
+        assert!(view.take_edit().is_none());
+        assert!(view.take_color_favorite_intent().is_none());
+    }
+}
+
+#[test]
+fn shared_color_picker_keyboard_group_enters_wrapping_swatches_and_escape_returns() {
+    for group in [ColorFocus::Suggested, ColorFocus::Favorites] {
+        let mut view = opened_color(false);
+        view.set_color_favorites(&[[1, 2, 3, 255], [4, 5, 6, 255]]);
+        view.paint(&mut Raster::new(1.0), theme());
+        named(&mut view, NamedKey::Tab);
+        if group == ColorFocus::Favorites {
+            named(&mut view, NamedKey::Tab);
+        }
+        let original = view.color_editor.as_ref().unwrap().draft.clone();
+        named(&mut view, NamedKey::Enter);
+        assert_eq!(
+            view.color_editor.as_ref().unwrap().focus,
+            ColorFocus::Swatch(0)
+        );
+        let count = view.color_palette_colors().len();
+        for index in 1..=count * 2 {
+            named(&mut view, NamedKey::Tab);
+            assert_eq!(
+                view.color_editor.as_ref().unwrap().focus,
+                ColorFocus::Swatch(index % count)
+            );
+        }
+        view.key(
+            &Key::Named(NamedKey::Tab),
+            None,
+            ModifiersState::SHIFT,
+            false,
+        );
+        assert_eq!(
+            view.color_editor.as_ref().unwrap().focus,
+            ColorFocus::Swatch(count - 1)
+        );
+        named(&mut view, NamedKey::ArrowRight);
+        assert_eq!(
+            view.color_editor.as_ref().unwrap().focus,
+            ColorFocus::Swatch(0)
+        );
+        named(&mut view, NamedKey::Escape);
+        let editor = view
+            .color_editor
+            .as_ref()
+            .expect("Escape leaves the grid, not the picker");
+        assert_eq!(editor.focus, group);
+        assert_eq!(editor.draft, original);
+        view.key(
+            &Key::Named(NamedKey::Escape),
+            None,
+            ModifiersState::empty(),
+            true,
+        );
+        assert!(
+            view.color_editor.is_some(),
+            "held Escape must not discard the draft"
+        );
+        assert!(view.take_edit().is_none());
+        named(&mut view, NamedKey::Escape);
+        assert!(view.color_editor.is_none());
+    }
+}
+
+#[test]
+fn shared_color_picker_keyboard_shortcuts_grid_bounds_and_explicit_selection() {
+    for count in [0, 1, 7, 8, 9, 16] {
+        let mut view = opened_color(false);
+        let favorites: Vec<_> = (0..count).map(|i| [i as u8, 90, 120, 255]).collect();
+        view.set_color_favorites(&favorites);
+        view.paint(&mut Raster::new(1.0), theme());
+        named(&mut view, NamedKey::F2);
+        let first = if count == 0 {
+            ColorFocus::Favorites
+        } else {
+            ColorFocus::Swatch(0)
+        };
+        assert_eq!(view.color_editor.as_ref().unwrap().focus, first);
+        for _ in 0..3 {
+            for _ in 0..count.max(1) {
+                named(&mut view, NamedKey::Tab);
+            }
+            assert_eq!(view.color_editor.as_ref().unwrap().focus, first);
+        }
+        for key in [
+            NamedKey::ArrowLeft,
+            NamedKey::ArrowUp,
+            NamedKey::ArrowRight,
+            NamedKey::ArrowDown,
+        ] {
+            for _ in 0..count.max(1) {
+                named(&mut view, key);
+            }
+            assert_eq!(view.color_editor.as_ref().unwrap().focus, first);
+        }
+        let draft = view.color_editor.as_ref().unwrap().draft.clone();
+        view.key(
+            &Key::Character("a".into()),
+            Some("a"),
+            ModifiersState::empty(),
+            false,
+        );
+        view.key(
+            &Key::Character("r".into()),
+            Some("r"),
+            ModifiersState::empty(),
+            false,
+        );
+        assert!(view.confirmation.is_none());
+        assert!(view.take_edit().is_none());
+        assert_eq!(view.color_editor.as_ref().unwrap().draft, draft);
+        named(&mut view, NamedKey::Enter);
+        if count == 0 {
+            assert_eq!(
+                view.color_editor.as_ref().unwrap().focus,
+                ColorFocus::Favorites
+            );
+            named(&mut view, NamedKey::Escape);
+            assert!(view.color_editor.is_some());
+        } else {
+            assert_eq!(view.color_editor.as_ref().unwrap().focus, ColorFocus::Hex);
+            assert!(
+                view.take_edit().is_none(),
+                "choosing is distinct from applying"
+            );
+            named(&mut view, NamedKey::F3);
+            assert_eq!(
+                view.take_color_favorite_intent(),
+                Some(ColorFavoriteIntent::Forget(favorites[0]))
+            );
+            view.key(
+                &Key::Named(NamedKey::F3),
+                None,
+                ModifiersState::empty(),
+                true,
+            );
+            assert!(view.take_color_favorite_intent().is_none());
+        }
+        named(&mut view, NamedKey::F1);
+        assert!(matches!(
+            view.color_editor.as_ref().unwrap().focus,
+            ColorFocus::Swatch(_)
+        ));
+        named(&mut view, NamedKey::Escape);
+        assert_eq!(
+            view.color_editor.as_ref().unwrap().focus,
+            ColorFocus::Suggested
+        );
+    }
+}
+
+#[test]
+fn shared_color_picker_keyboard_favorite_refresh_preserves_grid_and_resize_exits_safely()
+{
+    let mut view = opened_color(false);
+    view.set_color_favorites(&[[1, 2, 3, 255], [4, 5, 6, 255]]);
+    view.paint(&mut Raster::new(1.0), theme());
+    named(&mut view, NamedKey::F2);
+    named(&mut view, NamedKey::Tab);
+    view.set_color_favorites(&[[4, 5, 6, 255], [1, 2, 3, 255]]);
+    assert_eq!(
+        view.color_editor.as_ref().unwrap().focus,
+        ColorFocus::Swatch(0)
+    );
+    named(&mut view, NamedKey::Delete);
+    assert_eq!(
+        view.take_color_favorite_intent(),
+        Some(ColorFavoriteIntent::Forget([4, 5, 6, 255]))
+    );
+    view.set_color_favorites(&[[1, 2, 3, 255]]);
+    named(&mut view, NamedKey::Tab);
+    assert_eq!(
+        view.color_editor.as_ref().unwrap().focus,
+        ColorFocus::Swatch(0)
+    );
+    view.set_color_favorites(&[]);
+    named(&mut view, NamedKey::Tab);
+    assert_eq!(
+        view.color_editor.as_ref().unwrap().focus,
+        ColorFocus::Favorites
+    );
+    named(&mut view, NamedKey::Escape);
+    named(&mut view, NamedKey::Tab);
+    assert_eq!(
+        view.color_editor.as_ref().unwrap().focus,
+        ColorFocus::FavoriteToggle
+    );
+    named(&mut view, NamedKey::F1);
+    let focus = view.color_editor.as_ref().unwrap().focus;
+    view.set_color_favorites(&[[7, 8, 9, 255]]);
+    assert_eq!(
+        view.color_editor.as_ref().unwrap().focus,
+        focus,
+        "favorite refresh cannot steal suggested focus"
+    );
+    view.fit(320., 360., 18.);
+    view.paint(&mut Raster::new(1.0), theme());
+    assert!(view.color_palette_controls().is_empty());
+    assert_eq!(view.color_editor.as_ref().unwrap().focus, ColorFocus::Hex);
+    named(&mut view, NamedKey::F1);
+    assert_eq!(view.color_editor.as_ref().unwrap().focus, ColorFocus::Hex);
+    assert!(replace_color(&mut view, "#112233"));
+}
+
+#[test]
+fn shared_color_picker_keyboard_shortcuts_respect_modifiers_ime_and_text_editors() {
+    let mut view = opened_color(false);
+    view.paint(&mut Raster::new(1.0), theme());
+    for modifiers in [
+        ModifiersState::CONTROL,
+        ModifiersState::SUPER,
+        ModifiersState::ALT,
+        ModifiersState::SHIFT,
+    ] {
+        for key in [NamedKey::F1, NamedKey::F2, NamedKey::F3, NamedKey::Tab] {
+            if modifiers == ModifiersState::SHIFT && key == NamedKey::Tab {
+                continue;
+            }
+            view.key(&Key::Named(key), None, modifiers, false);
+            assert_eq!(view.color_editor.as_ref().unwrap().focus, ColorFocus::Hex);
+            assert!(view.take_color_favorite_intent().is_none());
+        }
+    }
+    view.event(
+        &WindowEvent::Ime(Ime::Preedit("#AB".into(), None)),
+        ModifiersState::empty(),
+        1.0,
+    );
+    for key in [NamedKey::F1, NamedKey::F2, NamedKey::F3] {
+        named(&mut view, key);
+    }
+    assert_eq!(view.color_editor.as_ref().unwrap().focus, ColorFocus::Hex);
+    assert!(view.color_editor.as_ref().unwrap().composing);
+    assert!(view.take_color_favorite_intent().is_none());
+    named(&mut view, NamedKey::Escape);
+    assert!(replace_color(&mut view, "invalid"));
+    named(&mut view, NamedKey::F3);
+    assert!(view.take_color_favorite_intent().is_none());
+    assert!(replace_color(&mut view, "#123456"));
+    named(&mut view, NamedKey::F3);
+    assert_eq!(
+        view.take_color_favorite_intent(),
+        Some(ColorFavoriteIntent::Remember([18, 52, 86, 255]))
+    );
+    view.key(
+        &Key::Named(NamedKey::F3),
+        None,
+        ModifiersState::empty(),
+        true,
+    );
+    assert!(view.take_color_favorite_intent().is_none());
+    assert!(view.take_edit().is_none());
+
+    let mut text = opened();
+    text.refresh(text_catalog(2));
+    named(&mut text, NamedKey::Tab);
+    named(&mut text, NamedKey::Enter);
+    text.paint(&mut Raster::new(1.0), theme());
+    let original = text.color_editor.as_ref().unwrap().draft.clone();
+    for key in [NamedKey::F1, NamedKey::F2, NamedKey::F3] {
+        named(&mut text, key);
+    }
+    assert_eq!(text.color_editor.as_ref().unwrap().draft, original);
+    assert_eq!(text.color_editor.as_ref().unwrap().focus, ColorFocus::Hex);
+    assert!(text.take_color_favorite_intent().is_none());
+    named(&mut text, NamedKey::Tab);
+    assert_eq!(text.color_editor.as_ref().unwrap().focus, ColorFocus::Apply);
+}
+
+#[test]
 fn shared_color_picker_keyboard_offers_swatches_without_implicit_apply() {
     let mut view = opened_color(false);
     view.paint(&mut Raster::new(1.0), theme());
@@ -7647,7 +7934,7 @@ fn shared_color_picker_favorites_are_exact_contextual_and_removable() {
         assert!(
             matches!(view.take_color_favorite_intent(), Some(ColorFavoriteIntent::Forget(c)) if c == first)
         );
-        view.color_editor.as_mut().unwrap().focus = ColorFocus::Swatch(0);
+        named(&mut view, NamedKey::F2);
         named(&mut view, NamedKey::Delete);
         assert!(
             matches!(view.take_color_favorite_intent(), Some(ColorFavoriteIntent::Forget(c)) if c == first)
@@ -7746,6 +8033,21 @@ fn shared_color_picker_layout_and_semantics_across_themes_and_scales() {
                 })
                 .collect();
             assert_eq!(swatches.len(), view.color_palette_colors().len());
+            for (caption, shortcut) in [
+                ("Suggested colors", "F1:"),
+                ("Favorite colors", "F2:"),
+                ("Save favorite", "F3:"),
+            ] {
+                let element = surface
+                    .elements
+                    .iter()
+                    .find(|e| e.node.label() == Some(caption))
+                    .unwrap();
+                assert!(element
+                    .node
+                    .description()
+                    .is_some_and(|text| text.starts_with(shortcut)));
+            }
             assert_eq!(
                 swatches
                     .iter()

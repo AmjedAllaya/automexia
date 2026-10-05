@@ -146,6 +146,7 @@ struct ColorEditor {
     composing: bool,
     last_valid_color: Option<[u8; 4]>,
     show_favorites: bool,
+    palette_browsing: bool,
     custom_input: bool,
     feedback: Option<String>,
 }
@@ -2221,7 +2222,7 @@ impl SettingsView {
                 return format!("Edit text. {name}. Draft: {}. {}. Tab changes focus between text, Apply, Cancel and Reset. Escape cancels the draft.", editor.draft,
                     if valid { "Ready to apply" } else { "Invalid text; Apply unavailable" });
             }
-            return format!("Edit color. {name}. Hex value: {}. {}. Tab changes focus between Hex, Apply, Cancel and Reset. Escape cancels the color draft. Reset restores configuration.", editor.draft, if valid { "Ready to apply" } else { "Invalid color; Apply unavailable" });
+            return format!("Edit color. {name}. Hex value: {}. {}. F1: Suggested. F2: Favorites. F3: Save or remove draft favorite. Tab visits Suggested, Favorites, Save favorite, Apply, Cancel, Reset and Hex. Inside colors, Tab and arrows wrap; Enter chooses a draft and Escape returns to the palette button. Outside colors, Escape cancels the draft. Reset restores configuration.", editor.draft, if valid { "Ready to apply" } else { "Invalid color; Apply unavailable" });
         }
         let mut text = format!(
             "{}. Search: {}. {}",
@@ -3460,7 +3461,16 @@ impl SettingsView {
             Target::Color(focus) => {
                 if let Some(editor) = &mut self.color_editor {
                     editor.composing = false;
-                    editor.focus = focus;
+                    if matches!(
+                        focus,
+                        ColorFocus::Hex
+                            | ColorFocus::Apply
+                            | ColorFocus::Cancel
+                            | ColorFocus::Reset
+                    ) {
+                        editor.focus = focus;
+                        editor.palette_browsing = false;
+                    }
                     if focus == ColorFocus::Hex {
                         editor.caret = editor.draft.len();
                         editor.anchor = Some(0);
