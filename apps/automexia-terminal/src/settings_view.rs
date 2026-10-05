@@ -5867,7 +5867,7 @@ impl SettingsView {
             "Log error: operation failed",
             "Log warning: retrying",
             "Log success: ready",
-            "Log info: 3 resources",
+            "No resources found in demo namespace.",
             "Log debug: elapsed 104ms",
         ];
         let row_height = line + 3.0;

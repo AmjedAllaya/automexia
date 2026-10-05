@@ -2,6 +2,65 @@ use super::*;
 use proptest::prelude::*;
 
 #[test]
+fn plain_informational_output_uses_shared_log_palette() {
+    for row in [
+        "/workspace/project",
+        "/workspace/équipe tools/error-reports",
+        "/",
+        "~/workspace/project",
+        "./project",
+        "../project",
+        r"C:\workspace\project",
+        r"D:\workspace\Project Files",
+        r"\\example.invalid\share\project",
+        "No resources found in demo namespace.",
+        "No resources found.",
+        "logout",
+        "exit",
+    ] {
+        assert_eq!(
+            classify_row(row),
+            Some(OutputClassification {
+                domain: OutputDomain::General,
+                severity: Some(SemanticSeverity::Info),
+            }),
+            "{row}"
+        );
+    }
+}
+
+#[test]
+fn plain_output_detection_preserves_diagnostics_and_neutral_text() {
+    for row in [
+        "/bin/bash: fixture: command not found",
+        "/workspace/tool: permission denied",
+        r"C:\workspace\tool: error: permission denied",
+        "No resources found: permission denied",
+    ] {
+        assert_eq!(
+            classify_row_text(row),
+            Some(SemanticSeverity::Error),
+            "{row}"
+        );
+    }
+    for row in [
+        "ordinary text",
+        "exit code: 0",
+        "logout is a shell command",
+        "/ this is not a path",
+        "// ordinary comment",
+        "C:relative",
+        "No resources found is a sentence in this documentation",
+    ] {
+        assert_eq!(classify_row_text(row), None, "{row}");
+    }
+    assert_eq!(
+        classify_row_text(&format!("/{}", "a".repeat(MAX_ROW_BYTES))),
+        None
+    );
+}
+
+#[test]
 fn cli_diagnostics_use_log_colours_independently_of_resource_statuses() {
     use rio_backend::config::presentation::Presentation;
     for row in [

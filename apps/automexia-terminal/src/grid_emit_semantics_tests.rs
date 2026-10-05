@@ -240,6 +240,110 @@ fn fixture_renderer(enabled: bool) -> Renderer {
 }
 
 #[test]
+fn plain_output_colors_follow_logical_rows_without_coloring_prompts() {
+    use crate::automexia::api::SemanticSeverity;
+    use crate::automexia::output_semantics::{OutputClassification, OutputDomain};
+    for text in [
+        "/workspace/a-long-project-name/subdirectory",
+        "No resources found in demo namespace.",
+    ] {
+        for width in [12, 80] {
+            let mut terminal = Crosswords::new(
+                CrosswordsSize::new(width, 12),
+                rio_backend::ansi::CursorShape::Block,
+                VoidListener {},
+                WindowId::from(0),
+                0,
+                128,
+            );
+            Processor::default().advance(
+                &mut terminal,
+                format!("{text}\r\n\x1b]133;A\x07/workspace/prompt\x1b]133;B\x07")
+                    .as_bytes(),
+            );
+            let (rows, _, _) = snapshot(&mut terminal);
+            let mut classified = Vec::new();
+            classify_visible_output(
+                &rows,
+                width,
+                false,
+                &mut classified,
+                &mut String::new(),
+            );
+            let output_rows = text.len().div_ceil(width);
+            assert!(classified[..output_rows].iter().all(|value| *value
+                == Some(OutputClassification {
+                    domain: OutputDomain::General,
+                    severity: Some(SemanticSeverity::Info),
+                })));
+            assert_ne!(
+                rows[output_rows].semantic_prompt,
+                rio_backend::crosswords::grid::row::SemanticPrompt::None
+            );
+            assert!(classified[output_rows..]
+                .iter()
+                .all(|entry| entry
+                    .is_none_or(|entry| entry.domain == OutputDomain::Uncertain)));
+        }
+    }
+}
+
+#[test]
+fn plain_shell_output_reaches_retained_grid_and_obeys_customization() {
+    use rio_backend::config::presentation::{HighlightStyle, Rgb, Rgba};
+    let mut terminal = terminal(
+        "/workspace/project\r\nNo resources found in demo namespace.\r\nlogout\r\n",
+    );
+    let (rows, styles, _) = snapshot(&mut terminal);
+    let mut renderer = fixture_renderer(true);
+    renderer.presentation.kubernetes_highlighting = false;
+    renderer.presentation.command_output_highlighting = false;
+    renderer.presentation.highlight.colors.info = Some(Rgb::from_bytes([21, 132, 243]));
+    renderer.presentation.highlight.info_background =
+        Some(Rgba::from_bytes([12, 34, 56, 78]));
+    for style in [
+        HighlightStyle::Foreground,
+        HighlightStyle::Background,
+        HighlightStyle::Both,
+    ] {
+        renderer.presentation.highlight.style = style;
+        for enabled in [false, true] {
+            renderer.presentation.output_highlighting = enabled;
+            for row in rows.iter().take(3) {
+                assert_eq!(
+                    semantic_row_fg(row, 80, &renderer, &mut String::new()),
+                    (enabled && style != HighlightStyle::Background)
+                        .then_some([21, 132, 243, 255])
+                );
+                let mut backgrounds = Vec::new();
+                build_row_bg(
+                    row,
+                    80,
+                    &styles,
+                    &renderer,
+                    &TermColors::default(),
+                    None,
+                    &[],
+                    &mut GridGlyphRasterizer::new(),
+                    &mut backgrounds,
+                );
+                let expected = if enabled && style != HighlightStyle::Foreground {
+                    [12, 34, 56, 78]
+                } else {
+                    cell_bg(
+                        row[Column(0)],
+                        resolve_style(&styles, row[Column(0)]),
+                        &renderer,
+                        &TermColors::default(),
+                    )
+                };
+                assert_eq!(backgrounds[0].rgba, expected);
+            }
+        }
+    }
+}
+
+#[test]
 fn plain_shell_errors_reach_glyphs_with_independent_domains() {
     use crate::automexia::output_semantics::OutputDomain;
     let mut data = FontLibraryData::default();
@@ -1059,6 +1163,12 @@ fn visual_render_custom_palette_reaches_real_glyph_and_background_emission() {
         ("pod/api 1/1 Running", [112, 128, 144, 255], None),
         ("batch 0/1 Completed", [160, 176, 192, 255], None),
         ("level=debug fixture", [208, 224, 240, 255], None),
+        ("/workspace/project", [160, 176, 192, 255], None),
+        (
+            "No resources found in demo namespace.",
+            [160, 176, 192, 255],
+            None,
+        ),
     ];
     let source = cases
         .iter()

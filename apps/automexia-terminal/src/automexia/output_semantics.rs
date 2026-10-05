@@ -60,6 +60,16 @@ pub fn classify_row(text: &str) -> Option<OutputClassification> {
     if text.is_empty() {
         return None;
     }
+    // Plain shells often emit these without ANSI. They carry information, not
+    // resource health, and therefore use the same user-selected log palette.
+    // Recognize paths before keyword scanning so an "error" directory is not
+    // painted as a failure. Path-prefixed diagnostics are excluded below.
+    if is_plain_path(text) || is_plain_notice(text) {
+        return Some(OutputClassification {
+            domain: OutputDomain::General,
+            severity: Some(SemanticSeverity::Info),
+        });
+    }
     if let Some(classification) = kubernetes_tables::named_resource(text) {
         return Some(classification);
     }
@@ -273,6 +283,52 @@ fn classify_general_text(text: &str) -> Option<SemanticSeverity> {
     }
 
     None
+}
+
+fn is_plain_path(text: &str) -> bool {
+    // Inspect syntax only, independently of the host OS. No path resolution,
+    // filesystem probing or remote access belongs in output classification.
+    let tail = if text.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
+        && (text.get(1..3) == Some(":\\") || text.get(1..3) == Some(":/"))
+    {
+        &text[3..]
+    } else if let Some(tail) = text.strip_prefix("\\\\") {
+        if !tail.contains('\\') {
+            return false;
+        }
+        tail
+    } else if let Some(tail) = text
+        .strip_prefix("~/")
+        .or_else(|| text.strip_prefix("./"))
+        .or_else(|| text.strip_prefix("../"))
+        .or_else(|| text.strip_prefix('/'))
+    {
+        tail
+    } else {
+        return false;
+    };
+    !tail.starts_with(char::is_whitespace)
+        && !tail.starts_with("/ ")
+        && !tail
+            .chars()
+            .any(|c| c.is_control() || matches!(c, ':' | '|' | '<' | '>'))
+}
+
+fn is_plain_notice(text: &str) -> bool {
+    if matches!(
+        text,
+        "logout" | "exit" | "No resources found" | "No resources found."
+    ) {
+        return true;
+    }
+    text.strip_prefix("No resources found in ")
+        .and_then(|value| value.strip_suffix(" namespace."))
+        .is_some_and(|namespace| {
+            !namespace.is_empty()
+                && namespace
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || b"-_.".contains(&c))
+        })
 }
 
 fn structured_log_level(text: &str) -> Option<SemanticSeverity> {

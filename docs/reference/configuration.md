@@ -459,16 +459,19 @@ checks text contrast against the rendered tag surface.
 
 Open **Terminal output colors** in Customizations to enable command backgrounds
 and the optional completion pulse. Select a successful, failed, or unknown-exit
-sample to edit its RGBA background, including opacity. The separate detected-log
-switch and style control log text and backgrounds. Completion labels and
+sample to edit its RGBA background, including opacity. The separate recognized-output
+switch and style control recognized text and backgrounds. Completion labels and
 timestamps remain available when backgrounds are off.
+Plain paths, empty-result notices and clean shell-exit messages use Information.
+Edit its preview to customize text, background and opacity across shells, including
+WSL. Explicit application ANSI colours retain priority; unrecognized prose stays neutral.
 
 Open **Kubernetes status colors** for an independent switch, style and palette.
 Select a sample status to edit its text or background. An incomplete `0/1 Running`
 row remains a warning; `1/1 Running` is successful. Unknown recognized statuses
 stay neutral instead of borrowing a command's successful exit color.
 
-The detected-log and Kubernetes styles select Text, Background, or Text and
+The recognized-output and Kubernetes styles select Text, Background, or Text and
 background independently.
 Recognized error, warning, success, info and debug text and RGBA background
 colors can each be changed. Background style tints all five by default; Text

@@ -180,6 +180,13 @@ resource statuses have a separate **Kubernetes status colors** switch and palett
 These display settings do not depend on DevOps context detection. The original
 words and columns are not rewritten.
 
+Plain paths from `pwd`, `No resources found` notices, and `logout`/`exit` messages
+use the general **Information** colour (cyan by default), including in WSL.
+Change this in **Terminal output colors** by editing the Information preview.
+**Highlight recognized output** and the text/background style apply across shells;
+explicit ANSI colours from applications remain authoritative. Unrecognized prose
+is left neutral.
+
 | Colour | Meaning | Examples |
 |---|---|---|
 | Cyan | Finished, stopped cleanly, informational or running without known health | `0/1 Completed`, `Succeeded`, `Exited (0)`, `Up 2 minutes` without a health result |

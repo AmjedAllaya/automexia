@@ -96,10 +96,15 @@ tag list and terminal, including custom tags using DevOps sources. OS, Git, user
 and independent custom-text tags remain. Turning it on restores your saved tag
 choices; real terminal tags still require detected context. **E** or the preview's **Edit** button enables stable selection through
 the same list, including **Add custom tag**. **Terminal output colors** controls
-ordinary command backgrounds and the separate detected-log highlighting.
-Detected-log highlighting includes plain command diagnostics such as Bash/Fish
+ordinary command backgrounds and the separate **Highlight recognized output** switch.
+Recognized output includes plain command diagnostics such as Bash/Fish
 command-not-found messages and kubectl server errors. These follow the general
 error color, independently of the Kubernetes status switch.
+Plain paths (`pwd`), Kubernetes "No resources found" notices, and clean shell-exit
+messages use **Information**. Edit that preview row to choose its text colour,
+background and opacity. The style and switch also apply to already visible output;
+commands need not run again. Explicit application colours remain unchanged, and
+unrecognized prose stays neutral.
 **Kubernetes status colors** controls Kubernetes readiness and status colors
 independently. Recognized tables include pods, deployments, StatefulSets,
 ReplicaSets, DaemonSets, jobs, CronJobs, nodes, volumes, namespaces, services,

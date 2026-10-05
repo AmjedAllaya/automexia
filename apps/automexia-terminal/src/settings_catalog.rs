@@ -631,7 +631,7 @@ pub(crate) fn customization_groups(catalog: &Catalog) -> Vec<CustomizationGroup>
     if let Some(mut group) = customization_group(
         catalog,
         "Terminal output colors",
-        "Edit command results and recognized logs in the preview.",
+        "Edit command results, logs and informational output in the preview.",
         settings::COMMAND_OUTPUT_HIGHLIGHTING,
         Some(settings::COMMAND_OUTPUT_HIGHLIGHTING),
         |id| {
@@ -646,7 +646,7 @@ pub(crate) fn customization_groups(catalog: &Catalog) -> Vec<CustomizationGroup>
         &[
             "command result success failure neutral",
             "pulse completed command band",
-            "recognized log Docker",
+            "recognized log path pwd notice Docker",
             "error",
             "warning",
             "success",
@@ -666,7 +666,7 @@ pub(crate) fn customization_groups(catalog: &Catalog) -> Vec<CustomizationGroup>
                 })
         };
         group.root_action.description = format!(
-            "Commands {} · Logs {}. Edit colors in the preview.",
+            "Commands {} · Highlights {}. Edit colors in the preview.",
             state(settings::COMMAND_OUTPUT_HIGHLIGHTING),
             state(settings::OUTPUT_HIGHLIGHTING),
         );
@@ -4437,7 +4437,7 @@ mod tests {
         assert!(output
             .root_action
             .description
-            .contains("Commands on · Logs on"));
+            .contains("Commands on · Highlights on"));
         assert_eq!(
             output.members[0].as_str(),
             settings::COMMAND_OUTPUT_HIGHLIGHTING
@@ -4525,7 +4525,7 @@ mod tests {
             .unwrap()
             .root_action
             .description
-            .contains("Commands off · Logs on"));
+            .contains("Commands off · Highlights on"));
         assert!(groups.iter().all(|group| {
             group.key.as_str() != settings_extensions::DEVOPS_CONTEXT_STATUS_ID
                 && group.key.as_str() != settings_extensions::DEVOPS_GIT_STATUS_ID
@@ -4562,7 +4562,7 @@ mod tests {
         assert!(output
             .root_action
             .description
-            .contains("Commands off · Logs on"));
+            .contains("Commands off · Highlights on"));
         assert!(without_extension
             .get(&output.members[0])
             .is_some_and(|row| row.availability.reason().is_none()));
@@ -4664,7 +4664,7 @@ mod tests {
         assert!(output
             .root_action
             .description
-            .contains("Commands on · Logs on"));
+            .contains("Commands on · Highlights on"));
         assert!(!output.root_action.description.contains("unavailable"));
         assert!(matches!(
             output.root_action.availability,
@@ -4916,7 +4916,7 @@ mod dependency_tests {
                     .find(|group| group.label == "Terminal output colors")
                     .unwrap();
                 let expected = format!(
-                    "Commands {} · Logs {}.",
+                    "Commands {} · Highlights {}.",
                     if commands { "on" } else { "off" },
                     if logs { "on" } else { "off" },
                 );

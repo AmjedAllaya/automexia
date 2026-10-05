@@ -36,6 +36,7 @@ param(
     [switch]$TagShapesOnly,
     [switch]$OutputColorsOnly,
     [switch]$CommandInputColorsOnly,
+    [switch]$PlainOutputColorsOnly,
     [switch]$ClearShortcutOnly,
     [switch]$WordDeletionOnly,
     [switch]$MenuNavigationOnly,
@@ -48,7 +49,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if ($ClearShortcutOnly -or $WordDeletionOnly) { $CommandInputColorsOnly = $true }
+if ($ClearShortcutOnly -or $WordDeletionOnly -or $PlainOutputColorsOnly) { $CommandInputColorsOnly = $true }
 if ($TagShapesOnly -or $MenuNavigationOnly) { $TagCustomizationOnly = $true }
 # A Windows PowerShell child can inherit PowerShell 7's module search paths.
 # Resolve Get-FileHash from the executing host for saved-file preservation checks.
@@ -1565,6 +1566,11 @@ $wallpaperConfig
         # Moderate saturation keeps the literal pixel tolerance useful across
         # the native compositor's color-space conversion.
         $config += "`n[colors]`nyellow = '#B4D2B4'`ncyan = '#B4B4D2'`n"
+    }
+    if ($PlainOutputColorsOnly) {
+        # Fixed non-default colours prove real output consumes customization,
+        # independently of the current desktop theme or shell's own palette.
+        $config += "`n[presentation]`ninline-tables = false`ncommand-output-highlighting = false`nkubernetes-highlighting = false`n[presentation.highlight]`nstyle = 'foreground'`n[presentation.highlight.colors]`ninfo = '#5AD2E6'`nerror = '#E6646E'`nwarning = '#E6BE64'`nsuccess = '#64DC96'`ndebug = '#8CA0DC'`n"
     }
     if ($SessionRecoveryOnly) {
         # The fixture owns an explicit starting directory even before inactive

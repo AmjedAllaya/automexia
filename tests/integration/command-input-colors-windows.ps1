@@ -13,7 +13,7 @@ function Test-AutomexiaCommandInputColors {
             Start-Sleep -Milliseconds 40
         } while ([DateTime]::UtcNow -lt $deadline)
         $panel = Get-ActiveAutomexiaPanel $state
-        if ($ClearShortcutOnly -and -not [string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
+        if (($ClearShortcutOnly -or $PlainOutputColorsOnly) -and -not [string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
             [void][IO.Directory]::CreateDirectory([IO.Path]::GetFullPath($ModalCaptureDirectory))
             [IO.File]::WriteAllText((Join-Path $ModalCaptureDirectory 'failed-state.json'), ($state | ConvertTo-Json -Depth 12))
         }
@@ -36,6 +36,7 @@ function Test-AutomexiaCommandInputColors {
     function Assert-InputColors([string]$Name, [string]$Draft = 'docker ps -a', [int[]]$CommandRgb = @(181, 140, 255), [int[]]$OptionRgb = @(181, 140, 255)) {
         if ($WordDeletionOnly) { Test-WordDeletion $Name; return }
         if ($ClearShortcutOnly) { Test-AutomexiaClearShortcut $Name; return }
+        if ($PlainOutputColorsOnly) { Test-PlainOutputColors $Name; return }
         # A shell identity receipt can precede its new prompt after nested CMD
         # exits. Capture the erase oracle only from the completed empty prompt.
         $script:testStage = "empty prompt before typed command colors: $Name"
@@ -120,6 +121,62 @@ function Test-AutomexiaCommandInputColors {
                 $p.shell_prompt_active -and ([string]$p.raw_cursor_line_text).Trim() -eq [string][char]0x03bb
             }
         }
+    }
+    function Test-PlainOutputColors([string]$Name) {
+        $script:testStage = "plain output palette: $Name"
+        $baseline = Wait-InputState { param($s)
+            $p = Get-ActiveAutomexiaPanel $s
+            $p.shell_prompt_active -and ([string]$p.raw_cursor_line_text).Trim() -eq [string][char]0x03bb
+        }
+        $cases = @(
+            @{ Text = '/workspace/project'; Rgb = @(90, 210, 230) },
+            @{ Text = 'No resources found in demo namespace.'; Rgb = @(90, 210, 230) },
+            @{ Text = '[ERROR] fixture failed'; Rgb = @(230, 100, 110) },
+            @{ Text = '[WARN] fixture retrying'; Rgb = @(230, 190, 100) },
+            @{ Text = 'Build succeeded'; Rgb = @(100, 220, 150) },
+            @{ Text = 'level=debug fixture'; Rgb = @(140, 160, 220) },
+            @{ Text = 'logout'; Rgb = @(90, 210, 230) }
+        )
+        $shell = (Get-ActiveAutomexiaPanel $baseline).shell_name
+        # Completion is owned by this output fixture. A nested shell's latest
+        # displayed command-result key may still refer to its parent shell.
+        $sentinel = 'PLAIN_OUTPUT_DONE_' + $Name
+        $texts = @($cases | ForEach-Object { $_.Text }) + @($sentinel)
+        $literals = @($texts | ForEach-Object { "'$_'" }) -join ' '
+        if ($shell -eq 'CMD') {
+            $command = @($texts | ForEach-Object { 'echo ' + $_ }) -join '&'
+        } elseif ($shell -in @('bash', 'zsh', 'fish')) {
+            $command = "printf '%s\n' $literals"
+        } else {
+            $command = 'Write-Output ' + (@($texts | ForEach-Object { "'$_'" }) -join ',')
+        }
+        Submit-FixtureCommand $command ('plain-output-' + $Name)
+        $state = Wait-InputState { param($s)
+            $p = Get-ActiveAutomexiaPanel $s
+            $p.shell_prompt_active -and
+                ([string]$p.raw_cursor_line_text).Trim() -eq [string][char]0x03bb -and
+                @(([string]$p.visible_text).Split("`n") | Where-Object { $_.TrimEnd() -eq $sentinel }).Count -eq 1
+        }
+        $panel = Get-ActiveAutomexiaPanel $state
+        $rows = ([string]$panel.visible_text).Split("`n")
+        foreach ($case in $cases) {
+            $sourceRow = -1
+            for ($i = 0; $i -lt $rows.Count; $i++) {
+                if ($rows[$i].TrimEnd() -eq $case.Text) { $sourceRow = $i }
+            }
+            if ($sourceRow -lt 0) { throw "$Name lost a plain output fixture row" }
+            $visualRow = $panel.source_row_visual_origins[$sourceRow]
+            if ($null -eq $visualRow) { throw "$Name output row is not visible" }
+            $x = [int][Math]::Floor([double]$panel.grid_origin[0])
+            $y = [int][Math]::Floor([double]$panel.grid_origin[1] + [int]$visualRow * [double]$panel.cell_height)
+            $pixels = [AutomexiaResizeDriver]::CapturePhysicalClientRegionStats($window, $x, $y,
+                [int]($case.Text.Length * [double]$panel.cell_width), [int]$panel.cell_height,
+                $case.Rgb[0], $case.Rgb[1], $case.Rgb[2], 24)
+            if ($pixels.TargetColorSampleCount -lt 8) {
+                throw "$Name did not apply customized output colour to <$($case.Text)> ($($pixels.TargetColorSampleCount) pixels)"
+            }
+        }
+        Write-Host "${Name}: seven plain output rows use customized Information/Error/Warning/Success/Debug colours"
     }
     [void][AutomexiaResizeDriver]::MoveWindow($window, 20, 20, 1200, 780, $true)
     [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)

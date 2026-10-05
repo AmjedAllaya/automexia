@@ -252,9 +252,9 @@ pub fn core_descriptors(
         ),
         (
             OUTPUT_HIGHLIGHTING,
-            "Highlight recognized logs",
-            "Color recognized log and Docker status output.",
-            "log docker status color severity output",
+            "Highlight recognized output",
+            "Color logs, paths, informational messages and Docker status.",
+            "log path pwd notice docker status color severity output",
             current.output_highlighting,
             configured.output_highlighting,
             origins.output_highlighting,

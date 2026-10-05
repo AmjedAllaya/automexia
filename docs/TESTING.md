@@ -303,6 +303,13 @@ selection, plain versus table output, and watch rewrites. The full native driver
 also checks that closing a local tab releases its retired renderer, and records
 all resource samples within the existing bounded settling period.
 
+`-PlainOutputColorsOnly -CommandInputWslDistro <installed-distro>` reuses the
+isolated shell/input fixture to check real glyph pixels for paths, empty-result
+notices and all five configured output severities in PowerShell, CMD and WSL
+Bash/Zsh/Fish. Add `-CommandInputPowerShell7` to exercise PowerShell 7. The
+`-OutputColorsOnly` workflow also edits Information through the preview and
+checks retained path/notice pixels through an on/off/on toggle without new output.
+
 The tag customization journey also repeats feature and global Reset, closes and
 reopens the sheet during a temporary preview, and restores the original choices.
 It compares configuration and preference file hashes and terminal input throughout.

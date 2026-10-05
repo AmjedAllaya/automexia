@@ -94,6 +94,55 @@ function Test-AutomexiaOutputColors {
     [void][AutomexiaResizeDriver]::MoveWindow($window, 20, 20, 1200, 780, $true)
     [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)
     try {
+        $script:testStage = 'plain informational output retained during customization'
+        $beforeInfo = Read-AutomexiaSnapshot
+        Send-AutomexiaTestControl "write-line:output-information:Write-Output '/workspace/project'; Write-Output 'No resources found in demo namespace.'"
+        $info = Wait-OutputState { param($s)
+            $p = Get-ActiveAutomexiaPanel $s
+            $s.command_result_key -ne $beforeInfo.command_result_key -and $p.shell_prompt_active -and
+                ([string]$p.visible_text).Contains('No resources found in demo namespace.')
+        }
+        $page = Open-OutputCategory $coreId
+        if (-not $page.settings.log_output_enabled) { throw 'Fresh output highlighting must be enabled' }
+        Click-OutputControl $page.settings.edit_button
+        $edit = Wait-OutputState { param($s) $s.settings.ready -and $s.settings.preview_edit_mode }
+        Click-OutputControl ($edit.settings.targets | Where-Object id -eq 'output.severity.info').bounds
+        $detail = Wait-OutputState { param($s) $s.settings.ready -and $s.settings.active_slot -eq 'output.severity.info' }
+        Click-OutputControl ($detail.settings.controls | Where-Object id -eq 'output.colors.info').bounds
+        $editor = Wait-OutputState { param($s) $s.settings.ready -and $null -ne $s.settings.color_editor -and $s.settings.color_editor.id -eq 'output.colors.info' }
+        Click-OutputControl $editor.settings.color_editor.input
+        if (-not [AutomexiaResizeDriver]::ReplaceColorHex($window, '#5AD2E6')) { throw 'Information color input failed' }
+        $editor = Read-AutomexiaSnapshot -AfterSequence ([int64]$editor.sequence)
+        Click-OutputControl $editor.settings.color_editor.apply
+        $null = Wait-OutputState { param($s) $s.settings.ready -and $null -eq $s.settings.color_editor }
+        $infoCustom = Close-OutputCategory
+        $infoEnabled = $true
+        foreach ($enabled in @($true, $false, $true)) {
+            if ($enabled -ne $infoEnabled) {
+                $page = Open-OutputCategory $coreId
+                Click-OutputControl ($page.settings.controls | Where-Object id -eq 'terminal.output_highlighting').bounds
+                $null = Wait-OutputState { param($s) $s.settings.ready -and $s.settings.log_output_enabled -eq $enabled }
+                $infoCustom = Close-OutputCategory
+                $infoEnabled = $enabled
+            }
+            if ($infoCustom.command_result_key -ne $info.command_result_key) { throw 'Information color editing changed command ownership' }
+            $panel = Get-ActiveAutomexiaPanel $infoCustom
+            $rows = ([string]$panel.visible_text).Split("`n")
+            foreach ($text in @('/workspace/project', 'No resources found in demo namespace.')) {
+                $sourceRow = -1
+                for ($i = 0; $i -lt $rows.Count; $i++) { if ($rows[$i].TrimEnd() -eq $text) { $sourceRow = $i } }
+                if ($sourceRow -lt 0 -or $null -eq $panel.source_row_visual_origins[$sourceRow]) { throw 'Retained information row disappeared' }
+                $pixels = [AutomexiaResizeDriver]::CapturePhysicalClientRegionStats($window,
+                    [int][Math]::Floor([double]$panel.grid_origin[0]),
+                    [int][Math]::Floor([double]$panel.grid_origin[1] + [int]$panel.source_row_visual_origins[$sourceRow] * [double]$panel.cell_height),
+                    [int]($text.Length * [double]$panel.cell_width), [int]$panel.cell_height, 90, 210, 230, 24)
+                if (($enabled -and $pixels.TargetColorSampleCount -lt 8) -or (-not $enabled -and $pixels.TargetColorSampleCount -gt 2)) {
+                    throw "Information palette toggle did not repaint retained output: enabled=$enabled, pixels=$($pixels.TargetColorSampleCount)"
+                }
+            }
+        }
+        Capture-OutputFrame 'information-custom-color'
+        Write-Host 'Information colors: preview edit and retained on/off/on pixel checks passed'
         $script:testStage = 'ordinary output backgrounds enabled'
         Send-AutomexiaTestControl "write-line:output-plain:Write-Output 'alpha.txt'; Write-Output 'beta.txt'; Write-Output 'gamma.txt'"
         $on = Wait-OutputState { param($s) @($s.command_result_backgrounds).Count -ge 3 }
