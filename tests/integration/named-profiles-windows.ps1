@@ -112,7 +112,8 @@ function Test-AutomexiaNamedProfiles {
     Profile-Key 0x1B
     $null=Wait-ProfileState {param($s) $null -eq $s.settings.gallery}
     Profile-Key 0x1B
-    $null=Wait-ProfileState {param($s) -not $s.settings.open}
+    $returned=Wait-ProfileState {param($s) -not $s.settings.open}
+    if ($returned.palette_enabled) {throw 'Closing a later settings page reopened the profile launcher after launch'}
     $color=Profile-Background 'profile-after-preview'
     if ([Math]::Abs($color.R-25)-gt 3 -or [Math]::Abs($color.G-18)-gt 3 -or [Math]::Abs($color.B-15)-gt 3) {throw 'Cancelling theme preview lost profile colors'}
     if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window,0x09,$false,$true,$true)) {throw 'Profile tab switch failed'}

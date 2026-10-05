@@ -174,6 +174,25 @@ public static class AutomexiaResizeDriver {
         return GetForegroundWindow() == hWnd;
     }
 
+    public static bool SendMenuBack(IntPtr hWnd, bool alt, bool repeat) {
+        if (!ActivateWindow(hWnd)) return false;
+        uint key = alt ? 0x25u : 0x08u;
+        try {
+            if (alt) SendKeyChange(0x12, false, true);
+            SendKeyChange(key, alt, true);
+            if (repeat) {
+                for (int i = 0; i < 8; i++) {
+                    System.Threading.Thread.Sleep(40);
+                    SendKeyChange(key, alt, true);
+                }
+            }
+        } finally {
+            SendKeyChange(key, alt, false);
+            if (alt) SendKeyChange(0x12, false, false);
+        }
+        return GetForegroundWindow() == hWnd;
+    }
+
     [DllImport("user32.dll")]
     private static extern IntPtr GetKeyboardLayout(uint threadId);
 
@@ -1066,10 +1085,14 @@ function Assert-AutomexiaCloseSurface {
         $cardTop = ([double]$Snapshot.window_height / $scale - 224) / 2
         # Independent pixel oracles for the normal card and both button fills.
         # No field, selection border or covered label may leak into these areas.
+        # The fixture uses the default #020B16 palette. Theme-aware dialogs use
+        # that opaque background and a 3.5%-lightened surface for BOTH buttons;
+        # destructive intent is conveyed by the close button's red outline.
+        # Keep literal RGB/spread checks rather than sampling the renderer's state.
         foreach ($probe in @(
-            @{ Name = 'card'; X = 32; Y = 120; W = 368; H = 24; RGB = @(7, 12, 17) },
-            @{ Name = 'cancel'; X = 32; Y = 174; W = 8; H = 12; RGB = @(14, 24, 33) },
-            @{ Name = 'close'; X = 232; Y = 174; W = 8; H = 12; RGB = @(94, 6, 18) }
+            @{ Name = 'card'; X = 32; Y = 120; W = 368; H = 24; RGB = @(2, 11, 22) },
+            @{ Name = 'cancel'; X = 32; Y = 174; W = 8; H = 12; RGB = @(10, 19, 30) },
+            @{ Name = 'close'; X = 232; Y = 174; W = 8; H = 12; RGB = @(10, 19, 30) }
         )) {
             $surface = [AutomexiaResizeDriver]::CapturePhysicalClientRegionStats(
                 $Window, [int](($cardLeft + $probe.X) * $scale), [int](($cardTop + $probe.Y) * $scale),
@@ -1955,10 +1978,50 @@ $wallpaperConfig
             [string](Get-ActiveAutomexiaPanel $restored).raw_cursor_line_text -ne $blankPromptLine) {
             throw 'Canceling close changed saved customizations or terminal input'
         }
+        # Exercise the actual menu/Settings handoff, including held Back and a
+        # second Back from the restored parent. A two-page toggle must fail here.
+        $script:testStage = 'native menu back hierarchy'
+        foreach ($altBack in @($true, $false)) {
+            Send-AutomexiaTestControl "open-customizations:back-$altBack"
+            $rootMenu = Wait-TagState { param($s) $s.settings.ready -and $null -eq $s.settings.active_category }
+            Click-TagBounds ($rootMenu.settings.controls | Where-Object id -eq 'tags.enabled').bounds
+            $null = Wait-TagState { param($s) $s.settings.ready -and $s.settings.active_category -eq 'tags.enabled' }
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x45, $false, $false, $false)) { throw 'Menu preview entry failed' }
+            $null = Wait-TagState { param($s) $s.settings.ready -and $s.settings.preview_edit_mode }
+            if (-not [AutomexiaResizeDriver]::SendMenuBack($window, $altBack, $true)) { throw 'Held menu Back lost focus' }
+            $null = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.preview_edit_mode -and $s.settings.active_category -eq 'tags.enabled' }
+            if (-not [AutomexiaResizeDriver]::SendMenuBack($window, $altBack, $false)) { throw 'Category Back failed' }
+            $rootMenu = Wait-TagState { param($s) $s.settings.ready -and $null -eq $s.settings.active_category }
+            if (-not [string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
+                [void][AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path ([IO.Path]::GetFullPath($ModalCaptureDirectory)) "menu-back-$altBack.png"))
+            }
+            if (-not [AutomexiaResizeDriver]::SendMenuBack($window, $altBack, $true)) { throw 'Root Back failed' }
+            $null = Wait-TagState { param($s) -not $s.settings.open -and -not $s.palette_enabled }
+            Send-AutomexiaTestControl "open-palette:back-$altBack"
+            $null = Wait-TagState { param($s) $s.palette_enabled }
+            # Category order is Tabs, Panes, Search, Input, Appearance, Customizations.
+            for ($i = 0; $i -lt 5; $i++) { [void][AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x28, $true, $false, $false) }
+            [void][AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x0D, $false, $false, $false)
+            $null = Wait-TagState { param($s) $s.palette_enabled -and $s.palette_accessibility_summary -like 'Customizations;*' }
+            [void][AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x28, $true, $false, $false)
+            [void][AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x0D, $false, $false, $false)
+            $null = Wait-TagState { param($s) $s.settings.ready -and $null -eq $s.settings.active_category }
+            if (-not [AutomexiaResizeDriver]::SendMenuBack($window, $altBack, $true)) { throw 'Return to invoking menu failed' }
+            $null = Wait-TagState { param($s) -not $s.settings.open -and $s.palette_enabled -and $s.palette_accessibility_summary -like 'Customizations;*' }
+            if (-not [AutomexiaResizeDriver]::SendMenuBack($window, $altBack, $false)) { throw 'Repeated parent Back failed' }
+            $null = Wait-TagState { param($s) -not $s.settings.open -and $s.palette_enabled -and $s.palette_accessibility_summary -like 'Command categories;*' }
+            if (-not [AutomexiaResizeDriver]::SendMenuBack($window, $altBack, $true)) { throw 'Menu dismissal failed' }
+            $returned = Wait-TagState { param($s) -not $s.settings.open -and -not $s.palette_enabled }
+            if ((Get-CustomizationFixtureHashes) -ne $savedHashes -or
+                [string](Get-ActiveAutomexiaPanel $returned).raw_cursor_line_text -ne $blankPromptLine) {
+                throw 'Back navigation changed saved files or leaked held input to the terminal'
+            }
+        }
         if (-not [string]::IsNullOrWhiteSpace($ResourceReport)) {
             $report = Get-Content -LiteralPath $ResourceReport -Raw | ConvertFrom-Json
             $report | Add-Member -NotePropertyName opaque_close_card_and_buttons -NotePropertyValue $true
             $report | Add-Member -NotePropertyName cancel_restores_customizations -NotePropertyValue $true
+            $report | Add-Member -NotePropertyName menu_back_hierarchy_and_held_input -NotePropertyValue $true
             [IO.File]::WriteAllText([IO.Path]::GetFullPath($ResourceReport), ($report | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
         }
         [void][AutomexiaResizeDriver]::PostMessage($window, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
@@ -2206,7 +2269,7 @@ $wallpaperConfig
             try { [void][AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $modalCaptureRoot "credential-sources-$rendererName.png")) }
             finally { [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false) }
         }
-        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
+        if (-not [AutomexiaResizeDriver]::SendMenuBack($window, $true, $true)) { throw 'Held Alt+Left from vaults lost focus' }
         $vaultDeadline = [DateTime]::UtcNow.AddSeconds(5)
         while ([bool]$vault.connection_hub_credentials_active -and [DateTime]::UtcNow -lt $vaultDeadline) {
             $vault = Read-AutomexiaSnapshot -AfterSequence ([int64]$vault.sequence)
@@ -2259,7 +2322,7 @@ $wallpaperConfig
             [int]$savedLibrary.profiles.profiles[0].transport.port -ne 2222) {
             throw 'The saved connection fields did not preserve exact typed text across Tab navigation'
         }
-        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
+        if (-not [AutomexiaResizeDriver]::SendMenuBack($window, $false, $true)) { throw 'Held Backspace from saved connections lost focus' }
         $savedDeadline = [DateTime]::UtcNow.AddSeconds(5)
         while ([bool]$saved.connection_hub_profiles_active -and [DateTime]::UtcNow -lt $savedDeadline) {
             $saved = Read-AutomexiaSnapshot -AfterSequence ([int64]$saved.sequence)
@@ -2372,8 +2435,8 @@ $wallpaperConfig
             [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
         }
 
-        if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)) {
-            throw 'Could not deliver Connection Hub Escape after nested cancellation'
+        if (-not [AutomexiaResizeDriver]::SendMenuBack($window, $true, $true)) {
+            throw 'Could not deliver held Connection Hub Back after nested cancellation'
         }
         $hubClosed = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubCancelled.sequence)
         $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
@@ -2383,6 +2446,10 @@ $wallpaperConfig
         }
         if ([bool]$hubClosed.connection_hub_active) {
             throw 'Focused Connection Hub remained active after Escape'
+        }
+        if ([string](Get-ActiveAutomexiaPanel $hubClosed).raw_cursor_line_text -ne
+            [string]$terminalBefore.raw_cursor_line_text) {
+            throw 'Held Hub Back leaked into terminal input'
         }
 
         if (-not [string]::IsNullOrWhiteSpace($ResourceReport)) {

@@ -19,6 +19,19 @@ use rio_window::keyboard::{Key, KeyLocation, ModifiersState, PhysicalKey};
 use std::fmt::Debug;
 // use rio_window::platform::scancode::PhysicalKeyExtScancode;
 
+/// Menu-only Back aliases. Callers retain text, composition, repeat and modal
+/// ownership; this must never be used to turn terminal input into navigation.
+pub(crate) fn menu_back_shortcut(
+    key: &Key,
+    modifiers: ModifiersState,
+    backspace_available: bool,
+) -> bool {
+    (modifiers == ModifiersState::ALT && matches!(key, Named(ArrowLeft)))
+        || (backspace_available
+            && modifiers.is_empty()
+            && matches!(key, Named(Backspace)))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FontSizeAction {
     Increase,
@@ -1611,6 +1624,41 @@ pub fn platform_key_bindings(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn menu_back_requires_exact_modifiers_and_preserves_forward_delete() {
+        use super::*;
+        assert!(menu_back_shortcut(
+            &Named(ArrowLeft),
+            ModifiersState::ALT,
+            false
+        ));
+        assert!(menu_back_shortcut(
+            &Named(Backspace),
+            ModifiersState::empty(),
+            true
+        ));
+        assert!(!menu_back_shortcut(
+            &Named(Backspace),
+            ModifiersState::empty(),
+            false
+        ));
+        for modifiers in [
+            ModifiersState::empty(),
+            ModifiersState::CONTROL,
+            ModifiersState::ALT | ModifiersState::CONTROL,
+            ModifiersState::ALT | ModifiersState::SHIFT,
+            ModifiersState::ALT | ModifiersState::SUPER,
+        ] {
+            assert!(!menu_back_shortcut(&Named(ArrowLeft), modifiers, true));
+        }
+        for modifiers in [
+            ModifiersState::empty(),
+            ModifiersState::ALT,
+            ModifiersState::CONTROL,
+        ] {
+            assert!(!menu_back_shortcut(&Named(Delete), modifiers, true));
+        }
+    }
     use super::*;
 
     use rio_window::keyboard::ModifiersState;

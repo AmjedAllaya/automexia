@@ -167,6 +167,9 @@ impl TableView {
         if !pressed {
             return Effect::Consumed;
         }
+        if crate::bindings::menu_back_shortcut(key, mods, true) {
+            return Effect::Close;
+        }
         let control = mods.control_key() || mods.super_key();
         match key {
             Key::Named(NamedKey::Escape) => return Effect::Close,
@@ -502,18 +505,17 @@ impl TableView {
                     theme.outline,
                 );
             }
-            if l.width >= 620.0 && l.height >= 140.0 {
-                draw_label(
-                    sugarloaf,
-                    Rect {
-                        x: l.body.x,
-                        y: l.height - 27.0,
-                        w: l.body.w,
-                        h: 24.0,
+            if l.width >= 300.0 && l.height >= 140.0 {
+                crate::renderer::ui_theme::draw_shortcut_hint(
+                    sugarloaf.text_mut(),
+                    [l.body.x, l.height - 27.0, l.body.w, 24.0],
+                    if l.width >= 620.0 {
+                        "Arrows: pan | Ctrl+C: copy | Esc / Backspace / Alt+Left: back"
+                    } else {
+                        "Esc / Backspace / Alt+Left: back"
                     },
-                    "← → pan · ↑ ↓ rows · Shift+wheel pan · Ctrl+C copy · Esc back",
-                    12.0,
-                    theme.muted_text,
+                    11.0,
+                    theme,
                 );
             }
         } else {

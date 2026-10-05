@@ -965,6 +965,21 @@ impl ConnectionHubController {
                     && self.interaction.focus == HubFocus::Search))
     }
 
+    pub fn backspace_navigates(&self) -> bool {
+        self.active
+            && !self.text_composing()
+            && (!self.text_input_active()
+                || (self.catalog_controls_visible()
+                    && self.interaction.focus == HubFocus::Search
+                    && self.query.text.is_empty()))
+    }
+
+    pub fn text_composing(&self) -> bool {
+        self.ime_preedit
+            .as_ref()
+            .is_some_and(|value| !value.is_empty())
+    }
+
     pub fn append_search_text(&mut self, value: &str) -> bool {
         let mut next = self.query.text.clone();
         next.push_str(value);
@@ -1821,6 +1836,55 @@ mod tests {
         assert!(!controller.set_ime_preedit(Some("hidden")));
         assert!(!controller.commit_ime("hidden"));
         assert!(controller.query().is_empty());
+    }
+
+    #[test]
+    fn backspace_leaves_empty_search_but_preserves_text_and_value_editors() {
+        let temporary = tempfile::tempdir().unwrap();
+        let config = temporary.path().join("config");
+        std::fs::write(&config, b"Host demo\n  HostName public.example.invalid\n")
+            .unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        let grant = automexia_devops_ssh::InventoryGrant::new(
+            "test-user-config",
+            temporary.path(),
+            [&config],
+            GrantKind::User,
+        )
+        .unwrap();
+        assert!(runtime.request_explicit_scan(vec![grant]) > 0);
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        let mut controller = ConnectionHubController::new(runtime);
+        controller.open("terminal-grid");
+        assert!(controller.catalog_controls_visible());
+        controller.focus_search();
+        assert!(controller.text_input_active());
+        assert!(controller.backspace_navigates());
+
+        assert!(controller.set_search_text("demo"));
+        assert!(!controller.backspace_navigates());
+        controller.backspace_search();
+        assert_eq!(controller.query(), "dem");
+        assert!(controller.set_search_text(""));
+        assert!(controller.set_ime_preedit(Some("d")));
+        assert!(!controller.backspace_navigates());
+        assert!(controller.set_ime_preedit(None));
+        assert!(controller.backspace_navigates());
+        assert!(matches!(
+            controller.handle_key(HubKey::Escape, Box::new(|| {})),
+            HubControllerEffect::Closed { .. }
+        ));
+        assert!(!controller.is_active());
+        assert!(!controller.backspace_navigates());
+
+        controller.open("terminal-grid");
+        assert!(controller.begin_literal_destination_entry());
+        assert!(!controller.backspace_navigates());
+        assert!(controller.append_literal_destination("demo"));
+        assert!(!controller.backspace_navigates());
+        controller.close();
+        assert!(!controller.backspace_navigates());
     }
 
     #[test]

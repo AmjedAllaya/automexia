@@ -140,6 +140,21 @@ impl Screen<'_> {
         true
     }
 
+    /// All menu Back keys use the same workflow/editor cancellation owner.
+    pub(crate) fn back_from_palette(&mut self) {
+        if self.leave_action_detail() {
+            return;
+        }
+        if self.renderer.command_palette.is_action_search()
+            && self.renderer.command_palette.resume_menu_parent()
+        {
+            return;
+        }
+        if !self.renderer.command_palette.go_back() {
+            self.renderer.command_palette.set_enabled(false);
+        }
+    }
+
     pub fn begin_action_review(&mut self, action_id: &str) {
         let Some((action, provider)) = self
             .action_surface

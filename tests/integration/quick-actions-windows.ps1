@@ -187,4 +187,34 @@ Action-Choose 'Delete'
 $null = Wait-ActionFrame { param($f) [string]$f.palette_accessibility_summary -like 'Delete this saved action?*' } 'repeat deletion'
 Action-Choose 'Delete action'
 $null = Wait-ActionFrame { param($f) [string]$f.palette_accessibility_summary -like 'Quick Actions;*' } 'delete confirmed'
-Write-Host 'Quick Actions native fixture passed: keyboard create/edit/duplicate/save/delete confirmation; insert without Enter; ordered Run; failure stop; explicit pause and cancellation.'
+# Returning from Save or Discard must retain the invoking command-menu query,
+# and consume that return location once. Repeated Back cannot edit or execute.
+foreach ($saveDraft in @($false, $true)) {
+    Send-AutomexiaTestControl ('open-palette:action-back-' + $saveDraft)
+    $null = Wait-ActionFrame { param($f) $f.palette_enabled -and [string]$f.palette_accessibility_summary -like 'Command categories;*' } 'open invoking menu'
+    Action-Choose 'Quick Actions'
+    $null = Wait-ActionFrame { param($f) [string]$f.palette_accessibility_summary -like 'Quick Actions;*' } 'open actions from menu'
+    $promptBeforeBack = $script:actionFrame.latest_prompt_id
+    Action-Key 0x4E $true
+    $null = Wait-ActionFrame { param($f) [string]$f.palette_accessibility_summary -like 'Edit Quick Action;*' } 'create navigation draft'
+    Action-Field 'Name' 'Back fixture'
+    Action-Field 'Command' 'Write-Output back-fixture'
+    if ($saveDraft) {
+        Action-Key 0x53 $true
+    } else {
+        if (-not [AutomexiaResizeDriver]::SendMenuBack($window, $true, $true)) { throw 'Draft Back delivery failed' }
+        $null = Wait-ActionFrame { param($f) [string]$f.palette_accessibility_summary -like 'Discard this draft?*' } 'draft Back confirmation'
+        if (-not [AutomexiaResizeDriver]::SendMenuBack($window, $false, $true)) { throw 'Confirmation Back delivery failed' }
+        $null = Wait-ActionFrame { param($f) [string]$f.palette_accessibility_summary -like 'Edit Quick Action;*' } 'cancel discard without skipping editor'
+        Action-Key 0x1B
+        $null = Wait-ActionFrame { param($f) [string]$f.palette_accessibility_summary -like 'Discard this draft?*' } 'request discard again'
+        Action-Choose 'Discard changes'
+    }
+    $null = Wait-ActionFrame { param($f) [string]$f.palette_accessibility_summary -like 'Quick Actions;*' } 'return from save or discard'
+    if (-not [AutomexiaResizeDriver]::SendMenuBack($window, $true, $true)) { throw 'Action list Back delivery failed' }
+    $null = Wait-ActionFrame { param($f) $f.palette_enabled -and [string]$f.palette_accessibility_summary -like 'All commands;*Quick Actions*' } 'restore invoking search once'
+    if (-not [AutomexiaResizeDriver]::SendMenuBack($window, $true, $true)) { throw 'Invoking menu Back delivery failed' }
+    $null = Wait-ActionFrame { param($f) -not $f.palette_enabled } 'leave invoking menu without reopening actions'
+    if ($script:actionFrame.latest_prompt_id -ne $promptBeforeBack) { throw 'Menu navigation executed a command' }
+}
+Write-Host 'Quick Actions native fixture passed: keyboard create/edit/duplicate/save/delete confirmation; insert without Enter; ordered Run; failure stop; explicit pause and cancellation; held Back and menu origin after Save/Discard.'

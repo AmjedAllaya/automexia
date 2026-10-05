@@ -128,7 +128,7 @@ impl Application<'_> {
         self.user_preferences.theme_selection = selection;
         self.publish_user_preferences(event_loop, false);
         if let Some(route) = self.router.routes.get_mut(&window) {
-            route.window.screen.settings_view.close();
+            route.window.screen.close_settings_view();
             route.request_redraw();
         }
     }

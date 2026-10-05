@@ -54,6 +54,20 @@ fn table_view_navigation_is_local_bounded_and_reversible() {
 }
 
 #[test]
+fn menu_back_table_aliases_leave_source_and_viewport_unchanged() {
+    let mut view = view();
+    let original = view.copy_text();
+    for (key, modifiers) in [
+        (NamedKey::ArrowLeft, ModifiersState::ALT),
+        (NamedKey::Backspace, ModifiersState::empty()),
+    ] {
+        assert_eq!(view.key(&Key::Named(key), modifiers, true), Effect::Close);
+        assert_eq!((view.viewport.column(), view.viewport.row()), (0, 0));
+        assert_eq!(view.copy_text(), original);
+    }
+}
+
+#[test]
 fn table_view_keyboard_focus_exposes_copy_and_back() {
     let mut view = view();
     let mods = ModifiersState::empty();

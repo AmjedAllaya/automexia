@@ -322,11 +322,17 @@ pub(super) fn render(
             &muted,
         );
     }
-    sugarloaf.text_mut().draw(
-        layout.card.x + 16.0,
-        layout.card.y + layout.card.height - 28.0,
-        "Tab: focus   Enter: select   Esc: back",
-        &muted,
+    crate::renderer::ui_theme::draw_shortcut_hint(
+        sugarloaf.text_mut(),
+        [
+            layout.card.x + 16.0,
+            layout.card.y + layout.card.height - 38.0,
+            (layout.card.width - 32.0).max(0.0),
+            32.0,
+        ],
+        "Tab: focus | Enter: select | Esc / Backspace / Alt+Left: back",
+        10.0,
+        *theme,
     );
     sugarloaf.end_modal_layer();
 }

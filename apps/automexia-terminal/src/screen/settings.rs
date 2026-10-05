@@ -66,9 +66,10 @@ impl Screen<'_> {
         self.mark_dirty();
     }
 
-    pub(super) fn close_settings_view(&mut self) {
+    pub(crate) fn close_settings_view(&mut self) {
         if self.settings_view.is_open() {
             self.settings_view.close();
+            self.renderer.command_palette.remember_menu_origin(None);
             self.context_manager.current_mut().ime.set_preedit(None);
             self.last_ime_cursor_pos = None;
             self.mark_dirty();
@@ -137,6 +138,13 @@ impl Screen<'_> {
             self.modifiers.state(),
             f64::from(self.sugarloaf.scale_factor()),
         );
+        if result.closed {
+            if self.settings_view.take_back_to_menu() {
+                self.renderer.command_palette.resume_menu_parent();
+            } else {
+                self.renderer.command_palette.remember_menu_origin(None);
+            }
+        }
         if result.closed || matches!(event, WindowEvent::Focused(false)) {
             self.last_ime_cursor_pos = None;
             self.context_manager.current_mut().ime.set_preedit(None);
@@ -179,6 +187,15 @@ impl Screen<'_> {
             return false;
         }
         self.fit_settings_view();
+        if key.state == ElementState::Pressed
+            && self.settings_view.is_open()
+            && (key.logical_key == Key::Named(rio_window::keyboard::NamedKey::Escape)
+                || self
+                    .settings_view
+                    .back_alias(&key.logical_key, self.modifiers.state()))
+        {
+            self.remember_menu_back_key(key);
+        }
         let consumed = route_settings_key(
             &mut self.settings_view,
             &key.logical_key,
@@ -200,6 +217,11 @@ impl Screen<'_> {
             self.remember_settings_key(key);
         }
         if !self.settings_view.is_open() {
+            if self.settings_view.take_back_to_menu() {
+                self.renderer.command_palette.resume_menu_parent();
+            } else {
+                self.renderer.command_palette.remember_menu_origin(None);
+            }
             self.context_manager.current_mut().ime.set_preedit(None);
             self.last_ime_cursor_pos = None;
         }
@@ -207,7 +229,7 @@ impl Screen<'_> {
         true
     }
 
-    pub(super) fn remember_settings_key(&mut self, key: &rio_window::event::KeyEvent) {
+    pub(crate) fn remember_settings_key(&mut self, key: &rio_window::event::KeyEvent) {
         // One release owner is shared by modal views, even after Escape closes one.
         if key.state == ElementState::Pressed
             && !self.overlay_key_releases.contains(&key.physical_key)
@@ -222,6 +244,13 @@ impl Screen<'_> {
         } else {
             self.consumed_win32_key_releases
                 .take_release(&key.physical_key);
+        }
+    }
+
+    pub(crate) fn remember_menu_back_key(&mut self, key: &rio_window::event::KeyEvent) {
+        if key.state == ElementState::Pressed && !key.repeat {
+            self.overlay_back_key = Some(key.physical_key);
+            self.remember_settings_key(key);
         }
     }
 

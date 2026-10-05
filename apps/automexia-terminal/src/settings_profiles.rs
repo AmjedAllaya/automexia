@@ -678,7 +678,7 @@ impl SettingsView {
             return;
         }
         if p.draft.take().is_none() && p.selected.take().is_none() {
-            self.close();
+            self.leave_menu();
             return;
         }
         // A prepared launch belongs to the details page that requested it.
@@ -783,18 +783,21 @@ impl SettingsView {
             theme,
             g.card,
         );
-        shortcut_hint(
-            canvas,
-            g.status,
-            if self.status.is_empty() {
-                "Tab: focus | Arrows: choose | Enter: open | Esc: back"
-            } else {
-                &self.status
-            },
-            font * 0.76,
-            theme,
-            g.card,
-        );
+        if self.status.is_empty() {
+            shortcut_hint(canvas, g.status,
+                "Tab: focus | Arrows: choose | Enter: open | Esc / Backspace / Alt+Left: back"
+                , font * 0.76, theme, g.card);
+        } else {
+            label(
+                canvas,
+                g.status,
+                &self.status,
+                font * 0.76,
+                theme.muted_text,
+                false,
+                g.card,
+            );
+        }
     }
 }
 
@@ -848,6 +851,23 @@ mod tests {
         assert!(v.profiles.as_ref().unwrap().draft.is_some());
         v.confirm_profile(ProfileConfirmation::Discard);
         assert!(v.profiles.as_ref().unwrap().draft.is_none());
+    }
+    #[test]
+    fn menu_back_profile_dirty_draft_requires_confirmation_and_does_not_close_library() {
+        let mut v = view();
+        v.fit(1000.0, 800.0, 16.0);
+        v.profile_action("new");
+        v.profile_action("add-arg");
+        let back = Key::Named(NamedKey::ArrowLeft);
+        v.key(&back, None, ModifiersState::ALT, false);
+        assert!(v.confirmation.is_some());
+        v.key(&back, None, ModifiersState::ALT, true);
+        assert!(v.confirmation.is_some());
+        v.key(&back, None, ModifiersState::ALT, false);
+        assert!(v.confirmation.is_none());
+        assert!(v.profiles.as_ref().unwrap().draft.is_some());
+        assert!(v.profiles.as_ref().unwrap().dirty);
+        assert!(v.take_profile_intent().is_none());
     }
     #[test]
     fn profile_save_in_progress_cannot_be_misrepresented_as_discarded() {

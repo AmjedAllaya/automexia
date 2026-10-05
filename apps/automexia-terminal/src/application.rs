@@ -3247,6 +3247,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
 
             WindowEvent::Ime(ime) => {
                 if route.window.screen.renderer.command_palette.is_enabled() {
+                    route.window.screen.renderer.command_palette.set_composing(
+                        matches!(&ime, Ime::Preedit(text, _) if !text.is_empty()),
+                    );
                     if route
                         .window
                         .screen

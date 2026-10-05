@@ -111,7 +111,7 @@ impl Screen<'_> {
             "confirm-delete" => self.save_quick_action(true),
             "discard" => {
                 self.action_surface.editor = Editor::default();
-                self.open_action_center();
+                self.return_to_action_center();
             }
             "cancel-edit" => self.confirm_discard_action(),
             "editor" => {
@@ -763,7 +763,7 @@ impl Screen<'_> {
             Ok(_) => {
                 self.action_surface.editor = Editor::default();
                 if self.renderer.command_palette.is_action_page() {
-                    self.open_action_center();
+                    self.return_to_action_center();
                 }
             }
             Err(_) => {
@@ -816,8 +816,14 @@ impl Screen<'_> {
         } else if self.action_surface.editor.draft.is_some() {
             self.confirm_discard_action();
         } else {
-            self.open_action_center();
+            self.return_to_action_center();
         }
         true
+    }
+
+    fn return_to_action_center(&mut self) {
+        let parent = self.renderer.command_palette.take_menu_origin();
+        self.open_action_center();
+        self.renderer.command_palette.remember_menu_origin(parent);
     }
 }

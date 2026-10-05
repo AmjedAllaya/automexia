@@ -1283,7 +1283,7 @@ impl ConnectionHub {
         } else {
             52.0
         };
-        let rows_bottom = card.y + card.height - 58.0;
+        let rows_bottom = card.y + card.height - 68.0;
         let review_panel = confirm_scan.map(|_| {
             bounded_to(
                 Rect {
@@ -2662,12 +2662,12 @@ fn render_status_footer(
 ) {
     let footer = Rect {
         x: left,
-        y: layout.card.y + layout.card.height - 44.0,
+        y: layout.card.y + layout.card.height - 58.0,
         width: (layout.card.x + layout.card.width
             - left
             - if layout.compact { 14.0 } else { 22.0 })
         .max(1.0),
-        height: 30.0,
+        height: 48.0,
     };
     rounded(sugarloaf, footer, theme.raised, 9.0);
     let warning = matches!(presentation.grant_review, GrantReviewState::Error { .. })
@@ -2694,6 +2694,18 @@ fn render_status_footer(
         theme.raised,
     );
     let summary = status_summary(presentation, operation_status);
+    super::ui_theme::draw_shortcut_hint(
+        sugarloaf.text_mut(),
+        [
+            footer.x + 10.0,
+            footer.y + 29.0,
+            (footer.width - 20.0).max(0.0),
+            16.0,
+        ],
+        "Esc / Backspace / Alt+Left: back",
+        10.0,
+        *theme,
+    );
     sugarloaf.text_mut().draw(
         footer.x + 39.0,
         footer.y + 8.0,

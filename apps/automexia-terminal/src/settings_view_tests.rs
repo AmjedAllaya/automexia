@@ -28,6 +28,141 @@ fn opened() -> SettingsView {
 }
 
 #[test]
+fn menu_back_walks_outward_without_reopening_or_repeating_pages() {
+    for (key, modifiers) in [
+        (NamedKey::ArrowLeft, ModifiersState::ALT),
+        (NamedKey::Backspace, ModifiersState::empty()),
+    ] {
+        let base = rio_backend::config::Config::default();
+        let mut view = SettingsView::default();
+        view.fit(1000.0, 800.0, 16.0);
+        view.open_with_section(
+            crate::settings_catalog::catalog(1, &base, &Default::default(), &[]).unwrap(),
+            Some(Section::Customizations),
+        );
+        assert!(view.paste("output"));
+        named(&mut view, NamedKey::Tab);
+        named(&mut view, NamedKey::Enter);
+        assert_eq!(view.title(), "Terminal output colors");
+        view.key(&Key::Named(key), None, modifiers, true);
+        assert_eq!(
+            view.title(),
+            "Terminal output colors",
+            "held Back stays put"
+        );
+        view.key(&Key::Named(key), None, modifiers, false);
+        assert!(view.is_category_root());
+        assert_eq!(view.query(), "output");
+        view.key(&Key::Named(key), None, modifiers, true);
+        assert!(view.is_open(), "a held Back must not dismiss its parent");
+        view.key(&Key::Named(key), None, modifiers, false);
+        assert!(!view.is_open(), "the next distinct Back leaves the root");
+        assert!(view.take_edit().is_none());
+    }
+}
+
+#[test]
+fn menu_back_unwinds_tag_detail_preview_and_confirmation_without_edits() {
+    for (key, modifiers) in [
+        (NamedKey::ArrowLeft, ModifiersState::ALT),
+        (NamedKey::Backspace, ModifiersState::empty()),
+    ] {
+        let mut view = workflow_tag_view();
+        view.start_preview_edit();
+        view.preview_selected =
+            Some(SettingId::new("tags.slot.kubernetes.page").unwrap());
+        named(&mut view, NamedKey::Enter);
+        assert_eq!(view.title(), "Tag slot: Kubernetes");
+        view.activate_target(Target::Reset);
+        assert!(view.confirmation.is_some());
+        view.key(&Key::Named(key), None, modifiers, false);
+        assert!(view.confirmation.is_none());
+        assert_eq!(view.title(), "Tag slot: Kubernetes");
+        view.key(&Key::Named(key), None, modifiers, false);
+        assert_eq!(view.title(), "Information tags");
+        assert_eq!(view.focus, Focus::List);
+        view.key(&Key::Named(key), None, modifiers, false);
+        assert!(view.is_category_root());
+        view.key(&Key::Named(key), None, modifiers, false);
+        assert!(!view.is_open());
+        assert!(view.take_back_to_menu());
+        assert!(
+            !view.take_back_to_menu(),
+            "return location is consumed once"
+        );
+        assert!(view.take_edit().is_none());
+        assert!(view.take_customization_intent().is_none());
+    }
+}
+
+#[test]
+fn menu_back_preserves_text_deletion_composition_and_numeric_cancel() {
+    let mut view = workflow_numeric_view();
+    assert!(view.paste("Number"));
+    named(&mut view, NamedKey::Backspace);
+    assert_eq!(view.query(), "Numbe");
+    assert!(view.is_open());
+    view.event(
+        &WindowEvent::Ime(Ime::Preedit("字".into(), None)),
+        ModifiersState::empty(),
+        1.0,
+    );
+    view.key(
+        &Key::Named(NamedKey::ArrowLeft),
+        None,
+        ModifiersState::ALT,
+        false,
+    );
+    assert!(!view.preedit.is_empty());
+    assert!(view.is_open());
+    named(&mut view, NamedKey::Escape);
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    assert!(view.numeric_editor.is_some());
+    assert!(view.paste("123"));
+    named(&mut view, NamedKey::Backspace);
+    assert_eq!(view.numeric_editor.as_ref().unwrap().draft, "12");
+    view.key(
+        &Key::Named(NamedKey::ArrowLeft),
+        None,
+        ModifiersState::ALT,
+        false,
+    );
+    assert!(view.numeric_editor.is_none());
+    assert!(view.is_open());
+    assert!(view.take_edit().is_none());
+}
+
+#[test]
+fn menu_back_button_exits_preview_before_leaving_its_page() {
+    let mut view = workflow_tag_view();
+    view.start_preview_edit();
+    view.activate_target(Target::Back);
+    assert!(!view.preview_edit_mode);
+    assert_eq!(view.title(), "Information tags");
+    view.activate_target(Target::Back);
+    assert!(view.is_category_root());
+    assert!(view.take_edit().is_none());
+}
+
+#[test]
+fn menu_back_color_text_owns_delete_and_alt_left_cancels_only_editor() {
+    let mut view = opened_color(true);
+    assert!(replace_color(&mut view, "#12345680"));
+    named(&mut view, NamedKey::Backspace);
+    assert!(view.color_editor.is_some());
+    view.key(
+        &Key::Named(NamedKey::ArrowLeft),
+        None,
+        ModifiersState::ALT,
+        false,
+    );
+    assert!(view.color_editor.is_none());
+    assert!(view.is_open());
+    assert!(view.take_edit().is_none());
+}
+
+#[test]
 fn settings_toggle_and_customizations_focus_share_one_catalog_without_cross_editing() {
     use automexia_ui_model::settings::{
         Section, COMMAND_OUTPUT_HIGHLIGHTING, OUTPUT_HIGHLIGHTING,
@@ -3291,8 +3426,8 @@ fn menu_polish_page_keys_follow_the_visible_compact_rows() {
     named(&mut view, NamedKey::PageDown);
     assert_eq!(
         view.view.as_ref().unwrap().focused().unwrap().as_str(),
-        crate::settings_catalog::WINDOW_CONTROLS,
-        "a page should advance past the six visible compact entries"
+        automexia_ui_model::settings::APPEARANCE_THEME,
+        "a page should advance past five rows with the two-line shortcut footer"
     );
 }
 
@@ -6052,15 +6187,26 @@ fn assert_package_notice_footer(view: &mut SettingsView, message: &str) {
     view.paint(&mut actual, theme());
     let bounds = view.geometry.status;
     let mut expected = Raster::new(1.0);
-    label(
-        &mut expected,
-        bounds,
-        message,
-        view.font * 0.85,
-        theme().muted_text,
-        false,
-        view.geometry.card,
-    );
+    if message.starts_with("Tab:") {
+        shortcut_hint(
+            &mut expected,
+            bounds,
+            message,
+            view.font * 0.85,
+            theme(),
+            view.geometry.card,
+        );
+    } else {
+        label(
+            &mut expected,
+            bounds,
+            message,
+            view.font * 0.85,
+            theme().muted_text,
+            false,
+            view.geometry.card,
+        );
+    }
     let mut actual_pixels = vec![0; 960 * 620];
     let mut expected_pixels = vec![0; 960 * 620];
     actual.text.render_cpu_base(&mut actual_pixels, 960, 620);
@@ -6107,7 +6253,10 @@ fn package_notice_async_failure_is_visible_and_core_controls_stay_editable() {
     assert!(!view
         .accessibility_summary()
         .contains("Package settings unavailable"));
-    assert_package_notice_footer(&mut view, "Tab: focus | Esc: back | Alt+Left: back");
+    assert_package_notice_footer(
+        &mut view,
+        "Tab: focus | Arrows: navigate | Esc / Backspace / Alt+Left: back",
+    );
 }
 
 #[test]
@@ -6130,13 +6279,19 @@ fn package_notice_loading_and_projection_failure_clear_after_recovery_or_close()
         assert!(view.accessibility_summary().contains(message));
     }
     view.set_package_inventory_status(PackageInventoryStatus::Ready, false);
-    assert_package_notice_footer(&mut view, "Tab: focus | Arrows: navigate | Esc: close");
+    assert_package_notice_footer(
+        &mut view,
+        "Tab: focus | Arrows: navigate | Esc / Backspace / Alt+Left: back",
+    );
     view.set_package_inventory_status(PackageInventoryStatus::Unavailable, false);
     view.close();
     view.open(catalog(2));
     view.set_package_inventory_status(PackageInventoryStatus::Unavailable, false);
     assert!(!view.accessibility_summary().contains("Package settings"));
-    assert_package_notice_footer(&mut view, "Tab: focus | Arrows: navigate | Esc: close");
+    assert_package_notice_footer(
+        &mut view,
+        "Tab: focus | Arrows: navigate | Esc / Backspace / Alt+Left: back",
+    );
 }
 
 #[test]
@@ -6330,7 +6485,8 @@ fn editable_preview_footer_exposes_e_in_shared_and_item_controls_after_saving() 
                 .text
                 .render_cpu_modal(&mut expected_pixels, 960, 620);
             let mut compared = 0;
-            for y in bounds.y.ceil() as usize..(bounds.y + bounds.height).floor() as usize
+            for y in
+                bounds.y.ceil() as usize..(bounds.y + view.font * 1.25).floor() as usize
             {
                 for x in bounds.x.ceil() as usize..(bounds.x + 20.0).floor() as usize {
                     let index = y * 960 + x;

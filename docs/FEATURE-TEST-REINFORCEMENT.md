@@ -330,6 +330,8 @@ resource ceilings and pixels remain independent of these model-path checks.
 
 ### renderer-fonts-responsive-ui
 
+Menu shortcut hints use one themed text painter with wrapping and clipped bounds. Compare literal key glyph colours, first-control visibility, page movement and narrow/high-DPI layouts; native Windows CPU/WGPU checks cover the actual menu and customization return path.
+
 Theme Gallery shares the existing palette parser and Settings color/text editor.
 Five distinct palettes include light mode; tests cover preview without saved
 edits, Apply, Escape restoration, copy isolation, malformed/oversized files,
@@ -590,6 +592,8 @@ masquerade as a renderer difference.
 
 ### windows-tabs-sessions-input
 
+Menu Back regressions cover Alt+Left and Backspace, exact modifiers, empty versus nonempty search, IME and value-field ownership, one-level editor and confirmation cancellation, consumed parent query/selection, pointer parity and held-key isolation through modal dismissal. Native Windows exercises repeated Back through the Settings-to-command-menu handoff; other native desktop evidence remains external.
+
 Last-command actions must use existing completion identities and live grid
 ranges. Parser regressions cover fragmented markers, native input boundaries,
 Unicode soft-wrap/reflow, missing boundaries, concealed text, limits, expired
@@ -770,6 +774,8 @@ allocation-free classifier without conflating helper timings with native frame
 latency. Native GPU and screen-reader evidence remains a separate gate.
 
 ### openssh-inventory-persistence
+
+Connection Hub Back aliases reuse existing cancellation and review owners. Preserve composing and editable text, forward Delete removal, pending saves and explicit launch approval; menu navigation must not start connections or read credentials.
 
 SSH's intentionally extension-local bounded JSON writer needs literal format,
 validation-order, UTF-8, empty/exact/over-limit, rejected-write integrity and
@@ -1256,6 +1262,8 @@ last-known-good recovery, permissions, corruption, concurrency, rollback,
 disable, removal, restart, and exact residue checks.
 
 ### command-productivity-cp22-quick-actions
+
+Quick Action Back aliases and pointer Back use the workflow controller to leave text, step, draft and review pages. Preserve unsaved-work confirmation and return to the invoking command menu without executing or implicitly approving steps.
 
 Reinforce list, search, review, insert-without-Enter, copy, placeholder binding,
 risk confirmation, import/export, keyboard access, redaction, and route/generation

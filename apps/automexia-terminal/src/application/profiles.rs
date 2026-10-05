@@ -153,7 +153,7 @@ impl Application<'_> {
                     #[cfg(target_os = "macos")]
                     let tab_id = route.window.winit_window.tabbing_identifier();
                     let defaults = route.window.screen.ctx().config.clone();
-                    route.window.screen.settings_view.close();
+                    route.window.screen.close_settings_view();
                     route.request_overlay_redraw();
                     #[cfg(target_os = "macos")]
                     let id = if native_tab {
@@ -197,7 +197,7 @@ impl Application<'_> {
                         .window
                         .screen
                         .apply_profile_presentation(&profile, &config);
-                    route.window.screen.settings_view.close();
+                    route.window.screen.close_settings_view();
                     route.request_redraw();
                 } else {
                     route.window.screen.settings_view.profile_notice("Could not open this profile. Check the executable and available tab capacity.",false);

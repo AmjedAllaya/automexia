@@ -411,6 +411,7 @@ impl Screen<'_> {
                 );
                 self.resize_top_or_bottom_line();
                 let _ = self.connection_hub.close();
+                self.renderer.command_palette.remember_menu_origin(None);
                 self.renderer.connection_hub.set_presentation(None);
                 self.mark_dirty();
             }
@@ -473,6 +474,42 @@ impl Screen<'_> {
     }
 
     pub fn handle_connection_hub_key(
+        &mut self,
+        key_event: &KeyEvent,
+        clipboard: &mut Clipboard,
+    ) -> bool {
+        if !self.connection_hub.is_active() {
+            return false;
+        }
+        let alias = crate::bindings::menu_back_shortcut(
+            &key_event.logical_key,
+            self.modifiers.state(),
+            self.connection_hub.backspace_navigates(),
+        );
+        let back = alias || key_event.logical_key == Key::Named(NamedKey::Escape);
+        if back {
+            self.remember_menu_back_key(key_event);
+        }
+        if back && (key_event.repeat || (alias && self.connection_hub.text_composing())) {
+            return true;
+        }
+        let mut translated;
+        let event = if alias {
+            translated = key_event.clone();
+            translated.logical_key = Key::Named(NamedKey::Escape);
+            translated.text = None;
+            &translated
+        } else {
+            key_event
+        };
+        let consumed = self.dispatch_connection_hub_key(event, clipboard);
+        if back && !self.connection_hub.is_active() {
+            self.renderer.command_palette.resume_menu_parent();
+        }
+        consumed
+    }
+
+    fn dispatch_connection_hub_key(
         &mut self,
         key_event: &KeyEvent,
         clipboard: &mut Clipboard,
@@ -1118,6 +1155,7 @@ impl Screen<'_> {
             }
             ConnectionHubHit::Close => {
                 self.connection_hub.close();
+                self.renderer.command_palette.remember_menu_origin(None);
             }
             ConnectionHubHit::ReviewFiles | ConnectionHubHit::Inert => {}
         }

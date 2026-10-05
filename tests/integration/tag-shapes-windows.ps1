@@ -2,16 +2,20 @@
 # temporary preferences, input, snapshots and capture. No user files are used.
 function Invoke-TagShapeScenario {
     function Send-ShapeKey([int]$Key, [bool]$Control = $false) {
-        if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, $Key, $false, $Control, $false)) {
+        if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, $Key, ($Key -eq 0x2E), $Control, $false)) {
             throw 'Shape fixture lost foreground input ownership'
         }
         $null = Read-AutomexiaSnapshot -AfterSequence ([int64](Read-AutomexiaSnapshot).sequence)
     }
     function Set-ShapeSearch([string]$Text) {
-        Click-TagBounds (Read-AutomexiaSnapshot).settings.search_button
+        $before = Read-AutomexiaSnapshot
+        $category = $before.settings.active_category
+        Click-TagBounds $before.settings.search_button
         Send-ShapeKey 0x41 $true
-        Send-ShapeKey 0x08
-        $null = Wait-TagState { param($s) $s.settings.ready -and $s.settings.search_bytes -eq 0 }
+        # Forward Delete clears text even when empty. Backspace in an empty
+        # search deliberately navigates to the parent menu.
+        Send-ShapeKey 0x2E
+        $null = Wait-TagState { param($s) $s.settings.ready -and $s.settings.search_bytes -eq 0 -and $s.settings.active_category -eq $category }
         $count = 0
         foreach ($letter in $Text.ToUpperInvariant().ToCharArray()) {
             Send-ShapeKey ([int]$letter)

@@ -191,7 +191,11 @@ Use the palette's shortcut editor to change it. See the
 Panes & Sessions, Search & History, Clipboard & Input, Appearance,
 Customizations, and Tools. Customizations opens the feature list in the native
 settings sheet. Enter or Space opens one feature's
-controls, Escape or Alt+Left returns to the list, and Escape there closes it.
+controls. **Esc / Alt+Left** returns one level at a time; **Backspace** (Delete
+on Mac keyboards) does the same outside value fields or in an empty search.
+At the root, Back returns to the command menu that opened the sheet, preserving
+its query and selection, or closes a directly opened sheet. **C / Close** closes
+the sheet directly. Repeated Back key events never skip pages or reach the shell.
 The list includes tag and output appearance, core presentation switches, and
 declared features of installed extensions. In Information tags, Terminal output
 colors, or Kubernetes status colors, **E** or the preview's **Edit** button starts preview
@@ -199,11 +203,18 @@ selection. **Tab / Shift+Tab** cycles only preview items, wrapping at either end
 Arrow, Home, End, PageUp and PageDown also move selection. **Enter / Space** opens
 the selected item's controls and leaves preview selection. From item controls,
 **E** returns to preview selection; **Esc** returns to the shared feature controls.
-**Done** or **Esc / Alt+Left** in preview selection returns focus to Edit. Click a tag
+**Done** or **Esc / Backspace / Alt+Left** in preview selection returns focus to Edit. Click a tag
 or its roster entry directly to edit it. E remains ordinary input in search and
 value editors, including IME composition. In text fields, Shift+Arrow/Home/End
 selects text, and Ctrl+C/X/V (Cmd+C/X/V on macOS) copies, cuts, or pastes the
 field's selection.
+
+The same Back keys work in Theme Gallery, Profiles, Quick Actions, Connection
+Hub and table views. They cancel the current edit or review before leaving its
+parent; unsaved-profile and workflow confirmation stays in force. Backspace
+continues deleting text in value fields. Alt+Left does not interrupt IME
+composition. Forward Delete/Suppr retains its text or saved-item removal role.
+Coloured footer hints wrap when space permits; small windows prioritise Back.
 
 Settings buttons show **R** for Reset, **S** for Restore saved, **C** for Close,
 and **Esc** for Back. Letter shortcuts apply outside text fields. Reset and
@@ -220,17 +231,18 @@ Clear the query to return to that category. No match leaves the palette open.
 | Up / Down, Tab / Shift+Tab | Select the previous / next row without executing. |
 | Enter or click | Open the selected category or explicitly activate the selected command. |
 | Right | Open a selected category only. |
-| Fixed Back button, Back row, Alt+Left, or Backspace with an empty query | Return to categories and restore the category selection. |
+| Fixed Back button, Back row, Alt+Left, or Backspace with an empty query | Return one level, restoring the parent selection; at the root, close. |
 | Home / End; PageUp / PageDown | First / last row; previous / next page. |
 | Mouse wheel / trackpad | Scroll the palette, keeping selection visible. |
-| Esc | Close without executing; reviewed Quick Action detail retains its existing Back behavior. |
+| Esc | Go back one level without executing; at the root, close. |
 
 The palette fits its contents and available height. Overflow retains a vertical
 indicator. Query input is limited to 4 KiB, stays in the palette and never reaches
 the PTY. Holding Enter across a category transition does not run its first action.
 The header Back button stays visible when the list scrolls; narrow panes use
 its arrow-only variant. Font and extension browsing support Back or Alt+Left to
-return to their parent category with the originating command selected.
+return to their originating menu query and selection. The return location is
+consumed once; the next Back continues outward instead of reopening the child.
 
 The pane mnemonics are **R = right**, **D = down**, **Shift = fresh** on
 Windows/Linux/BSD. These replace Alt+Shift+Plus/Minus and the previous

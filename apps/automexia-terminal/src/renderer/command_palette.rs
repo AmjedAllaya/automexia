@@ -1576,8 +1576,17 @@ fn fuzzy_score_lowered(query_lower: &str, target: &str) -> Option<i32> {
 }
 
 /// Command palette UI component (Raycast-style)
+pub(crate) struct MenuParent {
+    category: Option<Category>,
+    query: String,
+    selected: usize,
+    scroll: usize,
+}
+
 pub struct CommandPalette {
     enabled: bool,
+    composing: bool,
+    menu_parent: Option<MenuParent>,
     pub query: String,
     query_selected: bool,
     pub selected_index: usize,
@@ -1611,6 +1620,8 @@ impl Default for CommandPalette {
     fn default() -> Self {
         Self {
             enabled: false,
+            composing: false,
+            menu_parent: None,
             query: String::new(),
             query_selected: false,
             selected_index: 0,
@@ -1768,7 +1779,11 @@ impl CommandPalette {
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
+        if enabled || self.enabled {
+            self.menu_parent = None;
+        }
         self.enabled = enabled;
+        self.composing = false;
         self.shortcut_editor = None;
         self.shortcut_change = None;
         self.shortcut_click = None;
@@ -1788,6 +1803,61 @@ impl CommandPalette {
             self.mode = PaletteMode::Commands;
             self.category = None;
         }
+    }
+
+    pub(crate) fn set_composing(&mut self, composing: bool) {
+        self.composing = composing;
+    }
+
+    pub(crate) fn is_composing(&self) -> bool {
+        self.composing
+    }
+
+    /// Keep one command-menu origin, never a toggle between the last two pages.
+    /// The snapshot contains only bounded UI selection/search state.
+    pub(crate) fn menu_origin(&self, action: PaletteAction) -> Option<MenuParent> {
+        (self.enabled
+            && matches!(self.mode, PaletteMode::Commands)
+            && matches!(
+                action,
+                PaletteAction::OpenSettings
+                    | PaletteAction::OpenCustomizations
+                    | PaletteAction::OpenThemeGallery
+                    | PaletteAction::OpenProfiles
+                    | PaletteAction::OpenConnections
+                    | PaletteAction::OpenActions
+                    | PaletteAction::OpenMarket
+                    | PaletteAction::ListFonts
+                    | PaletteAction::LastCommandActions
+                    | PaletteAction::ViewTableOutput
+            ))
+        .then(|| MenuParent {
+            category: self.category,
+            query: self.query.clone(),
+            selected: self.selected_index,
+            scroll: self.scroll_offset,
+        })
+    }
+
+    pub(crate) fn remember_menu_origin(&mut self, parent: Option<MenuParent>) {
+        self.menu_parent = parent;
+    }
+    pub(crate) fn take_menu_origin(&mut self) -> Option<MenuParent> {
+        self.menu_parent.take()
+    }
+
+    pub(crate) fn resume_menu_parent(&mut self) -> bool {
+        let Some(parent) = self.menu_parent.take() else {
+            return false;
+        };
+        self.set_enabled(true);
+        self.category = parent.category;
+        self.set_query(parent.query);
+        self.selected_index = parent
+            .selected
+            .min(self.filtered_rows().len().saturating_sub(1));
+        self.scroll_offset = parent.scroll.min(self.selected_index);
+        true
     }
 
     /// Swap the palette into font-browsing mode with the given family
@@ -1836,7 +1906,13 @@ impl CommandPalette {
         title: String,
         controls: Vec<automexia_ui_model::quick_actions::QuickActionControl>,
     ) {
+        let parent = if self.enabled {
+            self.take_menu_origin()
+        } else {
+            None
+        };
         self.set_enabled(true);
+        self.remember_menu_origin(parent);
         self.mode = PaletteMode::QuickActionPage { title, controls };
         self.set_query(String::new());
     }
@@ -2066,7 +2142,7 @@ impl CommandPalette {
             let selected = if matches!(self.mode, PaletteMode::Commands | PaletteMode::QuickActions { .. } | PaletteMode::QuickActionPage { .. }) {
                 self.filtered_rows().get(self.selected_index).map(|(_, row)| format!("{}; {}", row.title(), row.shortcut())).unwrap_or_default()
             } else { String::new() };
-            format!("{scope}; {count} results; selected {}; {selected}; query focused; Enter opens; Alt+Left back; Escape closes", if count == 0 { 0 } else { self.selected_index.min(count - 1) + 1 })
+            format!("{scope}; {count} results; selected {}; {selected}; query focused; Enter opens; Alt+Left or empty-query Backspace back; Escape back or closes root", if count == 0 { 0 } else { self.selected_index.min(count - 1) + 1 })
         })
     }
 
@@ -2142,6 +2218,9 @@ impl CommandPalette {
             _ => None,
         };
         if let Some(action) = child_action {
+            if self.resume_menu_parent() {
+                return true;
+            }
             self.mode = PaletteMode::Commands;
             self.category = Some(Category::for_action(action));
             self.set_query(String::new());
@@ -2176,10 +2255,7 @@ impl CommandPalette {
         self.enabled
             && match self.mode {
                 PaletteMode::Commands => self.category.is_some(),
-                PaletteMode::LastCommandActions { .. }
-                | PaletteMode::Fonts(_)
-                | PaletteMode::Market(_) => true,
-                _ => false,
+                _ => true,
             }
     }
 
@@ -2199,19 +2275,11 @@ impl CommandPalette {
         ])
     }
 
-    pub fn try_back_click(
-        &mut self,
-        x: f32,
-        y: f32,
-        dimensions: (f32, f32, f32),
-    ) -> bool {
+    pub fn back_click_hit(&self, x: f32, y: f32, dimensions: (f32, f32, f32)) -> bool {
         let Some([left, top, width, height]) = self.back_button_rect(dimensions) else {
             return false;
         };
-        if x >= left && x < left + width && y >= top && y < top + height {
-            return self.go_back();
-        }
-        false
+        x >= left && x < left + width && y >= top && y < top + height
     }
 
     /// Modal navigation is pure UI state: it cannot access a session or PTY.
@@ -2224,6 +2292,30 @@ impl CommandPalette {
         use rio_window::keyboard::{Key, ModifiersState, NamedKey};
         if self.is_editing_shortcut() {
             return self.edit_shortcut_key(key, modifiers, repeat);
+        }
+        if crate::bindings::menu_back_shortcut(
+            key,
+            modifiers,
+            self.query.is_empty()
+                && !self.is_action_text()
+                && !self.is_action_placeholder(),
+        ) {
+            if self.composing {
+                return true;
+            }
+            if self.is_action_search()
+                || self.is_action_page()
+                || self.is_action_text()
+                || self.is_action_placeholder()
+                || self.is_action_review()
+            {
+                // The Screen workflow owner must cancel drafts/reviews first.
+                return false;
+            }
+            if !repeat && !self.go_back() {
+                self.set_enabled(false);
+            }
+            return true;
         }
         if *key == Key::Named(NamedKey::F2) && modifiers.is_empty() {
             if !repeat {
@@ -2249,14 +2341,6 @@ impl CommandPalette {
                 } else {
                     false
                 }
-            }
-            Key::Named(NamedKey::ArrowLeft) if modifiers == ModifiersState::ALT => {
-                self.go_back()
-            }
-            Key::Named(NamedKey::Backspace)
-                if modifiers.is_empty() && self.query.is_empty() =>
-            {
-                self.go_back()
             }
             Key::Named(NamedKey::Tab) if modifiers == ModifiersState::SHIFT => {
                 self.move_selection_up();
@@ -2593,8 +2677,11 @@ impl CommandPalette {
         let pw = viewport.fitted_surface(PALETTE_WIDTH, 8.0);
         let px = ((viewport.width - pw) / 2.0).max(0.0);
         let py = PALETTE_MARGIN_TOP.min((viewport.height * 0.12).max(8.0));
-        let fixed_height =
-            PALETTE_PADDING * 2.0 + INPUT_HEIGHT + SEPARATOR_HEIGHT + RESULTS_MARGIN_TOP;
+        let fixed_height = PALETTE_PADDING * 2.0
+            + INPUT_HEIGHT
+            + SEPARATOR_HEIGHT
+            + RESULTS_MARGIN_TOP
+            + 36.0;
         let available_height = (viewport.height - py - 8.0).max(0.0);
         let visible_results = (((available_height - fixed_height) / RESULT_ITEM_HEIGHT)
             .floor() as usize)
@@ -2605,7 +2692,8 @@ impl CommandPalette {
             + SEPARATOR_HEIGHT
             + RESULTS_MARGIN_TOP
             + RESULT_ITEM_HEIGHT * visible_results as f32
-            + PALETTE_PADDING;
+            + PALETTE_PADDING
+            + 36.0;
         (px, py, pw, h, visible_results)
     }
 
@@ -3144,19 +3232,24 @@ impl CommandPalette {
                 theme,
             );
         }
-        if matches!(self.mode, PaletteMode::Commands) && palette_width >= 300.0 {
-            let opts = DrawOpts {
-                font_size: 9.0,
-                color: color_u8(theme.muted_text),
-                ..DrawOpts::default()
-            };
-            sugarloaf.text_mut().draw(
+        super::ui_theme::draw_shortcut_hint(
+            sugarloaf.text_mut(),
+            [
                 palette_x + PALETTE_PADDING,
-                palette_y + palette_height - 11.0,
-                "F2 edits shortcut · double-click a key badge",
-                &opts,
-            );
-        }
+                palette_y + palette_height - 38.0,
+                (palette_width - PALETTE_PADDING * 2.0).max(0.0),
+                34.0,
+            ],
+            if matches!(self.mode, PaletteMode::Commands) {
+                "Tab / Arrows: choose | Enter: open | F2: shortcut | Esc / Backspace / Alt+Left: back"
+            } else if self.is_action_text() || self.is_action_placeholder() {
+                "Enter: continue | Esc / Alt+Left: back"
+            } else {
+                "Tab / Arrows: choose | Enter: select | Esc / Backspace / Alt+Left: back"
+            },
+            10.0,
+            *theme,
+        );
         sugarloaf.end_modal_layer();
     }
 }
@@ -3746,6 +3839,7 @@ mod tests {
                 + RESULTS_MARGIN_TOP
                 + RESULT_ITEM_HEIGHT * rows as f32
                 + PALETTE_PADDING
+                + 36.0
         );
         assert_eq!(
             palette.hit_test(x + width / 2.0, y + 20.0, 1_280.0, 760.0, 1.0),
@@ -4043,6 +4137,24 @@ mod tests {
             palette.get_selected_action(),
             Some(PaletteAction::ListFonts)
         );
+    }
+
+    #[test]
+    fn menu_back_origin_survives_quick_action_editor_and_confirmation_pages() {
+        let mut palette = CommandPalette::new();
+        palette.set_enabled(true);
+        palette.set_query("Quick Actions".into());
+        let origin = palette.menu_origin(PaletteAction::OpenActions);
+        palette.enter_action_search(Vec::new(), String::new());
+        palette.remember_menu_origin(origin);
+        palette.enter_action_page("Edit Quick Action".into(), Vec::new());
+        palette.enter_action_text("Name".into(), "Example".into());
+        palette.enter_action_page("Edit Quick Action".into(), Vec::new());
+        palette.enter_action_page("Discard this draft?".into(), Vec::new());
+        palette.enter_action_search(Vec::new(), String::new());
+        assert!(palette.resume_menu_parent());
+        assert_eq!(palette.query, "Quick Actions");
+        assert!(!palette.resume_menu_parent());
     }
 
     #[test]

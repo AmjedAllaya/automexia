@@ -303,6 +303,29 @@ impl Route<'_> {
         // Handle command palette input when it is the top modal in any route.
         if modal_target == ModalKeyTarget::CommandPalette {
             if key_event.state == ElementState::Pressed {
+                let palette = &self.window.screen.renderer.command_palette;
+                let back = !palette.is_editing_shortcut()
+                    && (matches!(key_event.logical_key, Key::Named(NamedKey::Escape))
+                        || crate::bindings::menu_back_shortcut(
+                            &key_event.logical_key,
+                            self.window.screen.modifiers.state(),
+                            palette.query.is_empty()
+                                && !palette.is_action_text()
+                                && !palette.is_action_placeholder(),
+                        ));
+                if back {
+                    if !key_event.repeat {
+                        self.window.screen.remember_menu_back_key(key_event);
+                        if self.window.screen.renderer.command_palette.is_composing()
+                            && key_event.logical_key != Key::Named(NamedKey::Escape)
+                        {
+                            return RouteKeyIntent::Consumed;
+                        }
+                        self.window.screen.back_from_palette();
+                    }
+                    self.request_overlay_redraw();
+                    return RouteKeyIntent::Consumed;
+                }
                 if self.window.screen.action_palette_shortcut(
                     &key_event.logical_key,
                     self.window.screen.modifiers.state(),

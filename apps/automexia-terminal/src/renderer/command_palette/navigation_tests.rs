@@ -396,15 +396,16 @@ fn header_back_is_fixed_visible_and_non_executing_after_scrolling_or_search() {
             "Back is independent of scrolling rows"
         );
         assert!(x >= 0.0 && y >= 0.0 && x + w < width / scale && y + h < height / scale);
-        assert!(!palette.try_back_click(x + w, y + h, dimensions));
-        assert!(palette.try_back_click(x + w / 2.0, y + h / 2.0, dimensions));
+        assert!(!palette.back_click_hit(x + w, y + h, dimensions));
+        assert!(palette.back_click_hit(x + w / 2.0, y + h / 2.0, dimensions));
+        assert!(palette.go_back());
         assert_eq!(palette.category, None);
         assert_eq!(palette.selected_index, 1);
         assert!(palette.query.is_empty());
         assert_eq!(palette.get_selected_action(), None);
         assert!(palette.is_enabled());
         palette.set_enabled(false);
-        assert!(!palette.try_back_click(x, y, dimensions));
+        assert!(!palette.back_click_hit(x, y, dimensions));
     }
 }
 
@@ -422,7 +423,8 @@ fn header_back_returns_from_font_and_extension_lists_to_the_parent_action() {
         palette.mode = mode;
         let dimensions = (1280.0, 760.0, 1.0);
         let [x, y, ..] = palette.back_button_rect(dimensions).unwrap();
-        assert!(palette.try_back_click(x + 1.0, y + 1.0, dimensions));
+        assert!(palette.back_click_hit(x + 1.0, y + 1.0, dimensions));
+        assert!(palette.go_back());
         assert_eq!(palette.get_selected_action(), Some(action));
         assert!(palette.is_enabled());
     }
@@ -547,6 +549,138 @@ fn typing_searches_globally_without_losing_category_and_limits() {
         ModifiersState::empty()
     ));
     assert_eq!(palette.selected_index, 1);
+}
+
+#[test]
+fn menu_back_repeat_does_not_skip_palette_parent() {
+    let mut palette = CommandPalette::new();
+    palette.set_enabled(true);
+    palette.selected_index = 1;
+    assert!(palette.activate_navigation());
+    assert!(palette.handle_navigation_key(
+        &Key::Named(NamedKey::ArrowLeft),
+        ModifiersState::ALT,
+        true,
+    ));
+    assert_eq!(palette.category, Some(Category::Panes));
+    assert!(press(
+        &mut palette,
+        NamedKey::ArrowLeft,
+        ModifiersState::ALT
+    ));
+    assert_eq!(palette.category, None);
+    assert!(palette.handle_navigation_key(
+        &Key::Named(NamedKey::ArrowLeft),
+        ModifiersState::ALT,
+        true,
+    ));
+    assert!(palette.is_enabled());
+}
+
+#[test]
+fn menu_back_restores_invoking_query_once_then_continues_outward() {
+    for action in [
+        PaletteAction::OpenSettings,
+        PaletteAction::OpenCustomizations,
+        PaletteAction::OpenProfiles,
+        PaletteAction::OpenThemeGallery,
+        PaletteAction::OpenConnections,
+        PaletteAction::OpenActions,
+        PaletteAction::ListFonts,
+        PaletteAction::OpenMarket,
+    ] {
+        let mut palette = CommandPalette::new();
+        palette.set_enabled(true);
+        palette.category = Some(Category::Customizations);
+        palette.set_query("customizations".into());
+        let parent = palette.menu_origin(action);
+        assert!(parent.is_some());
+        palette.set_enabled(false);
+        palette.enter_fonts_mode(vec!["Fictional Mono".into()]);
+        palette.remember_menu_origin(parent);
+        assert!(palette.resume_menu_parent());
+        assert_eq!(palette.query, "customizations");
+        assert_eq!(palette.category, Some(Category::Customizations));
+        assert!(!palette.resume_menu_parent());
+        assert!(press(
+            &mut palette,
+            NamedKey::ArrowLeft,
+            ModifiersState::ALT
+        ));
+        assert!(palette.query.is_empty());
+        assert_eq!(palette.category, None);
+        assert!(press(
+            &mut palette,
+            NamedKey::ArrowLeft,
+            ModifiersState::ALT
+        ));
+        assert!(!palette.is_enabled());
+    }
+}
+
+#[test]
+fn menu_back_action_editor_stays_with_its_controller_and_has_a_pointer_target() {
+    let mut palette = CommandPalette::new();
+    palette.set_enabled(true);
+    palette.enter_action_page("Edit workflow".into(), Vec::new());
+    assert!(palette.back_button_rect((1000.0, 800.0, 1.0)).is_some());
+    assert!(!palette.handle_navigation_key(
+        &Key::Named(NamedKey::ArrowLeft),
+        ModifiersState::ALT,
+        false
+    ));
+    assert!(palette.is_enabled());
+    assert!(palette.is_action_page());
+}
+
+#[test]
+fn menu_back_origin_survives_child_handoff_but_not_explicit_dismissal() {
+    let mut palette = CommandPalette::new();
+    palette.set_enabled(true);
+    let origin = palette.menu_origin(PaletteAction::OpenSettings);
+    palette.set_enabled(false);
+    palette.remember_menu_origin(origin);
+    // An asynchronously opened Settings sheet may hide the already-hidden menu.
+    palette.set_enabled(false);
+    assert!(palette.resume_menu_parent());
+    let origin = palette.menu_origin(PaletteAction::ListFonts);
+    palette.enter_fonts_mode(vec!["Fictional Mono".into()]);
+    palette.remember_menu_origin(origin);
+    palette.set_enabled(false);
+    assert!(
+        !palette.resume_menu_parent(),
+        "dismissed child cannot leave a stale origin"
+    );
+}
+
+#[test]
+fn menu_back_waits_for_ime_composition_and_resets_on_reopen() {
+    let mut palette = CommandPalette::new();
+    palette.set_enabled(true);
+    palette.category = Some(Category::Customizations);
+    palette.set_composing(true);
+    assert!(press(
+        &mut palette,
+        NamedKey::ArrowLeft,
+        ModifiersState::ALT
+    ));
+    assert!(press(
+        &mut palette,
+        NamedKey::Backspace,
+        ModifiersState::empty()
+    ));
+    assert_eq!(palette.category, Some(Category::Customizations));
+    palette.set_composing(false);
+    assert!(press(
+        &mut palette,
+        NamedKey::ArrowLeft,
+        ModifiersState::ALT
+    ));
+    assert_eq!(palette.category, None);
+    palette.set_composing(true);
+    palette.set_enabled(false);
+    palette.set_enabled(true);
+    assert!(!palette.is_composing());
 }
 
 #[test]
@@ -1021,11 +1155,12 @@ fn customizations_category_pointer_routes_settings_after_scroll_and_resize() {
         assert!(!palette.activate_navigation());
         let [back_x, back_y, back_w, back_h] =
             palette.back_button_rect((width, height, scale)).unwrap();
-        assert!(palette.try_back_click(
+        assert!(palette.back_click_hit(
             back_x + back_w / 2.0,
             back_y + back_h / 2.0,
             (width, height, scale)
         ));
+        assert!(palette.go_back());
         assert_eq!(palette.selected_index, category_index);
         assert_eq!(palette.get_selected_action(), None);
     }

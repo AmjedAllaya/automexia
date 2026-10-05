@@ -595,14 +595,22 @@ impl SettingsView {
         self.geometry = Geometry {
             viewport,
             card,
+            status: Rect {
+                x: card.x + pad,
+                y: card.y + card.height - f * 3.0,
+                width: (card.width - pad * 2.0).max(0.0),
+                height: f * 2.7,
+            },
             ..Geometry::default()
         };
         let wide = card.width >= f * 52.0;
+        let columns = if wide { 4 } else { 2 };
+        let action_rows = gallery.actions().len().div_ceil(columns);
         let body = Rect {
             x: card.x + pad,
             y: card.y + f * 3.5,
             width: (card.width - pad * 2.0).max(0.0),
-            height: (card.height - f * 11.5).max(0.0),
+            height: (card.height - f * (6.5 + action_rows as f32 * 1.9) - 8.0).max(0.0),
         };
         gallery.list = Rect {
             width: if wide { body.width * 0.39 } else { body.width },
@@ -653,10 +661,11 @@ impl SettingsView {
                 },
             ));
         }
-        let columns = if wide { 4 } else { 2 };
         let width = (body.width - (columns - 1) as f32 * 8.0) / columns as f32;
         let top = body.y + body.height + f * 0.5;
         if card.width < f * 22.0 || card.height < f * 17.0 {
+            // The compact fallback reserves its bottom edge for the Back button.
+            self.geometry.status = Rect::default();
             gallery.targets.clear();
             gallery.targets.push((
                 GalleryTarget::Back,
@@ -695,6 +704,9 @@ impl SettingsView {
         let f = self.font.max(10.0);
         rect(canvas, g.viewport, theme.background, g.viewport);
         rounded_surface(canvas, g.card, theme.surface, g.viewport);
+        shortcut_hint(canvas, g.status,
+            "Arrows: preview | Tab: focus | Enter: select | Esc / Backspace / Alt+Left: back",
+            f * 0.73, theme, g.card);
         label(
             canvas,
             Rect {
@@ -974,6 +986,26 @@ mod tests {
         view.key(&Key::Named(key), None, ModifiersState::empty(), false);
     }
     #[test]
+    fn menu_back_leaves_gallery_and_cancels_preview_once() {
+        for (key, modifiers) in [
+            (NamedKey::ArrowLeft, ModifiersState::ALT),
+            (NamedKey::Backspace, ModifiersState::empty()),
+        ] {
+            let mut view = gallery();
+            view.key(&Key::Named(key), None, modifiers, false);
+            assert!(view.gallery.is_none());
+            assert!(view.is_category_root());
+            assert!(matches!(
+                view.take_theme_intent(),
+                Some(ThemeIntent::Cancel)
+            ));
+            view.key(&Key::Named(key), None, modifiers, true);
+            assert!(view.is_open());
+            view.key(&Key::Named(key), None, modifiers, false);
+            assert!(!view.is_open());
+        }
+    }
+    #[test]
     fn gallery_cannot_open_after_settings_closes() {
         let mut view = gallery();
         view.close();
@@ -1103,6 +1135,7 @@ mod tests {
                     r.x >= 0.0 && r.y >= 0.0 && r.x + r.width <= w && r.y + r.height <= h,
                     "{r:?}"
                 );
+                assert!(r.y + r.height <= view.geometry.status.y);
             }
             key(&mut view, NamedKey::End);
             view.prepare_gallery(Rect {
@@ -1117,5 +1150,21 @@ mod tests {
                 .iter()
                 .any(|(t, _)| *t == GalleryTarget::Row(5)));
         }
+    }
+
+    #[test]
+    fn gallery_compact_back_target_does_not_overlap_footer_hints() {
+        let mut view = gallery();
+        view.fit(320.0, 240.0, 16.0);
+        view.prepare_gallery(Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 320.0,
+            height: 240.0,
+        });
+        let gallery = view.gallery.as_ref().unwrap();
+        assert_eq!(gallery.targets.len(), 1);
+        assert_eq!(gallery.targets[0].0, GalleryTarget::Back);
+        assert_eq!(view.geometry.status.height, 0.0);
     }
 }

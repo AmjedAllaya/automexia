@@ -320,6 +320,7 @@ impl Canvas for Sugarloaf<'_> {
 
 #[derive(Default)]
 pub(crate) struct SettingsView {
+    back_to_menu: bool,
     gallery: Option<Gallery>,
     profiles: Option<ProfilesView>,
     profile_generation: u64,
@@ -602,6 +603,7 @@ impl SettingsView {
         self.reveal_focus = true;
     }
     pub(crate) fn close(&mut self) {
+        self.back_to_menu = false;
         self.profiles = None;
         self.gallery = None;
         self.pending_theme = None;
@@ -650,6 +652,13 @@ impl SettingsView {
     }
     pub(crate) fn is_open(&self) -> bool {
         self.catalog.is_some()
+    }
+    fn leave_menu(&mut self) {
+        self.close();
+        self.back_to_menu = true;
+    }
+    pub(crate) fn take_back_to_menu(&mut self) -> bool {
+        std::mem::take(&mut self.back_to_menu)
     }
     pub(crate) fn suspend_input(&mut self) {
         self.pressed = None;
@@ -2094,6 +2103,7 @@ impl SettingsView {
                 text.push_str(reason);
             }
         }
+        text.push_str(" Alt+Left: back one level. Backspace: back outside value fields or in an empty search. Held Back does not skip pages.");
         if let Some(profiles) = &self.profiles {
             text.push_str(if profiles.draft.is_some() {
                 " Tab: focus. Arrows: choose. Ctrl or Command S: save profile. Escape: back; unsaved changes require confirmation. Saving does not launch a terminal."
@@ -2106,7 +2116,7 @@ impl SettingsView {
         }
         if self.is_category_root() {
             text.push_str(
-                " Tab: focus. Enter: open. R: confirm Reset all. S: confirm Restore saved when available. C or Esc: close.",
+                " Tab: focus. Enter: open. R: confirm Reset all. S: confirm Restore saved when available. C: close. Esc: back or close.",
             );
         } else if self.is_category_detail() {
             text.push_str(&format!(" Tab: focus. Arrows: choose. R: confirm reset of this part. S: confirm Restore saved when available. C: close. Esc: back to {}.", self.back_destination()));
@@ -2125,7 +2135,7 @@ impl SettingsView {
             }
         } else {
             text.push_str(
-                " Tab: focus. Arrows: choose. R: confirm reset of this value. C or Esc: close.",
+                " Tab: focus. Arrows: choose. R: confirm reset of this value. C: close. Esc: back or close.",
             );
         }
         if self.temporary_customizations {
@@ -2136,6 +2146,21 @@ impl SettingsView {
     fn query(&self) -> &str {
         self.view.as_ref().map_or("", ViewState::query)
     }
+    pub(crate) fn back_alias(&self, key: &Key, modifiers: ModifiersState) -> bool {
+        let backspace_available = if self.confirmation.is_some() {
+            true
+        } else if self.numeric_editor.is_some() {
+            false
+        } else if let Some(editor) = &self.color_editor {
+            editor.focus != ColorFocus::Hex
+        } else {
+            self.gallery.is_some()
+                || self.focus != Focus::Search
+                || self.query().is_empty()
+        };
+        crate::bindings::menu_back_shortcut(key, modifiers, backspace_available)
+    }
+
     pub(crate) fn key(
         &mut self,
         key: &Key,
@@ -2144,6 +2169,33 @@ impl SettingsView {
         repeat: bool,
     ) {
         if !self.is_open() {
+            return;
+        }
+        if self.back_alias(key, modifiers) {
+            // Alt+Left cancels through the same owner as Escape, including
+            // dirty-profile confirmation and theme-preview rollback. Never
+            // abandon a composing field or traverse parents on key repeat.
+            if !repeat
+                && self.preedit.is_empty()
+                && !self
+                    .color_editor
+                    .as_ref()
+                    .is_some_and(|editor| editor.composing)
+                && !self
+                    .numeric_editor
+                    .as_ref()
+                    .is_some_and(|editor| editor.composing)
+            {
+                self.key(
+                    &Key::Named(NamedKey::Escape),
+                    None,
+                    ModifiersState::empty(),
+                    false,
+                );
+            }
+            return;
+        }
+        if repeat && matches!(key, Key::Named(NamedKey::Escape)) {
             return;
         }
         if self.confirmation.is_some() {
@@ -2165,23 +2217,6 @@ impl SettingsView {
             self.gallery_key(key, modifiers, repeat);
             return;
         }
-        if self.is_category_detail()
-            && modifiers.alt_key()
-            && matches!(key, Key::Named(NamedKey::ArrowLeft))
-        {
-            if self.preview_edit_mode
-                && self.focus == Focus::Preview
-                && self
-                    .customizations
-                    .as_ref()
-                    .is_some_and(|navigation| navigation.active_slot.is_none())
-            {
-                self.stop_preview_edit();
-                return;
-            }
-            self.back_to_categories();
-            return;
-        }
         if matches!(key, Key::Named(NamedKey::Escape)) {
             if self.preedit.is_empty() {
                 if self.preview_edit_mode
@@ -2195,7 +2230,7 @@ impl SettingsView {
                 } else if self.is_category_detail() {
                     self.back_to_categories();
                 } else {
-                    self.close();
+                    self.leave_menu();
                 }
             } else {
                 self.preedit.clear();
@@ -4007,7 +4042,18 @@ impl SettingsView {
             }
             return;
         }
-        if self.profiles.is_some() && matches!(target, Target::Close | Target::Back) {
+        // Back must see the current editor/preview before a pointer focus
+        // transfer clears it, or a single click can skip two levels.
+        if target == Target::Back {
+            self.key(
+                &Key::Named(NamedKey::Escape),
+                None,
+                ModifiersState::empty(),
+                false,
+            );
+            return;
+        }
+        if self.profiles.is_some() && target == Target::Close {
             self.profile_back();
             return;
         }
@@ -4028,7 +4074,7 @@ impl SettingsView {
         }
         match target {
             Target::Theme(target) => self.gallery_activate(target),
-            Target::Confirmation(_) => {}
+            Target::Confirmation(_) | Target::Back => {}
             Target::Color(focus) => {
                 if let Some(editor) = &mut self.color_editor {
                     editor.composing = false;
@@ -4042,7 +4088,6 @@ impl SettingsView {
                 }
             }
             Target::Close => self.close(),
-            Target::Back => self.back_to_categories(),
             Target::Search => {
                 self.focus = Focus::Search;
                 self.caret = self.query().len();
@@ -4240,7 +4285,7 @@ impl SettingsView {
         }
         self.compact_lines.clear();
         let header = line * 2.0 + pad * 3.0;
-        let footer = line * 2.0 + pad * 3.0;
+        let footer = line * if self.height < 360.0 { 2.0 } else { 3.0 } + pad * 3.0;
         let search = Rect {
             x: card.x + pad,
             y: card.y + header * 0.5,
@@ -5084,33 +5129,27 @@ impl SettingsView {
             && feedback.is_none_or(|status| status == "Saved");
         let status = if let Some(status) = feedback.filter(|status| *status != "Saved") {
             status
+        } else if g.status.height < font * 2.4 && feedback.is_none() {
+            "Backspace / Alt+Left: back"
         } else if self.preview_edit_mode && self.focus == Focus::Preview {
             if g.status.width < 620.0 {
-                "Tab: next | Enter: edit | Esc: done"
+                "Tab: next | Enter: edit | Esc / Backspace / Alt+Left: done"
             } else {
-                "Tab / Shift+Tab: select | Enter: edit | Esc: done"
+                "Tab / Shift+Tab: select | Enter: edit | Esc / Backspace / Alt+Left: done"
             }
         } else if preview_hints {
             match (g.status.width < 620.0, feedback == Some("Saved")) {
-                (true, true) => "E: edit | Saved | Esc: back",
-                (true, false) => "E: edit | Esc: back",
-                (false, true) => "E: edit preview | Saved | Tab: focus | Esc: back",
-                (false, false) => "E: edit preview | Tab: focus | Esc: back",
+                (true, true) => "E: edit | Saved | Esc / Backspace / Alt+Left: back",
+                (true, false) => "E: edit | Esc / Backspace / Alt+Left: back",
+                (false, true) => "E: edit preview | Saved | Tab: focus | Esc / Backspace / Alt+Left: back",
+                (false, false) => "E: edit preview | Tab: focus | Esc / Backspace / Alt+Left: back",
             }
-        } else if let Some(status) = feedback {
-            status
-        } else if self.is_category_detail() {
-            if g.status.width < 420.0 {
-                "Tab: focus | Esc: back"
-            } else {
-                "Tab: focus | Esc: back | Alt+Left: back"
-            }
-        } else if g.status.width < 420.0 {
-            "Tab: focus | Esc: close"
         } else {
-            "Tab: focus | Arrows: navigate | Esc: close"
+            feedback.unwrap_or(
+                "Tab: focus | Arrows: navigate | Esc / Backspace / Alt+Left: back",
+            )
         };
-        if preview_hints {
+        if feedback.is_none() || preview_hints {
             shortcut_hint(canvas, g.status, status, font * 0.85, theme, g.card);
         } else {
             label(
@@ -7141,34 +7180,19 @@ fn shortcut_hint(
     theme: UiTheme,
     clip: Rect,
 ) {
-    let mut remaining = bounds;
-    let mut run = |text: &str, color: [f32; 4], bold: bool| {
-        label(canvas, remaining, text, font, color, bold, clip);
-        let width = canvas.text().measure(
-            text,
-            &DrawOpts {
-                font_size: font,
-                bold,
-                ..DrawOpts::default()
-            },
+    if let Some(bounds) = bounds.intersect(clip) {
+        crate::renderer::ui_theme::draw_shortcut_hint(
+            canvas.text(),
+            [
+                bounds.x + 4.0,
+                bounds.y + 2.0,
+                (bounds.width - 4.0).max(0.0),
+                (bounds.height - 2.0).max(0.0),
+            ],
+            value,
+            font,
+            theme,
         );
-        remaining.x += width;
-        remaining.width = (remaining.width - width).max(0.0);
-    };
-    for (index, part) in value.split(" | ").enumerate() {
-        if index > 0 {
-            run(" | ", theme.muted_text, false);
-        }
-        if let Some((key, action)) = part.split_once(':') {
-            let accent = hint_accent(theme, theme.accent);
-            run(key, accent, true);
-            run(":", accent, true);
-            run(action, theme.text, false);
-        } else if part == "Saved" {
-            run(part, hint_accent(theme, theme.success), false);
-        } else {
-            run(part, theme.text, false);
-        }
     }
 }
 

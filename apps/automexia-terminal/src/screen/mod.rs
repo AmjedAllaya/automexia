@@ -877,6 +877,23 @@ impl ConsumedWin32KeyReleases {
     }
 }
 
+fn consume_menu_back_repeat(
+    held: &mut Option<PhysicalKey>,
+    key: PhysicalKey,
+    repeat: bool,
+) -> bool {
+    if *held != Some(key) {
+        return false;
+    }
+    if repeat {
+        return true;
+    }
+    // A release (or a fresh press after a missed release/focus change) ends
+    // ownership. A changed menu/editor does not make a held Back into text.
+    *held = None;
+    false
+}
+
 pub(crate) struct ScreenServices {
     pub(crate) workers: crate::performer::PtyWorkerRegistry,
     pub(crate) action_surface: action_surface::Controller,
@@ -917,6 +934,7 @@ pub struct Screen<'screen> {
     profile_base_config: rio_backend::config::Config,
     profile_theme_route: Option<usize>,
     overlay_key_releases: Vec<PhysicalKey>,
+    overlay_back_key: Option<PhysicalKey>,
     action_surface: action_surface::Controller,
     suggestions: crate::automexia::suggestions::SuggestionUiController,
     connection_hub: crate::automexia::connections::ConnectionHubController,
@@ -1195,6 +1213,7 @@ impl Screen<'_> {
             profile_base_config: config.clone(),
             profile_theme_route: None,
             overlay_key_releases: Vec::new(),
+            overlay_back_key: None,
             action_surface,
             suggestions: crate::automexia::suggestions::SuggestionUiController::new(
                 suggestions,
@@ -4227,7 +4246,10 @@ impl Screen<'_> {
                 Err(_) => tracing::warn!("extension activation change failed"),
             }
         } else {
-            match self.renderer.command_palette.get_selected_action() {
+            let action = self.renderer.command_palette.get_selected_action();
+            let parent = action
+                .and_then(|action| self.renderer.command_palette.menu_origin(action));
+            match action {
                 Some(PaletteAction::OpenMarket) => self.open_extension_marketplace(),
                 Some(PaletteAction::OpenActions) => self.open_action_center(),
                 Some(PaletteAction::ListFonts) => self.open_font_browser(),
@@ -4236,6 +4258,9 @@ impl Screen<'_> {
                     self.execute_palette_action(action, clipboard);
                 }
                 None => {}
+            }
+            if action.is_some() {
+                self.renderer.command_palette.remember_menu_origin(parent);
             }
         }
     }
@@ -4275,11 +4300,12 @@ impl Screen<'_> {
             self.mark_dirty();
             return true;
         }
-        if self.renderer.command_palette.try_back_click(
+        if self.renderer.command_palette.back_click_hit(
             mouse_x,
             mouse_y,
             (window_width, window_size.height, scale_factor),
         ) {
+            self.back_from_palette();
             self.mark_dirty();
             return true;
         }
@@ -6380,7 +6406,10 @@ impl Screen<'_> {
         clipboard: &mut Clipboard,
     ) {
         match effect {
-            crate::table_view::Effect::Close => self.table_view.close(),
+            crate::table_view::Effect::Close => {
+                self.table_view.close();
+                self.renderer.command_palette.resume_menu_parent();
+            }
             crate::table_view::Effect::Copy => {
                 if let Some(text) = self.table_view.copy_text() {
                     clipboard.set(ClipboardType::Clipboard, text);
@@ -6399,6 +6428,9 @@ impl Screen<'_> {
         effect: crate::table_view::Effect,
         clipboard: &mut Clipboard,
     ) {
+        if effect == crate::table_view::Effect::Close {
+            self.remember_menu_back_key(key);
+        }
         // Retain ownership across view closure for Kitty as well as Win32.
         if key.state == ElementState::Pressed
             && !self.overlay_key_releases.contains(&key.physical_key)
@@ -6460,6 +6492,22 @@ impl Screen<'_> {
     }
 
     fn consume_overlay_key_release(&mut self, key: &rio_window::event::KeyEvent) -> bool {
+        if consume_menu_back_repeat(
+            &mut self.overlay_back_key,
+            key.physical_key,
+            key.repeat,
+        ) {
+            return true;
+        }
+        if key.repeat
+            && !self.settings_view.is_open()
+            && !self.renderer.command_palette.is_enabled()
+            && !self.connection_hub.is_active()
+            && !self.table_view.is_open()
+            && self.overlay_key_releases.contains(&key.physical_key)
+        {
+            return true;
+        }
         if key.state != ElementState::Released {
             return false;
         }
@@ -8540,6 +8588,19 @@ use crate::hints::post_process_hyperlink_uri;
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn menu_back_repeat_keeps_ownership_when_a_dialog_reveals_a_text_field() {
+        let back = PhysicalKey::Code(rio_window::keyboard::KeyCode::Backspace);
+        let other = PhysicalKey::Code(rio_window::keyboard::KeyCode::KeyA);
+        let mut held = Some(back);
+        assert!(!super::consume_menu_back_repeat(&mut held, other, false));
+        for _ in 0..16 {
+            assert!(super::consume_menu_back_repeat(&mut held, back, true));
+        }
+        assert!(!super::consume_menu_back_repeat(&mut held, back, false));
+        assert!(held.is_none());
+        assert!(!super::consume_menu_back_repeat(&mut held, back, true));
+    }
     use super::*;
 
     #[test]

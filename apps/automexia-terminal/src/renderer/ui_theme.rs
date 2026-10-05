@@ -128,6 +128,67 @@ pub(crate) fn draw_glass(
         }
     }
 }
+
+/// Coloured, wrapping hints for UI-owned shortcut strings, never user feedback.
+pub(crate) fn draw_shortcut_hint(
+    text: &mut rio_backend::sugarloaf::text::Text,
+    bounds: [f32; 4],
+    value: &str,
+    font: f32,
+    theme: UiTheme,
+) {
+    use rio_backend::sugarloaf::text::DrawOpts;
+    let [left, top, width, height] = bounds;
+    let mut x = left;
+    let mut y = top;
+    for (index, part) in value.split(" | ").enumerate() {
+        let options = DrawOpts {
+            font_size: font,
+            bold: true,
+            ..DrawOpts::default()
+        };
+        let measured = text.measure(part, &options);
+        let separator = text.measure(" | ", &options);
+        let wrap = index > 0 && x + measured + separator > left + width;
+        if wrap {
+            x = left;
+            y += font * 1.5;
+        }
+        if y + font > top + height {
+            break;
+        }
+        let mut draw = |value: &str, color: [f32; 4], bold: bool| {
+            let options = DrawOpts {
+                font_size: font,
+                color: color_u8(color),
+                bold,
+                ..DrawOpts::default()
+            };
+            text.draw_clipped(x, y, value, &options, bounds);
+            x += text.measure(value, &options);
+        };
+        if index > 0 && !wrap {
+            draw(" | ", theme.muted_text, false);
+        }
+        if let Some((key, action)) = part.split_once(':') {
+            let accent =
+                ensure_contrast(theme.accent, theme.raised, MIN_TEXT_CONTRAST + 0.1);
+            draw(key, accent, true);
+            draw(":", accent, true);
+            draw(action, theme.text, false);
+        } else {
+            draw(
+                part,
+                if part == "Saved" {
+                    ensure_contrast(theme.success, theme.raised, MIN_TEXT_CONTRAST + 0.1)
+                } else {
+                    theme.text
+                },
+                false,
+            );
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct UiTheme {
     pub(crate) background: [f32; 4],
