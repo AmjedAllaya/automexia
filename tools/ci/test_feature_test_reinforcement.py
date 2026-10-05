@@ -225,6 +225,18 @@ class FeatureTestReinforcementTests(unittest.TestCase):
         with self.assertRaises(REINFORCEMENT.ReinforcementError):
             REINFORCEMENT._validate_table_sources(dict(self.native_sources, screen_settings=mutation))
 
+    def test_opening_enter_cannot_be_lost_to_child_modal_dispatch(self) -> None:
+        REINFORCEMENT._validate_table_sources(self.native_sources)
+        owner = self.native_sources["application"]
+        retained = "route.consume_retained_enter_event(&event)"
+        child = ".handle_settings_window_event(&event, &mut self.router.clipboard)"
+        for mutation in (
+            owner.replace(retained, "removed retained key owner", 1),
+            owner.replace(retained, "ORDER_PLACEHOLDER", 1).replace(child, retained, 1).replace("ORDER_PLACEHOLDER", child, 1),
+        ):
+            with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                REINFORCEMENT._validate_table_sources(dict(self.native_sources, application=mutation))
+
     def test_inline_style_owner_chain_accepts_live_refactored_source(self) -> None:
         REINFORCEMENT._validate_inline_table_sources(self.native_sources)
         self.assertEqual(

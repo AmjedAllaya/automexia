@@ -198,6 +198,9 @@ on Mac keyboards) does the same outside value fields or in an empty search.
 At the root, Back returns to the command menu that opened the sheet, preserving
 its query and selection, or closes a directly opened sheet. **C / Close** closes
 the sheet directly. Repeated Back key events never skip pages or reach the shell.
+After returning, the next Enter immediately opens the selected command. Holding
+Enter while a page opens does not activate controls on that page; its release
+stays with the opening menu. Losing window focus retires that held-key state.
 The list includes tag and output appearance, core presentation switches, and
 declared features of installed extensions. In Information tags, Terminal output
 colors, or Kubernetes status colors, **E** or the preview's **Edit** button starts preview

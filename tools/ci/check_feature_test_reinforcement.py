@@ -643,6 +643,13 @@ def _validate_command_wrapping_sources(sources: dict[str, str]) -> None:
 
 def _validate_table_sources(sources: dict[str, str]) -> None:
     # Wiring guards complement parser/input/pixel tests, never replace them.
+    dispatch_owner = _source_slice(sources["application"], "fn window_event(",
+                                   "let mut refresh_settings_for_theme", "modal handoff dispatch")
+    _require_order(dispatch_owner, (
+        "route.consume_retained_enter_event(&event)",
+        ".handle_settings_window_event(&event, &mut self.router.clipboard)",
+        ".handle_table_window_event(&event, &mut self.router.clipboard)",
+    ), "opening Enter must retain ownership before child modal dispatch")
     for owner, fragments in {
         "table_model": ("MAX_TABLE_BYTES: usize = 256 * 1024", "MAX_TABLE_ROWS: usize = 256", "row.graphemes(true)", "source: Vec<String>"),
         "table_capture": (".bounds_to_display_string_bounded(", "Mode::ALT_SCREEN | Mode::MOUSE_MODE", "fn core_table_capture_uses_real_tab_stops_and_retains_cursor_history_and_copy()"),

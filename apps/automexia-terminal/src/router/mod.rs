@@ -106,6 +106,26 @@ fn palette_enter_key_intent(repeat: bool, enter_held: &mut bool) -> bool {
     }
 }
 
+fn retained_enter_window_event(
+    event: &rio_window::event::WindowEvent,
+    enter_held: &mut bool,
+) -> bool {
+    use rio_window::event::WindowEvent;
+    match event {
+        WindowEvent::KeyboardInput { event: key, .. } => {
+            welcome_key_intent(false, &key.logical_key, key.state, key.repeat, enter_held)
+                == RouteKeyIntent::Consumed
+        }
+        WindowEvent::Focused(false) => {
+            // The OS may release keys outside this window, or deliver only a
+            // synthetic release which the application deliberately ignores.
+            *enter_held = false;
+            false
+        }
+        _ => false,
+    }
+}
+
 pub struct Route<'a> {
     pub assistant: assistant::Assistant,
     pub path: RoutePath,
@@ -115,6 +135,15 @@ pub struct Route<'a> {
 }
 
 impl Route<'_> {
+    /// Retained Enter belongs to the opening surface until key-up, even after
+    /// an asynchronous action has opened a different modal input owner.
+    pub(crate) fn consume_retained_enter_event(
+        &mut self,
+        event: &rio_window::event::WindowEvent,
+    ) -> bool {
+        retained_enter_window_event(event, &mut self.overlay_enter_held)
+    }
+
     /// Create a performer.
     #[inline]
     pub fn new(
@@ -1505,6 +1534,24 @@ mod welcome_input_tests {
             welcome_key_intent(false, &enter, ElementState::Pressed, false, &mut held),
             RouteKeyIntent::PassThrough
         );
+    }
+
+    #[test]
+    fn retained_enter_focus_loss_retires_ownership_without_consuming_focus() {
+        use rio_window::event::WindowEvent;
+        let mut held = false;
+        assert!(super::palette_enter_key_intent(false, &mut held));
+        for event in [WindowEvent::RedrawRequested, WindowEvent::Focused(true)] {
+            assert!(!super::retained_enter_window_event(&event, &mut held));
+            assert!(!super::palette_enter_key_intent(false, &mut held));
+        }
+        assert!(!super::retained_enter_window_event(
+            &WindowEvent::Focused(false),
+            &mut held
+        ));
+        assert!(!held);
+        assert!(!super::palette_enter_key_intent(true, &mut held));
+        assert!(super::palette_enter_key_intent(false, &mut held));
     }
 
     #[test]

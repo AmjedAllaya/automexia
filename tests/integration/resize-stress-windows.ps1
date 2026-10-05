@@ -38,6 +38,7 @@ param(
     [switch]$CommandInputColorsOnly,
     [switch]$ClearShortcutOnly,
     [switch]$WordDeletionOnly,
+    [switch]$MenuNavigationOnly,
     [string]$CommandInputWslDistro,
     [switch]$CommandInputPowerShell7,
     [switch]$ConnectionHubOnly,
@@ -48,7 +49,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 if ($ClearShortcutOnly -or $WordDeletionOnly) { $CommandInputColorsOnly = $true }
-if ($TagShapesOnly) { $TagCustomizationOnly = $true }
+if ($TagShapesOnly -or $MenuNavigationOnly) { $TagCustomizationOnly = $true }
 # A Windows PowerShell child can inherit PowerShell 7's module search paths.
 # Resolve Get-FileHash from the executing host for saved-file preservation checks.
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
@@ -171,6 +172,24 @@ public static class AutomexiaResizeDriver {
         }
         if (control) {
             SendKeyChange(0x11, false, false);
+        }
+        return GetForegroundWindow() == hWnd;
+    }
+
+    public static bool SendMenuEnter(IntPtr hWnd, bool repeat) {
+        if (!ActivateWindow(hWnd)) return false;
+        try {
+            SendKeyChange(0x0D, false, true);
+            // Keep the physical release behind the asynchronous child opening.
+            System.Threading.Thread.Sleep(300);
+            if (repeat) {
+                for (int i = 0; i < 8; i++) {
+                    SendKeyChange(0x0D, false, true);
+                    System.Threading.Thread.Sleep(40);
+                }
+            }
+        } finally {
+            SendKeyChange(0x0D, false, false);
         }
         return GetForegroundWindow() == hWnd;
     }
@@ -1683,6 +1702,9 @@ $wallpaperConfig
                 Start-Sleep -Milliseconds 40
             } while ([DateTime]::UtcNow -lt $deadline)
             Write-Host ($state.settings | ConvertTo-Json -Depth 5 -Compress)
+            if ($MenuNavigationOnly) {
+                Write-Host ("Menu state: enabled={0}; summary={1}" -f $state.palette_enabled, $state.palette_accessibility_summary)
+            }
             throw "Native tag customization did not reach the expected state during $script:testStage"
         }
         function Click-TagBounds($Bounds) {
@@ -1740,6 +1762,105 @@ $wallpaperConfig
         [void][AutomexiaResizeDriver]::MoveWindow($window, 20, 20, 1200, 780, $true)
         [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)
         try {
+            if ($MenuNavigationOnly) {
+                function Send-MenuKey([int]$Key, [bool]$Alt = $false, [bool]$Repeat = $false) {
+                    $sent = if ($Alt) { [AutomexiaResizeDriver]::SendMenuBack($window, $true, $false) }
+                        elseif ($Key -eq 0x0D) { [AutomexiaResizeDriver]::SendMenuEnter($window, $Repeat) }
+                        else { [AutomexiaResizeDriver]::SendModifiedKeyTap($window, $Key, ($Key -eq 0x25), $false, $false) }
+                    if (-not $sent) {
+                        throw 'Menu fixture lost foreground input ownership'
+                    }
+                }
+                $script:testStage = 'menu navigation baseline'
+                function Get-MenuPreferenceHashes {
+                    foreach ($relative in @('config.toml', 'state/user-preferences-v11.toml')) {
+                        $path = Join-Path $configRoot $relative
+                        if (Test-Path -LiteralPath $path) { (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
+                        else { 'absent' }
+                    }
+                }
+                $menuHashes = (Get-MenuPreferenceHashes) -join ':'
+                $baseline = Read-AutomexiaSnapshot
+                $baselinePanel = Get-ActiveAutomexiaPanel $baseline
+                Send-AutomexiaTestControl 'open-palette:menu-reentry'
+                $null = Wait-TagState { param($s) $s.palette_enabled -and $s.palette_total_results -eq 7 }
+                for ($index = 0; $index -lt 5; $index++) { Send-MenuKey 0x28 }
+                $null = Wait-TagState { param($s) $s.palette_selected_index -eq 5 }
+                Send-MenuKey 0x0D
+                $null = Wait-TagState { param($s) $s.palette_enabled -and $s.palette_total_results -eq 2 -and $s.palette_selected_index -eq 1 }
+                foreach ($back in @('Backspace', 'AltLeft', 'Escape', 'Backspace')) {
+                    $script:testStage = "first Enter opens customizations before $back"
+                    Send-MenuKey 0x0D $false $true
+                    $opened = Wait-TagState { param($s) $s.settings.ready -and -not $s.palette_enabled }
+                    if ($null -ne $opened.settings.active_category) { throw 'Held Enter activated a child customization' }
+                    switch ($back) {
+                        'Backspace' { Send-MenuKey 0x08 }
+                        'AltLeft' { Send-MenuKey 0x25 $true }
+                        'Escape' { Send-MenuKey 0x1B }
+                    }
+                    $script:testStage = "one-level $back restores selected command"
+                    $null = Wait-TagState { param($s) -not $s.settings.ready -and $s.palette_enabled -and $s.palette_selected_index -eq 1 -and $s.palette_total_results -eq 2 }
+                    Write-Host "Menu re-entry: $back returned to its selected command"
+                }
+                $script:testStage = 'final first Enter reopens customizations'
+                Send-MenuKey 0x0D
+                $null = Wait-TagState { param($s) $s.settings.ready -and -not $s.palette_enabled }
+                Send-MenuKey 0x1B
+                $null = Wait-TagState { param($s) $s.palette_enabled }
+                Send-MenuKey 0x1B
+                $null = Wait-TagState { param($s) $s.palette_enabled -and $s.palette_total_results -eq 7 }
+                Send-MenuKey 0x1B
+                $null = Wait-TagState { param($s) -not $s.settings.ready -and -not $s.palette_enabled }
+                foreach ($page in @(
+                    @{ Id = 'theme'; Query = 'theme gallery'; Field = 'gallery' },
+                    @{ Id = 'profiles'; Query = 'new terminal with profile'; Field = 'profiles' }
+                )) {
+                    Send-AutomexiaTestControl ('open-palette:menu-reentry-' + $page.Id)
+                    $null = Wait-TagState { param($s) $s.palette_enabled -and $s.palette_total_results -eq 7 }
+                    foreach ($letter in $page.Query.ToUpperInvariant().ToCharArray()) { Send-MenuKey ([int]$letter) }
+                    $parent = Wait-TagState { param($s) $s.palette_enabled -and $s.palette_total_results -eq 1 }
+                    for ($cycle = 0; $cycle -lt 2; $cycle++) {
+                        $script:testStage = "first Enter opens $($page.Id) cycle $cycle"
+                        Send-MenuKey 0x0D $false $true
+                        $child = Wait-TagState { param($s) $s.settings.ready -and $null -ne $s.settings.($page.Field) -and -not $s.palette_enabled }
+                        if ($child.window_tab_count -ne $baseline.window_tab_count) { throw 'Held Enter launched a profile' }
+                        $script:testStage = "return from $($page.Id) cycle $cycle"
+                        for ($level = 0; $level -lt 3 -and -not $child.palette_enabled; $level++) {
+                            $previousPage = @($child.palette_enabled, $child.settings.open,
+                                ($null -ne $child.settings.gallery), ($null -ne $child.settings.profiles),
+                                $child.settings.active_category) -join ':'
+                            Send-MenuKey 0x25 $true
+                            $child = Wait-TagState { param($s)
+                                (@($s.palette_enabled, $s.settings.open, ($null -ne $s.settings.gallery),
+                                    ($null -ne $s.settings.profiles), $s.settings.active_category) -join ':') -ne $previousPage
+                            }
+                        }
+                        $returned = Wait-TagState { param($s) $s.palette_enabled -and -not $s.settings.ready }
+                        if ($returned.palette_accessibility_summary -ne $parent.palette_accessibility_summary) {
+                            throw 'Child Back lost the parent query or selection'
+                        }
+                        Write-Host "Menu re-entry: $($page.Id) cycle $cycle passed with held Enter"
+                    }
+                    Send-MenuKey 0x1B
+                    $null = Wait-TagState { param($s) -not $s.settings.ready -and -not $s.palette_enabled }
+                }
+                $finished = Read-AutomexiaSnapshot
+                $afterPanel = Get-ActiveAutomexiaPanel $finished
+                if ($afterPanel.route_id -ne $baselinePanel.route_id -or
+                    $afterPanel.raw_cursor_line_text -ne $baselinePanel.raw_cursor_line_text -or
+                    $finished.cursor_column -ne $baseline.cursor_column -or
+                    $finished.cursor_row -ne $baseline.cursor_row -or
+                    ((Get-MenuPreferenceHashes) -join ':') -ne $menuHashes) {
+                    throw 'Menu re-entry changed terminal input or saved preferences'
+                }
+                Write-Host 'Menu re-entry: every first Enter opened; terminal input and saved preferences unchanged'
+                [void][AutomexiaResizeDriver]::PostMessage($window, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+                $null = Wait-TagState { param($s) $s.confirm_quit_active }
+                Send-MenuKey 0x59
+                if (-not $process.WaitForExit(6000)) { throw 'Menu fixture did not shut down' }
+                $process = $null
+                return
+            }
             Send-AutomexiaTestControl 'open-customizations:tag-editor'
             $script:testStage = 'customizations root'
             $rootSettings = Wait-TagState { param($s) $s.settings.ready -and @($s.settings.controls | Where-Object id -eq 'tags.enabled').Count -eq 1 }

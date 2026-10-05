@@ -1914,6 +1914,13 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             None => return,
         };
 
+        // A palette/welcome Enter can open a child before its physical release.
+        // Retire that gesture before any child can consume the release or act
+        // on repeats; the next distinct Enter must remain immediately usable.
+        if route.consume_retained_enter_event(&event) {
+            return;
+        }
+
         if route
             .window
             .screen
