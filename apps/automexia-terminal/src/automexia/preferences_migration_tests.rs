@@ -1,20 +1,92 @@
 use super::*;
 
+#[test]
+fn interface_migrates_v12_read_only_and_current_corruption_never_downgrades() {
+    let root = tempfile::tempdir().unwrap();
+    let old = b"schema-version = 12\nfont-size = 19.0\ncolor-favorites = [[1,2,3,255]]\n[visual.window-controls]\nstyle = 'glass'\n";
+    fixture(root.path(), VERSION12_PRIMARY_FILE, old);
+    let loaded = load_from_root(root.path());
+    assert_eq!(loaded.source, PreferenceSource::Version12);
+    assert!(loaded.preferences.visual.interface.is_empty());
+    assert_eq!(loaded.preferences.font_size, Some(19.0));
+    assert_eq!(loaded.preferences.color_favorites, [[1, 2, 3, 255]]);
+    let mut changed = loaded.preferences;
+    changed.visual.interface.appearance.footer.visible = Some(false);
+    write_to_root(root.path(), &changed).unwrap();
+    assert_eq!(load_from_root(root.path()).preferences, changed);
+    assert_eq!(
+        fs::read(state_root(root.path()).join(VERSION12_PRIMARY_FILE)).unwrap(),
+        old
+    );
+    let corrupt = b"schema-version = 999\n";
+    fs::write(primary_path(root.path()), corrupt).unwrap();
+    assert_eq!(
+        load_from_root(root.path()).warning,
+        Some(PreferenceErrorCode::InvalidData)
+    );
+    assert!(write_to_root(root.path(), &changed).is_err());
+    assert_eq!(fs::read(primary_path(root.path())).unwrap(), corrupt);
+}
+
+#[test]
+fn interface_predecessors_reject_even_empty_new_fields_and_current_round_trips() {
+    for (version, parser) in [
+        (
+            12,
+            parse_version12_snapshot
+                as fn(&[u8]) -> Result<UserPreferences, PreferenceError>,
+        ),
+        (11, parse_version11_snapshot),
+        (10, parse_version10_snapshot),
+        (9, parse_version9_snapshot),
+        (8, parse_version8_snapshot),
+        (7, parse_version7_snapshot),
+        (6, parse_version6_snapshot),
+        (5, parse_version5_snapshot),
+    ] {
+        assert!(
+            parser(
+                format!("schema-version = {version}\n[visual.interface]\n").as_bytes()
+            )
+            .is_err(),
+            "version {version}"
+        );
+    }
+    let source = format!("schema-version = {SCHEMA_VERSION}\n[visual.interface]\npadding-top = 12\nopacity = 80\n[visual.interface.appearance.footer]\nvisible = false\nheight = 48\nbackground = '#12345680'\n");
+    let prefs = parse_snapshot(source.as_bytes()).unwrap();
+    let restored = parse_snapshot(&serialize(&prefs).unwrap()).unwrap();
+    assert_eq!(prefs, restored);
+    let effective = restored.apply_to(&Config::default());
+    assert_eq!(effective.margin.top, 12.0);
+    assert_eq!(effective.window.opacity, 0.8);
+    assert!(!effective.presentation.interface.footer.is_visible());
+    for invalid in ["padding-top = 65", "opacity = 101", "tab-width = 79"] {
+        assert!(parse_snapshot(
+            format!("schema-version = {SCHEMA_VERSION}\n[visual.interface]\n{invalid}")
+                .as_bytes()
+        )
+        .is_err());
+    }
+}
+
 fn fixture(root: &Path, name: &str, bytes: &[u8]) {
     let state = ensure_state_root(root).unwrap();
     persist_bytes(&state, &state.join(name), bytes).unwrap();
 }
 
 #[test]
-fn new_snapshots_use_v12_without_creating_predecessor_writers() {
+fn new_snapshots_use_current_schema_without_creating_predecessor_writers() {
     let root = tempfile::tempdir().unwrap();
     write_to_root(root.path(), &UserPreferences::default()).unwrap();
-    let path = state_root(root.path()).join("user-preferences-v12.toml");
-    assert!(path.is_file(), "new preferences must use the v12 path");
+    let path = primary_path(root.path());
+    assert!(path.is_file(), "new preferences must use the current path");
+    assert!(!state_root(root.path())
+        .join(VERSION12_PRIMARY_FILE)
+        .exists());
     let bytes = fs::read(path).unwrap();
     assert!(std::str::from_utf8(&bytes)
         .unwrap()
-        .contains("schema-version = 12"));
+        .contains(&format!("schema-version = {SCHEMA_VERSION}")));
     assert!(!state_root(root.path())
         .join("user-preferences-v5.toml")
         .exists());

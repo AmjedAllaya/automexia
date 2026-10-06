@@ -1965,3 +1965,25 @@ It owns a disposable configuration, edits with keyboard and pointer, checks exac
 saved TOML and verifies that saving does not launch before an explicit Open.
 The native UI scenario dispatcher includes the profile scenario. Native Linux/macOS and
 screen-reader delivery remain separate platform evidence.
+
+
+## Terminal appearance assurance
+
+Run `cargo test -p automexia-terminal --bin automexia interface_` for the typed
+catalog, fractional/config-only values, disjoint categories, independent reset,
+keyboard footer toggling, dependency visibility, restored/zoomed pane geometry,
+tab layout and themed settings paint. The application library target covers
+version-12 migration, rollback preservation, current corruption and strict
+predecessor rejection; `cargo test -p rio-backend --lib interface` covers the
+configuration and shared footer geometry contract. Owning targets also retain
+keyboard reveal and footer hit/accessibility tests across DPI and small panes.
+
+Set `AUTOMEXIA_SETTINGS_PREVIEW_DIR` to a disposable directory to retain the
+fictional CPU-raster footer settings images from
+`interface_pages_paint_inside_card_across_themes_and_scaling`. Run
+`cargo test -p automexia-terminal --bin automexia interface_refresh_paint_benchmark
+-- --ignored --nocapture` for JSON timings with 20 warm-up and 200 measured
+iterations; correctness assertions run each iteration. Compare only identical
+hardware, OS, toolchain, profile and configuration. This measures catalog,
+visibility, layout and draw emission, not GPU presentation or native compositor
+blur/transparency. Native platform verification remains separate evidence.

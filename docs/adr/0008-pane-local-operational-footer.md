@@ -44,3 +44,15 @@ truthful session-local viewport feedback. Changes require reservation/DPI tests,
 responsive geometry, edge-connection, split-seam tiling and no-action-target tests, scrollbar boundary checks,
 passive multi-pane route tests, session-convention and clock-format tests, and
 the existing resize-storm gate.
+
+
+## 2026-10-06 appearance amendment
+
+The original fixed defaults remain, with optional header/footer appearance owned
+by `Presentation.interface`. Footer visibility, bounded height/text/padding,
+colors, borders and status-item switches are now configurable. The shared
+`FooterAppearance::reserved_height` calculation replaces the fixed reservation
+for layout, paint, passive hit testing and accessibility. Hidden footers reserve
+nothing; short panes retain at least 80 logical pixels of terminal content.
+Live edits refresh visible and restored grids, including saved unzoom styles.
+The footer remains renderer-only and read-only; no new PTY/history owner exists.

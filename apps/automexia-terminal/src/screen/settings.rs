@@ -369,6 +369,41 @@ impl Screen<'_> {
             }
             self.resize_all_contexts();
         }
+        // Settings updates reuse the same pane geometry owner as config reload.
+        // A color-only edit never resizes PTYs.
+        let size = self.sugarloaf.window_size();
+        let scale = self.sugarloaf.scale_factor();
+        let top = super::padding_top_from_config(
+            &config.navigation,
+            config.margin.top,
+            config.window.macos_use_unified_titlebar,
+            size.width,
+            size.height,
+            scale,
+        );
+        let margin = rio_backend::config::layout::Margin::new(
+            top * scale,
+            config.margin.right * scale,
+            config.margin.bottom * scale,
+            config.margin.left * scale,
+        );
+        self.context_manager.config.panel = config.panel;
+        self.context_manager.config.footer_appearance =
+            config.presentation.interface.footer;
+        self.context_manager.config.split_color = config.colors.split;
+        self.context_manager.config.split_active_color = config.colors.split_active;
+        for grid in self.context_manager.contexts_mut() {
+            let changed = grid.update_appearance(config);
+            let margin_changed = grid.scaled_margin != margin;
+            if margin_changed {
+                grid.update_scaled_margin(margin);
+            }
+            if changed || margin_changed {
+                grid.update_dimensions(&mut self.sugarloaf);
+            }
+        }
+        self.sugarloaf
+            .set_window_opaque(super::window_should_be_opaque(config));
         self.renderer.update_config(config);
         self.sugarloaf
             .set_background_color(Some(self.renderer.dynamic_background.1));

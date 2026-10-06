@@ -10,11 +10,11 @@ Automexia is designed to work with **zero configuration**. The most maintainable
 | Different shell/program for one launch | `automexia ... -e <PROGRAM> [ARGS...]` |
 | Permanent declarative terminal preference | `config.toml` |
 | Font size, appearance, shortcuts or supported customization choices changed in the running UI | Saved automatically for the next launch |
-| Turn table formatting, output highlighting or timestamps on or off | Open the feature page under **Customizations → Open Customizations** |
-| Turn an installed extension feature on or off | Open its feature page under **Customizations → Open Customizations** |
-| Show, hide or style information tags | Open **Information tags** under **Customizations → Open Customizations** |
-| Change command backgrounds or log colors | Open **Terminal output colors** under **Customizations → Open Customizations** |
-| Change Kubernetes status colors | Open **Kubernetes status colors** under **Customizations → Open Customizations** |
+| Turn table formatting, output highlighting or timestamps on or off | Open the feature page under **Customizations → Workflow & Output** |
+| Turn an installed extension feature on or off | Open its feature page under **Customizations → Workflow & Output** |
+| Show, hide or style information tags | Open **Information tags** under **Customizations → Workflow & Output** |
+| Change command backgrounds or log colors | Open **Terminal output colors** under **Customizations → Workflow & Output** |
+| Change Kubernetes status colors | Open **Kubernetes status colors** under **Customizations → Workflow & Output** |
 | Different preferences by platform | Platform-specific config override tables |
 | Temporary diagnostic logging | `--enable-log-file` or log environment override |
 | Frequent UI action on another key | Double-click its palette badge or select it and press F2; use `[bindings]` for advanced mappings |
@@ -27,6 +27,46 @@ See [Customize a shortcut](shortcuts.md#customize-a-shortcut-in-the-palette) for
 recording, conflict checks, Save/Reset, persistence and recovery. UI shortcuts use
 the same private preference store as font size and appearance, without rewriting
 your declarative configuration. Advanced bindings remain configuration-owned.
+
+## Choose a customization section
+
+Open the command palette, choose **Customizations**, then choose a section:
+
+- **Terminal Appearance** contains Header & Tabs, Footer, Panes & Borders,
+  Background & Spacing, Theme, Window controls and Fonts.
+- **Workflow & Output** contains information tags, output and Kubernetes colors,
+  inline tables, command timestamps, profiles and installed extension controls.
+
+Theme, Window controls and Fonts appear only in Terminal Appearance. Existing
+shortcuts for opening Customizations still open Workflow & Output. Select either
+palette action and press **F2** to assign your preferred shortcut.
+
+In **Terminal Appearance → Footer**, **Show Footer** switches the entire footer
+on or off and returns its space to terminal content. Its remaining controls hide
+while off; their values remain available when you turn it back on. Choose height,
+horizontal padding, text size and weight, background/opacity, text colors and
+border color/width. Choose which status items appear: clock, grid dimensions,
+encoding, line ending, pane position, local tab position, session indicators,
+selection and history state. Items still adapt to available width and context;
+for example, pane position appears only when there are multiple panes. Very short
+panes suppress the footer to preserve usable terminal space. It remains read-only.
+
+**Header & Tabs** controls header/background opacity and border, active/inactive
+tab colors, title colors and size, tab corner radius, spacing and maximum width.
+**Panes & Borders** controls pane padding/margins, row/column gaps, divider color
+and width, and inactive-pane intensity. **Background & Spacing** controls window
+opacity, transparent application cell backgrounds, system blur and four outer
+padding edges. Native transparency and blur depend on the system compositor.
+Global font family and terminal foreground/background colors remain in **Fonts**;
+Theme supplies inherited colors. Explicit surface choices override those colors.
+Text contrast guards keep header/footer labels legible over chosen surfaces.
+
+Changes preview on the live terminal behind the settings panel and save through
+the existing preference store. Color fields share Suggested/Favorites and custom
+color entry. Use Tab and arrows to focus controls, Enter to edit, and Esc,
+Backspace or Alt+Left to go back. Resetting an individual control inherits its
+configured value; section reset previews inherited values for that section only.
+No appearance control changes shell commands, authentication or terminal history.
 
 ## Understand what controls the appearance
 
@@ -94,9 +134,9 @@ These shortcuts retain the external configuration editor. The palette calls it
 and `vi` on Unix unless you override `[editor]`.
 
 To change supported feature switches inside Automexia, open **Customizations
-→ Open Customizations**, or press **Ctrl+Shift+S** (**Cmd+Shift+S** on macOS). The
+→ Workflow & Output**, or press **Ctrl+Shift+S** (**Cmd+Shift+S** on macOS). The
 shortcut opens the same feature list. It shows separate pages for Information tags,
-Terminal output colors, Kubernetes status colors, Inline tables, Command timestamps, Theme, Fonts,
+Terminal output colors, Kubernetes status colors, Inline tables, Command timestamps, Profiles,
 and features of installed extensions. The **Information tags** page keeps shared
 controls such as visibility, format, shape and spacing. Click a tag in the
 sample or its button in the list below. Its enabled state, text,
@@ -412,7 +452,7 @@ The chosen size is saved automatically and restored before the first window is
 created on the next launch. Reset clears that saved override and returns every
 pane to the current configured size.
 
-**Customizations → Fonts** includes terminal size, installed family, regular and
+**Customizations → Terminal Appearance → Fonts** includes terminal size, installed family, regular and
 bold weights, bold/italic faces, line spacing, ligatures, hinting, box glyphs and
 OpenType features. Text, selection, cursor, background and ANSI palette colors
 have separate color controls. The live sample shows the active font and colors.
@@ -493,7 +533,7 @@ Pane-local tab rails and operational footers follow responsive product rules and
 ## Theme Gallery
 
 Open **Ctrl/Cmd+K**, search for **Theme Gallery**, then press Enter. You can also
-open **Customizations → Theme**.
+open **Customizations → Terminal Appearance → Theme**.
 
 - Use the arrow keys or click a palette to preview it instantly. No settings are
   saved while browsing. Press Escape to return to the previous appearance.
@@ -545,15 +585,15 @@ can switch between Light and Dark when both adaptive palettes are loaded; a save
 gallery palette takes precedence until you choose **Use configuration**.
 
 The appearance shortcut also saves the selected light/dark choice. To try defaults
-without changing saved files, use **Reset all** in Customizations; **Restore saved**
+without changing saved files, use **Reset all** in Terminal Appearance; **Restore saved**
 returns to your previous choices. Resetting an individual value instead clears
 that value's saved override when no temporary preview is active.
 
 For a deliberate persistent reset, first close every Automexia instance. Back up
 and move only these snapshots out of the configuration root's `state/` directory:
 
-- `user-preferences-v12.toml` and `user-preferences-v12.previous.toml`;
-- any retained `user-preferences-v11.toml`, `user-preferences-v10.toml`, `user-preferences-v9.toml`, `user-preferences-v8.toml`, `user-preferences-v7.toml`, `user-preferences-v6.toml`, `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
+- `user-preferences-v13.toml` and `user-preferences-v13.previous.toml`;
+- any retained `user-preferences-v12.toml`, `user-preferences-v11.toml`, `user-preferences-v10.toml`, `user-preferences-v9.toml`, `user-preferences-v8.toml`, `user-preferences-v7.toml`, `user-preferences-v6.toml`, `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
   `user-preferences-v1.toml`, and their matching `.previous.toml` files.
 
 Moving both current and older snapshots prevents recovery or migration from

@@ -1109,7 +1109,7 @@ impl Renderer {
         let target_bg_alpha = window_bg_alpha(config);
         let dynamic_background = dynamic_background_for(config, &named_colors);
 
-        let island = if config.navigation.is_enabled() {
+        let mut island = if config.navigation.is_enabled() {
             Some(island::Island::new(
                 named_colors.tabs,
                 named_colors.tabs_active,
@@ -1124,6 +1124,9 @@ impl Renderer {
             None
         };
 
+        if let Some(island) = island.as_mut() {
+            island.appearance = config.presentation.interface.header;
+        }
         Renderer {
             unfocused_split_opacity: config.navigation.unfocused_split_opacity,
             unfocused_split_fill: config.navigation.unfocused_split_fill,
@@ -1221,6 +1224,9 @@ impl Renderer {
             self.island = None;
         }
 
+        if let Some(island) = self.island.as_mut() {
+            island.appearance = config.presentation.interface.header;
+        }
         self.unfocused_split_opacity = config.navigation.unfocused_split_opacity;
         self.unfocused_split_fill = config.navigation.unfocused_split_fill;
         self.use_drawable_chars = config.fonts.use_drawable_chars;
@@ -1887,10 +1893,11 @@ impl Renderer {
                 let cell_h = dim.cell.cell_height as f32;
                 let cols = dim.columns.max(1) as f32;
                 let rows = dim.lines.max(1) as f32;
-                let terminal_rect = crate::layout::pane_terminal_rect(
+                let terminal_rect = crate::layout::pane_terminal_rect_with_footer(
                     grid_context.layout_rect,
                     scale_factor,
                     grid_context.tab_count(),
+                    self.presentation.interface.footer,
                 );
                 let panel_left = (terminal_rect[0] + grid_scaled_margin.left).round();
                 let panel_top = (terminal_rect[1] + grid_scaled_margin.top).round();
@@ -1940,11 +1947,13 @@ impl Renderer {
                 .values()
                 .filter(|item| item.context().route_id != active_route)
                 .map(|item| {
-                    let [panel_x, panel_y, _, _] = crate::layout::pane_terminal_rect(
-                        item.layout_rect,
-                        scale_factor,
-                        item.tab_count(),
-                    );
+                    let [panel_x, panel_y, _, _] =
+                        crate::layout::pane_terminal_rect_with_footer(
+                            item.layout_rect,
+                            scale_factor,
+                            item.tab_count(),
+                            self.presentation.interface.footer,
+                        );
                     let margin = rio_backend::config::layout::Margin {
                         left: base_margin.left + panel_x,
                         top: base_margin.top + panel_y,
@@ -1983,10 +1992,11 @@ impl Renderer {
             .contexts_mut()
             .values_mut()
         {
-            let panel_rect = crate::layout::pane_terminal_rect(
+            let panel_rect = crate::layout::pane_terminal_rect_with_footer(
                 item.layout_rect,
                 scale_factor,
                 item.tab_count(),
+                self.presentation.interface.footer,
             );
             let context = item.context_mut();
             let pane = if context.route_id == active_route {
@@ -2278,10 +2288,11 @@ impl Renderer {
         if self.scrollbar.is_enabled() {
             self.scrollbar.clear_panel_states();
             for grid_context in context_manager.current_grid().contexts().values() {
-                let panel_rect = crate::layout::pane_terminal_rect(
+                let panel_rect = crate::layout::pane_terminal_rect_with_footer(
                     grid_context.layout_rect,
                     grid_context.context().dimension.dimension.scale,
                     grid_context.tab_count(),
+                    self.presentation.interface.footer,
                 );
                 let ctx = grid_context.context();
                 // The pane footer owns the remaining bottom strip. Keep the

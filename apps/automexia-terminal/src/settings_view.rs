@@ -7,7 +7,7 @@ use crate::renderer::ui_theme::{color_u8, UiTheme};
 use crate::settings_catalog::{
     command_output_band_catalog, customization_groups, customization_root_catalog,
     kubernetes_severity_catalog, output_severity_catalog, selected_tag_catalog,
-    slot_page_actions, tag_role_color_catalog, CustomizationGroup,
+    slot_page_actions, tag_role_color_catalog, CustomizationArea, CustomizationGroup,
     CustomizationResetScope, SlotPageSnapshot,
 };
 #[cfg(test)]
@@ -445,6 +445,7 @@ impl PackageSettingsNotice {
     }
 }
 struct CustomizationNavigation {
+    area: CustomizationArea,
     full_catalog: Catalog,
     groups: Vec<CustomizationGroup>,
     root_catalog: Catalog,
@@ -504,7 +505,7 @@ impl SettingsView {
             .active_key
             .as_ref()
             .and_then(|key| navigation.groups.iter().find(|group| &group.key == key))
-            .map_or("Customizations", |group| group.label.as_str())
+            .map_or(navigation.area.label(), |group| group.label.as_str())
     }
     fn is_category_root(&self) -> bool {
         self.customizations.as_ref().is_some_and(|navigation| {
@@ -577,6 +578,17 @@ impl SettingsView {
         }
     }
 
+    pub(crate) fn show_terminal_appearance(&mut self) {
+        if let Some(navigation) = self.customizations.as_mut() {
+            navigation.area = CustomizationArea::Terminal;
+            navigation.groups = customization_groups(&navigation.full_catalog)
+                .into_iter()
+                .filter(|group| navigation.area.includes(group))
+                .collect();
+            self.rebuild_customization_root();
+        }
+    }
+
     pub(crate) fn open(&mut self, catalog: Catalog) {
         self.open_with_section(catalog, None);
     }
@@ -589,6 +601,7 @@ impl SettingsView {
         self.close();
         if section == Some(Section::Customizations) {
             let mut groups = customization_groups(&catalog);
+            groups.retain(|group| CustomizationArea::Workflow.includes(group));
             let mut unavailable = false;
             let root_catalog =
                 customization_root_catalog(&catalog, &groups).or_else(|_| {
@@ -601,6 +614,7 @@ impl SettingsView {
                 self.view = Some(root_view);
                 self.catalog = Some(root_catalog.clone());
                 self.customizations = Some(CustomizationNavigation {
+                    area: CustomizationArea::Workflow,
                     full_catalog: catalog,
                     groups,
                     root_catalog,
@@ -903,6 +917,7 @@ impl SettingsView {
             return;
         };
         let mut groups = customization_groups(&catalog);
+        groups.retain(|group| navigation.area.includes(group));
         let mut unavailable = false;
         navigation.full_catalog = catalog;
         navigation.slot_pages = slot_pages;
@@ -3038,7 +3053,7 @@ impl SettingsView {
         } else if let Some(key) = navigation.active_key.as_ref() {
             CustomizationResetScope::Group(key.clone())
         } else {
-            CustomizationResetScope::All
+            CustomizationResetScope::Area(navigation.area)
         };
         let intent = CustomizationIntent::Reset {
             revision: navigation.full_catalog.revision(),
@@ -3046,11 +3061,7 @@ impl SettingsView {
         };
         self.ask_confirmation(
             ConfirmedSettingsAction::Customization(intent),
-            if self.is_category_root() {
-                "Reset all customizations?".into()
-            } else {
-                format!("Reset {}?", self.title())
-            },
+            format!("Reset {}?", self.title()),
             "Preview defaults temporarily. Saved files stay unchanged.",
             "Reset",
         );
@@ -3759,7 +3770,14 @@ impl SettingsView {
             width: (card.width - 2.0 * pad).max(0.0),
             height: (card.height - header - footer).max(0.0),
         };
-        let show_preview = self.is_category_detail();
+        // These controls preview directly on the live terminal. A generic
+        // value sample would duplicate the control and waste editing space.
+        let live_interface = self
+            .customizations
+            .as_ref()
+            .and_then(|navigation| navigation.active_key.as_ref())
+            .is_some_and(|key| key.as_str().starts_with("interface."));
+        let show_preview = self.is_category_detail() && !live_interface;
         let split = show_preview && content.width >= (self.font * 23.0).max(620.0);
         let (body, preview) = if split {
             let gutter = pad * 1.5;
@@ -3927,6 +3945,9 @@ impl SettingsView {
                         SettingKind::Boolean => self.font * 5.2 + 16.0,
                         SettingKind::Number { .. }
                         | SettingKind::ContinuousNumber { .. } => self.font * 10.0,
+                        SettingKind::Color { .. } => {
+                            text.measure(&value, &opts) + line + pad + 12.0
+                        }
                         _ => (text.measure(&value, &opts) + 24.0)
                             .clamp(self.font * 7.0, self.font * 15.0),
                     }
@@ -6209,8 +6230,10 @@ fn package_root_catalog(
 ) -> Result<Catalog, automexia_ui_model::settings::SettingsError> {
     let core = customization_root_catalog(&navigation.full_catalog, &navigation.groups)?;
     let mut entries = core.entries().to_vec();
-    if let Some(packages) = &navigation.package_pages {
-        entries.extend(packages.root_actions().cloned());
+    if navigation.area == CustomizationArea::Workflow {
+        if let Some(packages) = &navigation.package_pages {
+            entries.extend(packages.root_actions().cloned());
+        }
     }
     Catalog::new(core.revision(), entries)
 }
@@ -6234,6 +6257,9 @@ fn detail_catalog_with_slots(
         return detail_catalog(full, group);
     };
     let page = match group.key.as_str() {
+        key if key.starts_with("interface.") => {
+            crate::settings_catalog::interface_page_catalog(full, snapshot, key)
+        }
         crate::settings_catalog::WINDOW_CONTROLS => {
             crate::settings_catalog::window_controls_page_catalog(full, snapshot)
         }

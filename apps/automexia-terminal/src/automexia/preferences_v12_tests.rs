@@ -54,8 +54,13 @@ fn color_favorites_reject_duplicates_overflow_malformed_and_legacy_injection() {
         "[[1,2,3,4],[1,2,3,4]]",
         "['#123456']",
     ] {
-        assert!(parse_snapshot(
+        assert!(parse_version12_snapshot(
             format!("schema-version = 12\ncolor-favorites = {body}").as_bytes()
+        )
+        .is_err());
+        assert!(parse_snapshot(
+            format!("schema-version = {SCHEMA_VERSION}\ncolor-favorites = {body}")
+                .as_bytes()
         )
         .is_err());
     }

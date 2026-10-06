@@ -1781,6 +1781,13 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
                 self.apply_settings_edit(event_loop, window_id);
             }
+            RioEventType::Rio(RioEvent::OpenTerminalAppearance) => {
+                self.open_settings(window_id, true);
+                if let Some(route) = self.router.routes.get_mut(&window_id) {
+                    route.window.screen.settings_view.show_terminal_appearance();
+                    route.window.screen.fit_settings_view();
+                }
+            }
             RioEventType::Rio(RioEvent::OpenCustomizations) => {
                 self.open_settings(window_id, true)
             }

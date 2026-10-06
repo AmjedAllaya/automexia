@@ -29,10 +29,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-const SCHEMA_VERSION: u16 = 12;
+const SCHEMA_VERSION: u16 = 13;
 pub const MAX_COLOR_FAVORITES: usize = 16;
 const STATE_DIRECTORY: &str = "state";
-const PRIMARY_FILE: &str = "user-preferences-v12.toml";
+const PRIMARY_FILE: &str = "user-preferences-v13.toml";
+const VERSION12_PRIMARY_FILE: &str = "user-preferences-v12.toml";
 const VERSION11_PRIMARY_FILE: &str = "user-preferences-v11.toml";
 const VERSION10_PRIMARY_FILE: &str = "user-preferences-v10.toml";
 const VERSION9_PRIMARY_FILE: &str = "user-preferences-v9.toml";
@@ -44,7 +45,8 @@ const VERSION4_PRIMARY_FILE: &str = "user-preferences-v4.toml";
 const VERSION3_PRIMARY_FILE: &str = "user-preferences-v3.toml";
 const PREDECESSOR_PRIMARY_FILE: &str = "user-preferences-v2.toml";
 const LEGACY_PRIMARY_FILE: &str = "user-preferences-v1.toml";
-const PREVIOUS_FILE: &str = "user-preferences-v12.previous.toml";
+const PREVIOUS_FILE: &str = "user-preferences-v13.previous.toml";
+const VERSION12_PREVIOUS_FILE: &str = "user-preferences-v12.previous.toml";
 const VERSION11_PREVIOUS_FILE: &str = "user-preferences-v11.previous.toml";
 const VERSION10_PREVIOUS_FILE: &str = "user-preferences-v10.previous.toml";
 const VERSION9_PREVIOUS_FILE: &str = "user-preferences-v9.previous.toml";
@@ -56,7 +58,7 @@ const VERSION4_PREVIOUS_FILE: &str = "user-preferences-v4.previous.toml";
 const VERSION3_PREVIOUS_FILE: &str = "user-preferences-v3.previous.toml";
 const PREDECESSOR_PREVIOUS_FILE: &str = "user-preferences-v2.previous.toml";
 const LEGACY_PREVIOUS_FILE: &str = "user-preferences-v1.previous.toml";
-const LOCK_FILE: &str = "user-preferences-v12.lock";
+const LOCK_FILE: &str = "user-preferences-v13.lock";
 const STAGING_PREFIX: &str = ".user-preferences-";
 pub const MAX_PREFERENCE_BYTES: usize = 16 * 1024;
 pub const MAX_PACKAGE_PREFERENCE_BYTES: usize = 8 * 1024 * 1024;
@@ -357,6 +359,10 @@ impl InformationBarPreferences {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
 pub struct VisualPreferences {
+    #[serde(
+        skip_serializing_if = "super::interface_preferences::InterfacePreferences::is_empty"
+    )]
+    pub interface: super::interface_preferences::InterfacePreferences,
     #[serde(skip_serializing_if = "WindowControlsAppearance::is_empty")]
     pub window_controls: WindowControlsAppearance,
     #[serde(skip_serializing_if = "TimestampAppearance::is_empty")]
@@ -377,7 +383,8 @@ pub struct VisualPreferences {
 
 impl VisualPreferences {
     fn is_empty(&self) -> bool {
-        self.window_controls.is_empty()
+        self.interface.is_empty()
+            && self.window_controls.is_empty()
             && self.timestamps.is_empty()
             && self.tables.is_empty()
             && self.tags.is_empty()
@@ -388,6 +395,7 @@ impl VisualPreferences {
     }
 
     fn apply_to(&self, base: &mut rio_backend::config::presentation::Presentation) {
+        self.interface.appearance.overlay(&mut base.interface);
         self.window_controls.overlay(&mut base.window_controls);
         self.tables.overlay(&mut base.tables);
         self.timestamps.overlay(&mut base.timestamps);
@@ -478,6 +486,7 @@ impl UserPreferences {
         }
         self.presentation.apply_to(&mut effective.presentation);
         self.visual.apply_to(&mut effective.presentation);
+        self.visual.interface.apply_to(&mut effective);
         effective.bindings.ui_shortcuts = self.shortcuts.clone();
         effective
     }
@@ -757,6 +766,7 @@ impl TryFrom<Version4Preferences> for UserPreferences {
             shortcuts: stored.shortcuts,
             presentation: stored.presentation.into(),
             visual: VisualPreferences {
+                interface: Default::default(),
                 window_controls: WindowControlsAppearance::default(),
                 timestamps: TimestampAppearance::default(),
                 tables: TableAppearance::default(),
@@ -849,6 +859,8 @@ pub enum PreferenceSource {
     Defaults,
     Primary,
     Previous,
+    Version12,
+    Version12Previous,
     Version11,
     Version11Previous,
     Version10,
@@ -942,10 +954,50 @@ fn read_version4_snapshot(
 fn reject_color_favorites_predecessor(
     value: &toml::Value,
 ) -> Result<(), PreferenceError> {
+    reject_interface_predecessor(value)?;
     if value.get("color-favorites").is_some() {
         return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
     }
     Ok(())
+}
+
+fn reject_interface_predecessor(value: &toml::Value) -> Result<(), PreferenceError> {
+    if value
+        .get("visual")
+        .and_then(|v| v.get("interface"))
+        .is_some()
+    {
+        return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
+    }
+    Ok(())
+}
+
+fn parse_version12_snapshot(bytes: &[u8]) -> Result<UserPreferences, PreferenceError> {
+    let text = std::str::from_utf8(bytes)
+        .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
+    let value: toml::Value = toml::from_str(text)
+        .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
+    reject_interface_predecessor(&value)?;
+    let mut stored: StoredPreferences = value
+        .try_into()
+        .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
+    if stored.schema_version != 12 {
+        return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
+    }
+    stored.schema_version = SCHEMA_VERSION;
+    stored.try_into()
+}
+
+fn read_version12_snapshot(
+    path: &Path,
+) -> Result<Option<UserPreferences>, PreferenceError> {
+    private_fs::read_bounded_regular(path, MAX_PREFERENCE_BYTES)
+        .map_err(Into::into)
+        .and_then(|bytes| {
+            bytes
+                .map(|bytes| parse_version12_snapshot(&bytes))
+                .transpose()
+        })
 }
 
 fn parse_version11_snapshot(bytes: &[u8]) -> Result<UserPreferences, PreferenceError> {
@@ -953,6 +1005,7 @@ fn parse_version11_snapshot(bytes: &[u8]) -> Result<UserPreferences, PreferenceE
         .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
     let value: toml::Value = toml::from_str(text)
         .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
+    reject_interface_predecessor(&value)?;
     reject_color_favorites_predecessor(&value)?;
     let mut stored: StoredPreferences = value
         .try_into()
@@ -1316,6 +1369,15 @@ pub fn load_from_root(root: &Path) -> LoadOutcome {
     )
     .or_else(|| {
         load_pair(
+            &state_root(root).join(VERSION12_PRIMARY_FILE),
+            &state_root(root).join(VERSION12_PREVIOUS_FILE),
+            read_version12_snapshot,
+            PreferenceSource::Version12,
+            PreferenceSource::Version12Previous,
+        )
+    })
+    .or_else(|| {
+        load_pair(
             &state_root(root).join(VERSION11_PRIMARY_FILE),
             &state_root(root).join(VERSION11_PREVIOUS_FILE),
             read_version11_snapshot,
@@ -1574,63 +1636,71 @@ fn write_to_root_with_package(
     // Present invalid/future current data cannot be hidden by a predecessor.
     let previous = read_snapshot(&previous_path(root))?;
     if current.is_none() && previous.is_none() {
-        let version11 = read_version11_snapshot(&state.join(VERSION11_PRIMARY_FILE))?;
-        let version11_previous =
-            read_version11_snapshot(&state.join(VERSION11_PREVIOUS_FILE))?;
-        if version11.is_none() && version11_previous.is_none() {
-            let version10 = read_version10_snapshot(&state.join(VERSION10_PRIMARY_FILE))?;
-            let version10_previous =
-                read_version10_snapshot(&state.join(VERSION10_PREVIOUS_FILE))?;
-            if version10.is_none() && version10_previous.is_none() {
-                let version9 =
-                    read_version9_snapshot(&state.join(VERSION9_PRIMARY_FILE))?;
-                let version9_previous =
-                    read_version9_snapshot(&state.join(VERSION9_PREVIOUS_FILE))?;
-                if version9.is_none() && version9_previous.is_none() {
-                    let version8 =
-                        read_version8_snapshot(&state.join(VERSION8_PRIMARY_FILE))?;
-                    let version8_previous =
-                        read_version8_snapshot(&state.join(VERSION8_PREVIOUS_FILE))?;
-                    if version8.is_none() && version8_previous.is_none() {
-                        let version7 =
-                            read_version7_snapshot(&state.join(VERSION7_PRIMARY_FILE))?;
-                        let version7_previous =
-                            read_version7_snapshot(&state.join(VERSION7_PREVIOUS_FILE))?;
-                        if version7.is_none() && version7_previous.is_none() {
-                            let version6 = read_version6_snapshot(
-                                &state.join(VERSION6_PRIMARY_FILE),
+        let version12 = read_version12_snapshot(&state.join(VERSION12_PRIMARY_FILE))?;
+        let version12_previous =
+            read_version12_snapshot(&state.join(VERSION12_PREVIOUS_FILE))?;
+        if version12.is_none() && version12_previous.is_none() {
+            let version11 = read_version11_snapshot(&state.join(VERSION11_PRIMARY_FILE))?;
+            let version11_previous =
+                read_version11_snapshot(&state.join(VERSION11_PREVIOUS_FILE))?;
+            if version11.is_none() && version11_previous.is_none() {
+                let version10 =
+                    read_version10_snapshot(&state.join(VERSION10_PRIMARY_FILE))?;
+                let version10_previous =
+                    read_version10_snapshot(&state.join(VERSION10_PREVIOUS_FILE))?;
+                if version10.is_none() && version10_previous.is_none() {
+                    let version9 =
+                        read_version9_snapshot(&state.join(VERSION9_PRIMARY_FILE))?;
+                    let version9_previous =
+                        read_version9_snapshot(&state.join(VERSION9_PREVIOUS_FILE))?;
+                    if version9.is_none() && version9_previous.is_none() {
+                        let version8 =
+                            read_version8_snapshot(&state.join(VERSION8_PRIMARY_FILE))?;
+                        let version8_previous =
+                            read_version8_snapshot(&state.join(VERSION8_PREVIOUS_FILE))?;
+                        if version8.is_none() && version8_previous.is_none() {
+                            let version7 = read_version7_snapshot(
+                                &state.join(VERSION7_PRIMARY_FILE),
                             )?;
-                            let version6_previous = read_version6_snapshot(
-                                &state.join(VERSION6_PREVIOUS_FILE),
+                            let version7_previous = read_version7_snapshot(
+                                &state.join(VERSION7_PREVIOUS_FILE),
                             )?;
-                            if version6.is_none() && version6_previous.is_none() {
-                                let version5 = read_version5_snapshot(
-                                    &state.join(VERSION5_PRIMARY_FILE),
+                            if version7.is_none() && version7_previous.is_none() {
+                                let version6 = read_version6_snapshot(
+                                    &state.join(VERSION6_PRIMARY_FILE),
                                 )?;
-                                let version5_previous = read_version5_snapshot(
-                                    &state.join(VERSION5_PREVIOUS_FILE),
+                                let version6_previous = read_version6_snapshot(
+                                    &state.join(VERSION6_PREVIOUS_FILE),
                                 )?;
-                                if version5.is_none() && version5_previous.is_none() {
-                                    // Only an absent current pair permits migration. Preserve strict v4,
-                                    // v3 and v2 rollback bytes, including failed transactions.
-                                    read_version4_snapshot(
-                                        &state.join(VERSION4_PRIMARY_FILE),
+                                if version6.is_none() && version6_previous.is_none() {
+                                    let version5 = read_version5_snapshot(
+                                        &state.join(VERSION5_PRIMARY_FILE),
                                     )?;
-                                    read_version4_snapshot(
-                                        &state.join(VERSION4_PREVIOUS_FILE),
+                                    let version5_previous = read_version5_snapshot(
+                                        &state.join(VERSION5_PREVIOUS_FILE),
                                     )?;
-                                    read_version3_snapshot(
-                                        &state.join(VERSION3_PRIMARY_FILE),
-                                    )?;
-                                    read_version3_snapshot(
-                                        &state.join(VERSION3_PREVIOUS_FILE),
-                                    )?;
-                                    read_version2_snapshot(
-                                        &state.join(PREDECESSOR_PRIMARY_FILE),
-                                    )?;
-                                    read_version2_snapshot(
-                                        &state.join(PREDECESSOR_PREVIOUS_FILE),
-                                    )?;
+                                    if version5.is_none() && version5_previous.is_none() {
+                                        // Only an absent current pair permits migration. Preserve strict v4,
+                                        // v3 and v2 rollback bytes, including failed transactions.
+                                        read_version4_snapshot(
+                                            &state.join(VERSION4_PRIMARY_FILE),
+                                        )?;
+                                        read_version4_snapshot(
+                                            &state.join(VERSION4_PREVIOUS_FILE),
+                                        )?;
+                                        read_version3_snapshot(
+                                            &state.join(VERSION3_PRIMARY_FILE),
+                                        )?;
+                                        read_version3_snapshot(
+                                            &state.join(VERSION3_PREVIOUS_FILE),
+                                        )?;
+                                        read_version2_snapshot(
+                                            &state.join(PREDECESSOR_PRIMARY_FILE),
+                                        )?;
+                                        read_version2_snapshot(
+                                            &state.join(PREDECESSOR_PREVIOUS_FILE),
+                                        )?;
+                                    }
                                 }
                             }
                         }
@@ -2090,7 +2160,7 @@ mod tests {
         write_to_root(root.path(), &second).unwrap();
         std::fs::write(
             primary_path(root.path()),
-            b"schema-version = 12\nfont-size = nan",
+            format!("schema-version = {SCHEMA_VERSION}\nfont-size = nan"),
         )
         .unwrap();
 
@@ -2110,6 +2180,9 @@ mod tests {
             b"schema-version = 12\nunknown = true".to_vec(),
             b"schema-version = 12\nfont-size = 5.99".to_vec(),
             b"schema-version = 12\nfont-size = 100.01".to_vec(),
+            format!("schema-version = {SCHEMA_VERSION}\nunknown = true").into_bytes(),
+            format!("schema-version = {SCHEMA_VERSION}\nfont-size = 5.99").into_bytes(),
+            format!("schema-version = {SCHEMA_VERSION}\nfont-size = 100.01").into_bytes(),
             vec![b'x'; MAX_PREFERENCE_BYTES + 1],
         ];
 

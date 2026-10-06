@@ -70,6 +70,39 @@ impl<'a> Visibility<'a> {
     }
 
     fn allows(&self, id: &str) -> bool {
+        if id.starts_with("interface.footer.")
+            && id != "interface.footer.visible"
+            && !self.enabled("interface.footer.visible")
+        {
+            return false;
+        }
+        let number = |key: &str, fallback: f64| {
+            self.rows
+                .get(key)
+                .and_then(|row| {
+                    if let SettingValue::Number(value) = row.value {
+                        Some(value)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(fallback)
+        };
+        match id {
+            "interface.footer.border" => {
+                return number("interface.footer.border-width", 1.0) > 0.0
+            }
+            "interface.header.border" => {
+                return number("interface.header.border-width", 1.0) > 0.0
+            }
+            "interface.panes.border-color" => {
+                return number("interface.panes.border-width", 2.0) > 0.0
+            }
+            "interface.background.blur" | "interface.background.opacity-cells" => {
+                return number("interface.background.opacity", 100.0) < 100.0
+            }
+            _ => {}
+        }
         if id.starts_with("timestamps.") {
             return self.timestamp(id);
         }

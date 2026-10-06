@@ -16,11 +16,11 @@ Automexia uses one writable product root:
 
 The root contains `config.toml`, `themes/`, `extensions/`, `logs/`, and
 application-owned `state/`. Runtime font, appearance, shortcut and supported
-Settings choices use the private, versioned `state/user-preferences-v12.toml`
+Settings choices use the private, versioned `state/user-preferences-v13.toml`
 overlay. It contains explicit UI overrides, not a second general configuration.
-Version-11 preferences import only when both version-12 snapshots are absent;
+Version-12 preferences import only when both version-13 snapshots are absent;
 older versions import only when every newer snapshot pair is absent.
-Version 12 adds up to 16 shared color favorites. Version 11 added independent window-control style profiles. Version 10 added the
+Version 13 adds bounded terminal interface overrides. Version 12 added up to 16 shared color favorites. Version 11 added independent window-control style profiles. Version 10 added the
 selected theme name and validated palette. Version 9 added font and terminal palette overrides. Version 8 added command
 timestamp appearance; version 7 added inline table appearance.
 Version 6 added connected tag shapes. Older files remain unchanged
@@ -221,8 +221,54 @@ border-radius = 0
 | `panel.row-gap`, `column-gap` | float / `0` | Space between split panes. |
 | `panel.border-width`, `border-radius` | float / `2`, `0` | Split border geometry. |
 
-Pane-local tab rails and footers use responsive product invariants and have no
-v0.4 user setting. See [Liquid Hacker UX](LIQUID-HACKER-UX.md).
+**Customizations → Terminal Appearance** groups Header & Tabs, Footer, Panes &
+Borders, Background & Spacing, Theme, Window controls and Fonts. Existing window,
+margin, navigation and panel fields remain the owners of geometry and native
+effects; the UI stores only explicit bounded overrides. See the
+[usage guide](user-guide/customization.md#choose-a-customization-section).
+
+Header/footer paint fields are optional typed configuration values:
+
+```toml
+[presentation.interface.footer]
+visible = true
+height = 32                  # 24..72 logical px; text can require more room
+padding = 14                 # 0..32 logical px
+font-size = 12               # 8..24 logical px
+bold = false
+background = "#101A24FF"
+text = "#E5EDF5"
+muted-text = "#A7BAC9"
+border = "#314553FF"
+border-width = 1             # 0..4 logical px
+show-clock = true
+show-dimensions = true
+show-encoding = true
+show-line-ending = true
+show-pane = true
+show-tab = true
+show-context = true
+show-selection = true
+
+[presentation.interface.header]
+background = "#101A24FF"
+border = "#314553FF"
+border-width = 1             # 0..4 logical px
+text = "#E5EDF5"
+inactive-text = "#A7BAC9"
+active-tab = "#263D50FF"
+inactive-tab = "#142330FF"
+tab-radius = 9              # 0..24 logical px
+tab-gap = 7                 # 0..20 logical px, bounded further by tab width
+font-size = 14              # 10..20 logical px
+```
+
+Omitted colors follow the theme. Footer reservation, painting, input and
+accessibility use one geometry calculation. Hiding it reclaims terminal rows;
+very short panes suppress it automatically. Footer status labels progressively
+hide when width is insufficient. Header/footer label colors receive contrast
+correction; terminal application ANSI colors keep their existing precedence.
+Unsupported native blur/transparency effects do not change terminal behavior.
 
 Command information wraps automatically when the pane is too narrow for its
 context badges and completion timestamp. No setting is required. Use scrolling
@@ -284,7 +330,7 @@ history, paths, tabs, panes, sessions, or provider state.
 
 ## Runtime font and appearance
 
-Customizations includes **Fonts**, with these controls:
+**Customizations → Terminal Appearance → Fonts** includes these controls:
 
 - terminal size (6–100 points), installed family, regular/bold weights (100–900);
 - bold and italic faces, line spacing (0.8–3 times), ligatures, hinting and box glyphs;
@@ -364,7 +410,7 @@ Per-face named styles, symbol maps and additional font directories remain in
 
 ## Output presentation
 
-The command palette's **Customizations → Open Customizations** opens a feature
+The command palette's **Customizations → Workflow & Output** opens a feature
 list; each feature has a separate page for its supported switch and appearance
 controls. The existing Settings shortcut opens this same list for compatibility.
 Changes apply across windows, panes and tabs. **Reset all** or a feature's

@@ -1,6 +1,8 @@
 //! User-configurable presentation of ordinary terminal output.
 
 mod appearance;
+mod interface;
+pub use interface::*;
 mod tables;
 mod timestamps;
 mod window_controls;
@@ -29,6 +31,7 @@ pub struct Presentation {
     pub tables: TableAppearance,
     pub timestamps: TimestampAppearance,
     pub window_controls: WindowControlsAppearance,
+    pub interface: TerminalInterfaceAppearance,
 }
 
 impl Default for Presentation {
@@ -46,6 +49,7 @@ impl Default for Presentation {
             tables: TableAppearance::default(),
             timestamps: TimestampAppearance::default(),
             window_controls: WindowControlsAppearance::default(),
+            interface: TerminalInterfaceAppearance::default(),
         }
     }
 }
@@ -72,6 +76,7 @@ impl<'de> Deserialize<'de> for Presentation {
             tables: TableAppearance,
             timestamps: TimestampAppearance,
             window_controls: WindowControlsAppearance,
+            interface: TerminalInterfaceAppearance,
         }
         impl Default for ConfigFields {
             fn default() -> Self {
@@ -89,6 +94,7 @@ impl<'de> Deserialize<'de> for Presentation {
                     tables: TableAppearance::default(),
                     timestamps: TimestampAppearance::default(),
                     window_controls: WindowControlsAppearance::default(),
+                    interface: TerminalInterfaceAppearance::default(),
                 }
             }
         }
@@ -108,6 +114,7 @@ impl<'de> Deserialize<'de> for Presentation {
             tables: fields.tables,
             timestamps: fields.timestamps,
             window_controls: fields.window_controls,
+            interface: fields.interface,
         })
     }
 }
@@ -115,6 +122,17 @@ impl<'de> Deserialize<'de> for Presentation {
 #[cfg(test)]
 mod timestamp_config_tests {
     use super::*;
+
+    #[test]
+    fn terminal_appearance_config_round_trips_footer_visibility_and_style() {
+        let source = "[interface.footer]\nvisible = false\nheight = 40\nfont-size = 14\nbackground = '#12345680'\nshow-clock = false\n[interface.header]\nbackground = '#23456780'\ntab-radius = 12\n";
+        let parsed: Presentation =
+            toml::from_str(source).expect("terminal appearance config");
+        let output = toml::to_string(&parsed).unwrap();
+        assert!(output.contains("visible = false"));
+        assert!(output.contains("show-clock = false"));
+        assert_eq!(toml::from_str::<Presentation>(&output).unwrap(), parsed);
+    }
 
     #[test]
     fn command_timestamp_customization_config_is_admitted_and_round_trips() {

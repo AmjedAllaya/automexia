@@ -121,10 +121,11 @@ impl Screen<'_> {
         terminal.add_action(Action::Focus);
         terminal.set_read_only();
         let margin = grid.get_scaled_margin();
-        let panel = crate::layout::pane_terminal_rect(
+        let panel = crate::layout::pane_terminal_rect_with_footer(
             item.layout_rect,
             self.sugarloaf.scale_factor(),
             item.tab_count(),
+            grid.footer_appearance,
         );
         let x = (panel[0] + margin.left) as f64;
         let y = (panel[1] + margin.top) as f64;

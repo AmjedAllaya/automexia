@@ -94,6 +94,14 @@ fn preference_child_write() {
                 command_timestamps: Some(false),
             },
             visual: VisualPreferences {
+                interface: automexia_terminal::automexia::interface_preferences::InterfacePreferences {
+                    appearance: rio_backend::config::presentation::TerminalInterfaceAppearance {
+                        footer: rio_backend::config::presentation::FooterAppearance { visible:Some(false), ..Default::default() },
+                        ..Default::default()
+                    },
+                    padding_left: rio_backend::config::presentation::UiPixels::from_decimal(7.5),
+                    ..Default::default()
+                },
                 window_controls: WindowControlsAppearance {
                     style: Some(WindowControlStyle::Circles),
                     circles: WindowControlProfile {
@@ -200,6 +208,8 @@ fn saved_preferences_survive_real_process_restart_and_reset_without_config_mutat
     base.force_theme = Some(AppearanceTheme::Dark);
     let effective = restarted.preferences.apply_to(&base);
     assert_eq!(effective.fonts.size, 23.5);
+    assert!(!effective.presentation.interface.footer.is_visible());
+    assert_eq!(effective.margin.left, 7.5);
     assert_eq!(effective.fonts.family.as_deref(), Some("Example Mono"));
     assert_eq!(effective.line_height, 1.5);
     assert_eq!(
@@ -377,11 +387,12 @@ fn legacy_v4_import_survives_restart_and_keeps_kubernetes_independent() {
     // Create fixture permissions through the real private writer, then retain
     // only fields supported by the predecessor. This is test data, not migration.
     write_to_root(root.path(), &legacy).unwrap();
-    let current = root.path().join("state/user-preferences-v12.toml");
+    let current = root.path().join("state/user-preferences-v13.toml");
     let previous = root.path().join("state/user-preferences-v4.toml");
-    let original = std::fs::read_to_string(&current)
-        .unwrap()
-        .replace("schema-version = 12", "schema-version = 4");
+    let mut fixture: toml::Value =
+        toml::from_str(&std::fs::read_to_string(&current).unwrap()).unwrap();
+    fixture["schema-version"] = toml::Value::Integer(4);
+    let original = toml::to_string(&fixture).unwrap();
     std::fs::write(&current, &original).unwrap();
     std::fs::rename(&current, &previous).unwrap();
     assert!(!current.exists());

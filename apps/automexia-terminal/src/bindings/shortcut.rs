@@ -47,6 +47,7 @@ pub(crate) fn palette_binding_target(
         | LastCommandActions
         | OpenSettings
         | OpenCustomizations
+        | OpenTerminalAppearance
         | RestorePreviousSession
         | OpenThemeGallery
         | OpenProfiles
@@ -85,6 +86,7 @@ pub(crate) fn legacy_binding_target(action: PaletteAction) -> crate::bindings::A
         ConfigEditor => Action::ConfigEditor,
         OpenSettings => Action::OpenSettings,
         OpenCustomizations => Action::OpenCustomizations,
+        OpenTerminalAppearance => Action::OpenTerminalAppearance,
         OpenThemeGallery => Action::OpenThemeGallery,
         RestorePreviousSession => Action::RestorePreviousSession,
         OpenProfiles => Action::OpenProfiles,

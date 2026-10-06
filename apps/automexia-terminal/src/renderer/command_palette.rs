@@ -271,6 +271,7 @@ enum CommandIcon {
     Close,
     Settings,
     Customizations,
+    TerminalAppearance,
     Toolbox,
     ConfigFile,
     WindowAdd,
@@ -389,6 +390,10 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
         OpenSettings | OpenProfiles => RowPresentation {
             icon: CommandIcon::Settings,
             accent: UiAccent::Warning,
+        },
+        OpenTerminalAppearance => RowPresentation {
+            icon: CommandIcon::TerminalAppearance,
+            accent: UiAccent::Blue,
         },
         OpenCustomizations => RowPresentation {
             icon: CommandIcon::Customizations,
@@ -646,9 +651,14 @@ const COMMANDS: &[Command] = &[
         action: PaletteAction::OpenThemeGallery,
     },
     Command {
-        title: "Open Customizations",
+        title: "Workflow & Output",
         shortcut: "Enter",
         action: PaletteAction::OpenCustomizations,
+    },
+    Command {
+        title: "Terminal Appearance",
+        shortcut: "Enter",
+        action: PaletteAction::OpenTerminalAppearance,
     },
     Command {
         title: "Edit Configuration File",
@@ -1320,6 +1330,13 @@ fn draw_command_icon(
             canvas.dot(13.0, 9.25, 3.5);
             canvas.dot(8.5, 15.25, 3.5);
         }
+        CommandIcon::TerminalAppearance => {
+            canvas.outline(2.0, 3.0, 18.0, 16.0, 2.0);
+            canvas.line(2.5, 7.0, 19.5, 7.0);
+            canvas.line(2.5, 16.0, 19.5, 16.0);
+            canvas.line(11.0, 8.0, 11.0, 15.0);
+            canvas.dot(5.0, 4.0, 1.5);
+        }
         CommandIcon::Customizations => {
             canvas.outline(2.0, 2.5, 18.0, 17.0, 7.0);
             canvas.dot(5.0, 6.0, 2.5);
@@ -1821,6 +1838,7 @@ impl CommandPalette {
                 action,
                 PaletteAction::OpenSettings
                     | PaletteAction::OpenCustomizations
+                    | PaletteAction::OpenTerminalAppearance
                     | PaletteAction::OpenThemeGallery
                     | PaletteAction::OpenProfiles
                     | PaletteAction::OpenConnections
@@ -3836,6 +3854,7 @@ mod tests {
                 assert!(matches!(
                     command.action,
                     PaletteAction::OpenCustomizations
+                        | PaletteAction::OpenTerminalAppearance
                         | PaletteAction::OpenThemeGallery
                         | PaletteAction::RestorePreviousSession
                         | PaletteAction::OpenProfiles

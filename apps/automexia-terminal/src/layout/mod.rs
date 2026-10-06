@@ -1,3 +1,4 @@
+use rio_backend::config::presentation::FooterAppearance;
 #[cfg(test)]
 mod compute_tests;
 mod recovery;
@@ -23,7 +24,9 @@ const MIN_LINES: usize = 1;
 /// The footer is renderer-owned rather than PTY-owned, so it must never share
 /// cells with terminal output.  Tiny panes keep all of their space for the PTY
 /// and omit the footer until there is enough room for both surfaces.
+#[cfg(test)]
 pub const PANE_FOOTER_HEIGHT_LOGICAL: f32 = 32.0;
+#[cfg(test)]
 const PANE_FOOTER_MIN_PANE_HEIGHT_LOGICAL: f32 = 112.0;
 
 /// Height reserved at the top of a pane that owns multiple local tabs.
@@ -33,17 +36,10 @@ const PANE_FOOTER_MIN_PANE_HEIGHT_LOGICAL: f32 = 112.0;
 pub const PANE_TAB_RAIL_HEIGHT_LOGICAL: f32 = 36.0;
 const PANE_TAB_RAIL_MIN_PANE_HEIGHT_LOGICAL: f32 = 96.0;
 
+#[cfg(test)]
 #[inline]
 pub fn pane_footer_reserved_height(panel_height: f32, scale: f32) -> f32 {
-    if !panel_height.is_finite()
-        || !scale.is_finite()
-        || scale <= f32::EPSILON
-        || panel_height / scale < PANE_FOOTER_MIN_PANE_HEIGHT_LOGICAL
-    {
-        0.0
-    } else {
-        PANE_FOOTER_HEIGHT_LOGICAL * scale
-    }
+    FooterAppearance::default().reserved_height(panel_height, scale)
 }
 
 #[inline]
@@ -77,16 +73,31 @@ pub fn pane_tab_rail_rect(
 
 /// Terminal-cell rectangle after subtracting pane-owned top and bottom chrome.
 #[inline]
-pub fn pane_terminal_rect(
+pub fn pane_terminal_rect_with_footer(
     mut panel_rect: [f32; 4],
     scale: f32,
     local_tab_count: usize,
+    appearance: FooterAppearance,
 ) -> [f32; 4] {
     let rail = pane_tab_rail_reserved_height(panel_rect[3], scale, local_tab_count);
-    let footer = pane_footer_reserved_height(panel_rect[3], scale);
+    let footer = appearance.reserved_height(panel_rect[3], scale);
     panel_rect[1] += rail;
     panel_rect[3] = (panel_rect[3] - rail - footer).max(0.0);
     panel_rect
+}
+
+#[cfg(test)]
+fn pane_terminal_rect(
+    panel_rect: [f32; 4],
+    scale: f32,
+    local_tab_count: usize,
+) -> [f32; 4] {
+    pane_terminal_rect_with_footer(
+        panel_rect,
+        scale,
+        local_tab_count,
+        FooterAppearance::default(),
+    )
 }
 
 /// Direction of a draggable panel border
@@ -361,6 +372,7 @@ pub struct ContextGrid<T: EventListener> {
     inner: FxHashMap<NodeId, ContextGridItem<T>>,
     pub root: Option<NodeId>,
     panel_config: rio_backend::config::layout::Panel,
+    pub footer_appearance: FooterAppearance,
     tree: TaffyTree<()>,
     root_node: NodeId,
     border_config: BorderConfig,
@@ -794,6 +806,30 @@ mod pane_tab_tests {
     }
 
     #[test]
+    fn interface_spacing_changes_survive_zoom_and_dpi_without_changing_routes() {
+        let mut grid = two_panel_grid();
+        let routes = grid.route_ids();
+        assert!(grid.begin_split_zoom());
+        let mut config = rio_backend::config::Config::default();
+        config.panel.padding.left = 9.0;
+        config.panel.row_gap = 7.0;
+        config.presentation.interface.footer.visible = Some(false);
+        assert!(grid.update_appearance(&config));
+        grid.update_scale(2.0);
+        assert!(grid.restore_zoom_styles());
+        grid.compute_layout().unwrap();
+        for node in grid.inner.keys() {
+            assert_eq!(grid.tree.style(*node).unwrap().padding.left, length(18.0));
+        }
+        assert!(!grid.footer_appearance.is_visible());
+        assert_eq!(grid.route_ids(), routes);
+        assert!(
+            !grid.update_appearance(&config),
+            "unchanged preferences do not resize"
+        );
+    }
+
+    #[test]
     fn parked_restore_keeps_zoom_and_unzoom_at_the_new_viewport() {
         let mut grid = two_panel_grid();
         let routes = grid.route_ids();
@@ -1152,6 +1188,7 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             height,
             root: Some(panel_node),
             panel_config,
+            footer_appearance: FooterAppearance::default(),
             tree,
             root_node,
             border_config,
@@ -1265,8 +1302,12 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
     pub fn find_terminal_at_position(&self, x: f32, y: f32) -> Option<NodeId> {
         let node = self.find_context_at_position(x, y)?;
         let item = self.inner.get(&node)?;
-        let [left, top, width, height] =
-            pane_terminal_rect(item.layout_rect, self.scale, item.tab_count());
+        let [left, top, width, height] = pane_terminal_rect_with_footer(
+            item.layout_rect,
+            self.scale,
+            item.tab_count(),
+            self.footer_appearance,
+        );
         let x = x - self.scaled_margin.left;
         let y = y - self.scaled_margin.top;
         (x >= left && x < left + width && y >= top && y < top + height).then_some(node)
@@ -1945,7 +1986,7 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             for context in item.contexts_mut() {
                 let previous_grid_size =
                     (context.dimension.columns, context.dimension.lines);
-                let footer_height = pane_footer_reserved_height(height, scale);
+                let footer_height = self.footer_appearance.reserved_height(height, scale);
                 let tab_rail_height =
                     pane_tab_rail_reserved_height(height, scale, local_tab_count);
                 context.dimension.margin = Margin::all(0.0);
@@ -2305,7 +2346,11 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             return;
         }
         self.scale = new_scale;
+        self.refresh_panel_styles();
+    }
 
+    fn refresh_panel_styles(&mut self) {
+        let new_scale = self.scale;
         let gap = geometry::Size {
             width: length(self.panel_config.column_gap * new_scale),
             height: length(self.panel_config.row_gap * new_scale),
@@ -2323,6 +2368,17 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             bottom: length(self.panel_config.margin.bottom * new_scale),
         };
 
+        // Unzoom must retain current spacing rather than restore stale preferences.
+        if let Some(zoomed) = &mut self.zoomed {
+            for (node, style) in &mut zoomed.styles {
+                if self.inner.contains_key(node) {
+                    style.padding = padding;
+                    style.margin = margin;
+                } else {
+                    style.gap = gap;
+                }
+            }
+        }
         let mut stack = vec![self.root_node];
         while let Some(node) = stack.pop() {
             if let Ok(mut style) = self.tree.style(node).cloned() {
@@ -2338,6 +2394,42 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
                 stack.extend(children);
             }
         }
+    }
+
+    pub fn with_footer(mut self, footer: FooterAppearance) -> Self {
+        self.footer_appearance = footer;
+        self
+    }
+
+    pub fn update_appearance(&mut self, config: &rio_backend::config::Config) -> bool {
+        self.update_panel_appearance(
+            config.panel,
+            config.presentation.interface.footer,
+            config.colors.split,
+            config.colors.split_active,
+        )
+    }
+
+    pub fn update_panel_appearance(
+        &mut self,
+        panel: rio_backend::config::layout::Panel,
+        footer: FooterAppearance,
+        split_color: [f32; 4],
+        active_color: [f32; 4],
+    ) -> bool {
+        let changed = self.panel_config != panel
+            || self.footer_appearance.is_visible() != footer.is_visible()
+            || self.footer_appearance.height() != footer.height();
+        self.footer_appearance = footer;
+        self.border_config.width = panel.border_width;
+        self.border_config.color = split_color;
+        self.active_border_config.width = panel.border_width.max(2.0);
+        self.active_border_config.color = active_color;
+        if self.panel_config != panel {
+            self.panel_config = panel;
+            self.refresh_panel_styles();
+        }
+        changed
     }
 
     pub fn update_line_height(&mut self, line_height: f32) {

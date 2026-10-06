@@ -296,6 +296,7 @@ pub struct ContextManagerConfig {
     pub split_color: [f32; 4],
     pub split_active_color: [f32; 4],
     pub panel: rio_backend::config::layout::Panel,
+    pub footer_appearance: rio_backend::config::presentation::FooterAppearance,
     pub title: rio_backend::config::title::Title,
     pub keyboard: rio_backend::config::keyboard::Keyboard,
     pub scrollback_history_limit: usize,
@@ -650,15 +651,18 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         };
 
         let route_id = new_context.route_id;
-        self.contexts.push(ContextGrid::new_with_viewport(
-            new_context,
-            scaled_margin,
-            self.config.split_color,
-            self.config.split_active_color,
-            self.config.panel,
-            viewport.0,
-            viewport.1,
-        ));
+        self.contexts.push(
+            ContextGrid::new_with_viewport(
+                new_context,
+                scaled_margin,
+                self.config.split_color,
+                self.config.split_active_color,
+                self.config.panel,
+                viewport.0,
+                viewport.1,
+            )
+            .with_footer(self.config.footer_appearance),
+        );
 
         if runner.mark_published(lease, route_id).is_err() {
             self.contexts.pop();
@@ -966,7 +970,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                 ctx_config.split_color,
                 ctx_config.split_active_color,
                 ctx_config.panel,
-            )],
+            )
+            .with_footer(ctx_config.footer_appearance)],
             capacity: DEFAULT_CONTEXT_CAPACITY,
             event_proxy,
             window_id,
@@ -1008,7 +1013,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                 config.split_color,
                 config.split_active_color,
                 config.panel,
-            )],
+            )
+            .with_footer(config.footer_appearance)],
             capacity,
             event_proxy,
             window_id,
@@ -1417,6 +1423,10 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     pub fn open_customizations(&self) {
         self.event_proxy
             .send_event(RioEvent::OpenCustomizations, self.window_id);
+    }
+    pub fn open_terminal_appearance(&self) {
+        self.event_proxy
+            .send_event(RioEvent::OpenTerminalAppearance, self.window_id);
     }
 
     #[inline]
@@ -1896,6 +1906,12 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             self.parked_topologies.push_back(parked);
             return false;
         }
+        parked.grid.update_panel_appearance(
+            self.config.panel,
+            self.config.footer_appearance,
+            self.config.split_color,
+            self.config.split_active_color,
+        );
         let live = self.current_grid();
         if !parked.grid.prepare_restore(
             live.width,
@@ -2026,11 +2042,10 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                 let context = item.context();
                 let active_local_tab_index = item.active_tab_index();
                 let pane_scale = context.dimension.dimension.scale;
-                let terminal_rect = crate::layout::pane_terminal_rect(
+                let terminal_rect = crate::layout::pane_terminal_rect_with_footer(
                     item.layout_rect,
                     pane_scale,
-                    item.tab_count(),
-                );
+                    item.tab_count(), self.config.footer_appearance);
                 let pane_rail_height = crate::layout::pane_tab_rail_reserved_height(
                     item.layout_rect[3],
                     pane_scale,
@@ -2535,6 +2550,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             split_color: config.colors.split,
             split_active_color: config.colors.split_active,
             panel: config.panel,
+            footer_appearance: config.presentation.interface.footer,
             title: config.title,
             keyboard: config.keyboard,
             scrollback_history_limit: config.scrollback_history_limit,
@@ -2680,15 +2696,18 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                 Ok(new_context) => {
                     let previous_scaled_margin =
                         self.contexts[self.current_index].scaled_margin;
-                    self.contexts.push(ContextGrid::new_with_viewport(
-                        new_context,
-                        previous_scaled_margin,
-                        self.config.split_color,
-                        self.config.split_active_color,
-                        self.config.panel,
-                        viewport.0,
-                        viewport.1,
-                    ));
+                    self.contexts.push(
+                        ContextGrid::new_with_viewport(
+                            new_context,
+                            previous_scaled_margin,
+                            self.config.split_color,
+                            self.config.split_active_color,
+                            self.config.panel,
+                            viewport.0,
+                            viewport.1,
+                        )
+                        .with_footer(self.config.footer_appearance),
+                    );
                     if redirect {
                         self.current_index = last_index;
                         self.current_route = self.current().route_id;
@@ -3004,7 +3023,8 @@ pub mod test {
                     manager.config.split_color,
                     manager.config.split_active_color,
                     manager.config.panel,
-                ),
+                )
+                .with_footer(manager.config.footer_appearance),
                 index: 0,
                 parked_at: Instant::now(),
             });
@@ -3048,6 +3068,21 @@ pub mod test {
         assert_eq!(manager.parked_topologies.back().unwrap().index, 1);
         assert!(manager.can_undo_topology());
         assert!(!manager.can_redo_topology());
+    }
+
+    #[test]
+    fn interface_parked_topology_uses_current_footer_and_spacing_on_restore() {
+        let mut manager =
+            ContextManager::start_with_capacity(3, VoidListener {}, WindowId::from(74))
+                .unwrap();
+        manager.add_context(true, 0);
+        let routes = manager.route_ids();
+        assert!(manager.park_current_topology_model());
+        manager.config.footer_appearance.visible = Some(false);
+        manager.config.panel.padding.left = 19.0;
+        assert!(manager.undo_topology_model());
+        assert!(!manager.current_grid().footer_appearance.is_visible());
+        assert_eq!(manager.route_ids(), routes);
     }
 
     #[test]

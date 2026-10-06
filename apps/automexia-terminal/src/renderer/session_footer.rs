@@ -2,12 +2,12 @@
 //!
 //! The footer is a renderer-owned surface: it reports viewport/session state
 //! without writing escape sequences into the PTY, and its reserved height is
-//! removed from the terminal grid by `layout::pane_footer_reserved_height`.
+//! removed from the terminal grid by `FooterAppearance::reserved_height`.
 
 use super::ui_theme::{color_u8, UiTheme};
 use crate::context::ContextManager;
-use crate::layout::pane_footer_reserved_height;
 use crate::renderer::search::SearchRect;
+use rio_backend::config::presentation::FooterAppearance;
 use rio_backend::event::EventListener;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Attributes;
@@ -51,17 +51,18 @@ struct FooterFrame {
     left: f32,
 }
 
-fn footer_geometry(
+fn footer_geometry_with_appearance(
     panel_rect: [f32; 4],
     frame: FooterFrame,
     scale: f32,
+    appearance: FooterAppearance,
 ) -> Option<FooterGeometry> {
     let scale = if scale.is_finite() && scale > f32::EPSILON {
         scale
     } else {
         return None;
     };
-    let reserved = pane_footer_reserved_height(panel_rect[3], scale);
+    let reserved = appearance.reserved_height(panel_rect[3], scale);
     if reserved <= 0.0 {
         return None;
     }
@@ -107,6 +108,15 @@ pub struct CompatibilityIndicator {
     pub zoomed: bool,
 }
 
+#[cfg(test)]
+fn footer_geometry(
+    panel_rect: [f32; 4],
+    frame: FooterFrame,
+    scale: f32,
+) -> Option<FooterGeometry> {
+    footer_geometry_with_appearance(panel_rect, frame, scale, FooterAppearance::default())
+}
+
 #[derive(Default)]
 pub struct SessionFooter {
     compatibility: FxHashMap<usize, CompatibilityIndicator>,
@@ -139,7 +149,14 @@ impl SessionFooter {
         };
         let ordered = grid.get_ordered_keys();
         let pane_count = ordered.len();
-        let clock = current_clock_label();
+        if !grid.footer_appearance.is_visible() {
+            return;
+        }
+        let clock = if grid.footer_appearance.show_clock.unwrap_or(true) {
+            current_clock_label()
+        } else {
+            String::new()
+        };
 
         for (pane_index, key) in ordered.into_iter().enumerate() {
             let Some(item) = grid.contexts().get(&key) else {
@@ -150,7 +167,12 @@ impl SessionFooter {
                 continue;
             }
             let rc = &context.renderable_content;
-            let Some(geometry) = footer_geometry(item.layout_rect, frame, scale) else {
+            let Some(geometry) = footer_geometry_with_appearance(
+                item.layout_rect,
+                frame,
+                scale,
+                grid.footer_appearance,
+            ) else {
                 continue;
             };
             let is_active = key == grid.current;
@@ -168,7 +190,13 @@ impl SessionFooter {
                 is_active,
                 compatibility: self.compatibility.get(&context.route_id),
             };
-            draw_footer(sugarloaf, geometry, state, theme);
+            draw_footer_with_appearance(
+                sugarloaf,
+                geometry,
+                state,
+                theme,
+                grid.footer_appearance,
+            );
         }
     }
 }
@@ -218,7 +246,12 @@ where
     for key in grid.get_ordered_keys() {
         let item = grid.contexts().get(&key)?;
         let context = item.context();
-        let Some(geometry) = footer_geometry(item.layout_rect, frame, scale) else {
+        let Some(geometry) = footer_geometry_with_appearance(
+            item.layout_rect,
+            frame,
+            scale,
+            grid.footer_appearance,
+        ) else {
             continue;
         };
         if !geometry.outer.contains(x, y) {
@@ -250,7 +283,13 @@ where
         .contexts()
         .values()
         .find(|item| item.context().route_id == route_id)?;
-    let surface = footer_geometry(item.layout_rect, frame, scale)?.surface;
+    let surface = footer_geometry_with_appearance(
+        item.layout_rect,
+        frame,
+        scale,
+        grid.footer_appearance,
+    )?
+    .surface;
     Some(SearchRect::new(
         surface.x,
         surface.y,
@@ -259,12 +298,15 @@ where
     ))
 }
 
-fn draw_footer(
+fn draw_footer_with_appearance(
     sugarloaf: &mut Sugarloaf,
     geometry: FooterGeometry,
     state: FooterRenderState<'_>,
     theme: &UiTheme,
+    appearance: FooterAppearance,
 ) {
+    let theme = footer_theme(*theme, appearance);
+    let border_width = appearance.border_width.map_or(1.0, |v| v.get());
     let outline = if state.is_active && state.pane_count > 1 {
         theme.accent
     } else {
@@ -281,24 +323,26 @@ fn draw_footer(
         0.0,
         27,
     );
-    sugarloaf.line(
-        geometry.surface.x,
-        geometry.surface.y,
-        geometry.surface.x + geometry.surface.width,
-        geometry.surface.y,
-        1.0,
-        0.0,
-        outline,
-        28,
-    );
-    if state.pane_count > 1 && state.is_active {
+    if border_width > 0.0 {
+        sugarloaf.line(
+            geometry.surface.x,
+            geometry.surface.y,
+            geometry.surface.x + geometry.surface.width,
+            geometry.surface.y,
+            border_width,
+            0.0,
+            outline,
+            28,
+        );
+    }
+    if border_width > 0.0 && state.pane_count > 1 && state.is_active {
         let bottom = geometry.surface.y + geometry.surface.height;
         sugarloaf.line(
             geometry.surface.x,
             geometry.surface.y,
             geometry.surface.x,
             bottom,
-            1.2,
+            border_width,
             0.0,
             outline,
             28,
@@ -308,7 +352,7 @@ fn draw_footer(
             geometry.surface.y,
             geometry.surface.x + geometry.surface.width,
             bottom,
-            1.2,
+            border_width,
             0.0,
             outline,
             28,
@@ -317,12 +361,18 @@ fn draw_footer(
 
     let center_y = geometry.surface.y + geometry.surface.height * 0.5;
     let compact = geometry.surface.width < 300.0;
-    let value_font_size = if compact { 10.5 } else { 12.0 };
-    let quiet_font_size = if compact { 10.0 } else { 11.5 };
-    let horizontal_padding = if compact { 7.0 } else { 14.0 };
+    let value_font_size = appearance
+        .font_size
+        .map_or(if compact { 10.5 } else { 12.0 }, |v| v.get());
+    let quiet_font_size = (value_font_size - 0.5).max(8.0);
+    let horizontal_padding = appearance
+        .padding
+        .map_or(if compact { 7.0 } else { 14.0 }, |v| v.get())
+        .min(geometry.surface.width / 2.0);
     let text_y = center_y - value_font_size * 0.5 - 0.5;
     let value_opts = DrawOpts {
         font_size: value_font_size,
+        bold: appearance.bold.unwrap_or(false),
         color: if state.is_active {
             color_u8(theme.text)
         } else {
@@ -333,64 +383,71 @@ fn draw_footer(
     let separator = theme.border;
     let min_x = geometry.surface.x + horizontal_padding;
     let mut right_x = geometry.surface.x + geometry.surface.width - horizontal_padding;
-    let mut has_status = draw_right_status(
-        sugarloaf,
-        &mut right_x,
-        min_x,
-        text_y,
-        center_y,
-        state.clock,
-        value_opts,
-        separator,
-        false,
-    );
+    let mut has_status = appearance.show_clock.unwrap_or(true)
+        && draw_right_status(
+            sugarloaf,
+            &mut right_x,
+            min_x,
+            text_y,
+            center_y,
+            state.clock,
+            value_opts,
+            separator,
+            false,
+        );
     let grid = format!("{}x{}", state.columns, state.lines);
-    if draw_right_status(
-        sugarloaf,
-        &mut right_x,
-        min_x,
-        text_y,
-        center_y,
-        &grid,
-        value_opts,
-        separator,
-        has_status,
-    ) {
+    if appearance.show_dimensions.unwrap_or(true)
+        && draw_right_status(
+            sugarloaf,
+            &mut right_x,
+            min_x,
+            text_y,
+            center_y,
+            &grid,
+            value_opts,
+            separator,
+            has_status,
+        )
+    {
         has_status = true;
     }
-    if draw_right_status(
-        sugarloaf,
-        &mut right_x,
-        min_x,
-        text_y,
-        center_y,
-        state.line_ending,
-        value_opts,
-        separator,
-        has_status,
-    ) {
+    if appearance.show_line_ending.unwrap_or(true)
+        && draw_right_status(
+            sugarloaf,
+            &mut right_x,
+            min_x,
+            text_y,
+            center_y,
+            state.line_ending,
+            value_opts,
+            separator,
+            has_status,
+        )
+    {
         has_status = true;
     }
-    let _ = draw_right_status(
-        sugarloaf,
-        &mut right_x,
-        min_x,
-        text_y,
-        center_y,
-        "UTF-8",
-        value_opts,
-        separator,
-        has_status,
-    );
+    let _ = appearance.show_encoding.unwrap_or(true)
+        && draw_right_status(
+            sugarloaf,
+            &mut right_x,
+            min_x,
+            text_y,
+            center_y,
+            "UTF-8",
+            value_opts,
+            separator,
+            has_status,
+        );
 
     let mut left_x = geometry.surface.x + horizontal_padding;
     let left_limit = right_x - 12.0;
     let quiet_opts = DrawOpts {
         font_size: quiet_font_size,
+        bold: appearance.bold.unwrap_or(false),
         color: color_u8(theme.muted_text),
         ..DrawOpts::default()
     };
-    if state.pane_count > 1 {
+    if appearance.show_pane.unwrap_or(true) && state.pane_count > 1 {
         let pane = format!("PANE {}/{}", state.pane_index, state.pane_count);
         let _ = draw_left_status(
             sugarloaf,
@@ -401,7 +458,7 @@ fn draw_footer(
             quiet_opts,
         );
     }
-    if state.local_tab_count > 1 {
+    if appearance.show_tab.unwrap_or(true) && state.local_tab_count > 1 {
         let tab = format!("TAB {}/{}", state.local_tab_index, state.local_tab_count);
         let _ = draw_left_status(
             sugarloaf,
@@ -412,7 +469,7 @@ fn draw_footer(
             quiet_opts,
         );
     }
-    if state.is_active {
+    if appearance.show_context.unwrap_or(true) && state.is_active {
         if let Some(compatibility) = state.compatibility {
             let accent_opts = DrawOpts {
                 color: color_u8(theme.accent),
@@ -478,7 +535,7 @@ fn draw_footer(
             }
         }
     }
-    if state.display_offset > 0 {
+    if appearance.show_selection.unwrap_or(true) && state.display_offset > 0 {
         let history_opts = DrawOpts {
             color: color_u8(theme.warning),
             ..quiet_opts
@@ -492,7 +549,7 @@ fn draw_footer(
             &history,
             history_opts,
         );
-    } else if state.has_selection {
+    } else if appearance.show_selection.unwrap_or(true) && state.has_selection {
         let selection_opts = DrawOpts {
             color: color_u8(theme.warning),
             ..quiet_opts
@@ -508,12 +565,49 @@ fn draw_footer(
     }
 }
 
-fn status_text_width(sugarloaf: &mut Sugarloaf, label: &str, font_size: f32) -> f32 {
+fn footer_theme(mut theme: UiTheme, appearance: FooterAppearance) -> UiTheme {
+    use crate::renderer::ui_theme::readable_on;
+    let rgba = |v: rio_backend::config::presentation::Rgba| {
+        v.bytes().map(|v| f32::from(v) / 255.0)
+    };
+    let rgb = |v: rio_backend::config::presentation::Rgb| {
+        v.rgba_bytes().map(|v| f32::from(v) / 255.0)
+    };
+    let fill = appearance.background.map_or(theme.surface, rgba);
+    let mut composite = theme.background;
+    for i in 0..3 {
+        composite[i] = fill[i] * fill[3] + composite[i] * (1.0 - fill[3]);
+    }
+    theme.surface = fill;
+    theme.text = readable_on(appearance.text.map_or(theme.text, rgb), composite);
+    theme.muted_text = readable_on(
+        appearance.muted_text.map_or(theme.muted_text, rgb),
+        composite,
+    );
+    theme.accent = readable_on(theme.accent, composite);
+    theme.warning = readable_on(theme.warning, composite);
+    theme.border = appearance.border.map_or(theme.border, rgba);
+    theme
+}
+
+fn status_text_width(sugarloaf: &mut Sugarloaf, label: &str, opts: &DrawOpts) -> f32 {
+    use rio_backend::sugarloaf::{Stretch, Style, Weight};
+    let attrs = Attributes::new(
+        Stretch::NORMAL,
+        if opts.bold {
+            Weight::BOLD
+        } else {
+            Weight::NORMAL
+        },
+        if opts.italic {
+            Style::Italic
+        } else {
+            Style::Normal
+        },
+    );
     label
         .chars()
-        .map(|character| {
-            sugarloaf.char_advance(character, Attributes::default(), font_size)
-        })
+        .map(|character| sugarloaf.char_advance(character, attrs, opts.font_size))
         .sum()
 }
 
@@ -530,7 +624,7 @@ fn draw_right_status(
     separate_from_right: bool,
 ) -> bool {
     const SEPARATOR_SPACE: f32 = 20.0;
-    let width = status_text_width(sugarloaf, label, opts.font_size);
+    let width = status_text_width(sugarloaf, label, &opts);
     let required = width
         + if separate_from_right {
             SEPARATOR_SPACE
@@ -569,7 +663,7 @@ fn draw_left_status(
     opts: DrawOpts,
 ) -> bool {
     const GAP: f32 = 18.0;
-    let width = status_text_width(sugarloaf, label, opts.font_size);
+    let width = status_text_width(sugarloaf, label, &opts);
     if *left_x + width > max_x {
         return false;
     }
@@ -680,6 +774,33 @@ mod tests {
     use crate::context::ContextManager;
     use crate::event::VoidListener;
     use rio_backend::event::WindowId;
+
+    #[test]
+    fn interface_footer_custom_colors_remain_readable_over_translucent_surfaces() {
+        use rio_backend::config::presentation::{Rgb, Rgba};
+        for entry in crate::automexia::theme_gallery::builtins() {
+            let base = UiTheme::from_colors(&entry.theme.unwrap().colors);
+            for channels in [
+                [0, 0, 0, 255],
+                [255, 255, 255, 255],
+                [128, 128, 128, 128],
+                [255, 255, 255, 0],
+            ] {
+                let appearance = FooterAppearance {
+                    background: Some(Rgba::from_bytes(channels)),
+                    text: Some(Rgb::from_bytes([128, 128, 128])),
+                    muted_text: Some(Rgb::from_bytes([128, 128, 128])),
+                    ..Default::default()
+                };
+                let theme = footer_theme(base, appearance);
+                let background =
+                    crate::renderer::ui_theme::over(base.background, theme.surface);
+                for color in [theme.text, theme.muted_text, theme.accent, theme.warning] {
+                    assert!(automexia_ui_model::contrast_ratio(color, background) >= 4.5);
+                }
+            }
+        }
+    }
 
     #[test]
     fn viewport_contract_footer_distinguishes_live_prompt_from_manual_history() {
@@ -874,6 +995,82 @@ mod tests {
         assert_eq!(
             hit_test(&manager, geometry.outer.x - 1.0, geometry.outer.y, 1.0),
             None
+        );
+    }
+
+    #[test]
+    fn interface_footer_paint_hit_and_terminal_reservations_agree_at_every_scale() {
+        use rio_backend::config::presentation::UiPixels;
+        for scale in [1.0, 1.25, 1.5, 2.0, 3.0] {
+            for height in [24, 32, 48, 72] {
+                let mut appearance = FooterAppearance {
+                    height: UiPixels::new(height),
+                    ..Default::default()
+                };
+                let panel = [0.0, 0.0, 700.0 * scale, 500.0 * scale];
+                let geometry = footer_geometry_with_appearance(
+                    panel,
+                    test_frame(panel[2]),
+                    scale,
+                    appearance,
+                )
+                .unwrap();
+                let terminal = crate::layout::pane_terminal_rect_with_footer(
+                    panel, scale, 1, appearance,
+                );
+                assert!(
+                    (terminal[3] + geometry.surface.height * scale - panel[3]).abs()
+                        < 0.001
+                );
+                appearance.visible = Some(false);
+                assert!(footer_geometry_with_appearance(
+                    panel,
+                    test_frame(panel[2]),
+                    scale,
+                    appearance
+                )
+                .is_none());
+                assert_eq!(
+                    crate::layout::pane_terminal_rect_with_footer(
+                        panel, scale, 1, appearance
+                    ),
+                    panel
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn interface_hidden_footer_has_no_stale_hit_or_accessibility_surface() {
+        let mut manager =
+            ContextManager::start_with_capacity(4, VoidListener {}, WindowId::from(0))
+                .unwrap();
+        manager
+            .current_grid_mut()
+            .current_item_mut()
+            .unwrap()
+            .layout_rect = [0.0, 0.0, 700.0, 500.0];
+        let route = manager.current().route_id;
+        let before = surface_for_route(&manager, route, 1.0).unwrap();
+        let mut config = rio_backend::config::Config::default();
+        config.presentation.interface.footer.visible = Some(false);
+        assert!(manager.current_grid_mut().update_appearance(&config));
+        assert!(surface_for_route(&manager, route, 1.0).is_none());
+        assert_eq!(
+            hit_test(&manager, before.x + 10.0, before.y + 10.0, 1.0),
+            None
+        );
+        assert!(!manager.current_grid_mut().update_appearance(&config));
+        config.presentation.interface.footer.visible = Some(true);
+        assert!(manager.current_grid_mut().update_appearance(&config));
+        assert!(surface_for_route(&manager, route, 1.0).is_some());
+        config.presentation.interface.footer.text =
+            Some(rio_backend::config::presentation::Rgb::from_bytes([
+                10, 20, 30,
+            ]));
+        assert!(
+            !manager.current_grid_mut().update_appearance(&config),
+            "color edits must not resize PTYs"
         );
     }
 }

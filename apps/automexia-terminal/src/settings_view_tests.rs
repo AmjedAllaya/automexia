@@ -360,7 +360,9 @@ fn settings_toggle_and_customizations_focus_share_one_catalog_without_cross_edit
     );
 
     view.open_with_section(snapshot, Some(Section::Customizations));
-    assert!(view.accessibility_summary().starts_with("Customizations."));
+    assert!(view
+        .accessibility_summary()
+        .starts_with("Workflow & Output."));
     let categories = view.catalog.as_ref().unwrap();
     let labels: Vec<_> = categories
         .entries()
@@ -372,8 +374,12 @@ fn settings_toggle_and_customizations_focus_share_one_catalog_without_cross_edit
     assert!(labels.contains(&"Kubernetes status colors"));
     assert!(labels.contains(&"Inline tables"));
     assert!(labels.contains(&"Command timestamps"));
-    assert!(labels.contains(&"Theme"));
-    assert!(labels.contains(&"Fonts"));
+    assert!(
+        !labels.contains(&"Theme"),
+        "Theme has only one home in Terminal Appearance"
+    );
+    assert!(!labels.contains(&"Fonts"));
+    assert!(!labels.contains(&"Window controls"));
     assert!(!labels.iter().any(|label| label.contains("DevOps")));
     assert!(!labels.contains(&"Git branch tag"));
     assert!(categories
@@ -852,7 +858,7 @@ fn customization_root_reset_does_not_open_the_focused_category() {
         view.take_customization_intent(),
         Some(CustomizationIntent::Reset {
             revision: 1,
-            scope: CustomizationResetScope::All,
+            scope: CustomizationResetScope::Area(CustomizationArea::Workflow),
         })
     );
 }
@@ -2160,6 +2166,7 @@ fn window_controls_preview_is_bounded_nonexecuting_and_keyboard_editable() {
                 &crate::settings_catalog::test_installed_extensions(),
             )),
         );
+        view.show_terminal_appearance();
         assert!(view
             .view
             .as_mut()
@@ -2589,7 +2596,7 @@ fn inline_table_menu_keyboard_edits_refresh_preview_and_survive_layout_changes()
             .unwrap();
         }
         named(&mut view, NamedKey::Escape);
-        assert_eq!(view.title(), "Customizations");
+        assert_eq!(view.title(), "Workflow & Output");
     }
 }
 
@@ -4102,7 +4109,7 @@ fn timestamp_menu_edits_refresh_preview_keep_focus_and_confirm_resets() {
             Some(CustomizationIntent::RestoreSaved)
         );
         named(&mut view, NamedKey::Escape);
-        assert_eq!(view.title(), "Customizations");
+        assert_eq!(view.title(), "Workflow & Output");
     }
 }
 
@@ -4371,7 +4378,7 @@ fn menu_polish_page_keys_follow_the_visible_compact_rows() {
     named(&mut view, NamedKey::PageDown);
     assert_eq!(
         view.view.as_ref().unwrap().focused().unwrap().as_str(),
-        automexia_ui_model::settings::APPEARANCE_THEME,
+        "profiles.open",
         "a page should advance past five rows with the two-line shortcut footer"
     );
 }
@@ -4558,7 +4565,7 @@ fn output_color_categories_offer_separate_keyboard_and_pointer_preview_editors()
     assert_eq!(view.title(), "Terminal output colors");
     assert!(!view.preview_edit_mode);
     named(&mut view, NamedKey::Escape);
-    assert_eq!(view.title(), "Customizations");
+    assert_eq!(view.title(), "Workflow & Output");
 
     assert!(view
         .view
@@ -4833,6 +4840,16 @@ fn keyboard_reveal_all_settings_pages_arrows_paging_resize_and_mouse_return() {
                         &market,
                     )),
                 );
+                if page.as_str().starts_with("interface.")
+                    || matches!(
+                        page.as_str(),
+                        crate::settings_catalog::WINDOW_CONTROLS
+                            | automexia_ui_model::settings::FONT_SIZE
+                            | automexia_ui_model::settings::APPEARANCE_THEME
+                    )
+                {
+                    view.show_terminal_appearance();
+                }
                 assert!(view.view.as_mut().unwrap().focus(page));
                 view.focus = Focus::List;
                 named(&mut view, NamedKey::Enter);
@@ -7635,6 +7652,7 @@ fn fonts_menu_navigation_edit_refresh_reset_restore_and_scaled_preview() {
                 &crate::settings_catalog::test_installed_extensions(),
             )),
         );
+        view.show_terminal_appearance();
         assert!(view
             .view
             .as_mut()
@@ -7700,7 +7718,7 @@ fn fonts_menu_navigation_edit_refresh_reset_restore_and_scaled_preview() {
             Some(CustomizationIntent::RestoreSaved)
         );
         named(&mut view, NamedKey::Escape);
-        assert_eq!(view.title(), "Customizations");
+        assert_eq!(view.title(), "Terminal Appearance");
     }
 }
 
@@ -7733,6 +7751,7 @@ fn installed_font_picker() -> SettingsView {
             &crate::settings_catalog::test_installed_extensions(),
         )),
     );
+    view.show_terminal_appearance();
     view.view
         .as_mut()
         .unwrap()
@@ -8409,7 +8428,7 @@ fn customization_reset_and_restore_wait_for_confirmation_and_escape_cancels() {
             Some(if target == Target::Reset {
                 CustomizationIntent::Reset {
                     revision: 1,
-                    scope: CustomizationResetScope::All,
+                    scope: CustomizationResetScope::Area(CustomizationArea::Workflow),
                 }
             } else {
                 CustomizationIntent::RestoreSaved
@@ -8643,6 +8662,16 @@ fn dependent_settings_view(
             &crate::settings_catalog::test_installed_extensions(),
         )),
     );
+    if category.starts_with("interface.")
+        || matches!(
+            category,
+            crate::settings_catalog::WINDOW_CONTROLS
+                | automexia_ui_model::settings::FONT_SIZE
+                | automexia_ui_model::settings::APPEARANCE_THEME
+        )
+    {
+        view.show_terminal_appearance();
+    }
     assert!(view
         .view
         .as_mut()
@@ -9097,4 +9126,181 @@ fn shared_color_picker_selection_keeps_swatch_pixels_and_small_windows_keep_hex(
         view.take_edit().unwrap().change,
         Change::Set(SettingValue::Color([17, 34, 51, 255]))
     ));
+}
+
+#[test]
+fn interface_footer_keyboard_toggle_hides_dependents_and_preserves_choices() {
+    use crate::automexia::preferences::UserPreferences;
+    use crate::settings_catalog::{apply_edit, catalog, slot_page_snapshot_with_config};
+    let base = rio_backend::config::Config::default();
+    let mut prefs = UserPreferences::default();
+    prefs.visual.interface.appearance.footer.font_size =
+        rio_backend::config::presentation::UiPixels::new(18);
+    let mut view = dependent_settings_view(&base, &prefs, "interface.footer.visible");
+    let id = SettingId::new("interface.footer.visible").unwrap();
+    for revision in [1, 2] {
+        assert!(view.view.as_mut().unwrap().focus(&id));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::Enter);
+        let edit = view.take_edit().expect("one Enter edits footer visibility");
+        prefs = apply_edit(revision, &base, &prefs, &[], &edit).unwrap();
+        view.refresh_with_resources(
+            catalog(revision + 1, &base, &prefs, &[]).unwrap(),
+            None,
+            Some(slot_page_snapshot_with_config(
+                &prefs,
+                &prefs.apply_to(&base),
+                &base,
+                &[],
+            )),
+        );
+        view.paint(&mut Raster::new(1.5), theme());
+        assert_eq!(
+            view.catalog.as_ref().unwrap().entries().len() == 1,
+            revision == 1
+        );
+        assert_eq!(
+            prefs
+                .visual
+                .interface
+                .appearance
+                .footer
+                .font_size
+                .unwrap()
+                .get(),
+            18.0
+        );
+    }
+    named(&mut view, NamedKey::Escape);
+    assert_eq!(view.title(), "Terminal Appearance");
+    assert!(view
+        .view
+        .as_ref()
+        .unwrap()
+        .filtered_ids()
+        .iter()
+        .all(|id| !matches!(id.as_str(), "tags.enabled" | COMMAND_TIMESTAMPS)));
+}
+
+#[test]
+#[ignore = "same-host appearance catalog/layout/paint benchmark; excludes GPU/present"]
+fn interface_refresh_paint_benchmark() {
+    let base = rio_backend::config::Config::default();
+    let mut prefs = crate::automexia::preferences::UserPreferences::default();
+    let mut view = dependent_settings_view(&base, &prefs, "interface.footer.visible");
+    let mut samples = Vec::new();
+    for i in 0..220 {
+        prefs.visual.interface.appearance.footer.visible = Some(i % 2 == 0);
+        let mut raster = Raster::new(1.5);
+        let start = std::time::Instant::now();
+        view.refresh_with_resources(
+            crate::settings_catalog::catalog(i + 2, &base, &prefs, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot_with_config(
+                &prefs,
+                &prefs.apply_to(&base),
+                &base,
+                &[],
+            )),
+        );
+        view.paint(std::hint::black_box(&mut raster), theme());
+        let elapsed = start.elapsed().as_nanos();
+        assert_eq!(
+            view.catalog.as_ref().unwrap().entries().len() > 1,
+            i % 2 == 0
+        );
+        assert_eq!(
+            prefs
+                .apply_to(&base)
+                .presentation
+                .interface
+                .footer
+                .reserved_height(600.0, 1.5)
+                > 0.0,
+            i % 2 == 0
+        );
+        if i >= 20 {
+            samples.push(elapsed);
+        }
+    }
+    samples.sort_unstable();
+    println!(
+        "{}",
+        serde_json::json!({"terminal_appearance":{"warmup":20,"samples":samples.len(),"refresh_paint_ns":{"p50":samples[99],"p95":samples[189]},"scope":"catalog, dependency projection, layout and draw emission; excludes GPU/present"}})
+    );
+}
+
+#[test]
+fn interface_pages_paint_inside_card_across_themes_and_scaling() {
+    for entry in crate::automexia::theme_gallery::builtins() {
+        let colors = entry.theme.unwrap().colors;
+        let theme = UiTheme::from_colors(&colors);
+        let base = rio_backend::config::Config {
+            colors,
+            ..Default::default()
+        };
+        for (width, height, scale) in [
+            (360.0, 540.0, 1.0),
+            (960.0, 740.0, 1.5),
+            (1500.0, 980.0, 2.0),
+        ] {
+            for page in [
+                "interface.header.background",
+                "interface.footer.visible",
+                "interface.panes.padding",
+                "interface.background.opacity",
+            ] {
+                let mut view = dependent_settings_view(&base, &Default::default(), page);
+                view.fit(width, height, 16.0);
+                let mut raster = Raster::new(scale);
+                view.paint(&mut raster, theme);
+                assert_eq!(
+                    view.geometry.preview.width, 0.0,
+                    "live terminal is the preview"
+                );
+                let card = view.geometry.card;
+                for ([x, y, w, h], _) in &raster.rects {
+                    assert!(
+                        *x >= card.x - 0.01
+                            && *y >= card.y - 0.01
+                            && x + w <= card.x + card.width + 0.01
+                            && y + h <= card.y + card.height + 0.01,
+                        "{page} covers the terminal outside its card"
+                    );
+                }
+                assert!(!view.rows.is_empty());
+                for row in &view.rows {
+                    if matches!(
+                        view.catalog.as_ref().unwrap().get(&row.id).unwrap().kind,
+                        SettingKind::Color { .. }
+                    ) {
+                        assert_eq!(
+                            row.value_lines.len(),
+                            1,
+                            "color hex must fit beside its swatch"
+                        );
+                    }
+                }
+                if width == 960.0 && page == "interface.footer.visible" {
+                    if let Some(directory) =
+                        std::env::var_os("AUTOMEXIA_SETTINGS_PREVIEW_DIR")
+                    {
+                        let directory = std::path::PathBuf::from(directory);
+                        std::fs::create_dir_all(&directory).unwrap();
+                        let (w, h) = ((width * scale) as u32, (height * scale) as u32);
+                        let pixels = raster.pixels(w, h, true);
+                        image_rs::RgbImage::from_fn(w, h, |x, y| {
+                            let p = pixels[(y * w + x) as usize];
+                            image_rs::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8])
+                        })
+                        .save(directory.join(format!(
+                            "terminal-footer-{}.png",
+                            entry.name.replace(' ', "-")
+                        )))
+                        .unwrap();
+                    }
+                }
+            }
+        }
+    }
 }

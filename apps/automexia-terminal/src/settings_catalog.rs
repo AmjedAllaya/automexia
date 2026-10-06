@@ -5,6 +5,8 @@ use crate::automexia::{
 };
 #[path = "settings_font_catalog.rs"]
 mod fonts;
+#[path = "settings_interface_catalog.rs"]
+mod interface;
 #[path = "settings_table_catalog.rs"]
 mod tables;
 #[path = "settings_timestamp_catalog.rs"]
@@ -29,6 +31,7 @@ use rio_backend::config::{
 
 #[derive(Clone)]
 pub(crate) struct SlotPageSnapshot {
+    interface: Result<Vec<settings::SettingDescriptor>, SettingsError>,
     font: fonts::Snapshot,
     bar: crate::automexia::preferences::InformationBarPreferences,
     context: BarContextAvailability,
@@ -145,6 +148,12 @@ pub(crate) fn slot_page_snapshot_with_config(
         .foreground
         .map(|channel| (channel.clamp(0.0, 1.0) * 255.0) as u8);
     SlotPageSnapshot {
+        interface: interface::descriptors(
+            base,
+            effective,
+            preferences,
+            &effective.colors,
+        ),
         font: fonts::Snapshot::new(base, effective, preferences),
         bar: preferences.visual.information_bar.clone(),
         context: BarContextAvailability {
@@ -196,6 +205,21 @@ pub(crate) fn test_installed_extensions() -> [MarketItem; 1] {
         description: "Fixture".into(),
         installed: true,
     }]
+}
+
+pub(crate) fn interface_page_catalog(
+    full: &Catalog,
+    snapshot: &SlotPageSnapshot,
+    key: &str,
+) -> Result<Catalog, SettingsError> {
+    let prefix = key.rsplit_once('.').ok_or(SettingsError::UnknownSetting)?.0;
+    let entries = snapshot
+        .interface
+        .clone()?
+        .into_iter()
+        .filter(|row| row.id.as_str().starts_with(prefix))
+        .collect();
+    Catalog::new(full.revision(), entries)
 }
 
 pub(crate) fn window_controls_page_catalog(
@@ -325,6 +349,29 @@ fn values(config: &Config) -> CoreValues {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum CustomizationArea {
+    #[default]
+    Workflow,
+    Terminal,
+}
+impl CustomizationArea {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Workflow => "Workflow & Output",
+            Self::Terminal => "Terminal Appearance",
+        }
+    }
+    pub(crate) fn includes(self, group: &CustomizationGroup) -> bool {
+        let terminal = group.key.as_str().starts_with("interface.")
+            || matches!(
+                group.key.as_str(),
+                settings::FONT_SIZE | settings::APPEARANCE_THEME | WINDOW_CONTROLS
+            );
+        terminal == (self == Self::Terminal)
+    }
+}
+
 /// A navigation projection of one immutable settings snapshot. `root_action`
 /// opens `members` in the Settings sheet; it is not a persisted setting edit.
 #[derive(Clone, Debug, PartialEq)]
@@ -340,6 +387,7 @@ pub(crate) struct CustomizationGroup {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum CustomizationResetScope {
     All,
+    Area(CustomizationArea),
     Group(settings::SettingId),
     Tag(String),
     OutputSeverity(String),
@@ -362,6 +410,25 @@ pub(crate) fn reset_customizations(
     };
     let mut next = current.clone();
     match scope {
+        CustomizationResetScope::Area(CustomizationArea::Terminal) => {
+            next.visual.interface = Default::default();
+            next.visual.window_controls = Default::default();
+            next.fonts = Default::default();
+            next.font_size = None;
+            next.theme_selection = None;
+            next.appearance_theme = None;
+        }
+        CustomizationResetScope::Area(CustomizationArea::Workflow) => {
+            next =
+                reset_customizations(current, &CustomizationResetScope::All, packages)?;
+            next.visual.interface = current.visual.interface.clone();
+            next.visual.window_controls = current.visual.window_controls;
+            next.fonts = current.fonts.clone();
+            next.font_size = current.font_size;
+            next.theme_selection = current.theme_selection.clone();
+            next.appearance_theme = current.appearance_theme;
+            next.color_favorites = current.color_favorites.clone();
+        }
         CustomizationResetScope::All => {
             let shortcuts = std::mem::take(&mut next.shortcuts);
             next = UserPreferences::default();
@@ -422,6 +489,7 @@ pub(crate) fn reset_customizations(
             id if settings_extensions::is_known_boolean_feature(id) => next
                 .reset_extension_feature(id)
                 .map_err(|_| SettingsError::InvalidValue)?,
+            id if interface::reset(&mut next, id) => {}
             _ => return Err(SettingsError::UnknownSetting),
         },
         CustomizationResetScope::Tag(slot_id) => {
@@ -772,6 +840,20 @@ pub(crate) fn customization_groups(catalog: &Catalog) -> Vec<CustomizationGroup>
                 row == id || (id == settings::INLINE_TABLES && row.starts_with("tables."))
             },
             &keywords,
+        ) {
+            groups.push(group);
+        }
+    }
+    for (id, label, summary) in interface::PAGES {
+        let prefix = id.rsplit_once('.').map_or(id, |(prefix, _)| prefix);
+        if let Some(group) = customization_group(
+            catalog,
+            label,
+            summary,
+            id,
+            None,
+            |row| row.starts_with(prefix),
+            &["terminal interface appearance chrome"],
         ) {
             groups.push(group);
         }
@@ -1183,6 +1265,15 @@ pub(crate) fn catalog_with_palette(
     entries.extend(appearance);
     entries.extend(visual_descriptors(base, &effective, preferences, palette)?);
     entries.extend(
+        interface::descriptors(base, &effective, preferences, palette)?
+            .into_iter()
+            .filter(|row| {
+                interface::PAGES
+                    .iter()
+                    .any(|(id, _, _)| row.id.as_str() == *id)
+            }),
+    );
+    entries.extend(
         settings_extensions::extension_settings(market, |id| {
             preferences.extension_feature_enabled(id)
         })
@@ -1211,6 +1302,19 @@ pub(crate) fn apply_edit_with_palette(
     edit: &Edit,
     palette: &Colors,
 ) -> Result<UserPreferences, SettingsError> {
+    if edit.id.as_str().starts_with("interface.") {
+        Catalog::new(
+            revision,
+            interface::descriptors(
+                base,
+                &preferences.apply_to(base),
+                preferences,
+                palette,
+            )?,
+        )?
+        .validate_edit(edit)?;
+        return interface::apply(base, preferences, edit, palette);
+    }
     if let Some(rest) = edit.id.as_str().strip_prefix("tags.slot.") {
         let (slot_id, field) =
             rest.split_once('.').ok_or(SettingsError::UnknownSetting)?;
@@ -3534,7 +3638,14 @@ mod tests {
         let snapshot = catalog(7, &base, &preferences, &installed()).unwrap();
         assert!(snapshot.entries().len() <= settings::MAX_SETTINGS);
         let groups = customization_groups(&snapshot);
-        assert_eq!(groups.len(), 9);
+        assert_eq!(groups.len(), 13);
+        assert_eq!(
+            groups
+                .iter()
+                .filter(|g| g.key.as_str().starts_with("interface."))
+                .count(),
+            4
+        );
         assert!(groups
             .iter()
             .any(|group| group.key.as_str() == "profiles.open"));
@@ -4491,7 +4602,14 @@ mod tests {
         );
         assert!(groups.iter().all(|group| group.label != "DevOps detection"));
         assert!(groups.iter().all(|group| group.label != "Git branch tag"));
-        assert_eq!(groups.len(), 9);
+        assert_eq!(groups.len(), 13);
+        assert_eq!(
+            groups
+                .iter()
+                .filter(|g| g.key.as_str().starts_with("interface."))
+                .count(),
+            4
+        );
         assert!(groups
             .iter()
             .any(|group| group.key.as_str() == "profiles.open"));
@@ -4631,7 +4749,14 @@ mod tests {
 
         let without_extension = catalog(8, &base, &prefs, &[]).unwrap();
         let groups = customization_groups(&without_extension);
-        assert_eq!(groups.len(), 9);
+        assert_eq!(groups.len(), 13);
+        assert_eq!(
+            groups
+                .iter()
+                .filter(|g| g.key.as_str().starts_with("interface."))
+                .count(),
+            4
+        );
         assert!(groups
             .iter()
             .any(|group| group.key.as_str() == "profiles.open"));

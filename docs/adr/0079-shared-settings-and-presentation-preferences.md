@@ -184,3 +184,22 @@ earlier import read-only when every newer snapshot pair is absent, retaining
 the existing lock, size, no-follow, atomic-write and fail-closed recovery rules.
 Legacy shape identities remain unchanged, and older files and `config.toml`
 remain untouched for rollback. Temporary reset/restore keeps its existing owner.
+
+
+## 2026-10-06 terminal appearance organization
+
+Customizations now separates Workflow & Output from Terminal Appearance. Theme,
+Fonts and Window controls have a single home in the latter, beside Header & Tabs,
+Footer, Panes & Borders and Background & Spacing. The existing action identity
+continues to open Workflow & Output; a separate bindable action opens Terminal
+Appearance. Both reuse navigation, dependency visibility, color editing and
+preference publication. Detail catalogs are projected on demand so new controls
+do not consume the installed-extension capacity of the root catalog.
+
+Private preference version 13 adds optional typed interface overrides. Version 12
+imports only when both current snapshots are absent and remains unchanged for
+rollback. Corrupt current data cannot silently downgrade. Existing panel, margin,
+window and navigation configuration remain singular owners; new header/footer
+paint options belong to Presentation. Individual reset clears an override;
+section reset is temporary and cannot reset the other section. Native compositor
+effects remain platform-dependent and require native evidence beyond model tests.

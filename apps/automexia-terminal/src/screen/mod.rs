@@ -1147,6 +1147,7 @@ impl Screen<'_> {
             split_color: config.colors.split,
             split_active_color: config.colors.split_active,
             panel: config.panel,
+            footer_appearance: config.presentation.interface.footer,
             title: config.title.clone(),
             keyboard: config.keyboard.clone(),
             scrollback_history_limit: config.scrollback_history_limit,
@@ -1833,7 +1834,13 @@ impl Screen<'_> {
         self.renderer.update_config(config);
 
         let scale = self.sugarloaf.scale_factor();
+        self.context_manager.config.panel = config.panel;
+        self.context_manager.config.footer_appearance =
+            config.presentation.interface.footer;
+        self.context_manager.config.split_color = config.colors.split;
+        self.context_manager.config.split_active_color = config.colors.split_active;
         for context_grid in self.context_manager.contexts_mut() {
+            context_grid.update_appearance(config);
             context_grid.update_line_height(config.line_height);
 
             context_grid.update_scaled_margin(Margin::new(
@@ -2761,6 +2768,9 @@ impl Screen<'_> {
                     }
                     Act::OpenSettings => self.context_manager.open_settings(),
                     Act::OpenCustomizations => self.context_manager.open_customizations(),
+                    Act::OpenTerminalAppearance => {
+                        self.context_manager.open_terminal_appearance()
+                    }
                     Act::RestorePreviousSession => {
                         self.context_manager.restore_previous_session()
                     }
@@ -4540,10 +4550,11 @@ impl Screen<'_> {
             None => return false,
         };
 
-        let panel_rect = crate::layout::pane_terminal_rect(
+        let panel_rect = crate::layout::pane_terminal_rect_with_footer(
             item.layout_rect,
             scale_factor,
             item.tab_count(),
+            self.renderer.presentation.interface.footer,
         );
         let rich_text_id = item.context().rich_text_id;
 
@@ -4633,10 +4644,11 @@ impl Screen<'_> {
             None => return false,
         };
 
-        let panel_rect = crate::layout::pane_terminal_rect(
+        let panel_rect = crate::layout::pane_terminal_rect_with_footer(
             item.layout_rect,
             scale_factor,
             item.tab_count(),
+            self.renderer.presentation.interface.footer,
         );
 
         let terminal = item.context().terminal.lock();
@@ -4672,6 +4684,15 @@ impl Screen<'_> {
             .map(|island| island.max_tab_width)
             .unwrap_or_else(rio_backend::config::navigation::default_max_tab_width);
         let window_size = self.sugarloaf.window_size();
+        if let Some(island) = self.renderer.island.as_ref() {
+            return island.tab_strip_layout(
+                window_size.width,
+                window_size.height,
+                self.sugarloaf.scale_factor(),
+                num_tabs,
+                max_tab_width,
+            );
+        }
         island::tab_strip_layout_for_viewport(
             window_size.width,
             window_size.height,
@@ -6321,6 +6342,9 @@ impl Screen<'_> {
             }
             PaletteAction::OpenThemeGallery => self.context_manager.open_theme_gallery(),
             PaletteAction::OpenProfiles => self.context_manager.open_profiles(),
+            PaletteAction::OpenTerminalAppearance => {
+                self.context_manager.open_terminal_appearance()
+            }
             PaletteAction::OpenCustomizations => {
                 self.context_manager.open_customizations()
             }
@@ -6937,10 +6961,11 @@ impl Screen<'_> {
                 (
                     item.val.route_id,
                     item.val.rich_text_id,
-                    crate::layout::pane_terminal_rect(
+                    crate::layout::pane_terminal_rect_with_footer(
                         item.layout_rect,
                         self.sugarloaf.scale_factor(),
                         item.tab_count(),
+                        self.renderer.presentation.interface.footer,
                     ),
                 )
             })
@@ -6990,10 +7015,11 @@ impl Screen<'_> {
                 let cell_height = layout.cell.cell_height as f32;
                 let scale_factor = self.sugarloaf.scale_factor();
 
-                let panel_rect = crate::layout::pane_terminal_rect(
+                let panel_rect = crate::layout::pane_terminal_rect_with_footer(
                     current_item.layout_rect,
                     scale_factor,
                     current_item.tab_count(),
+                    self.renderer.presentation.interface.footer,
                 );
                 let origin_x = panel_rect[0] + scaled_margin.left;
                 let origin_y = panel_rect[1] + scaled_margin.top;
@@ -7144,10 +7170,11 @@ impl Screen<'_> {
                 .contexts_mut()
                 .iter_mut()
             {
-                let terminal_rect = crate::layout::pane_terminal_rect(
+                let terminal_rect = crate::layout::pane_terminal_rect_with_footer(
                     item.layout_rect,
                     item.val.dimension.dimension.scale,
                     item.tab_count(),
+                    self.renderer.presentation.interface.footer,
                 );
                 let ctx = &mut item.val;
                 let dim = ctx.dimension;
@@ -7938,10 +7965,11 @@ impl Screen<'_> {
                     .map(|item| {
                         (
                             item.val.route_id,
-                            crate::layout::pane_terminal_rect(
+                            crate::layout::pane_terminal_rect_with_footer(
                                 item.layout_rect,
                                 self.sugarloaf.scale_factor(),
                                 item.tab_count(),
+                                self.renderer.presentation.interface.footer,
                             ),
                         )
                     })
@@ -8104,10 +8132,11 @@ impl Screen<'_> {
 
         // Panel origin: layout_rect is relative to root container,
         // add scaled_margin to get absolute screen position
-        let panel_rect = crate::layout::pane_terminal_rect(
+        let panel_rect = crate::layout::pane_terminal_rect_with_footer(
             current_item.layout_rect,
             self.sugarloaf.scale_factor(),
             current_item.tab_count(),
+            self.renderer.presentation.interface.footer,
         );
         let origin_x = panel_rect[0] + scaled_margin.left;
         let origin_y = panel_rect[1] + scaled_margin.top;

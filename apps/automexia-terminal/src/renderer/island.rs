@@ -544,6 +544,11 @@ fn island_fills(bg: [f32; 4]) -> IslandFills {
     }
 }
 
+pub(crate) fn tab_background_defaults(bg: [f32; 4]) -> ([f32; 4], [f32; 4]) {
+    let fills = island_fills(bg);
+    (fills.active, fills.inactive)
+}
+
 #[inline]
 fn over(dst: [f32; 4], src: [f32; 4]) -> [f32; 4] {
     let a = src[3];
@@ -703,6 +708,7 @@ fn draw_close_button(
 }
 
 pub struct Island {
+    pub appearance: rio_backend::config::presentation::HeaderAppearance,
     pub hide_if_single: bool,
     /// Cap on tab width in logical px (`navigation.max-tab-width`).
     pub max_tab_width: f32,
@@ -756,6 +762,7 @@ impl Island {
         custom_chrome: bool,
     ) -> Self {
         Self {
+            appearance: Default::default(),
             hide_if_single,
             max_tab_width,
             inactive_text_color,
@@ -783,6 +790,27 @@ impl Island {
         }
     }
 
+    pub fn tab_strip_layout(
+        &self,
+        width: f32,
+        height: f32,
+        scale: f32,
+        count: usize,
+        max_width: f32,
+    ) -> TabStripLayout {
+        let mut layout =
+            tab_strip_layout_for_viewport(width, height, scale, count, max_width);
+        if let Some(gap) = self.appearance.tab_gap {
+            layout.tab_gap = gap.get().min(layout.tab_width * 0.25);
+        }
+        if let Some(size) = self.appearance.font_size {
+            layout.title_font_size = size
+                .get()
+                .min(chrome_metrics(width, height, scale).header_height - 14.0);
+        }
+        layout
+    }
+
     pub fn chrome_action_at(
         &self,
         window_width: f32,
@@ -796,7 +824,7 @@ impl Island {
         if !(0.0..=metrics.header_height).contains(&y) {
             return None;
         }
-        let layout = tab_strip_layout_for_viewport(
+        let layout = self.tab_strip_layout(
             window_width,
             window_height,
             scale_factor,
@@ -1303,6 +1331,34 @@ impl Island {
         theme: &UiTheme,
         window_controls: WindowControlsAppearance,
     ) {
+        let appearance = self.appearance;
+        let rgba = |v: rio_backend::config::presentation::Rgba| {
+            v.bytes().map(|v| f32::from(v) / 255.0)
+        };
+        let rgb = |v: rio_backend::config::presentation::Rgb| {
+            v.rgba_bytes().map(|v| f32::from(v) / 255.0)
+        };
+        let mut theme_value = *theme;
+        theme_value.surface = appearance.background.map_or(theme.surface, rgba);
+        theme_value.border = appearance.border.map_or(theme.border, rgba);
+        theme_value.text = super::ui_theme::readable_on(
+            appearance.text.map_or(theme.text, rgb),
+            theme.raised,
+        );
+        theme_value.muted_text = super::ui_theme::readable_on(
+            appearance.inactive_text.map_or(theme.muted_text, rgb),
+            theme.surface,
+        );
+        let theme = &theme_value;
+        let active_text = appearance.text.map_or(self.active_text_color, rgb);
+        let inactive_text = appearance
+            .inactive_text
+            .map_or(self.inactive_text_color, rgb);
+        let bg_color = if appearance.background.is_some() {
+            over(bg_color, theme.surface)
+        } else {
+            bg_color
+        };
         let (window_width, window_height, scale_factor) = dimensions;
         let num_tabs = context_manager.len();
         let current_tab_index = context_manager.current_index();
@@ -1322,22 +1378,26 @@ impl Island {
             0.0,
             0,
         );
-        sugarloaf.line(
-            0.0,
-            metrics.header_height - 1.0,
-            logical_width,
-            metrics.header_height - 1.0,
-            1.0,
-            0.0,
-            theme.border,
-            1,
-        );
+        let border_width = appearance.border_width.map_or(1.0, |v| v.get());
+        if border_width > 0.0 {
+            sugarloaf.line(
+                0.0,
+                metrics.header_height - 1.0,
+                logical_width,
+                metrics.header_height - 1.0,
+                border_width,
+                0.0,
+                theme.border,
+                1,
+            );
+        }
         draw_pane_local_tab_rails(
             sugarloaf,
             metrics,
             context_manager,
             scale_factor,
             theme,
+            appearance,
         );
         #[cfg(not(target_os = "macos"))]
         if metrics.show_app_button {
@@ -1409,7 +1469,7 @@ impl Island {
         self.slide_springs
             .retain(|_, s| s.update(dt, DRAG_ANIMATION_LENGTH));
 
-        let layout = tab_strip_layout_for_viewport(
+        let layout = self.tab_strip_layout(
             window_width,
             window_height,
             scale_factor,
@@ -1434,7 +1494,9 @@ impl Island {
         // each frame so OSC 11 and theme changes stay coherent. The
         // strip itself keeps the plain window background — the islands
         // float directly on it, with no strip tint or border lines.
-        let fills = island_fills(bg_color);
+        let mut fills = island_fills(bg_color);
+        fills.active = appearance.active_tab.map_or(fills.active, rgba);
+        fills.inactive = appearance.inactive_tab.map_or(fills.inactive, rgba);
 
         // Render each tab
         for tab_index in 0..num_tabs {
@@ -1502,12 +1564,12 @@ impl Island {
                         custom[3] = 1.0;
                         custom
                     }
-                    None => self.active_text_color,
+                    None => active_text,
                 }
             } else if is_active {
-                self.active_text_color
+                active_text
             } else {
-                self.inactive_text_color
+                inactive_text
             };
 
             let text_color = tab_title_color(text_color, bg_color, fill);
@@ -1589,6 +1651,9 @@ impl Island {
                 layout.tab_gap,
                 layout.tab_inset_y,
             );
+            let radius = appearance
+                .tab_radius
+                .map_or(radius, |v| v.get().min(iw / 2.0).min(ih / 2.0));
             draw_island(
                 sugarloaf,
                 ix,
@@ -1705,6 +1770,9 @@ impl Island {
                 layout.tab_gap,
                 layout.tab_inset_y,
             );
+            let radius = appearance
+                .tab_radius
+                .map_or(radius, |v| v.get().min(iw / 2.0).min(ih / 2.0));
 
             // Soft elevation: a slightly inflated dark halo behind the
             // lifted island so it reads as floating over the strip.
@@ -1748,7 +1816,7 @@ impl Island {
                 draw_close_button(
                     sugarloaf,
                     cx,
-                    tab_title_color(self.active_text_color, bg_color, fill),
+                    tab_title_color(active_text, bg_color, fill),
                     false,
                     metrics.header_height / 2.0,
                     12,
@@ -1955,7 +2023,7 @@ impl Island {
             left_margin,
             tab_width,
             ..
-        } = tab_strip_layout_for_viewport(
+        } = self.tab_strip_layout(
             window_width,
             window_height,
             scale_factor,
@@ -2384,6 +2452,7 @@ fn draw_pane_local_tab_rails(
     context_manager: &ContextManager<EventProxy>,
     scale_factor: f32,
     theme: &UiTheme,
+    appearance: rio_backend::config::presentation::HeaderAppearance,
 ) {
     let grid = context_manager.current_grid();
     let root_origin = [grid.scaled_margin.left, grid.scaled_margin.top];
@@ -2451,15 +2520,21 @@ fn draw_pane_local_tab_rails(
                 theme.border
             };
             let fill = if is_active {
-                theme.raised
+                appearance
+                    .active_tab
+                    .map_or(theme.raised, |v| v.bytes().map(|v| f32::from(v) / 255.0))
             } else {
-                theme.surface
+                appearance
+                    .inactive_tab
+                    .map_or(theme.surface, |v| v.bytes().map(|v| f32::from(v) / 255.0))
             };
             let accent = super::ui_theme::readable_on(accent, fill);
             draw_glass(
                 sugarloaf,
                 [tab.x, tab.y, tab.width, tab.height],
-                7.0,
+                appearance
+                    .tab_radius
+                    .map_or(7.0, |v| v.get().min(tab.height / 2.0)),
                 crate::renderer::ui_theme::over(rail_fill, fill),
                 crate::renderer::ui_theme::over(
                     rail_fill,
@@ -2489,7 +2564,11 @@ fn draw_pane_local_tab_rails(
                 );
             }
 
-            let font_size = metrics.local_tab_font_size;
+            let font_size = appearance
+                .font_size
+                .map_or(metrics.local_tab_font_size, |v| {
+                    v.get().min(tab.height - 12.0)
+                });
             let text_x = tab.x
                 + if tab.width >= 46.0 {
                     10.0 + metrics.local_tab_icon_size + 8.0
@@ -2503,11 +2582,14 @@ fn draw_pane_local_tab_rails(
                     fit_title_to_width(sugarloaf, &title, title_width, font_size);
                 let opts = DrawOpts {
                     font_size,
-                    color: color_u8(if is_active {
-                        theme.text
-                    } else {
-                        theme.muted_text
-                    }),
+                    color: color_u8(super::ui_theme::readable_on(
+                        if is_active {
+                            theme.text
+                        } else {
+                            theme.muted_text
+                        },
+                        super::ui_theme::over(rail_fill, fill),
+                    )),
                     bold: is_active,
                     ..DrawOpts::default()
                 };
@@ -4092,6 +4174,29 @@ mod tests {
     fn title_exact_fit_not_truncated() {
         // Title "abcd" = 4.0, budget 4.0 → fits exactly, no truncation.
         assert_eq!(fit_title_with_widths("abcd", 4.0, fixed_unit_width), "abcd");
+    }
+
+    #[test]
+    fn interface_tab_layout_keeps_close_targets_inside_customized_tabs() {
+        use rio_backend::config::presentation::UiPixels;
+        let mut island = test_island();
+        island.appearance.tab_gap = UiPixels::new(20);
+        island.appearance.font_size = UiPixels::new(20);
+        for scale in [1.0, 1.5, 2.0, 3.0] {
+            for count in [1, 4, 20] {
+                let layout = island.tab_strip_layout(
+                    900.0 * scale,
+                    600.0 * scale,
+                    scale,
+                    count,
+                    184.0,
+                );
+                assert!(layout.tab_gap <= layout.tab_width * 0.25);
+                assert!(layout.title_font_size <= 20.0);
+                assert!(tab_title_budget(&layout).is_finite());
+                assert!(layout.tab_width > 0.0);
+            }
+        }
     }
 
     #[test]

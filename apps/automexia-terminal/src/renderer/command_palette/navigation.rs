@@ -92,7 +92,9 @@ impl Category {
             | ToggleAppearanceTheme
             | OpenThemeGallery
             | ListFonts => Self::Appearance,
-            OpenSettings | OpenCustomizations => Self::Customizations,
+            OpenSettings | OpenCustomizations | OpenTerminalAppearance => {
+                Self::Customizations
+            }
             ConfigEditor | PreviewSelectedImage | ViewTableOutput | OpenMarket
             | OpenConnections | OpenActions => Self::Tools,
         }

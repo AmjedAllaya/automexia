@@ -14,6 +14,7 @@ fn every_classic_palette_action_has_a_real_shortcut_without_source_badges() {
             if matches!(
                 command.action,
                 PaletteAction::OpenCustomizations
+                    | PaletteAction::OpenTerminalAppearance
                     | PaletteAction::OpenThemeGallery
                     | PaletteAction::RestorePreviousSession
                     | PaletteAction::OpenProfiles
@@ -1012,7 +1013,13 @@ fn customizations_category_keyboard_routes_visual_controls_and_keeps_back_safe()
             .iter()
             .filter_map(|(_, row)| row.action())
             .collect();
-        assert_eq!(actions, [PaletteAction::OpenCustomizations]);
+        assert_eq!(
+            actions,
+            [
+                PaletteAction::OpenCustomizations,
+                PaletteAction::OpenTerminalAppearance
+            ]
+        );
         assert_eq!(palette.filtered_rows()[0].1.title(), "Back to categories");
         assert_eq!(
             palette.get_selected_action(),
@@ -1064,7 +1071,13 @@ fn customizations_category_search_keeps_one_visual_preferences_entry() {
         .iter()
         .filter_map(|(_, row)| row.action())
         .collect();
-    assert_eq!(actions, [PaletteAction::OpenCustomizations]);
+    assert_eq!(
+        actions,
+        [
+            PaletteAction::OpenCustomizations,
+            PaletteAction::OpenTerminalAppearance
+        ]
+    );
     assert_eq!(
         palette.get_selected_action(),
         Some(PaletteAction::OpenCustomizations)
@@ -1207,7 +1220,13 @@ fn visual_preferences_have_no_duplicate_settings_category() {
             .iter()
             .filter_map(|(_, row)| row.action())
             .collect();
-        assert_eq!(actions, [PaletteAction::OpenCustomizations]);
+        assert_eq!(
+            actions,
+            [
+                PaletteAction::OpenCustomizations,
+                PaletteAction::OpenTerminalAppearance
+            ]
+        );
         assert_eq!(
             palette.get_selected_action(),
             Some(PaletteAction::OpenCustomizations)

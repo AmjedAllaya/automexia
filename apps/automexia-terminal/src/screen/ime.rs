@@ -126,8 +126,12 @@ impl Screen<'_> {
         if row < 0 {
             return;
         }
-        let pane =
-            crate::layout::pane_terminal_rect(item.layout_rect, scale, item.tab_count());
+        let pane = crate::layout::pane_terminal_rect_with_footer(
+            item.layout_rect,
+            scale,
+            item.tab_count(),
+            grid.footer_appearance,
+        );
         let margin = grid.get_scaled_margin();
         let x = (pane[0]
             + margin.left

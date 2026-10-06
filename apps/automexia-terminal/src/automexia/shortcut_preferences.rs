@@ -26,6 +26,7 @@ pub enum PaletteAction {
     ConfigEditor,
     OpenSettings,
     OpenCustomizations,
+    OpenTerminalAppearance,
     OpenThemeGallery,
     RestorePreviousSession,
     OpenProfiles,

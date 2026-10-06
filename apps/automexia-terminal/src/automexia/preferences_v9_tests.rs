@@ -93,8 +93,12 @@ fn fonts_v9_strict_legacy_readers_and_corrupt_current_never_downgrade() {
         "unknown = true",
         "features = ['liga=1','liga=0']",
     ] {
-        assert!(parse_snapshot(
+        assert!(parse_version12_snapshot(
             format!("schema-version = 12\n[fonts]\n{body}\n").as_bytes()
+        )
+        .is_err());
+        assert!(parse_snapshot(
+            format!("schema-version = {SCHEMA_VERSION}\n[fonts]\n{body}\n").as_bytes()
         )
         .is_err());
     }

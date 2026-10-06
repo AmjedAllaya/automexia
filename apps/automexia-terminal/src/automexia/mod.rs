@@ -24,6 +24,8 @@ pub mod ghostty_migration;
 pub mod google;
 #[doc(hidden)]
 pub mod inline_tables;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod interface_preferences;
 mod kubernetes_probe;
 #[doc(hidden)]
 pub mod local_tools;
