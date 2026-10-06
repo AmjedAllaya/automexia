@@ -21,3 +21,5 @@
 - Record actual settings fallback fonts, exercise the installed emoji chain,
   and fix independent macOS cursor hotspot coordinates, with native tests for
   missing and malformed coordinate values.
+- Reuse retained CoreText fallback handles for coverage checks and preserve
+  their optional file identity without reading font bytes on the render path.

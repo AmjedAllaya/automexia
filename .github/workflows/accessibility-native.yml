@@ -93,6 +93,7 @@ jobs:
           cargo test -p automexia-terminal --bin automexia --features visual-test-hooks --locked --no-run
           if [[ "$RUNNER_OS" == macOS ]]; then
             cargo test -p rio-window --lib --locked webkit_cursor_hotspot
+            cargo test -p sugarloaf --lib --locked resolve_font_for_char_
           fi
           python tools/ci/visual_quality.py --build --xtask "$comparator" --output artifacts/visual-quality --baseline-receipts "tests/fixtures/visual-baselines/${{ matrix.runner }}.json" --baseline-images tests/fixtures/visual-baselines/images --require-baseline
       - name: Native Linux window pixels and AT-SPI projection

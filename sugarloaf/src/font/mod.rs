@@ -111,7 +111,9 @@ fn cluster_covered(
         // codepoint. Avoids the `get_data` byte load, so the fallback
         // walk no longer touches the font file(s) at all.
         let _ = (library, font_id);
-        let handle_opt = if let Some(path) = &font.path {
+        let handle_opt = if let Some(handle) = &font.handle {
+            Some(handle.clone())
+        } else if let Some(path) = &font.path {
             crate::font::macos::FontHandle::from_path(path)
         } else if let Some(bytes) = &font.data {
             crate::font::macos::FontHandle::from_bytes(bytes.as_ref())
@@ -1437,18 +1439,10 @@ impl FontData {
         })
     }
 
-    /// macOS-only: construct a `FontData` straight from a file path, with
-    /// attributes read through CoreText. Never loads the font bytes.
-    ///
-    /// CoreText reads the file itself, so Rio's `FONT_DATA_CACHE` never
-    /// ends up holding hundreds of MB of Apple Color Emoji / CJK font
-    /// bytes.
-    /// macOS-only: wrap a CTFont discovered at runtime (e.g. via
-    /// `CTFontCreateForString` lazy cascade) into a `FontData` with no
-    /// backing path or bytes. Metrics, rasterization and PS-name
-    /// lookups all go through the handle directly — there's nothing
-    /// for `get_data` / `get_metrics` to fall back to besides the
-    /// stored CTFont.
+    /// Wrap a CTFont discovered at runtime without loading font bytes.
+    /// Coverage, metrics and rasterization use the retained native handle.
+    /// Preserve its optional file identity for explicit byte consumers such as
+    /// visual evidence hashing; native rendering does not read that file.
     ///
     /// Weight/italic/stretch are left at defaults because lazy-cascade
     /// fonts are picked by CoreText based on script coverage rather
@@ -1467,7 +1461,7 @@ impl FontData {
         let postscript_name = Some(handle.postscript_name());
         Self {
             data: None,
-            path: None,
+            path: handle.file_path(),
             offset: 0,
             key: CacheKey::new(),
             weight,
@@ -2691,6 +2685,19 @@ mod postscript_resolver_tests {
             lib.inner.read().inner.len(),
             starting_len + 1,
             "lazy discovery should have registered exactly one new font"
+        );
+        let mut data = lib.inner.write();
+        let discovered = data.get_mut(&font_id).unwrap();
+        assert!(
+            discovered.path.is_some(),
+            "preserve native font file identity"
+        );
+        // A native handle remains a valid coverage source even without a path
+        // or byte buffer. This also prevents repeated slow cascade discovery.
+        discovered.path = None;
+        assert_eq!(
+            data.find_best_font_match_strict('水', &style, None),
+            Some((font_id, false)),
         );
     }
 

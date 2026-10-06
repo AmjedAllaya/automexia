@@ -299,6 +299,12 @@ impl FontHandle {
         self.base_font.postscript_name()
     }
 
+    /// Backing file identity, when CoreText exposes one. This only reads the
+    /// descriptor attribute; it does not open or copy the font file.
+    pub fn file_path(&self) -> Option<PathBuf> {
+        self.base_font.copy_descriptor().font_path()
+    }
+
     /// Return a derived `FontHandle` with the `wght` variation axis pinned
     /// to `value`. Used to bake the bold weight into Rio's bold/bold-italic
     /// fallback slots from a single variable-font file (matches ghostty's
