@@ -1090,6 +1090,10 @@ impl Renderer {
             ContextType::_Phantom(_) => unreachable!(),
         };
 
+        Self::with_backend(brush_type, ImageCache::new(context))
+    }
+
+    fn with_backend(brush_type: RendererType, images: ImageCache) -> Self {
         Self {
             frame_dropped: false,
             brush_type,
@@ -1103,7 +1107,7 @@ impl Renderer {
             recording_modal: false,
             vertices: vec![],
             draw_cmds: vec![],
-            images: ImageCache::new(context),
+            images,
             image_textures: FxHashMap::default(),
             modal_instance_start: 0,
             modal_vertex_start: 0,
@@ -1118,6 +1122,88 @@ impl Renderer {
             #[cfg(target_os = "macos")]
             metal_frame_index: 0,
         }
+    }
+
+    /// Controlled offscreen tests use the same primitive emitter and CPU
+    /// rasterizer as native windows. No display server or image inputs are used.
+    #[cfg(any(test, feature = "native-gui-test-hooks"))]
+    pub fn controlled_cpu() -> Self {
+        Self::with_backend(RendererType::Cpu, ImageCache::empty_cpu_test_cache())
+    }
+
+    /// Consume a bounded primitive frame without presenting a native surface.
+    /// This is controlled raster evidence, never compositor certification.
+    #[cfg(any(test, feature = "native-gui-test-hooks"))]
+    pub fn capture_cpu_primitives(
+        &mut self,
+        pixels: &mut [u32],
+        width: u32,
+        height: u32,
+        text: &crate::text::Text,
+    ) -> Result<(), &'static str> {
+        if width == 0
+            || height == 0
+            || width > 8192
+            || height > 8192
+            || u64::from(width) * u64::from(height) > 40_000_000
+            || pixels.len() as u64 != u64::from(width) * u64::from(height)
+        {
+            return Err("controlled raster dimensions exceed their bound");
+        }
+        self.instances.clear();
+        self.vertices.clear();
+        self.draw_cmds.clear();
+        (
+            (
+                self.base_instance_start,
+                self.base_vertex_start,
+                self.base_cmd_start,
+            ),
+            (
+                self.modal_instance_start,
+                self.modal_vertex_start,
+                self.modal_cmd_start,
+            ),
+        ) = finish_composition_phases(
+            &mut self.under_text,
+            &mut self.comp,
+            &mut self.modal_comp,
+            &mut self.instances,
+            &mut self.vertices,
+            &mut self.draw_cmds,
+        );
+        self.recording_modal = false;
+        let mut cache = cpu::CpuCache::new();
+        cpu::draw_cpu_primitives(
+            pixels,
+            width as i32,
+            height as i32,
+            self.under_text_instances(),
+            &self.vertices[..self.base_vertex_start],
+            self.image_cache(),
+            &mut cache,
+        );
+        cpu::draw_cpu_primitives(
+            pixels,
+            width as i32,
+            height as i32,
+            self.instances(),
+            self.vertices(),
+            self.image_cache(),
+            &mut cache,
+        );
+        text.render_cpu_base(pixels, width, height);
+        cpu::draw_cpu_primitives(
+            pixels,
+            width as i32,
+            height as i32,
+            self.modal_instances(),
+            self.modal_vertices(),
+            self.image_cache(),
+            &mut cache,
+        );
+        text.render_cpu_modal(pixels, width, height);
+        Ok(())
     }
 
     /// Drain per-frame batch state that was populated via
@@ -3628,6 +3714,26 @@ impl WgpuRenderer {
 #[cfg(test)]
 mod modal_phase_tests {
     use super::{batch, finish_composition_phases, Compositor, Rect};
+
+    #[test]
+    fn controlled_capture_preserves_under_text_base_and_modal_order() {
+        let fonts = crate::font::FontLibrary {
+            inner: std::sync::Arc::new(parking_lot::RwLock::new(Default::default())),
+        };
+        let mut text = crate::text::Text::new(&fonts);
+        text.init_cpu();
+        let mut renderer = super::Renderer::controlled_cpu();
+        renderer.begin_modal_layer();
+        renderer.rect(2.0, 0.0, 1.0, 1.0, [1.0, 0.0, 0.0, 1.0], 0.0, 0);
+        renderer.end_modal_layer();
+        renderer.rect(1.0, 0.0, 2.0, 1.0, [0.0, 1.0, 0.0, 1.0], 0.0, 0);
+        renderer.under_text_rect([0.0, 0.0, 3.0, 1.0], [0.0, 0.0, 1.0, 1.0]);
+        let mut pixels = [0; 3];
+        renderer
+            .capture_cpu_primitives(&mut pixels, 3, 1, &text)
+            .unwrap();
+        assert_eq!(pixels, [0x0000ff, 0x00ff00, 0xff0000]);
+    }
 
     #[test]
     fn terminal_background_base_and_modal_ranges_are_disjoint_and_drained() {

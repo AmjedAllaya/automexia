@@ -173,8 +173,21 @@ function Test-AutomexiaCommandInputColors {
                 [int]($case.Text.Length * [double]$panel.cell_width), [int]$panel.cell_height,
                 $case.Rgb[0], $case.Rgb[1], $case.Rgb[2], 24)
             if ($pixels.TargetColorSampleCount -lt 8) {
+                if (-not [string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
+                    $directory = [IO.Path]::GetFullPath($ModalCaptureDirectory)
+                    [void][IO.Directory]::CreateDirectory($directory)
+                    [void][AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $directory ($Name + '-plain-output-failure.png')))
+                    $facts = @{ fixture = $case.Text; rgb = $case.Rgb; region = @($x, $y, [int]($case.Text.Length * [double]$panel.cell_width), [int]$panel.cell_height); source_row = $sourceRow; visual_row = $visualRow; cell_size = @($panel.cell_width, $panel.cell_height); grid_origin = $panel.grid_origin; matched_pixels = $pixels.TargetColorSampleCount }
+                    $facts.row_render_facts = @($panel.row_render_facts | Select-Object -Skip ([Math]::Max(0, $sourceRow - 2)) -First 4)
+                    [IO.File]::WriteAllText((Join-Path $directory ($Name + '-plain-output-failure.json')), ($facts | ConvertTo-Json -Depth 4))
+                }
                 throw "$Name did not apply customized output colour to <$($case.Text)> ($($pixels.TargetColorSampleCount) pixels)"
             }
+        }
+        if (-not [string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
+            $directory = [IO.Path]::GetFullPath($ModalCaptureDirectory)
+            [void][IO.Directory]::CreateDirectory($directory)
+            [void][AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $directory ($Name + '-plain-output.png')))
         }
         Write-Host "${Name}: seven plain output rows use customized Information/Error/Warning/Success/Debug colours"
     }

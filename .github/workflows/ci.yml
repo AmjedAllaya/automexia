@@ -156,6 +156,7 @@ jobs:
           sudo apt-get update && sudo apt-get install -y --no-install-recommends
           glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev
           libwayland-dev libx11-xcb-dev shellcheck zsh fish
+          fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core
 
       - name: Cache Cargo registry and Git sources
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -224,6 +225,36 @@ jobs:
       - name: Report compiler cache statistics
         if: ${{ always() && steps.sccache.outcome == 'success' }}
         run: sccache --show-stats
+
+      - name: Enforce reviewed Linux visual baseline
+        run: |
+          cargo build -p xtask --locked
+          python tools/ci/visual_quality.py --build --xtask target/debug/xtask --output artifacts/visual-quality --baseline-receipts tests/fixtures/visual-baselines/ubuntu-24.04.json --baseline-images tests/fixtures/visual-baselines/images --require-baseline
+
+      - name: Preserve visual comparison reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: visual-regression-reports
+          path: |
+            artifacts/visual-quality/summary.json
+            artifacts/visual-quality/controlled-tests.log
+            artifacts/visual-quality/captures/*.json
+            artifacts/visual-quality/captures/*--*.png
+            artifacts/visual-quality/diffs
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Preserve visual candidates for review
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: visual-regression-candidates
+          path: |
+            artifacts/visual-quality/captures
+            artifacts/visual-quality/expected-images
+          if-no-files-found: warn
+          retention-days: 3
 
   dependency-security:
     name: Dependency security
@@ -396,6 +427,9 @@ jobs:
 
       - name: SSH actual-generator native PowerShell 5 and 7 regression
         run: python tools/ci/check_ssh_library.py --shell-only --require-windows-powershells
+
+      - name: Native visual pixel oracle canary
+        run: powershell.exe -NoProfile -File tests/integration/resize-stress-windows.ps1 -PixelOracleOnly
 
       - name: SSH helper native ConPTY session regression
         run: python tools/ci/test_ssh_helper_native.py

@@ -8,9 +8,12 @@ Wayland compositor or delivery from a real OS IME service. Never log native text
 from __future__ import annotations
 
 import argparse
+import hashlib
 from collections import deque
 import json
+import math
 import os
+import re
 from pathlib import Path
 import signal
 import subprocess
@@ -116,8 +119,10 @@ def wait_for(process, predicate, message: str, repaint=None):
                 # libatspi reports an object retired during an asynchronous
                 # subtree replacement with this specific error. All other
                 # native errors still fail and retain private diagnostics.
-                if not (error.domain == "atspi_error" and error.code == 0 and
-                        error.message == "The application no longer exists"):
+                retired_application = error.code == 0 and error.message == "The application no longer exists"
+                retired_node = error.code == 1 and re.fullmatch(
+                    r"Unknown object '/org/a11y/atspi/accessible/[0-9]{1,20}/[0-9]{1,40}'", error.message)
+                if error.domain != "atspi_error" or not (retired_application or retired_node):
                     raise
         if repaint is not None:
             repaint()
@@ -129,12 +134,95 @@ def named(nodes, name):
     return [node for node in nodes if node["name"] == name]
 
 
-def run(binary: Path, diagnostics: Path | None) -> None:
+def shell_fixture_command() -> str:
+    # Neither the success oracle nor concealed canary may occur in echoed
+    # input. POSIX printf %b octal bytes are supported by all tested shells.
+    payload = (FIXTURE + '\n\x1b[8m' + HIDDEN + '\x1b[0m\n').encode('utf-8')
+    escaped = ''.join('\\0%03o' % byte for byte in payload)
+    return "printf '%b' '" + escaped + "'"
+
+
+def capture_bytes(path: Path, limit: int) -> bytes:
+    require(not path.is_symlink() and path.is_file(), "Native capture requires a regular file")
+    with path.open('rb') as stream:
+        data = stream.read(limit + 1)
+    require(len(data) <= limit, "Native capture exceeded its bound")
+    return data
+
+
+def verify_concealed_pixels(image: Path, state: dict, width: int, height: int) -> None:
+    """The fixed child prints visible row 0 and concealed row 1; row 2 owns the cursor."""
+    panels = state.get('panels')
+    require(isinstance(panels, list) and len(panels) == 1, "Concealment fixture needs one measured panel")
+    panel = panels[0]
+    origin, cell_w, cell_h = panel.get('grid_origin'), panel.get('cell_width'), panel.get('cell_height')
+    require(isinstance(origin, list) and len(origin) == 2, "Concealment fixture needs measured grid origin")
+    require(all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+                for v in [*origin, cell_w, cell_h]), "Concealment fixture geometry is invalid")
+    x, y, w, h = math.floor(origin[0]), math.floor(origin[1]), math.ceil(len(HIDDEN) * cell_w), math.floor(cell_h)
+    require(x >= 0 and y >= 0 and w > 0 and h > 0 and x + w <= width and y + 2 * h <= height,
+            "Concealment fixture geometry exceeds the image")
+    counts = [command(['/usr/bin/convert', str(image), '-crop', f'{w}x{h}+{x}+{y + row * h}',
+                       '+repage', '-format', '%k', 'info:']).strip() for row in (0, 1)]
+    require(all(value.isdigit() for value in counts), "Concealment pixel counts unavailable")
+    require(int(counts[0]) > 1, "Visible fixture must paint real glyph ink")
+    require(int(counts[1]) == 1, "Concealed fixture painted visible glyph or decoration ink")
+
+
+def capture_window(handle: str, snapshot: Path, destination: Path, stage: str,
+                   expected_control: str | None, shell: str) -> None:
+    """Capture the owned X11 window only after its matching presented frame."""
+    previous = None
+    deadline = time.monotonic() + 12
+    image = destination / (stage + '.png')
+    require(not image.exists(), "Native capture output must be fresh")
+    candidate = destination / (stage + '.pending.png')
+    while time.monotonic() < deadline:
+        state = json.loads(capture_bytes(snapshot, 4 * 1024 * 1024))
+        if expected_control is not None and state.get('last_control') != expected_control:
+            time.sleep(0.05)
+            continue
+        require(state.get('sequence', 0) > 0 and state.get('renderer_backend') == 'cpu',
+                "Native capture requires a presented CPU frame")
+        command(['/usr/bin/import', '-silent', '-window', handle, '-strip', 'png24:' + str(candidate)])
+        digest = hashlib.sha256(capture_bytes(candidate, 16 * 1024 * 1024)).hexdigest()
+        after = json.loads(capture_bytes(snapshot, 4 * 1024 * 1024))
+        # A control/scale change during import invalidates the screenshot's
+        # attribution, even if its bytes happen to equal the preceding frame.
+        identity = tuple(state.get(key) for key in ('last_control', 'renderer_backend', 'scale_factor'))
+        if identity != tuple(after.get(key) for key in ('last_control', 'renderer_backend', 'scale_factor')):
+            previous = None
+            continue
+        if (digest, identity) == previous:
+            dimensions = command(['/usr/bin/identify', '-format', '%w %h', str(candidate)]).split()
+            require(len(dimensions) == 2 and all(value.isdigit() for value in dimensions),
+                    "Native capture dimensions unavailable")
+            width, height = map(int, dimensions)
+            require(1 <= width <= 4096 and 1 <= height <= 4096, "Native capture dimensions invalid")
+            if stage == 'unicode' and shell == 'fixture':
+                verify_concealed_pixels(candidate, state, width, height)
+            candidate.replace(image)
+            report = {'schema': 1, 'evidence_kind': 'native-window', 'platform': 'linux',
+                      'display_server': 'x11-xvfb', 'renderer': 'cpu', 'shell': shell,
+                      'scenario': stage, 'image_sha256': digest, 'width': width, 'height': height,
+                      'frame_generation': state['sequence'], 'scale': state.get('scale_factor')}
+            (destination / (stage + '.json')).write_text(json.dumps(report, indent=2) + '\n')
+            return
+        previous = (digest, identity)
+        time.sleep(0.1)
+    raise ProbeFailure("Native pixels did not settle before the capture deadline")
+
+
+def run(binary: Path, diagnostics: Path | None, captures: Path | None = None,
+        shell: str = 'fixture') -> None:
     require(binary.is_file() and os.access(binary, os.X_OK), "Test binary is unavailable")
     require(bool(os.environ.get("DBUS_SESSION_BUS_ADDRESS")) and bool(os.environ.get("DISPLAY")),
             "Run this fixture inside a private session bus and Xvfb")
     require(os.environ.get("GSETTINGS_BACKEND") == "memory",
             "Start the private session bus with GSETTINGS_BACKEND=memory to isolate accessibility settings")
+    require(shell in ('fixture', 'bash', 'zsh', 'fish'), "Unsupported fixture shell")
+    if captures is not None:
+        captures.mkdir(parents=True, exist_ok=False)
     native_warnings = [0]
 
     def provider_warning(_domain, _level, _message, _data):
@@ -149,21 +237,30 @@ def run(binary: Path, diagnostics: Path | None) -> None:
     with tempfile.TemporaryDirectory(prefix="automexia-atspi-") as temporary:
         root = Path(temporary)
         control = root / "control"
+        snapshot = root / "presented.json"
         control.write_text("", encoding="utf-8")
         child = root / "fixture.py"
         # No interactive shell or command echo can satisfy the output oracle.
         child.write_text("import sys\nprint(" + repr(FIXTURE) + ", flush=True)\n"
                          "print('\\x1b[8m" + HIDDEN + "\\x1b[0m', flush=True)\n"
                          "for line in sys.stdin: pass\n", encoding="utf-8")
+        executable, arguments = '/usr/bin/python3', [str(child)]
+        if shell != 'fixture':
+            executable = '/usr/bin/' + shell
+            arguments = {'bash': ['--noprofile', '--norc', '-i'], 'zsh': ['-f', '-i'],
+                         'fish': ['--no-config', '-i']}[shell]
         (root / "config.toml").write_text(
             "confirm-before-quit = false\nworking-dir = " + json.dumps(str(root)) +
-            "\n[shell]\nprogram = '/usr/bin/python3'\nargs = [" + json.dumps(str(child)) +
-            "]\n[renderer]\nuse-cpu = true\n[session-recovery]\nenabled = false\n",
+            "\n[shell]\nprogram = " + json.dumps(executable) + "\nargs = " + json.dumps(arguments) +
+            "\n[renderer]\nuse-cpu = true\n[cursor]\nblinking = false\n[session-recovery]\nenabled = false\n",
             encoding="utf-8")
         env = dict(os.environ, AUTOMEXIA_CONFIG_HOME=str(root),
                    AUTOMEXIA_NATIVE_TEST_CONTROL=str(control),
+                   AUTOMEXIA_RESIZE_SNAPSHOT=str(snapshot),
                    AUTOMEXIA_VISUAL_TEST_FIXTURE="s1-standard-v1",
                    WINIT_UNIX_BACKEND="x11", RUST_LOG="off")
+        if shell != 'fixture':
+            env.update(HOME=str(root), ZDOTDIR=str(root), HISTFILE='/dev/null', fish_history='')
         # Explicitly select the isolated X server over a host Wayland socket.
         env.pop("WAYLAND_DISPLAY", None)
         process = subprocess.Popen([str(binary)], cwd=root, env=env,
@@ -186,6 +283,7 @@ def run(binary: Path, diagnostics: Path | None) -> None:
             handle = handles[0]
             command(["xdotool", "windowfocus", "--sync", handle])
             frame = 0
+            last_control = None
 
             def repaint():
                 nonlocal frame
@@ -193,17 +291,30 @@ def run(binary: Path, diagnostics: Path | None) -> None:
                 command(["xdotool", "windowsize", handle, str(960 + frame % 2), "700"])
 
             def send(action):
+                nonlocal last_control
                 next_control = root / "control.next"
                 next_control.write_text(action, encoding="utf-8")
                 next_control.replace(control)
+                last_control = action
                 repaint()
+
+            def capture(stage):
+                if captures is not None:
+                    capture_window(handle, snapshot, captures, stage, last_control, shell)
+
+            if shell != 'fixture':
+                # Fixed public literals only; this intentionally exercises shell
+                # output, not a structured user action evaluated by a shell.
+                send("write-line:visual-fixture:" + shell_fixture_command())
 
             wait_for(process, lambda nodes: any(FIXTURE in node["text"] for node in nodes),
                      "Native AT-SPI text ranges lost Unicode output", repaint)
+            capture('unicode')
             send("ime-preedit-hex:composition:" + PREEDIT.encode().hex())
             wait_for(process, lambda nodes: any(node["text"] == PREEDIT for node in
                                                named(nodes, "Input method composition")),
                      "Native AT-SPI composition lost Unicode text", repaint)
+            capture('composition')
             send("ime-cancel:composition")
             wait_for(process, lambda nodes: not named(nodes, "Input method composition"),
                      "Cancelled composition remained accessible", repaint)
@@ -218,6 +329,7 @@ def run(binary: Path, diagnostics: Path | None) -> None:
             require(all(node["bounds"] is not None and node["bounds"].width > 0 and
                         node["bounds"].height > 0 for node in options),
                     "Native AT-SPI options lack painted bounds")
+            capture('palette')
             send("dismiss-modal:palette")
             wait_for(process, lambda nodes: bool(named(nodes, "Terminal output")) and
                      not named(nodes, "Search commands"), "Terminal did not return after modal close", repaint)
@@ -230,6 +342,7 @@ def run(binary: Path, diagnostics: Path | None) -> None:
             restore = named(settings, "Restore saved")
             require(len(restore) == 1 and not restore[0]["enabled"] and not restore[0]["sensitive"],
                     "Native AT-SPI reports an unavailable action as enabled")
+            capture('settings')
         finally:
             # Only this test's new process group can be signalled. Reap it before
             # removing its private config; never enumerate or kill user sessions.
@@ -264,10 +377,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--diagnostics", type=Path, help="New private log path (at most 64 KiB)")
+    parser.add_argument("--captures", type=Path, help="New private directory for stable X11 window captures; requires ImageMagick")
+    parser.add_argument("--shell", choices=('fixture', 'bash', 'zsh', 'fish'), default='fixture')
     args = parser.parse_args()
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(ProbeFailure("Fixture timed out")))
     try:
-        run(args.binary.resolve(strict=True), args.diagnostics)
+        run(args.binary.resolve(strict=True), args.diagnostics, args.captures, args.shell)
     except (ProbeFailure, OSError, subprocess.SubprocessError, RuntimeError):
         # Native errors may include private paths/text. Preserve the stage-only
         # assertion message, never arbitrary provider exception details.

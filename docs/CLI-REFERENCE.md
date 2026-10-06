@@ -173,7 +173,9 @@ cleanup commands are mutating and require deliberate review.
 | `cargo xtask generate keybindings <--version 1.3.1|--check>` | Generate or check the pinned keybinding data. |
 | `cargo xtask package --target TARGET` | Build the explicitly selected package target. |
 | `cargo xtask release --version VERSION` | Run the versioned release workflow; it does not grant publication authority by itself. |
-| `cargo xtask visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH` | Compare controlled raster artifacts and write the requested diff/report artifacts. |
+| `cargo xtask visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH [--expected-metadata PATH --actual-metadata PATH]` | Compare raster artifacts and write exact pixel/geometry reports. Paired metadata enforces compatible OS, renderer, font, scale and configuration identities. |
+| `cargo xtask visual-diff --validate-metadata PATH --image PATH` | Validate bounded capture metadata, image digest and decoded dimensions without claiming a baseline comparison. |
+| `cargo xtask visual-diff --compare-receipts --expected-metadata PATH --actual-metadata PATH --actual PATH --report PATH` | Require identical encoded image digests and physical geometry under compatible capture identities. Schema 3 reports explicitly lack expected-image pixel diagnostics. |
 | `cargo xtask assurance check-policy` | Validate the local assurance policy. |
 | `cargo xtask assurance deep-source` | Run the deep source-assurance profile. |
 | `cargo xtask assurance audit-history-secrets` | Audit retained repository history through the bounded secret-scanner workflow. |

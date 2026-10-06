@@ -33,6 +33,13 @@ test-threads = "num-cpus"
 [test-groups.native-pty]
 max-threads = 1
 
+[test-groups.visual-raster]
+max-threads = 2
+
+[[profile.default.overrides]]
+filter = 'test(visual_quality)'
+test-group = "visual-raster"
+
 [[profile.default.overrides]]
 filter = 'binary(pty_lifecycle) | binary(conpty_handle_lifetime) | binary(test) | binary(live_resize) | binary(pane_editor_resize) | binary(powershell_startup) | test(native_conpty_saturated_shutdown)'
 test-group = "native-pty"

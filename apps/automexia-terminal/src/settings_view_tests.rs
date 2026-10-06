@@ -9,6 +9,10 @@ use rio_backend::sugarloaf::{
 };
 use rio_window::event::{DeviceId, Ime};
 
+#[cfg(feature = "native-gui-test-hooks")]
+#[path = "settings_visual_quality_tests.rs"]
+mod visual_quality_tests;
+
 fn catalog(revision: u64) -> Catalog {
     Catalog::new(
         revision,

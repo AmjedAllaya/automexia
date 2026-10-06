@@ -119,7 +119,7 @@ pub fn buffer_size(width: u32, height: u32) -> Option<usize> {
 }
 
 impl ImageCache {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "native-gui-test-hooks"))]
     pub(crate) fn empty_cpu_test_cache() -> Self {
         Self::deferred(64, DeviceQueue::Cpu)
     }

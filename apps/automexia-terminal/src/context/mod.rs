@@ -2160,6 +2160,19 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                             && !content.inline_tables.hides_native(source))
                             .then_some(visual)
                     }).collect::<Vec<_>>();
+                // Feature-gated capture facts: no extra copy of terminal text.
+                // Preserve ownership flags and first-cell style so a native
+                // color failure can distinguish explicit ANSI from classifier
+                // or shell-boundary errors without guessing from screenshots.
+                let row_render_facts = content.visible_rows.iter().take(1024).map(|row| {
+                    let first = row.inner.first();
+                    serde_json::json!({
+                        "prompt": format!("{:?}", row.semantic_prompt),
+                        "wraps": row.inner.last().is_some_and(|cell| cell.wrapline()),
+                        "first_foreground": first.and_then(|cell| content.style_table.get(usize::from(cell.style_id())))
+                            .map(|style| format!("{:?}",style.fg)),
+                    })
+                }).collect::<Vec<_>>();
                 serde_json::json!({
                     "route_id": context.route_id,
                     "active": context.route_id == active_route,
@@ -2200,6 +2213,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                     "selection_rendered": context.renderable_content.selection_range.is_some(),
                     "visible_text": visible_text,
                     "source_row_visual_origins": source_row_visual_origins,
+                    "row_render_facts": row_render_facts,
                 })
             })
             .collect()

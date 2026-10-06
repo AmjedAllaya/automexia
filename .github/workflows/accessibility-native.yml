@@ -40,3 +40,86 @@ jobs:
         run: cargo run -p accesskit_macos --example native-accessibility-smoke --locked
       - name: Record scope of native evidence
         run: echo 'Native API checks only. VoiceOver, real OS IME and physical display usability require separate evidence.'
+
+  controlled-visual:
+    name: Controlled raster (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, windows-2022, macos-26, macos-26-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - name: Verify the repository toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+          python tools/ci/rust_toolchain.py verify --kind development
+      - name: Install Linux renderer and international text prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: >-
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev
+          libwayland-dev libx11-xcb-dev fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core
+          xvfb xauth xdotool python3-pyatspi dbus-x11 imagemagick libxkbcommon-x11-0
+      - name: Check evidence contracts and build the strict comparator
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tools/ci -p test_visual_quality.py
+          cargo test -p xtask --locked visual_diff
+          cargo build -p xtask --locked
+      - name: Capture actual grid and UI primitives and prove mutation detection
+        id: visual
+        shell: bash
+        run: |
+          set -euo pipefail
+          comparator=target/debug/xtask
+          if [[ "$RUNNER_OS" == Windows ]]; then comparator+=.exe; fi
+          python tools/ci/visual_quality.py --build --xtask "$comparator" --output artifacts/visual-quality --baseline-receipts "tests/fixtures/visual-baselines/${{ matrix.runner }}.json" --baseline-images tests/fixtures/visual-baselines/images --require-baseline
+      - name: Native Linux window pixels and AT-SPI projection
+        if: always() && !cancelled() && runner.os == 'Linux' && steps.visual.outcome != 'skipped'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build -p automexia-terminal --bin automexia --features visual-test-hooks --locked
+          GSETTINGS_BACKEND=memory timeout --signal=TERM --kill-after=8s 180s dbus-run-session -- xvfb-run -a -s '-screen 0 1280x800x24 -nolisten tcp' /usr/bin/python3 tests/integration/accessibility-linux.py --binary target/debug/automexia --captures artifacts/visual-quality/native-linux
+      - name: Preserve exact geometry, environment and mutation reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: controlled-visual-${{ matrix.runner }}
+          path: |
+            artifacts/visual-quality/summary.json
+            artifacts/visual-quality/controlled-tests.log
+            artifacts/visual-quality/captures/*.json
+            artifacts/visual-quality/captures/*--*.png
+            artifacts/visual-quality/diffs
+            artifacts/visual-quality/native-linux
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve full candidate images for failed or missing baselines
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: visual-candidates-${{ matrix.runner }}
+          path: |
+            artifacts/visual-quality/captures
+            artifacts/visual-quality/expected-images
+          if-no-files-found: warn
+          retention-days: 3
+      - name: State the evidence boundary
+        shell: bash
+        run: echo 'Controlled raster and mutation evidence only. Missing reviewed baselines, native compositor, real IME, screen-reader and physical-display evidence are not certified by this job.'

@@ -69,13 +69,13 @@ function Test-AutomexiaFontPicker {
         Font-Key 0x28
     }
     function Font-SavedBytes {
-        $path = Join-Path $configRoot 'state/user-preferences-v12.toml'
+        $path = Join-Path $configRoot $preferenceRelativePath
         if (Test-Path -LiteralPath $path) { return [Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) }
         return ''
     }
     $script:testStage = 'open installed-font picker'
     [void][AutomexiaResizeDriver]::MoveWindow($window, 20, 20, 1250, 820, $true)
-    Send-AutomexiaTestControl 'open-customizations:font-picker'
+    Send-AutomexiaTestControl 'open-terminal-appearance:font-picker'
     Font-Row 'appearance.font_size'
     $state = Wait-Font { param($s) $s.settings.ready -and $s.settings.active_category -eq 'appearance.font_size' }
     $originalFont = $state.font_primary

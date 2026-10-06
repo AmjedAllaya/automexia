@@ -22,7 +22,7 @@ function Test-AutomexiaWindowControlChoices {
     }
     $script:testStage = 'window control choices'
     [void][AutomexiaResizeDriver]::MoveWindow($window, 20, 20, 1200, 740, $true)
-    Send-AutomexiaTestControl 'open-customizations:window-control-choices'
+    Send-AutomexiaTestControl 'open-terminal-appearance:window-control-choices'
     $state = Wait-Choice { param($s) $s.settings.ready -and @($s.settings.controls | Where-Object id -eq 'window-controls.style').Count -eq 1 }
     Click-ChoiceBounds (@($state.settings.controls | Where-Object id -eq 'window-controls.style')[0].bounds) $state.scale_factor
     foreach ($cycle in 0..2) {

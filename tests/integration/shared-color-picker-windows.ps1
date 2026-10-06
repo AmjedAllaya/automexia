@@ -35,7 +35,7 @@ function Test-AutomexiaSharedColorPicker {
     }
     $script:testStage = 'open shared color editor'
     [void][AutomexiaResizeDriver]::MoveWindow($window, 20, 20, 1250, 820, $true)
-    Send-AutomexiaTestControl 'open-customizations:shared-color-picker'
+    Send-AutomexiaTestControl 'open-terminal-appearance:shared-color-picker'
     Color-Row 'appearance.font_size'
     # Search narrows the real feature catalog and reveals a lower color row.
     $state = Wait-Color { param($s) $s.settings.ready -and $s.settings.active_category -eq 'appearance.font_size' }
@@ -90,7 +90,7 @@ function Test-AutomexiaSharedColorPicker {
     $null = Wait-Color { param($s) -not $s.settings.save_pending -and $null -ne $s.settings.color_editor }
     Color-Key 0x41
     $null = Wait-Color { param($s) $s.settings.ready -and -not $s.settings.save_pending -and $null -eq $s.settings.color_editor }
-    $preferences = Join-Path $configRoot 'state/user-preferences-v12.toml'
+    $preferences = Join-Path $configRoot $preferenceRelativePath
     if ((Get-Content -LiteralPath $preferences -Raw) -notmatch 'color-favorites\s*=\s*\[\s*\[\s*171,\s*205,\s*239,\s*255') { throw 'Custom color did not persist as favorite' }
     Color-Row 'fonts.colors.foreground'
     Color-Control 'Favorites'

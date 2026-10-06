@@ -362,11 +362,20 @@ pub(crate) fn classify_visible_output(
     for (index, row) in rows.iter().take(output.len()).enumerate() {
         let count = cols.min(row.len());
         cells = cells.saturating_add(count);
-        if cells > MAX_CELLS
-            || row.semantic_prompt
-                != rio_backend::crosswords::grid::row::SemanticPrompt::None
-            || !append_semantic_row(row, count, scratch)
+        if row.semantic_prompt != rio_backend::crosswords::grid::row::SemanticPrompt::None
         {
+            // Prompt ownership is a stronger boundary than a wrap marker.
+            // ConPTY can retain that marker when repainting submitted input;
+            // it must not absorb the next, independently owned output row.
+            // Any preceding partial output remains uncertain.
+            output[first..=index].fill(uncertain);
+            first = index + 1;
+            scratch.clear();
+            classifier.reset();
+            incomplete = false;
+            continue;
+        }
+        if cells > MAX_CELLS || !append_semantic_row(row, count, scratch) {
             incomplete = true;
         }
         let wraps = count
@@ -2089,10 +2098,17 @@ pub fn build_row_fg_classified(
         }
 
         // Open a run at x.
+        let run_style = resolve_style(style_table, sq);
+        if run_style.flags.contains(StyleFlags::HIDDEN) {
+            // Concealment suppresses glyphs (including emoji/custom sprites),
+            // not their occupied cells or backgrounds. Selection and hints
+            // must not reveal concealed ink by changing its foreground.
+            x += 1;
+            continue;
+        }
         let ch = sq.c();
         let run_start_style_id = sq.style_id();
-        let run_style_flags =
-            (resolve_style(style_table, sq).flags.bits() & SHAPING_FLAG_MASK) as u8;
+        let run_style_flags = (run_style.flags.bits() & SHAPING_FLAG_MASK) as u8;
         let (font_id, is_emoji) =
             rasterizer.resolve_font(ch, run_style_flags, font_library, route_id);
 
@@ -2369,9 +2385,9 @@ pub fn build_row_fg_classified(
             }
             let style2_id = sq2.style_id();
             if style2_id != prev_style_id {
-                let f = (resolve_style(style_table, sq2).flags.bits() & SHAPING_FLAG_MASK)
-                    as u8;
-                if f != run_style_flags {
+                let next_style = resolve_style(style_table, sq2);
+                let f = (next_style.flags.bits() & SHAPING_FLAG_MASK) as u8;
+                if f != run_style_flags || next_style.flags.contains(StyleFlags::HIDDEN) {
                     break;
                 }
                 prev_style_id = style2_id;
@@ -2676,6 +2692,9 @@ fn emit_underlines(
     for x in 0..cols {
         let sq = row[Column(x)];
         let style = resolve_style(style_table, sq);
+        if style.flags.contains(StyleFlags::HIDDEN) {
+            continue;
+        }
         let col = x as u16;
         // SGR underline (UNDER, double, curly, …) wins over the
         // hover-only forced underline. When the cell has no SGR
@@ -2747,7 +2766,9 @@ fn emit_strikethroughs(
     for x in 0..cols {
         let sq = row[Column(x)];
         let style = resolve_style(style_table, sq);
-        if !style.flags.contains(StyleFlags::STRIKEOUT) {
+        if !style.flags.contains(StyleFlags::STRIKEOUT)
+            || style.flags.contains(StyleFlags::HIDDEN)
+        {
             continue;
         }
         let Some(slot) = ensure_decoration_slot(

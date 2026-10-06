@@ -556,7 +556,7 @@ fn draw_terminal_content(
 }
 
 /// Paint one primitive phase into the software framebuffer.
-fn draw_cpu_primitives(
+pub(super) fn draw_cpu_primitives(
     buffer: &mut [u32],
     buf_w: i32,
     buf_h: i32,

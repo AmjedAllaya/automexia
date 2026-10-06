@@ -385,6 +385,10 @@ for required in (
         errors.append('native accessibility assurance missing required boundary: ' + required.strip())
 if re.search(r'(?m)^\s*(?:continue-on-error|secrets|environment):|\b(?:contents|id-token|packages):\s*write|\bsecrets\.', native_accessibility):
     errors.append('native accessibility assurance must not bypass failures or use publishing credentials')
+checkouts = re.findall(r'(?ms)^      - uses: actions/checkout@[^\n]+\n(.*?)(?=^      - |^\S|\Z)', native_accessibility)
+if not checkouts or any(re.findall(r'(?m)^          persist-credentials: *([^\n]+)', checkout) != ['false']
+                        for checkout in checkouts):
+    errors.append('native accessibility assurance requires disabled credential persistence for every checkout')
 
 contract = json.loads((root/'repository-protection.json').read_text(encoding='utf-8'))
 if contract.get('mode') != 'github-free-private':

@@ -9,6 +9,74 @@ use rio_backend::sugarloaf::font::{constants, FontData, FontLibraryData};
 use rio_backend::sugarloaf::grid::{cpu::CpuGridRenderer, GridUniforms};
 use std::sync::Arc;
 
+#[path = "grid_visual_quality_tests.rs"]
+mod visual_quality_tests;
+
+#[test]
+fn concealed_runs_preserve_cells_without_emitting_ink_through_selection_or_hints() {
+    let fonts = crate::visual_quality::fonts();
+    let renderer = fixture_renderer(true);
+    let mut rasterizer = GridGlyphRasterizer::new();
+    let mut grid = GridRenderer::Cpu(CpuGridRenderer::new(80, 12));
+    for text in [
+        "secret",
+        "e\u{301}",
+        "中文",
+        "👩\u{200d}💻",
+        "─━█",
+        "\u{e0b0}",
+    ] {
+        for attributes in ["8", "8;4;9", "8;7;1;3;38;2;255;0;0"] {
+            let mut term = terminal(&format!("L\x1b[{attributes}m{text}\x1b[0mR"));
+            let last = term.cursor().pos.col.0 as u16 - 1;
+            let (rows, styles, extras) = snapshot(&mut term);
+            for selected in [false, true] {
+                for tag in [
+                    HintTag::Match,
+                    HintTag::Focused,
+                    HintTag::HyperlinkHover,
+                    HintTag::Label,
+                ] {
+                    let mut glyphs = Vec::new();
+                    build_row_fg_classified(
+                        &rows[0],
+                        80,
+                        0,
+                        &styles,
+                        &extras,
+                        &renderer,
+                        &TermColors::default(),
+                        &mut rasterizer,
+                        &mut grid,
+                        16.0,
+                        10.0,
+                        24.0,
+                        selected.then_some(RowSelection { lo: 0, hi: last }),
+                        &[RowHint {
+                            lo: 0,
+                            hi: last,
+                            tag,
+                        }],
+                        &fonts,
+                        0,
+                        Some(1),
+                        &mut glyphs,
+                        None,
+                        &[true; 80],
+                    );
+                    assert!(!glyphs.is_empty());
+                    assert!(glyphs.iter().all(|glyph| glyph.grid_pos[0] == 0 || glyph.grid_pos[0] == last),
+                            "concealed glyph/decorations leaked for {attributes}, selection={selected}, hint={tag:?}");
+                    assert!(
+                        glyphs.iter().any(|glyph| glyph.grid_pos[0] == last),
+                        "the visible suffix must retain its original cell position"
+                    );
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn parsed_combining_marks_shape_without_moving_following_cells() {
     let mut data = FontLibraryData::default();
@@ -290,6 +358,52 @@ fn semantic_prompt_and_editable_input_are_never_output_status_rows() {
             None
         );
     }
+}
+
+#[test]
+fn wrapped_prompt_boundary_does_not_absorb_first_plain_output() {
+    use crate::automexia::api::SemanticSeverity;
+    use crate::automexia::output_semantics::OutputDomain;
+    use rio_backend::crosswords::grid::row::SemanticPrompt;
+    let mut term =
+        terminal("command continuation\r\n/workspace/project\r\n[ERROR] fixture\r\n");
+    let (mut rows, _, _) = snapshot(&mut term);
+    // ConPTY may leave a wrap marker after repainting a submitted command.
+    // The shell boundary already identifies the next row as output.
+    rows[0].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+    rows[0].inner[79].set_wrapline(true);
+    for clipped_prefix in [false, true] {
+        let mut classified = Vec::new();
+        classify_visible_output(
+            &rows,
+            80,
+            clipped_prefix,
+            &mut classified,
+            &mut String::new(),
+        );
+        assert_eq!(classified[0].unwrap().domain, OutputDomain::Uncertain);
+        assert_eq!(
+            classified[1].unwrap().severity,
+            Some(SemanticSeverity::Info)
+        );
+        assert_eq!(
+            classified[2].unwrap().severity,
+            Some(SemanticSeverity::Error)
+        );
+    }
+    // A prompt also retires a partial output prefix; it cannot lend status to
+    // subsequent output or be interpreted as output itself.
+    rows[0].set_semantic_prompt(SemanticPrompt::None, None);
+    rows[1].set_semantic_prompt(SemanticPrompt::Prompt, Some(8));
+    rows[1].inner[79].set_wrapline(true);
+    let mut classified = Vec::new();
+    classify_visible_output(&rows, 80, false, &mut classified, &mut String::new());
+    assert_eq!(classified[0].unwrap().domain, OutputDomain::Uncertain);
+    assert_eq!(classified[1].unwrap().domain, OutputDomain::Uncertain);
+    assert_eq!(
+        classified[2].unwrap().severity,
+        Some(SemanticSeverity::Error)
+    );
 }
 
 fn terminal(text: &str) -> Crosswords<VoidListener> {

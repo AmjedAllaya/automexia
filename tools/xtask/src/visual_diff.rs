@@ -7,6 +7,9 @@ use std::path::{Path, PathBuf};
 
 use super::TaskResult;
 
+#[path = "visual_identity.rs"]
+mod identity;
+
 const MAX_CONFIG_BYTES: u64 = 64 * 1024;
 const MAX_ENCODED_IMAGE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_REPORT_BYTES: usize = 64 * 1024;
@@ -48,6 +51,8 @@ struct VisualDiffReport {
     max_observed_channel_delta: u8,
     max_channel_delta: u8,
     max_changed_pixel_ratio: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    binding: Option<identity::BindingReport>,
 }
 
 struct Comparison {
@@ -56,6 +61,21 @@ struct Comparison {
 }
 
 pub(super) fn dispatch(args: &[String]) -> TaskResult {
+    if args.first().is_some_and(|arg| arg == "--compare-receipts") {
+        return dispatch_receipts(args);
+    }
+    if let [validate, metadata, image_flag, image] = args {
+        if validate == "--validate-metadata" && image_flag == "--image" {
+            identity::validate(
+                &canonical_input(Path::new(metadata))?,
+                &canonical_input(Path::new(image))?,
+            )?;
+            println!(
+                "PASS: capture metadata and image validated; no baseline comparison"
+            );
+            return Ok(());
+        }
+    }
     let arguments = parse_arguments(args)?;
     let expected = arguments
         .get("--expected")
@@ -76,7 +96,21 @@ pub(super) fn dispatch(args: &[String]) -> TaskResult {
     let config = canonical_input(Path::new(config))?;
     let diff = safe_output(Path::new(diff))?;
     let report = safe_output(Path::new(report))?;
-    let distinct = [&expected, &actual, &config, &diff, &report];
+    let metadata = match (
+        arguments.get("--expected-metadata"),
+        arguments.get("--actual-metadata"),
+    ) {
+        (Some(left), Some(right)) => Some((
+            canonical_input(Path::new(left))?,
+            canonical_input(Path::new(right))?,
+        )),
+        (None, None) => None,
+        _ => return Err("visual-diff requires both metadata files".into()),
+    };
+    let mut distinct = vec![&expected, &actual, &config, &diff, &report];
+    if let Some((left, right)) = &metadata {
+        distinct.extend([left, right]);
+    }
     for left in 0..distinct.len() {
         for right in (left + 1)..distinct.len() {
             if distinct[left] == distinct[right] {
@@ -86,7 +120,23 @@ pub(super) fn dispatch(args: &[String]) -> TaskResult {
     }
 
     let config = load_config(&config)?;
-    let comparison = compare(&expected, &actual, &config)?;
+    let binding = metadata
+        .as_ref()
+        .map(|(left, right)| identity::compare(left, right, &expected, &actual))
+        .transpose()?;
+    let mut comparison = compare(&expected, &actual, &config)?;
+    if let Some(binding) = binding {
+        if binding.width != comparison.report.width
+            || binding.height != comparison.report.height
+        {
+            return Err("visual-diff image dimensions disagree with metadata".into());
+        }
+        if !binding.changed_geometry.is_empty() {
+            comparison.report.status = "failed";
+        }
+        comparison.report.schema = 2;
+        comparison.report.binding = Some(binding);
+    }
     write_diff_atomic(&diff, &comparison.diff)?;
     write_report_atomic(&report, &comparison.report)?;
     if comparison.report.status == "passed" {
@@ -97,7 +147,7 @@ pub(super) fn dispatch(args: &[String]) -> TaskResult {
         Ok(())
     } else {
         Err(format!(
-            "visual diff exceeded policy: {:.6}% changed (limit {:.6}%)",
+            "visual diff failed pixel/geometry policy: {:.6}% changed (limit {:.6}%)",
             comparison.report.changed_pixel_ratio * 100.0,
             comparison.report.max_changed_pixel_ratio * 100.0
         ))
@@ -105,24 +155,63 @@ pub(super) fn dispatch(args: &[String]) -> TaskResult {
 }
 
 fn usage() -> &'static str {
-    "visual-diff requires --expected PATH --actual PATH --config PATH --diff PATH --report PATH"
+    "visual-diff requires --expected PATH --actual PATH --config PATH --diff PATH --report PATH [--expected-metadata PATH --actual-metadata PATH]"
+}
+
+fn dispatch_receipts(args: &[String]) -> TaskResult {
+    let [mode, expected_flag, expected, actual_flag, actual, image_flag, image, report_flag, report] =
+        args
+    else {
+        return Err("visual-diff receipt mode requires --compare-receipts --expected-metadata PATH --actual-metadata PATH --actual PATH --report PATH".into());
+    };
+    if mode != "--compare-receipts"
+        || expected_flag != "--expected-metadata"
+        || actual_flag != "--actual-metadata"
+        || image_flag != "--actual"
+        || report_flag != "--report"
+    {
+        return Err("invalid visual-diff receipt options".into());
+    }
+    let expected = canonical_input(Path::new(expected))?;
+    let actual = canonical_input(Path::new(actual))?;
+    let image = canonical_input(Path::new(image))?;
+    let report = safe_output(Path::new(report))?;
+    let paths = [&expected, &actual, &image, &report];
+    for (index, path) in paths.iter().enumerate() {
+        if paths[..index].contains(path) {
+            return Err("visual-diff inputs and outputs must be distinct".into());
+        }
+    }
+    let comparison = identity::compare_receipts(&expected, &actual, &image)?;
+    write_report_atomic(&report, &comparison)?;
+    if comparison.status != "passed" {
+        return Err("visual receipt failed exact image digest or geometry policy".into());
+    }
+    println!("PASS: exact image digest and geometry; expected PNG unavailable for pixel diagnostics");
+    Ok(())
 }
 
 fn parse_arguments(args: &[String]) -> TaskResult<BTreeMap<&str, &str>> {
-    if args.len() != 10 {
+    if !matches!(args.len(), 10 | 14) {
         return Err(usage().into());
     }
-    let allowed = ["--expected", "--actual", "--config", "--diff", "--report"];
+    let required = ["--expected", "--actual", "--config", "--diff", "--report"];
+    let optional = ["--expected-metadata", "--actual-metadata"];
     let mut parsed = BTreeMap::new();
     for pair in args.chunks_exact(2) {
-        if !allowed.contains(&pair[0].as_str()) || pair[1].is_empty() {
+        if (!required.contains(&pair[0].as_str())
+            && !optional.contains(&pair[0].as_str()))
+            || pair[1].is_empty()
+        {
             return Err(usage().into());
         }
         if parsed.insert(pair[0].as_str(), pair[1].as_str()).is_some() {
             return Err(format!("duplicate visual-diff option: {}", pair[0]));
         }
     }
-    if parsed.len() != allowed.len() {
+    if required.iter().any(|key| !parsed.contains_key(key))
+        || parsed.contains_key(optional[0]) != parsed.contains_key(optional[1])
+    {
         return Err(usage().into());
     }
     Ok(parsed)
@@ -393,6 +482,7 @@ fn compare(
             max_observed_channel_delta,
             max_channel_delta: config.max_channel_delta,
             max_changed_pixel_ratio: config.max_changed_pixel_ratio,
+            binding: None,
         },
         diff,
     })
@@ -417,7 +507,7 @@ fn write_diff_atomic(path: &Path, diff: &RgbaImage) -> TaskResult {
         .map_err(|error| format!("cannot publish visual-diff image: {}", error.error))
 }
 
-fn write_report_atomic(path: &Path, report: &VisualDiffReport) -> TaskResult {
+fn write_report_atomic(path: &Path, report: &impl Serialize) -> TaskResult {
     let bytes = serde_json::to_vec_pretty(report)
         .map_err(|error| format!("cannot encode visual-diff report: {error}"))?;
     if bytes.len() > MAX_REPORT_BYTES {
@@ -442,6 +532,39 @@ fn write_report_atomic(path: &Path, report: &VisualDiffReport) -> TaskResult {
 mod tests {
     use super::*;
     use image_rs::Rgba;
+
+    #[test]
+    fn baseline_comparison_accepts_a_complete_identity_pair_only() {
+        let mut args: Vec<String> = [
+            "--expected",
+            "expected.png",
+            "--actual",
+            "actual.png",
+            "--config",
+            "policy.json",
+            "--diff",
+            "diff.png",
+            "--report",
+            "report.json",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+        assert!(
+            parse_arguments(&args).is_ok(),
+            "legacy pixel comparisons remain supported"
+        );
+        args.extend(["--expected-metadata", "expected.json"].map(str::to_owned));
+        assert!(
+            parse_arguments(&args).is_err(),
+            "one-sided identity is invalid"
+        );
+        args.extend(["--actual-metadata", "actual.json"].map(str::to_owned));
+        assert!(
+            parse_arguments(&args).is_ok(),
+            "bound comparisons need both identities"
+        );
+    }
 
     fn image(path: &Path, pixels: &[[u8; 4]]) {
         let image = RgbaImage::from_fn(2, 2, |x, y| Rgba(pixels[(y * 2 + x) as usize]));

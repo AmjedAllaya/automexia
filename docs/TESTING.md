@@ -1280,6 +1280,110 @@ and motion enabled/disabled.
 Automated accessibility checks do not replace current Narrator/NVDA, VoiceOver,
 and Orca evidence for releases claiming those environments.
 
+### Bound visual captures and deliberate defects
+
+The visual surface inventory follows production ownership. The controlled
+gallery supplements these existing owner tests; it does not replace interaction,
+accessibility or native presentation evidence.
+
+| Surface | Production owner under `apps/automexia-terminal/src/` | Evidence layers |
+| --- | --- | --- |
+| Cells, scrollback, ANSI styles, selection, cursor, Unicode and links | `grid_emit.rs`, `screen/grid_lifecycle.rs`, `renderer/custom_cursor.rs`, `hints/` | Parser/grid invariants, controlled terminal raster, shell output captures, native resize/selection checks |
+| Header, tabs, title buttons, active/inactive states, footer | `renderer/island.rs`, `renderer/session_footer.rs` | Geometry and hit bounds, contrast matrices, native theme/opacity/window checks |
+| Panes, separators, viewport padding and background | `layout/`, `screen/mod.rs`, `renderer/mod.rs` | Layout/resize tests, settings raster, native pane/opacity checks |
+| Command colors, timestamps, tags, inline tables and suggestions | `renderer/command_input.rs`, `renderer/command_info.rs`, `renderer/command_results.rs`, `renderer/devops_status.rs`, `renderer/inline_tables.rs`, `renderer/suggestions.rs` | Actual grid snapshots, narrow/scaled ink tests, shell boundary regressions, customization raster |
+| Settings, themes, fonts, shared color picker and extension settings | `settings_view.rs`, `settings_catalog.rs` | Every catalog control and dependency tests, keyboard/IME/focus tests, 16-surface raster matrix, native preview/save/cancel checks |
+| Palette, menu categories, marketplace, shortcuts and last-command actions | `renderer/command_palette.rs`, `renderer/command_palette/` | Navigation/geometry/contrast and key-label pixel tests, native category navigation |
+| Connections, credentials, profiles and workflow review | `renderer/connection_hub.rs`, `renderer/connection_hub/` | Bounded forms, focus/scroll and modal-isolation tests, native connection workflows |
+| Search and scrollbars | `renderer/search.rs`, `renderer/scrollbar.rs` | Geometry snapshots, search/input owner tests, native search and scroll scenarios |
+| Quit/recovery notices, assistant and compatibility overlays | `renderer/confirm_quit.rs`, `renderer/assistant.rs`, `renderer/compatibility_inspector.rs` | Bounded layout/hit tests and modal ownership; native snapshots remain scenario-specific |
+| Composition and startup/window lifecycle | `ime.rs`, `screen/ime.rs`, `screen/mod.rs`, `application/` | Grapheme/selection and lifecycle tests, native API composition injection; real OS IME, native decorations, physical multi-monitor and drag/drop appearance require separate desktop evidence |
+
+Only exported scenarios receive cross-commit pixel-baseline enforcement. Other
+surfaces retain their owner invariants and named native scenarios; do not infer
+an exhaustive screenshot baseline for every state from a passing gallery.
+
+`tools/ci/visual_quality.py` drives the real parser/grid/glyph renderer and the
+production settings primitive painter. It uses the existing `cargo xtask
+visual-diff` oracle: zero changed channels, zero changed pixels, and no masks.
+This is controlled CPU raster evidence, not a claim about a native compositor.
+
+```sh
+cargo build -p xtask --locked
+python tools/ci/visual_quality.py --build --xtask target/debug/xtask --output target/visual-quality
+```
+
+On Windows, use `target/debug/xtask.exe`. The Python process owner waits for the
+GUI-subsystem test executable, bounds output and deadlines, and retires owned
+processes. Do not launch that executable with an asynchronous desktop launcher.
+Use a new output directory for every run. `--build` resolves Cargo's reported test
+artifact; `--test-binary` requires the caller to establish source/build identity.
+The report binds the binary digest, commit and local source fingerprint and
+rejects source changes during capture.
+
+The matrix covers five built-in themes and 100/125/150/175/200% scale, including
+a narrow layout. It includes 16 settings surfaces, ANSI/truecolor, font styles,
+ligatures, combining marks, CJK/RTL logical cells, native emoji fallback,
+Powerline/Nerd symbols, box drawing, selection and cursor pixels. Terminal cells
+retain application order; these fixtures do not introduce paragraph bidi.
+Linux needs Noto CJK, Noto Color Emoji and Noto Core fonts. Font file hashes are
+part of the evidence, including native fallbacks. No fonts are downloaded by the
+application.
+
+The mutation campaign changes actual emitted glyphs, cell backgrounds, cursor
+sprites or grid uniforms. It verifies detection of a one-pixel baseline, missing
+or clipped ink, wrong foreground, cell shift, cursor shift/hiding/low contrast,
+padding, line height, underline shift, a one-channel ANSI color change,
+background gap, selection shift, box seam and Powerline displacement. Restoring
+the input must restore exact pixels. Geometry is also compared independently;
+identical images with different measured bounds fail.
+
+Each capture has PNG, bounded metadata and physical geometry. Baseline identity
+includes OS/build, architecture, renderer/driver, font files/size, scale, viewport,
+theme, fixture and configuration. Incompatible identities are rejected, not
+counted as passes or pixel regressions. To compare a **reviewed** capture set,
+pass `--baseline PATH --require-baseline`. The runner never updates baselines.
+Without one it reports `captured-not-certified`, even when mutations pass.
+Alternatively, `--baseline-receipts PATH --require-baseline` reads a bounded
+schema-1 inventory (`captures` maps every correct scenario to its existing
+metadata). Receipts must originate from clean, reviewed captures. The canonical
+Rust validator requires compatible identities, exact physical geometry and an
+identical SHA-256 of the encoded PNG. Schema-3 reports do not fabricate pixel
+counts or a diff when the expected PNG is unavailable. Retain that PNG privately
+or as a CI artifact when pixel-level diagnosis is needed. An encoding-only
+change also fails and requires review. Missing receipts retain validated
+candidates and verify source stability, then fail; they never approve themselves.
+CI additionally supplies `--baseline-images tests/fixtures/visual-baselines/images`.
+This shared store contains reviewed PNGs named by their SHA-256, deduplicating
+byte-identical captures across runner inventories. The driver validates stored
+bytes, preserves expected images and invokes the existing full pixel/geometry
+comparator (schema 2). This mode compares decoded pixels, so a lossless encoding
+change alone is not a visual regression. Failed runs retain expected, actual
+and diff images even after previous workflow artifacts expire. Missing or corrupt
+stored images fail; none are silently replaced or fetched from an untrusted URL.
+Inspect the expected, actual and diff images before approving any replacement.
+Keep local native screenshots and diagnostics private: they can show shell or
+machine information. Controlled fixtures contain fictional public data.
+
+The manually dispatched **Native accessibility API assurance**
+workflow records controlled artifacts on Windows, Linux and both macOS
+architectures, existing macOS AX API tests, and Linux X11 native window/AT-SPI
+checks. It requires reviewed receipts in `tests/fixtures/visual-baselines/`
+for each runner and the shared reviewed PNG store; absent inventories fail
+explicitly. Full candidate and expected images are
+retained for three days on failure, while reports, mutations and native evidence
+are retained for fourteen days. Review image/geometry differences and environment
+changes before replacing receipts; baseline capture is never automatic approval.
+Regular CI enforces the Linux receipt baseline on every normal run; the manual
+workflow additionally checks Windows and both macOS architectures. Regular CI
+also runs the unit contracts and Windows one-pixel color
+oracle canary. The Linux native probe accepts `--captures NEW_DIRECTORY` and
+`--shell bash|zsh|fish`; it uses an isolated session bus/Xvfb and requires
+ImageMagick, xdotool and PyAT-SPI. Captures wait for the matching presented
+control and two identical frames. They establish virtual X11 window evidence,
+not Wayland, hardware GPU, physical mixed-DPI, Orca or real OS IME coverage.
+Those and Narrator/NVDA/VoiceOver remain separate native certification gates.
+
 ## Performance and resources
 
 Measure the real owning path with same-host baselines and noise-aware

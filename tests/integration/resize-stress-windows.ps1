@@ -55,7 +55,8 @@ param(
     [switch]$WindowControlChoicesOnly,
     [switch]$SharedColorPickerOnly,
     [switch]$FontPickerOnly,
-    [switch]$AccessibilityOnly
+    [switch]$AccessibilityOnly,
+    [switch]$PixelOracleOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -65,10 +66,17 @@ if ($TagShapesOnly -or $MenuNavigationOnly) { $TagCustomizationOnly = $true }
 # Resolve Get-FileHash from the executing host for saved-file preservation checks.
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+# The source-built fixture must read the current preference owner's filename.
+# Keeping a second schema number here let save/cancel checks inspect obsolete
+# files (and sometimes incorrectly report an unchanged absent snapshot).
+$preferenceSource = [IO.File]::ReadAllText((Join-Path $root 'apps/automexia-terminal/src/automexia/preferences.rs'))
+$preferenceMatches = [regex]::Matches($preferenceSource, '(?m)^const PRIMARY_FILE: &str = "(user-preferences-v[1-9][0-9]*\.toml)";\r?$')
+if ($preferenceMatches.Count -ne 1) { throw 'Cannot resolve the source-built preference owner' }
+$preferenceRelativePath = 'state/' + $preferenceMatches[0].Groups[1].Value
 if ([string]::IsNullOrWhiteSpace($Binary)) {
     $Binary = Join-Path $root 'target\debug\automexia.exe'
 }
-if (-not (Test-Path -LiteralPath $Binary -PathType Leaf)) {
+if (-not $PixelOracleOnly -and -not (Test-Path -LiteralPath $Binary -PathType Leaf)) {
     throw "Automexia test binary was not found at $Binary"
 }
 if ($OpacityOnly) {
@@ -1068,7 +1076,6 @@ public static class AutomexiaResizeDriver {
             long luminanceTotal = 0;
             int brightSamples = 0;
             int brightForegroundSamples = 0;
-            int targetColorSamples = 0;
             long redTotal = 0;
             long greenTotal = 0;
             long blueTotal = 0;
@@ -1094,12 +1101,6 @@ public static class AutomexiaResizeDriver {
                     if (luminance >= 160) {
                         brightForegroundSamples++;
                     }
-                    if (targetRed >= 0 && targetGreen >= 0 && targetBlue >= 0 &&
-                        Math.Abs(color.R - targetRed) <= tolerance &&
-                        Math.Abs(color.G - targetGreen) <= tolerance &&
-                        Math.Abs(color.B - targetBlue) <= tolerance) {
-                        targetColorSamples++;
-                    }
                     redTotal += color.R;
                     greenTotal += color.G;
                     blueTotal += color.B;
@@ -1120,7 +1121,7 @@ public static class AutomexiaResizeDriver {
                 MeanBlue = samples == 0 ? 0 : (int)(blueTotal / samples),
                 BrightSampleCount = brightSamples,
                 BrightForegroundSampleCount = brightForegroundSamples,
-                TargetColorSampleCount = targetColorSamples,
+                TargetColorSampleCount = CountTargetPixels(bitmap, targetRed, targetGreen, targetBlue, tolerance),
             };
         }
     }
@@ -1154,10 +1155,43 @@ public static class AutomexiaResizeDriver {
         return GetSystemMetrics(1);
     }
 
+    private static int CountTargetPixels(Bitmap bitmap, int red, int green, int blue, int tolerance) {
+        if (red < 0 || green < 0 || blue < 0) return 0;
+        int count = 0;
+        // Color assertions inspect every pixel. The coarser luminance statistics
+        // above are diagnostics only; a sampling grid can miss thin glyph ink.
+        for (int y = 0; y < bitmap.Height; y++) {
+            for (int x = 0; x < bitmap.Width; x++) {
+                Color pixel = bitmap.GetPixel(x, y);
+                if (Math.Abs(pixel.R - red) <= tolerance && Math.Abs(pixel.G - green) <= tolerance &&
+                    Math.Abs(pixel.B - blue) <= tolerance) count++;
+            }
+        }
+        return count;
+    }
+
+    public static void VerifyTargetColorOracle() {
+        using (var bitmap = new Bitmap(4, 4)) {
+            for (int y = 0; y < 4; y++) {
+                for (int x = 0; x < 4; x++) {
+                    bitmap.SetPixel(x, y, Color.FromArgb(90, 210, 230));
+                    if (CountTargetPixels(bitmap, 90, 210, 230, 0) != 1)
+                        throw new InvalidOperationException("Pixel oracle missed one physical pixel");
+                    bitmap.SetPixel(x, y, Color.FromArgb(91, 210, 230));
+                    if (CountTargetPixels(bitmap, 90, 210, 230, 0) != 0)
+                        throw new InvalidOperationException("Pixel oracle hid a one-channel mutation");
+                    bitmap.SetPixel(x, y, Color.Black);
+                }
+            }
+        }
+    }
+
 
 
 }
 '@
+[AutomexiaResizeDriver]::VerifyTargetColorOracle()
+if ($PixelOracleOnly) { Write-Host 'PASS: every pixel position and one-channel mutation'; return }
 Add-Type -Path (Join-Path $PSScriptRoot 'windows-native-window-locator.cs')
 
 function Assert-AutomexiaCloseSurface {
@@ -1886,7 +1920,7 @@ $wallpaperConfig
                 }
                 $script:testStage = 'menu navigation baseline'
                 function Get-MenuPreferenceHashes {
-                    foreach ($relative in @('config.toml', 'state/user-preferences-v12.toml')) {
+                    foreach ($relative in @('config.toml', $preferenceRelativePath)) {
                         $path = Join-Path $configRoot $relative
                         if (Test-Path -LiteralPath $path) { (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
                         else { 'absent' }
@@ -2011,7 +2045,7 @@ $wallpaperConfig
             # Ordinary edits above may still be saving. Establish disk baseline
             # only after that receipt, then exercise the real temporary owner.
             $roster = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.save_pending }
-            $preferencePath = Join-Path $configRoot 'state/user-preferences-v12.toml'
+            $preferencePath = Join-Path $configRoot $preferenceRelativePath
             if (-not (Test-Path -LiteralPath $preferencePath -PathType Leaf)) {
                 throw 'The native customization baseline was not saved'
             }

@@ -131,7 +131,7 @@ function Test-AutomexiaThemeGallery {
         $null = Capture-ThemeSurface 'customizations'
         $script:testStage = 'window control styles ' + $Name
         function Open-WindowControls {
-            Send-AutomexiaTestControl ('open-customizations:' + [guid]::NewGuid().ToString('N'))
+            Send-AutomexiaTestControl ('open-terminal-appearance:' + [guid]::NewGuid().ToString('N'))
             $root = Wait-ThemeState {param($s) $s.settings.ready -and $s.settings.open -and $null -eq $s.settings.active_category}
             Click-Theme $root.settings.search_button
             if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window,0x41,$false,$true,$false)) { throw 'Caption search selection failed' }
@@ -197,7 +197,7 @@ function Test-AutomexiaThemeGallery {
         $null = Wait-ThemeState {param($s) -not $s.search_active}
     }
     function Preference-Text {
-        $path = Join-Path $configRoot 'state/user-preferences-v12.toml'
+        $path = Join-Path $configRoot $preferenceRelativePath
         for ($attempt = 0; $attempt -lt 80; $attempt++) {
             $stream = $null
             $reader = $null

@@ -33,6 +33,8 @@ mod screen;
 mod settings_catalog;
 mod settings_view;
 mod table_view;
+#[cfg(test)]
+mod visual_quality;
 mod watcher;
 
 use rio_backend::config::config_dir_path;
