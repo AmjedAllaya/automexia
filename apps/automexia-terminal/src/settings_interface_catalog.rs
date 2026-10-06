@@ -566,7 +566,7 @@ pub(super) fn descriptors(
         (current.window.opacity * 100.0).round(),
         20.0,
         100.0,
-        "Transparency depends on the system compositor."
+        "Background transparency; 100% is opaque. Text stays opaque."
     );
     row!(
         "interface.background.opacity-cells",
@@ -646,8 +646,22 @@ pub(super) fn descriptors(
                     SettingValue::Number((f64::from(default[3]) * 100.0 / 255.0).round()),
                     color.origin == ValueOrigin::User,
                     color.origin == ValueOrigin::Configuration,
-                    "Opacity of this surface; text remains opaque."
+                    "Surface opacity; 100% is opaque. Window transparency is separate."
                 );
+            }
+        }
+    }
+    if !current.renderer.supports_window_transparency() {
+        for row in &mut rows {
+            if matches!(
+                row.id.as_str(),
+                "interface.background.opacity"
+                    | "interface.background.opacity-cells"
+                    | "interface.background.blur"
+            ) {
+                row.availability = settings::Availability::Unavailable {
+                    reason: "The CPU renderer uses an opaque window. Saved transparency is retained for GPU rendering.".into(),
+                };
             }
         }
     }
@@ -787,16 +801,22 @@ pub(super) fn apply(
             .iter()
             .find(|r| r.id.as_str() == prefix)
             .ok_or(SettingsError::UnknownSetting)?;
-        let value = match &edit.change {
-            Change::Reset => None,
+        let (SettingValue::Color(mut color), SettingValue::Color(default)) =
+            (&entry.value, &entry.default)
+        else {
+            return Err(SettingsError::InvalidValue);
+        };
+        color[3] = match edit.change {
+            Change::Reset => default[3],
             Change::Set(SettingValue::Number(value)) => {
-                let SettingValue::Color(mut color) = entry.value else {
-                    return Err(SettingsError::InvalidValue);
-                };
-                color[3] = (*value * 255.0 / 100.0).round() as u8;
-                Some(Rgba::from_bytes(color))
+                (value * 255.0 / 100.0).round() as u8
             }
             _ => return Err(SettingsError::InvalidValue),
+        };
+        let value = if matches!(edit.change, Change::Reset) && color == *default {
+            None
+        } else {
+            Some(Rgba::from_bytes(color))
         };
         match prefix {
             "interface.footer.background" => target.appearance.footer.background = value,
@@ -845,6 +865,69 @@ pub(super) fn reset(prefs: &mut UserPreferences, id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cpu_transparency_controls_explain_the_limitation_and_preserve_preferences() {
+        let mut base = Config::default();
+        base.renderer.use_cpu = true;
+        let mut prefs = UserPreferences::default();
+        prefs.visual.interface.opacity = Some(OpacityPercent::new(40).unwrap());
+        prefs.visual.interface.blur = Some(true);
+        let rows =
+            descriptors(&base, &prefs.apply_to(&base), &prefs, &base.colors).unwrap();
+        for id in [
+            "interface.background.opacity",
+            "interface.background.opacity-cells",
+            "interface.background.blur",
+        ] {
+            let row = rows.iter().find(|r| r.id.as_str() == id).unwrap();
+            assert!(row.availability.reason().is_some_and(|s| s.contains("CPU")));
+        }
+        assert_eq!(prefs.apply_to(&base).window.opacity, 0.4);
+        assert!(prefs.apply_to(&base).window.blur.is_enabled());
+        assert!(rows
+            .iter()
+            .filter(|r| r.id.as_str().starts_with("interface.footer"))
+            .all(|r| r.availability.reason().is_none()));
+    }
+
+    #[test]
+    fn interface_opacity_reset_preserves_custom_rgb_and_inherits_alpha() {
+        let base = Config::default();
+        for prefix in ["interface.header", "interface.footer"] {
+            let edit = |suffix: &str, change| Edit {
+                revision: 7,
+                id: settings::SettingId::new(format!("{prefix}.{suffix}")).unwrap(),
+                change,
+            };
+            let colored = apply_edit(
+                7,
+                &base,
+                &UserPreferences::default(),
+                &[],
+                &edit(
+                    "background",
+                    Change::Set(SettingValue::Color([220, 175, 90, 73])),
+                ),
+            )
+            .unwrap();
+            let reset = apply_edit(
+                7,
+                &base,
+                &colored,
+                &[],
+                &edit("background-opacity", Change::Reset),
+            )
+            .unwrap();
+            let rows =
+                descriptors(&base, &reset.apply_to(&base), &reset, &base.colors).unwrap();
+            let row = rows
+                .iter()
+                .find(|r| r.id.as_str() == format!("{prefix}.background"))
+                .unwrap();
+            assert_eq!(row.value, SettingValue::Color([220, 175, 90, 255]));
+        }
+    }
 
     #[test]
     fn interface_every_control_round_trips_and_reset_inherits_without_cross_edits() {

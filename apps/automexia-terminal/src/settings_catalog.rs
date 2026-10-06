@@ -5675,6 +5675,195 @@ mod visual_catalog_tests {
             change,
         }
     }
+    // Discover controls from their production catalogs so adding a customization
+    // automatically adds its value boundaries, persistence and reset coverage.
+    fn customization_inventory(
+        base: &Config,
+        prefs: &UserPreferences,
+    ) -> Vec<settings::SettingDescriptor> {
+        let current = prefs.apply_to(base);
+        let market = installed();
+        let full =
+            catalog_with_palette(41, base, prefs, &market, &current.colors).unwrap();
+        let mut rows: Vec<_> = full
+            .entries()
+            .iter()
+            .filter(|row| {
+                row.id.as_str().starts_with("tags.")
+                    || row.id.as_str().starts_with("output.")
+                    || row.id.as_str().starts_with("command_output.")
+                    || row.id.as_str().starts_with("kubernetes.")
+                    || matches!(
+                        row.id.as_str(),
+                        settings::FONT_SIZE
+                            | settings::INLINE_TABLES
+                            | settings::OUTPUT_HIGHLIGHTING
+                            | settings::COMMAND_OUTPUT_HIGHLIGHTING
+                            | settings::KUBERNETES_HIGHLIGHTING
+                            | settings::COMMAND_TIMESTAMPS
+                    )
+            })
+            .cloned()
+            .collect();
+        rows.extend(
+            interface::descriptors(base, &current, prefs, &current.colors).unwrap(),
+        );
+        rows.extend(
+            table_settings_catalog(41, base, prefs, &current.colors)
+                .unwrap()
+                .entries()
+                .iter()
+                .cloned(),
+        );
+        rows.extend(
+            timestamp_settings_catalog(41, base, prefs, &current.colors)
+                .unwrap()
+                .entries()
+                .iter()
+                .cloned(),
+        );
+        rows.extend(
+            font_settings_catalog(41, base, prefs, &current.colors)
+                .unwrap()
+                .entries()
+                .iter()
+                .cloned(),
+        );
+        for style in rio_backend::config::presentation::WindowControlStyle::ALL {
+            rows.extend(
+                window_controls::catalog(
+                    41,
+                    base,
+                    prefs,
+                    &current.colors,
+                    &format!("window-controls.{}.background", style.id()),
+                )
+                .unwrap()
+                .entries()
+                .iter()
+                .cloned(),
+            );
+        }
+        rows.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
+        rows.dedup_by(|a, b| a.id == b.id);
+        rows
+    }
+
+    #[test]
+    fn customization_catalog_boundaries_apply_persist_and_reset_each_control() {
+        let base = Config::default();
+        let original = UserPreferences::default();
+        let root = tempfile::tempdir().unwrap();
+        let rows = customization_inventory(&base, &original);
+        let mut covered = 0;
+        let mut cases = 0;
+        for row in rows {
+            if row.availability.reason().is_some() {
+                continue;
+            }
+            let samples = match &row.kind {
+                SettingKind::Boolean => {
+                    vec![SettingValue::Boolean(false), SettingValue::Boolean(true)]
+                }
+                SettingKind::Choice { options } => options
+                    .iter()
+                    .map(|o| SettingValue::Choice(o.value.clone()))
+                    .collect(),
+                SettingKind::Number { min, max, step }
+                | SettingKind::ContinuousNumber { min, max, step } => {
+                    [*min, min + ((max - min) / step / 2.0).floor() * step, *max]
+                        .map(SettingValue::Number)
+                        .to_vec()
+                }
+                SettingKind::Color { alpha } => [0, 64, 128, 192, 255]
+                    .into_iter()
+                    .map(|a| {
+                        SettingValue::Color([
+                            a,
+                            255 - a,
+                            a / 2,
+                            if *alpha { a } else { 255 },
+                        ])
+                    })
+                    .collect(),
+                SettingKind::Text { .. } if row.id.as_str() == "fonts.family" => {
+                    vec![SettingValue::Text("Example Mono".into())]
+                }
+                SettingKind::Text { .. } if row.id.as_str() == "fonts.features" => {
+                    vec![SettingValue::Text("ss01=1,zero=1".into())]
+                }
+                SettingKind::Text { .. } => vec![row.value.clone()],
+                SettingKind::Action => continue,
+            };
+            covered += 1;
+            for value in samples {
+                cases += 1;
+                let edit = request(row.id.as_str(), Change::Set(value.clone()));
+                let changed = apply_edit(41, &base, &original, &installed(), &edit)
+                    .unwrap_or_else(|e| panic!("{} {value:?}: {e:?}", row.id.as_str()));
+                crate::automexia::preferences::write_to_root(root.path(), &changed)
+                    .unwrap();
+                let loaded = crate::automexia::preferences::load_from_root(root.path());
+                assert!(loaded.warning.is_none(), "{} load warning", row.id.as_str());
+                assert_eq!(
+                    loaded.preferences,
+                    changed,
+                    "{} persistence",
+                    row.id.as_str()
+                );
+                let refreshed = customization_inventory(&base, &loaded.preferences);
+                let actual = &refreshed.iter().find(|r| r.id == row.id).unwrap().value;
+                match (actual, &value) {
+                    (SettingValue::Number(a), SettingValue::Number(b)) => assert!(
+                        (a - b).abs() < 0.005,
+                        "{} effect: {a} != {b}",
+                        row.id.as_str()
+                    ),
+                    _ => {
+                        assert_eq!(actual, &value, "{} effective value", row.id.as_str())
+                    }
+                }
+                let reset = apply_edit(
+                    41,
+                    &base,
+                    &changed,
+                    &installed(),
+                    &request(row.id.as_str(), Change::Reset),
+                )
+                .unwrap();
+                let restored = customization_inventory(&base, &reset);
+                let restored = &restored.iter().find(|r| r.id == row.id).unwrap().value;
+                assert_eq!(restored, &row.default, "{} reset value", row.id.as_str());
+                // Shape/arrangement edits intentionally retain the custom-layout
+                // draft. Their per-field reset restores the preset field without
+                // discarding other saved layout work (covered by the layout tests).
+                let mut without_draft = reset;
+                if matches!(
+                    row.id.as_str(),
+                    "tags.bar-style"
+                        | "tags.bar-arrangement"
+                        | "tags.spacing"
+                        | crate::automexia::presentation::TAG_FORMAT
+                ) {
+                    assert_eq!(
+                        without_draft.visual.information_bar.recipe(),
+                        original.visual.information_bar.recipe()
+                    );
+                    without_draft.visual.information_bar =
+                        original.visual.information_bar.clone();
+                }
+                assert_eq!(
+                    without_draft,
+                    original,
+                    "{} reset isolation",
+                    row.id.as_str()
+                );
+            }
+        }
+        assert!(covered >= 200, "only {covered} controls checked");
+        assert!(cases >= 700, "only {cases} cases checked");
+    }
+
     #[test]
     fn visual_catalog_exposes_every_context_role_color() {
         let rows = catalog(

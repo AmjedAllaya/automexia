@@ -12,6 +12,18 @@ pub const DEFAULT_MINIMUM_WINDOW_WIDTH: i32 = 300;
 ))]
 pub const APPLICATION_ID: &str = rio_backend::config::product::WM_CLASS;
 
+fn native_transparency(config: &Config) -> bool {
+    crate::renderer::window_bg_alpha(config) < 1.0
+}
+
+fn native_blur(config: &Config) -> rio_window::window::BlurStyle {
+    if native_transparency(config) {
+        config.window.blur.into()
+    } else {
+        rio_window::window::BlurStyle::Off
+    }
+}
+
 pub fn create_window_builder(
     title: &str,
     config: &Config,
@@ -27,8 +39,8 @@ pub fn create_window_builder(
         })
         .with_resizable(true)
         .with_decorations(true)
-        .with_transparent(config.window.opacity < 1.)
-        .with_blur(config.window.blur.into());
+        .with_transparent(native_transparency(config))
+        .with_blur(native_blur(config));
 
     if quake {
         window_builder = window_builder
@@ -90,13 +102,16 @@ pub fn create_window_builder(
                 window_builder.with_undecorated_shadow(use_undecorated_shadow);
         }
 
-        if let Some(use_no_redirection_bitmap) =
-            config.window.windows_use_no_redirection_bitmap
-        {
-            // This sets WS_EX_NOREDIRECTIONBITMAP.
-            window_builder =
-                window_builder.with_no_redirection_bitmap(use_no_redirection_bitmap);
-        }
+        // DirectComposition needs no opaque redirection bitmap behind its
+        // surface. Choose this at creation even when initially opaque so live
+        // opacity edits work. Softbuffer requires that bitmap and stays opaque.
+        window_builder = window_builder.with_no_redirection_bitmap(
+            config.renderer.supports_window_transparency()
+                && config
+                    .window
+                    .windows_use_no_redirection_bitmap
+                    .unwrap_or(true),
+        );
     }
 
     #[cfg(all(not(target_os = "macos"), not(windows)))]
@@ -131,7 +146,8 @@ pub fn create_window_builder(
     {
         use rio_window::platform::macos::WindowAttributesExtMacOS;
         // MacOS is always transparent
-        window_builder = window_builder.with_transparent(true);
+        window_builder = window_builder
+            .with_transparent(config.renderer.supports_window_transparency());
 
         // Configure colorspace
         window_builder = window_builder
@@ -252,7 +268,7 @@ pub fn configure_window(winit_window: &Window, config: &Config) {
         winit_window.set_forward_to_ime_modifier_mask(mask);
     }
 
-    let is_transparent = config.window.opacity < 1.;
+    let is_transparent = native_transparency(config);
     winit_window.set_transparent(is_transparent);
 
     #[cfg(target_os = "macos")]
@@ -309,5 +325,31 @@ pub fn configure_window(winit_window: &Window, config: &Config) {
         winit_window.set_glass_opacity(config.window.opacity as f64);
     }
 
-    winit_window.set_blur(config.window.blur.into());
+    winit_window.set_blur(native_blur(config));
+}
+
+#[cfg(test)]
+mod transparency_tests {
+    use super::*;
+    #[test]
+    fn native_startup_and_live_composition_use_one_backend_policy() {
+        let mut config = Config::default();
+        assert!(!native_transparency(&config));
+        for cpu in [false, true] {
+            config.renderer.use_cpu = cpu;
+            for alpha in [0.2, 0.5, 1.0] {
+                config.window.opacity = alpha;
+                config.window.blur = rio_backend::config::window::WindowBlur::System;
+                let expected =
+                    config.renderer.supports_window_transparency() && alpha < 1.0;
+                #[cfg(not(target_os = "macos"))]
+                let builder =
+                    create_window_builder("Fixture", &config, None, None, false);
+                #[cfg(not(target_os = "macos"))]
+                assert_eq!(builder.transparent, expected);
+                assert_eq!(native_transparency(&config), expected);
+                assert_eq!(native_blur(&config).is_enabled(), expected);
+            }
+        }
+    }
 }

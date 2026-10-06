@@ -50,7 +50,6 @@ use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use rio_backend::clipboard::Clipboard;
 use rio_backend::clipboard::ClipboardType;
 use rio_backend::config::layout::Margin;
-use rio_backend::config::renderer::Backend;
 use rio_backend::crosswords::pos::{Boundary, Direction, Line};
 use rio_backend::crosswords::search::RegexSearch;
 use rio_backend::error::{RioError, RioErrorLevel, RioErrorType};
@@ -999,7 +998,23 @@ pub struct ScreenWindowProperties {
 
 #[inline]
 fn window_should_be_opaque(config: &rio_backend::config::Config) -> bool {
-    config.window.opacity >= 1.0 && !config.window.blur.is_glass()
+    crate::renderer::window_bg_alpha(config) >= 1.0
+}
+
+fn renderer_backend(config: &rio_backend::config::Config) -> SugarloafBackend {
+    config.renderer.sugarloaf_backend()
+}
+
+#[cfg(all(test, windows))]
+#[test]
+fn default_windows_renderer_uses_compiled_gpu_support_without_opt_in_feature() {
+    let mut config = rio_backend::config::Config::default();
+    assert!(matches!(
+        renderer_backend(&config),
+        SugarloafBackend::Wgpu(_)
+    ));
+    config.renderer.use_cpu = true;
+    assert!(matches!(renderer_backend(&config), SugarloafBackend::Cpu));
 }
 
 impl Screen<'_> {
@@ -1051,32 +1066,7 @@ impl Screen<'_> {
             },
         };
 
-        let backend = if config.renderer.use_cpu {
-            SugarloafBackend::Cpu
-        } else {
-            match config.renderer.backend {
-                // `Backend::Vulkan` from the user config means the
-                // native ash backend on Linux. Other OSes fall through
-                // to the wgpu Vulkan path when the `wgpu` feature is
-                // on; otherwise we degrade to CPU rasterizer.
-                #[cfg(target_os = "linux")]
-                Backend::Vulkan => SugarloafBackend::Vulkan,
-                #[cfg(all(not(target_os = "linux"), feature = "wgpu"))]
-                Backend::Vulkan => SugarloafBackend::Wgpu(wgpu::Backends::VULKAN),
-                #[cfg(all(not(target_os = "linux"), not(feature = "wgpu")))]
-                Backend::Vulkan => SugarloafBackend::Cpu,
-                #[cfg(target_os = "macos")]
-                Backend::Metal => SugarloafBackend::Metal,
-                #[cfg(all(feature = "wgpu", target_arch = "wasm32"))]
-                Backend::Webgpu => SugarloafBackend::Wgpu(
-                    wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL,
-                ),
-                #[cfg(all(feature = "wgpu", not(target_arch = "wasm32")))]
-                Backend::Webgpu => SugarloafBackend::Wgpu(wgpu::Backends::all()),
-                #[cfg(not(feature = "wgpu"))]
-                Backend::Webgpu => SugarloafBackend::Cpu,
-            }
-        };
+        let backend = renderer_backend(config);
 
         let sugarloaf_renderer = SugarloafRenderer {
             backend,
@@ -1097,7 +1087,7 @@ impl Screen<'_> {
             }
         };
 
-        #[cfg(feature = "wgpu")]
+        #[cfg(any(feature = "wgpu", windows, target_arch = "wasm32"))]
         sugarloaf.update_filters(config.renderer.filters.as_slice());
 
         let mut renderer = Renderer::new(config);
@@ -1825,7 +1815,7 @@ impl Screen<'_> {
         s.font_size = config.fonts.size;
         s.line_height = config.line_height;
 
-        #[cfg(feature = "wgpu")]
+        #[cfg(any(feature = "wgpu", windows, target_arch = "wasm32"))]
         self.sugarloaf
             .update_filters(config.renderer.filters.as_slice());
 

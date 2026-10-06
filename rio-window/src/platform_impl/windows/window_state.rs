@@ -326,6 +326,14 @@ impl WindowFlags {
             return;
         }
 
+        if diff.intersects(WindowFlags::TRANSPARENT | WindowFlags::NO_BACK_BUFFER) {
+            super::window::apply_native_transparency(
+                window,
+                new.contains(WindowFlags::TRANSPARENT),
+                new.contains(WindowFlags::NO_BACK_BUFFER),
+            );
+        }
+
         if new.contains(WindowFlags::VISIBLE) {
             let flag = if !self.contains(WindowFlags::MARKER_ACTIVATE) {
                 self.set(WindowFlags::MARKER_ACTIVATE, true);

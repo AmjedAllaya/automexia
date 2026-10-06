@@ -58,13 +58,24 @@ use rustc_hash::FxHashMap;
 /// every `effective_bg` write so OSC 11 changes don't reset
 /// transparency to 1.0.
 ///
-/// - Glass blur styles force `0.0` so the macOS-26 `NSGlassEffectView`
+/// - Supported glass blur styles force `0.0` so the macOS-26 `NSGlassEffectView`
 ///   under the metal layer is what shows through.
 /// - Otherwise it's the configured `window.opacity`, clamped to
 ///   `[0, 1]`.
 #[inline]
-fn window_bg_alpha(config: &Config) -> f32 {
-    if config.window.blur.is_glass() {
+pub(crate) fn window_bg_alpha(config: &Config) -> f32 {
+    #[cfg(target_os = "macos")]
+    let glass_available = config.window.blur.is_glass()
+        && rio_window::platform::macos::liquid_glass_available();
+    #[cfg(not(target_os = "macos"))]
+    let glass_available = false;
+    window_bg_alpha_with_glass(config, glass_available)
+}
+
+fn window_bg_alpha_with_glass(config: &Config, glass_available: bool) -> f32 {
+    if !config.renderer.supports_window_transparency() {
+        1.0
+    } else if glass_available && config.window.blur.is_glass() {
         0.0
     } else {
         config.window.opacity.clamp(0.0, 1.0)
@@ -78,7 +89,7 @@ fn dynamic_background_for(
 ) -> ([f32; 4], rio_backend::sugarloaf::Color, bool) {
     let mut dynamic_background =
         (named_colors.background.0, named_colors.background.1, false);
-    if config.window.blur.is_glass() || config.window.opacity < 1. {
+    if window_bg_alpha(config) < 1.0 {
         dynamic_background.1.a = window_bg_alpha(config) as f64;
         dynamic_background.2 = true;
     } else if config.window.background_image.is_some() {
@@ -1169,7 +1180,8 @@ impl Renderer {
             command_result_route: None,
             named_colors,
             dynamic_background,
-            opacity_cells: config.window.opacity_cells,
+            opacity_cells: config.window.opacity_cells
+                && config.renderer.supports_window_transparency(),
             cell_bg_alpha: (config.window.opacity.clamp(0.0, 1.0) * 255.0).round() as u8,
             window_bg_alpha: target_bg_alpha,
             search: search::SearchOverlay::default(),
@@ -1242,7 +1254,8 @@ impl Renderer {
         self.presentation = config.presentation;
         self.named_colors = named_colors;
         self.dynamic_background = dynamic_background_for(config, &self.named_colors);
-        self.opacity_cells = config.window.opacity_cells;
+        self.opacity_cells =
+            config.window.opacity_cells && config.renderer.supports_window_transparency();
         self.cell_bg_alpha =
             (config.window.opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
         self.window_bg_alpha = window_bg_alpha(config);
@@ -3949,5 +3962,71 @@ mod prompt_visual_anchor_tests {
         assert_eq!(cached.as_ref().unwrap().as_ptr(), pointer);
         sync_optional_metadata(&mut cached, Some(&String::new()));
         assert_eq!(cached, None);
+    }
+}
+
+#[cfg(test)]
+mod opacity_tests {
+    use super::*;
+    use rio_backend::config::window::WindowBlur;
+
+    #[test]
+    fn unsupported_glass_retains_opacity_and_supported_glass_uses_native_tint() {
+        let mut config = Config::default();
+        config.window.blur = WindowBlur::MacosGlassClear;
+        for alpha in [0.0, 0.2, 0.5, 0.8, 1.0] {
+            config.window.opacity = alpha;
+            for available in [false, true] {
+                let expected = if !config.renderer.supports_window_transparency() {
+                    1.0
+                } else if available {
+                    0.0
+                } else {
+                    alpha
+                };
+                assert_eq!(window_bg_alpha_with_glass(&config, available), expected);
+                assert_eq!(config.window.opacity, alpha);
+            }
+        }
+    }
+
+    #[test]
+    fn default_is_opaque_and_cpu_fallback_never_publishes_transparent_pixels() {
+        let mut config = Config::default();
+        #[cfg(target_os = "macos")]
+        let glass_available = rio_window::platform::macos::liquid_glass_available();
+        #[cfg(not(target_os = "macos"))]
+        let glass_available = false;
+        assert_eq!(config.window.opacity, 1.0);
+        assert_eq!(window_bg_alpha(&config), 1.0);
+        for cpu in [false, true] {
+            config.renderer.use_cpu = cpu;
+            for alpha in [0.0, 0.2, 0.4, 0.6, 0.8, 1.0] {
+                config.window.opacity = alpha;
+                for blur in [
+                    WindowBlur::Off,
+                    WindowBlur::System,
+                    WindowBlur::MacosGlassClear,
+                ] {
+                    config.window.blur = blur;
+                    let expected = if !config.renderer.supports_window_transparency() {
+                        1.0
+                    } else if glass_available && blur.is_glass() {
+                        0.0
+                    } else {
+                        alpha
+                    };
+                    assert_eq!(window_bg_alpha(&config), expected);
+                    let (_, clear, dynamic) =
+                        dynamic_background_for(&config, &config.colors);
+                    assert_eq!(clear.a as f32, expected);
+                    assert_eq!(dynamic, expected < 1.0);
+                    assert_eq!(
+                        config.window.opacity, alpha,
+                        "fallback must preserve the setting"
+                    );
+                }
+            }
+        }
     }
 }

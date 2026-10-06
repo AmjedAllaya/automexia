@@ -9196,6 +9196,17 @@ fn interface_refresh_paint_benchmark() {
         prefs.visual.interface.appearance.footer.height =
             rio_backend::config::presentation::UiPixels::new(24 + (i % 49) as u16);
         prefs.visual.interface.appearance.footer.visible = Some(i % 2 == 0);
+        prefs.visual.interface.opacity = Some(
+            rio_backend::config::presentation::OpacityPercent::new(20 + (i % 81) as u8)
+                .unwrap(),
+        );
+        prefs.visual.interface.appearance.header.background =
+            Some(rio_backend::config::presentation::Rgba::from_bytes([
+                230,
+                180,
+                110,
+                (i % 256) as u8,
+            ]));
         let mut raster = Raster::new(1.5);
         let start = std::time::Instant::now();
         let effective = prefs.apply_to(&base);

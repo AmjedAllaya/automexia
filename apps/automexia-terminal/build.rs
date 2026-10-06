@@ -9,6 +9,16 @@ fn main() {
         return;
     }
 
+    // Naga's HLSL writer recursively lowers the bundled grid shaders during
+    // DX12 initialization. The Windows 1 MiB main-stack default can overflow
+    // in debug builds. Reserve a bounded 8 MiB (committed on demand), without
+    // adding a compiler thread or changing stacks in the console launcher.
+    if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+        println!("cargo:rustc-link-arg-bin=automexia=/STACK:8388608");
+    } else {
+        println!("cargo:rustc-link-arg-bin=automexia=-Wl,--stack,8388608");
+    }
+
     let package_version = std::env::var("CARGO_PKG_VERSION")
         .expect("Cargo must provide CARGO_PKG_VERSION to the build script");
     let mut version_fields = package_version

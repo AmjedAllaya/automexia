@@ -45,6 +45,16 @@ pub struct Color {
 }
 
 impl Color {
+    /// Convert straight RGBA into the representation used by source-over targets.
+    pub fn premultiplied(self) -> Self {
+        Self {
+            r: self.r * self.a,
+            g: self.g * self.a,
+            b: self.b * self.a,
+            a: self.a,
+        }
+    }
+
     pub const TRANSPARENT: Self = Self {
         r: 0.0,
         g: 0.0,
@@ -521,4 +531,36 @@ fn check_opaque_region() {
 
     assert!(graphic.is_filled(0, 0, 3, 3));
     assert!(!graphic.is_filled(1, 1, 4, 4));
+}
+
+#[cfg(test)]
+mod composition_tests {
+    use super::Color;
+
+    #[test]
+    fn transparent_clear_preserves_hue_and_opacity_without_bright_halos() {
+        for (alpha, rgb) in [
+            (0.0, [0.0, 0.0, 0.0]),
+            (0.25, [0.05, 0.1, 0.2]),
+            (0.5, [0.1, 0.2, 0.4]),
+            (0.75, [0.15, 0.3, 0.6]),
+            (1.0, [0.2, 0.4, 0.8]),
+        ] {
+            let result = Color {
+                r: 0.2,
+                g: 0.4,
+                b: 0.8,
+                a: alpha,
+            }
+            .premultiplied();
+            for (actual, expected) in [result.r, result.g, result.b].into_iter().zip(rgb)
+            {
+                assert!(
+                    (actual - expected).abs() < 1e-12,
+                    "alpha {alpha}: {actual} != {expected}"
+                );
+            }
+            assert_eq!(result.a, alpha);
+        }
+    }
 }

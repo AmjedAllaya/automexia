@@ -298,6 +298,103 @@ struct LocalTabStripLayout {
     add_width: f32,
 }
 
+fn header_theme(
+    theme: &UiTheme,
+    appearance: rio_backend::config::presentation::HeaderAppearance,
+    background: [f32; 4],
+) -> UiTheme {
+    let rgba = |v: rio_backend::config::presentation::Rgba| {
+        v.bytes().map(|v| f32::from(v) / 255.0)
+    };
+    let rgb = |v: rio_backend::config::presentation::Rgb| {
+        v.rgba_bytes().map(|v| f32::from(v) / 255.0)
+    };
+    let fill = appearance.background.map_or(theme.surface, rgba);
+    let mut result = if appearance.background.is_some() {
+        UiTheme::resolve(
+            opaque_over(background, fill),
+            appearance.text.map_or(theme.text, rgb),
+            appearance.inactive_text.map_or(theme.muted_text, rgb),
+        )
+    } else {
+        *theme
+    };
+    // Resolve semantic inks against the actual header/button surfaces, before
+    // retaining the user's raw alpha for painting the header itself.
+    result.text = result.label(appearance.text.map_or(theme.text, rgb));
+    result.muted_text =
+        result.label(appearance.inactive_text.map_or(theme.muted_text, rgb));
+    result.accent = result.label(theme.accent);
+    result.blue = result.label(theme.blue);
+    result.purple = result.label(theme.purple);
+    result.success = result.label(theme.success);
+    result.warning = result.label(theme.warning);
+    result.danger = result.label(theme.danger);
+    result.border = appearance.border.map_or(result.border, rgba);
+    result.surface = fill;
+    result
+}
+
+#[cfg(test)]
+#[test]
+fn header_override_labels_contrast_with_the_actual_surface() {
+    let base = UiTheme::resolve([0.01, 0.02, 0.03, 1.0], [0.9; 4], [0.6; 4]);
+    let appearance = rio_backend::config::presentation::HeaderAppearance {
+        background: Some(rio_backend::config::presentation::Rgba::from_bytes(
+            [255; 4],
+        )),
+        ..Default::default()
+    };
+    let header = header_theme(&base, appearance, base.background);
+    assert!(automexia_ui_model::contrast_ratio(header.muted_text, header.surface) >= 4.5);
+}
+
+#[cfg(test)]
+#[test]
+fn header_custom_colors_keep_labels_readable_at_intermediate_alpha() {
+    use rio_backend::config::presentation::{HeaderAppearance, Rgb, Rgba};
+    for background in [[0.02, 0.04, 0.08, 1.0], [0.97, 0.96, 0.94, 1.0]] {
+        let base = UiTheme::resolve(background, [0.5; 4], [0.5; 4]);
+        for color in [
+            [0, 0, 0],
+            [255, 255, 255],
+            [128, 128, 128],
+            [235, 90, 45],
+            [45, 150, 230],
+        ] {
+            for alpha in [0, 51, 102, 153, 204, 255] {
+                let appearance = HeaderAppearance {
+                    background: Some(Rgba::from_bytes([
+                        color[0], color[1], color[2], alpha,
+                    ])),
+                    text: Some(Rgb::from_bytes(color)),
+                    inactive_text: Some(Rgb::from_bytes(color)),
+                    ..Default::default()
+                };
+                let resolved = header_theme(&base, appearance, background);
+                let surface = opaque_over(background, resolved.surface);
+                for label in [
+                    resolved.text,
+                    resolved.muted_text,
+                    resolved.accent,
+                    resolved.warning,
+                    resolved.danger,
+                ] {
+                    let label = theme_color_u8(label).map(|v| f32::from(v) / 255.0);
+                    for fill in [surface, resolved.raised] {
+                        assert!(
+                            automexia_ui_model::contrast_ratio(label, fill) >= 4.5,
+                            "color {color:?} alpha {alpha}: {label:?} over {fill:?}"
+                        );
+                    }
+                    assert_eq!(label[3], 1.0);
+                }
+                assert_eq!(resolved.surface[3], f32::from(alpha) / 255.0);
+            }
+        }
+    }
+}
+
 impl LocalTabStripLayout {
     fn tab(self, index: usize) -> Option<LocalTabGeometry> {
         (index < self.count).then_some(LocalTabGeometry {
@@ -1363,27 +1460,13 @@ impl Island {
         let rgb = |v: rio_backend::config::presentation::Rgb| {
             v.rgba_bytes().map(|v| f32::from(v) / 255.0)
         };
-        let mut theme_value = *theme;
-        theme_value.surface = appearance.background.map_or(theme.surface, rgba);
-        theme_value.border = appearance.border.map_or(theme.border, rgba);
-        theme_value.text = super::ui_theme::readable_on(
-            appearance.text.map_or(theme.text, rgb),
-            theme.raised,
-        );
-        theme_value.muted_text = super::ui_theme::readable_on(
-            appearance.inactive_text.map_or(theme.muted_text, rgb),
-            theme.surface,
-        );
+        let theme_value = header_theme(theme, appearance, bg_color);
         let theme = &theme_value;
         let active_text = appearance.text.map_or(self.active_text_color, rgb);
         let inactive_text = appearance
             .inactive_text
             .map_or(self.inactive_text_color, rgb);
-        let bg_color = if appearance.background.is_some() {
-            over(bg_color, theme.surface)
-        } else {
-            bg_color
-        };
+        let bg_color = over(bg_color, theme.surface);
         let (window_width, window_height, scale_factor) = dimensions;
         let num_tabs = context_manager.len();
         let current_tab_index = context_manager.current_index();
@@ -1860,11 +1943,7 @@ impl Island {
                 );
                 let title_opts = DrawOpts {
                     font_size: layout.title_font_size,
-                    color: color_u8(tab_title_color(
-                        self.active_text_color,
-                        bg_color,
-                        fill,
-                    )),
+                    color: color_u8(tab_title_color(active_text, bg_color, fill)),
                     ..DrawOpts::default()
                 };
                 let ui = sugarloaf.text_mut();

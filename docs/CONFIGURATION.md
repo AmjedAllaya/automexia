@@ -164,7 +164,7 @@ background-image = { path = "D:/wallpaper.png", opacity = 0.25 }
 | `width`, `height` | integer pixels / `1280`, `760` | Initial logical window size. |
 | `columns`, `rows` | optional integer | Initial grid target when supplied. |
 | `mode` | `Windowed`, `Maximized`, `Fullscreen` / `Windowed` | Initial mode. |
-| `opacity` | float / `1.0` | Window/default-background opacity. |
+| `opacity` | float / `1.0` | Window/default-background opacity: `1.0` is opaque. CPU rendering remains opaque and retains this choice for GPU use. |
 | `opacity-cells` | bool / `false` | Apply opacity to explicitly colored cells too; off preserves TUI status/syntax contrast. |
 | `blur` | bool or `macos-glass-regular`, `macos-glass-clear` / `false` | Unsupported glass styles degrade to system blur with a warning. |
 | `background-image` | `{ path, opacity }` / unset | Local background image; opacity is clamped to 0…1. This is separate from terminal image preview. |
@@ -270,6 +270,10 @@ very short panes suppress it automatically. Footer status labels progressively
 hide when width is insufficient. Header/footer label colors receive contrast
 correction; terminal application ANSI colors keep their existing precedence.
 Unsupported native blur/transparency effects do not change terminal behavior.
+CPU rendering uses an opaque native window; opacity/blur preferences remain saved
+for GPU use. Resetting a header/footer opacity control restores inherited alpha
+without discarding its RGB override. Windows GPU rendering uses the compiled
+WGPU backend by default; `renderer.use-cpu` still explicitly selects CPU.
 
 Command information wraps automatically when the pane is too narrow for its
 context badges and completion timestamp. No setting is required. Use scrolling

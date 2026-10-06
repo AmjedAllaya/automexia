@@ -103,3 +103,43 @@ impl Display for Backend {
         }
     }
 }
+
+// Resolve features where the renderer dependency is owned. The desktop crate's
+// optional `wgpu` flag is not set by its platform-specific dependency features.
+#[cfg(feature = "renderer")]
+impl Renderer {
+    pub fn sugarloaf_backend(&self) -> sugarloaf::SugarloafBackend {
+        use sugarloaf::SugarloafBackend;
+        if self.use_cpu {
+            SugarloafBackend::Cpu
+        } else {
+            match self.backend {
+                // `Backend::Vulkan` from the user config means the
+                // native ash backend on Linux. Other OSes fall through
+                // to the wgpu Vulkan path when the `wgpu` feature is
+                // on; otherwise we degrade to CPU rasterizer.
+                #[cfg(target_os = "linux")]
+                Backend::Vulkan => SugarloafBackend::Vulkan,
+                #[cfg(all(not(target_os = "linux"), feature = "wgpu"))]
+                Backend::Vulkan => SugarloafBackend::Wgpu(wgpu::Backends::VULKAN),
+                #[cfg(all(not(target_os = "linux"), not(feature = "wgpu")))]
+                Backend::Vulkan => SugarloafBackend::Cpu,
+                #[cfg(target_os = "macos")]
+                Backend::Metal => SugarloafBackend::Metal,
+                #[cfg(all(feature = "wgpu", target_arch = "wasm32"))]
+                Backend::Webgpu => SugarloafBackend::Wgpu(
+                    wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL,
+                ),
+                #[cfg(all(feature = "wgpu", not(target_arch = "wasm32")))]
+                Backend::Webgpu => SugarloafBackend::Wgpu(wgpu::Backends::all()),
+                #[cfg(not(feature = "wgpu"))]
+                Backend::Webgpu => SugarloafBackend::Cpu,
+            }
+        }
+    }
+
+    /// Softbuffer presents opaque RGB; never request native transparency for it.
+    pub fn supports_window_transparency(&self) -> bool {
+        !matches!(self.sugarloaf_backend(), sugarloaf::SugarloafBackend::Cpu)
+    }
+}

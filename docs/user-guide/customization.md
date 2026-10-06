@@ -56,7 +56,12 @@ tab colors, title colors and size, tab corner radius, spacing and maximum width.
 **Panes & Borders** controls pane padding/margins, row/column gaps, divider color
 and width, and inactive-pane intensity. **Background & Spacing** controls window
 opacity, transparent application cell backgrounds, system blur and four outer
-padding edges. Native transparency and blur depend on the system compositor.
+padding edges. Window opacity is **100% by default**: 100% is opaque, while lower
+values reveal the desktop without fading terminal text. Header/footer opacity
+controls affect only their own surfaces; resetting opacity retains their chosen
+RGB color. Native transparency and blur depend on the system compositor. The CPU
+renderer keeps an opaque window and explains this limitation beside transparency
+controls; saved opacity and blur choices remain available when using the GPU.
 Global font family and terminal foreground/background colors remain in **Fonts**;
 Theme supplies inherited colors. Explicit surface choices override those colors.
 Text contrast guards keep header/footer labels legible over chosen surfaces.

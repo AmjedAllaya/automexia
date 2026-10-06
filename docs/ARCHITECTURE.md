@@ -419,6 +419,23 @@ presentation. Therefore an unchanged terminal model still repaints newly
 exposed pixels after a client resize, while a failed present remains eligible
 for an identical retry.
 
+Backend selection belongs to `rio-backend::config::renderer`, which resolves the
+features compiled into its Sugarloaf dependency. Native window transparency uses
+that same decision: softbuffer's opaque RGB contract must not be advertised as
+per-pixel desktop transparency. Windows WGPU first initializes DirectComposition
+alone, avoiding unused WGL surfaces that change the HWND pixel format. If it is
+unavailable, it tries the remaining requested backends once; explicit backend
+choices remain authoritative. The Windows GUI reserves an 8 MiB main stack,
+committed on demand, for Naga's recursive HLSL compilation of bundled shaders.
+GPU source-over targets prefer premultiplied compositor
+alpha and premultiplied clear colors; a surface without that alpha mode receives
+an opaque clear. Surface creation and resize retain the same format/alpha policy.
+Header contrast is resolved against the configured composite surface before
+painting its retained RGBA value; opacity resets preserve RGB ownership.
+Native window and renderer opacity share one clear-color decision. Glass clears
+to zero only when AppKit supplies `NSGlassEffectView`; older macOS retains the
+configured alpha while using the existing system-blur fallback.
+
 Frames preserve terminal-cell geometry, grapheme widths, clipping, z-order,
 cursor position, selection, scroll offsets, and modal composition. Renderer
 state never becomes a competing terminal-state authority.

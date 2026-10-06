@@ -115,6 +115,38 @@ pub(crate) struct Window {
     vsync_state: Arc<event_loop::vsync::VSyncSharedState>,
 }
 
+/// Apply only on the owning window thread, at creation or a transparency change.
+/// DirectComposition owns alpha when no redirection bitmap is present.
+pub(super) fn apply_native_transparency(
+    window: HWND,
+    transparent: bool,
+    no_redirection_bitmap: bool,
+) {
+    if no_redirection_bitmap {
+        return;
+    }
+    // SAFETY: the caller owns a live HWND on its window thread. The region is
+    // local, borrowed only for the DWM call, and released exactly once below.
+    let region = unsafe { CreateRectRgn(0, 0, -1, -1) };
+    if region.is_null() {
+        warn!("Could not allocate the window transparency region");
+        return;
+    }
+    let bb = DWM_BLURBEHIND {
+        dwFlags: DWM_BB_ENABLE | DWM_BB_BLURREGION,
+        fEnable: transparent.into(),
+        hRgnBlur: region,
+        fTransitionOnMaximized: false.into(),
+    };
+    // SAFETY: valid window/region and a fully initialized, correctly sized struct.
+    let hr = unsafe { DwmEnableBlurBehindWindow(window, &bb) };
+    // SAFETY: this function owns the region and DWM does not retain it.
+    unsafe { DeleteObject(region) };
+    if hr < 0 {
+        warn!("Window transparency unavailable (HRESULT 0x{hr:X})");
+    }
+}
+
 impl Window {
     pub(crate) fn new(
         event_loop: &ActiveEventLoop,
@@ -1376,28 +1408,11 @@ impl InitData<'_> {
     pub unsafe fn on_create(&mut self) {
         let win = self.window.as_mut().expect("failed window creation");
 
-        // making the window transparent
-        if self.attributes.transparent
-            && !self.attributes.platform_specific.no_redirection_bitmap
-        {
-            // Empty region for the blur effect, so the window is fully transparent
-            let region = unsafe { CreateRectRgn(0, 0, -1, -1) };
-
-            let bb = DWM_BLURBEHIND {
-                dwFlags: DWM_BB_ENABLE | DWM_BB_BLURREGION,
-                fEnable: true.into(),
-                hRgnBlur: region,
-                fTransitionOnMaximized: false.into(),
-            };
-            let hr = unsafe { DwmEnableBlurBehindWindow(win.hwnd(), &bb) };
-            if hr < 0 {
-                warn!(
-                    "Setting transparent window is failed. HRESULT Code: 0x{:X}",
-                    hr
-                );
-            }
-            unsafe { DeleteObject(region) };
-        }
+        apply_native_transparency(
+            win.hwnd(),
+            self.attributes.transparent,
+            self.attributes.platform_specific.no_redirection_bitmap,
+        );
 
         win.set_skip_taskbar(self.attributes.platform_specific.skip_taskbar);
         win.set_window_icon(self.attributes.window_icon.clone());

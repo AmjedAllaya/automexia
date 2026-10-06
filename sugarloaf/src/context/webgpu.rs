@@ -27,50 +27,27 @@ impl<'a> WgpuContext<'a> {
         let scale = sugarloaf_window.scale;
 
         // The backend can be configured using the `WGPU_BACKEND`
-        // environment variable. If the variable is not set, the primary backend
-        // will be used. The following values are allowed:
+        // environment variable. Otherwise the configured backends are used.
+        // Comma-separated values can restrict fallback. Supported names include:
         // - `vulkan`
         // - `metal`
         // - `dx12`
-        // - `dx11`
         // - `gl`
         // - `webgpu`
-        // - `primary`
         let backend = wgpu::Backends::from_env().unwrap_or(wgpu_backend);
-        let mut instance_desc = wgpu::InstanceDescriptor::new_without_display_handle();
-        instance_desc.backends = backend;
-        let instance = wgpu::Instance::new(instance_desc);
-
-        tracing::info!("selected instance: {instance:?}");
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            tracing::info!("Available adapters:");
-            for a in futures::executor::block_on(
-                instance.enumerate_adapters(wgpu::Backends::all()),
-            ) {
-                tracing::info!("    {:?}", a.get_info())
-            }
-        }
-
-        tracing::info!("initializing the surface");
-
-        let surface: wgpu::Surface<'a> =
-            instance.create_surface(sugarloaf_window).unwrap();
-        let adapter = futures::executor::block_on(instance.request_adapter(
-            &wgpu::RequestAdapterOptions {
-                // Hard-coded — sugarloaf used to expose a
-                // `power_preference` knob, but in practice every Rio
-                // user picks `HighPerformance` (the alternative gives
-                // visibly worse text on hybrid laptops). Removed from
-                // the public API.
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-                apply_limit_buckets: false,
-            },
-        ))
-        .expect("Request adapter");
+        let (surface, adapter) = backend_attempts(backend)
+            .into_iter()
+            .flatten()
+            .find_map(|attempt| {
+                let result = create_surface_adapter(&sugarloaf_window, attempt);
+                if result.is_none() {
+                    tracing::warn!(
+                        "Requested graphics backend {attempt:?} is unavailable"
+                    );
+                }
+                result
+            })
+            .expect("No compatible renderer surface and adapter");
 
         let adapter_info = adapter.get_info();
         tracing::info!("Selected adapter: {:?}", adapter_info);
@@ -109,19 +86,7 @@ impl<'a> WgpuContext<'a> {
             }
         };
 
-        let alpha_mode = if surface_caps
-            .alpha_modes
-            .contains(&wgpu::CompositeAlphaMode::PostMultiplied)
-        {
-            wgpu::CompositeAlphaMode::PostMultiplied
-        } else if surface_caps
-            .alpha_modes
-            .contains(&wgpu::CompositeAlphaMode::PreMultiplied)
-        {
-            wgpu::CompositeAlphaMode::PreMultiplied
-        } else {
-            wgpu::CompositeAlphaMode::Auto
-        };
+        let alpha_mode = composition_alpha_mode(&surface_caps.alpha_modes);
 
         // Configure view formats for wide color gamut support
         let view_formats = match renderer_config.colorspace {
@@ -174,6 +139,10 @@ impl<'a> WgpuContext<'a> {
             colorspace: renderer_config.colorspace,
             max_texture_dimension_2d,
         }
+    }
+
+    pub fn supports_transparency(&self) -> bool {
+        self.alpha_mode == wgpu::CompositeAlphaMode::PreMultiplied
     }
 
     fn get_texture_usage(caps: &wgpu::SurfaceCapabilities) -> wgpu::TextureUsages {
@@ -345,6 +314,69 @@ fn get_macos_texture_format(colorspace: Colorspace) -> wgpu::TextureFormat {
     }
 }
 
+// Every draw pipeline accumulates premultiplied source-over color. Requesting
+// PostMultiplied makes the compositor multiply it again, darkening edges/text.
+fn composition_alpha_mode(
+    supported: &[wgpu::CompositeAlphaMode],
+) -> wgpu::CompositeAlphaMode {
+    use wgpu::CompositeAlphaMode::*;
+    // Non-premultiplied-only surfaces receive an opaque clear, so source-over
+    // still produces alpha 1 everywhere. Never request an unsupported mode.
+    [PreMultiplied, Opaque, Inherit, PostMultiplied, Auto]
+        .into_iter()
+        .find(|mode| supported.contains(mode))
+        .unwrap_or(Opaque)
+}
+
+// Creating an unused WGL surface sets an opaque HWND pixel format and breaks
+// DirectComposition alpha. Create one backend family at a time, preferring the
+// Windows compositor, then falling back only if that family is unavailable.
+fn backend_attempts(requested: wgpu::Backends) -> [Option<wgpu::Backends>; 2] {
+    if cfg!(windows) && requested.contains(wgpu::Backends::DX12) {
+        let fallback = requested - wgpu::Backends::DX12;
+        [
+            Some(wgpu::Backends::DX12),
+            (!fallback.is_empty()).then_some(fallback),
+        ]
+    } else {
+        [Some(requested), None]
+    }
+}
+
+fn create_surface_adapter<'a>(
+    window: &SugarloafWindow,
+    backends: wgpu::Backends,
+) -> Option<(wgpu::Surface<'a>, wgpu::Adapter)> {
+    let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
+    descriptor.backends = backends;
+    #[cfg(windows)]
+    {
+        descriptor.backend_options.dx12.presentation_system =
+            wgpu::Dx12SwapchainKind::DxgiFromVisual;
+    }
+    let instance = wgpu::Instance::new(descriptor);
+    // The surface owns this handle wrapper; the host retains the native window
+    // for the full Sugarloaf lifetime, exactly as on the original single path.
+    let surface = instance
+        .create_surface(SugarloafWindow {
+            handle: window.handle,
+            display: window.display,
+            size: window.size,
+            scale: window.scale,
+        })
+        .ok()?;
+    let adapter = futures::executor::block_on(instance.request_adapter(
+        &wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: Some(&surface),
+            force_fallback_adapter: false,
+            apply_limit_buckets: false,
+        },
+    ))
+    .ok()?;
+    Some((surface, adapter))
+}
+
 #[inline]
 fn output_surface_color_space() -> wgpu::SurfaceColorSpace {
     #[cfg(windows)]
@@ -362,6 +394,39 @@ fn output_surface_color_space() -> wgpu::SurfaceColorSpace {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn backend_attempts_preserve_explicit_choices_and_bound_fallback() {
+        use wgpu::Backends as B;
+        for explicit in [B::DX12, B::VULKAN, B::GL] {
+            assert_eq!(super::backend_attempts(explicit), [Some(explicit), None]);
+        }
+        let all = super::backend_attempts(B::all());
+        if cfg!(windows) {
+            assert_eq!(all, [Some(B::DX12), Some(B::all() - B::DX12)]);
+        } else {
+            assert_eq!(all, [Some(B::all()), None]);
+        }
+    }
+
+    #[test]
+    fn source_over_prefers_premultiplied_and_falls_back_only_to_supported_modes() {
+        use wgpu::CompositeAlphaMode::*;
+        assert_eq!(
+            super::composition_alpha_mode(&[Opaque, PostMultiplied, PreMultiplied]),
+            PreMultiplied
+        );
+        assert_eq!(
+            super::composition_alpha_mode(&[Opaque, PostMultiplied]),
+            Opaque
+        );
+        assert_eq!(super::composition_alpha_mode(&[Opaque]), Opaque);
+        assert_eq!(super::composition_alpha_mode(&[Inherit]), Inherit);
+        assert_eq!(
+            super::composition_alpha_mode(&[PostMultiplied]),
+            PostMultiplied
+        );
+    }
+
     #[test]
     #[cfg(windows)]
     fn windows_output_is_explicit_sdr_srgb() {

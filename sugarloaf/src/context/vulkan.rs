@@ -131,6 +131,7 @@ pub struct VulkanContext {
     swapchain_extent: vk::Extent2D,
     swapchain_color_space: vk::ColorSpaceKHR,
     swapchain_format: vk::Format,
+    composite_alpha: CompositeAlphaFlagsKHR,
     swapchain_images: Vec<vk::Image>,
     swapchain_views: Vec<vk::ImageView>,
     swapchain: vk::SwapchainKHR,
@@ -205,6 +206,10 @@ pub struct VulkanFrame {
 }
 
 impl VulkanContext {
+    pub fn supports_transparency(&self) -> bool {
+        self.composite_alpha == CompositeAlphaFlagsKHR::PRE_MULTIPLIED
+    }
+
     pub fn new(sugarloaf_window: SugarloafWindow) -> Self {
         let size = sugarloaf_window.size;
         let scale = sugarloaf_window.scale;
@@ -244,6 +249,7 @@ impl VulkanContext {
             swapchain_extent,
             swapchain_images,
             swapchain_views,
+            composite_alpha,
         ) = create_swapchain(
             &device,
             &surface_loader,
@@ -293,6 +299,7 @@ impl VulkanContext {
             swapchain_extent,
             swapchain_color_space,
             swapchain_format,
+            composite_alpha,
             swapchain_images,
             swapchain_views,
             swapchain,
@@ -342,21 +349,23 @@ impl VulkanContext {
         self.swapchain_images.clear();
 
         let old = self.swapchain;
-        let (swapchain, format, color_space, extent, images, views) = create_swapchain(
-            &self.shared.raw,
-            &self.surface_loader,
-            &self.swapchain_loader,
-            self.shared.physical_device,
-            self.surface,
-            width,
-            height,
-            old,
-        );
+        let (swapchain, format, color_space, extent, images, views, composite_alpha) =
+            create_swapchain(
+                &self.shared.raw,
+                &self.surface_loader,
+                &self.swapchain_loader,
+                self.shared.physical_device,
+                self.surface,
+                width,
+                height,
+                old,
+            );
 
         unsafe { self.swapchain_loader.destroy_swapchain(old, None) };
 
         self.swapchain = swapchain;
         self.swapchain_format = format;
+        self.composite_alpha = composite_alpha;
         self.swapchain_color_space = color_space;
         self.swapchain_extent = extent;
         self.swapchain_images = images;
@@ -1404,6 +1413,7 @@ fn create_swapchain(
     vk::Extent2D,
     Vec<vk::Image>,
     Vec<vk::ImageView>,
+    CompositeAlphaFlagsKHR,
 ) {
     let caps = unsafe {
         surface_loader
@@ -1506,20 +1516,38 @@ fn create_swapchain(
         extent,
         images,
         views,
+        composite_alpha,
     )
 }
 
 fn guess_composite_alpha(
     supported_alpha: CompositeAlphaFlagsKHR,
 ) -> CompositeAlphaFlagsKHR {
-    if supported_alpha.contains(CompositeAlphaFlagsKHR::POST_MULTIPLIED) {
-        CompositeAlphaFlagsKHR::POST_MULTIPLIED
-    } else if supported_alpha.contains(CompositeAlphaFlagsKHR::PRE_MULTIPLIED) {
-        CompositeAlphaFlagsKHR::PRE_MULTIPLIED
-    } else if supported_alpha.contains(CompositeAlphaFlagsKHR::INHERIT) {
-        CompositeAlphaFlagsKHR::INHERIT
-    } else {
-        CompositeAlphaFlagsKHR::OPAQUE
+    [
+        CompositeAlphaFlagsKHR::PRE_MULTIPLIED,
+        CompositeAlphaFlagsKHR::OPAQUE,
+        CompositeAlphaFlagsKHR::INHERIT,
+        CompositeAlphaFlagsKHR::POST_MULTIPLIED,
+    ]
+    .into_iter()
+    .find(|mode| supported_alpha.contains(*mode))
+    .unwrap_or(CompositeAlphaFlagsKHR::OPAQUE)
+}
+
+#[cfg(test)]
+#[test]
+fn source_over_alpha_uses_premultiplied_or_a_supported_opaque_fallback() {
+    use CompositeAlphaFlagsKHR as A;
+    assert_eq!(
+        guess_composite_alpha(A::OPAQUE | A::POST_MULTIPLIED | A::PRE_MULTIPLIED),
+        A::PRE_MULTIPLIED
+    );
+    assert_eq!(
+        guess_composite_alpha(A::OPAQUE | A::POST_MULTIPLIED),
+        A::OPAQUE
+    );
+    for only in [A::PRE_MULTIPLIED, A::OPAQUE, A::INHERIT, A::POST_MULTIPLIED] {
+        assert_eq!(guess_composite_alpha(only), only);
     }
 }
 

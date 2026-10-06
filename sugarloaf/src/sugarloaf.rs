@@ -1135,7 +1135,14 @@ impl Sugarloaf<'_> {
 
         let bg = self
             .background_color
-            .map(|c| [c.r as f32, c.g as f32, c.b as f32, c.a as f32])
+            .map(|c| {
+                let c = if ctx.supports_transparency() {
+                    c.premultiplied()
+                } else {
+                    Color { a: 1.0, ..c }
+                };
+                [c.r as f32, c.g as f32, c.b as f32, c.a as f32]
+            })
             .unwrap_or([0.0, 0.0, 0.0, 1.0]);
 
         let device = ctx.device().clone();
@@ -1263,7 +1270,15 @@ impl Sugarloaf<'_> {
 
         {
             let load = if let Some(background_color) = self.background_color {
-                wgpu::LoadOp::Clear(background_color.into())
+                wgpu::LoadOp::Clear(if ctx.supports_transparency() {
+                    background_color.premultiplied().into()
+                } else {
+                    Color {
+                        a: 1.0,
+                        ..background_color
+                    }
+                    .into()
+                })
             } else {
                 wgpu::LoadOp::Load
             };

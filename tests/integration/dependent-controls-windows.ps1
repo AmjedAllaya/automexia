@@ -75,6 +75,7 @@ function Test-AutomexiaDependentControls {
 
 # Real menu edits must publish beyond the settings catalog while the overlay stays open.
 function Test-AutomexiaLiveInterface {
+    param([switch]$OpacityChecks)
     function Wait-Interface([scriptblock]$Predicate) {
         $deadline = [DateTime]::UtcNow.AddSeconds(15)
         do {
@@ -82,7 +83,7 @@ function Test-AutomexiaLiveInterface {
             if (& $Predicate $state) { return $state }
             Start-Sleep -Milliseconds 25
         } while ([DateTime]::UtcNow -lt $deadline)
-        throw "Interface did not settle: $script:testStage"
+        throw "Interface did not settle: $script:testStage; size=$($state.window_width)x$($state.window_height), scale=$($state.scale_factor), settings=$($state.settings.open), ready=$($state.settings.ready), pending=$($state.settings.save_pending), pointer=$($state.settings.pointer -join ','), category=$($state.settings.active_category), numeric=$($state.settings.numeric_editor.id), controls=$(@($state.settings.controls.id) -join ',')"
     }
     function Interface-Key([int]$Key, [bool]$Control = $false) {
         if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, $Key, $false, $Control, $false)) { throw 'Interface key lost window ownership' }
@@ -91,16 +92,21 @@ function Test-AutomexiaLiveInterface {
         $x = [int][Math]::Round(($Bounds[0] + $Bounds[2] * 0.5) * $Scale)
         $y = [int][Math]::Round(($Bounds[1] + $Bounds[3] * 0.5) * $Scale)
         if (-not [AutomexiaResizeDriver]::ActivateWindow($window) -or
-            -not [AutomexiaResizeDriver]::MovePhysicalPointerToClient($window, $x, $y)) { throw 'Interface control focus failed' }
+            -not [AutomexiaResizeDriver]::MovePhysicalPointerToClient($window, [Math]::Max(0, $x - 2), $y)) { throw 'Interface control focus failed' }
+        Start-Sleep -Milliseconds 30
+        if (-not [AutomexiaResizeDriver]::MovePhysicalPointerToClient($window, $x, $y)) { throw 'Interface pointer placement failed' }
+        $script:testStage = "interface pointer expected $($x / $Scale),$($y / $Scale)"
         $null = Wait-Interface { param($s) $s.settings.ready -and $null -ne $s.settings.pointer -and [Math]::Abs($s.settings.pointer[0] - $x / $Scale) -le 1 -and [Math]::Abs($s.settings.pointer[1] - $y / $Scale) -le 1 }
         if (-not [AutomexiaResizeDriver]::SendPhysicalLeftClick($window, $x, $y)) { throw 'Interface click lost window ownership' }
     }
     function Interface-Row([string]$Id) {
+        $script:testStage = "interface row $Id"
         $state = Wait-Interface { param($s) $s.settings.ready -and -not $s.settings.save_pending -and @($s.settings.controls | Where-Object id -eq $Id).Count -eq 1 }
         Interface-Click (@($state.settings.controls | Where-Object id -eq $Id)[0].bounds) $state.scale_factor
     }
     function Interface-Number([string]$Id, [string]$Value) {
         Interface-Row $Id
+        $script:testStage = "interface numeric editor $Id"
         $null = Wait-Interface { param($s) $s.settings.numeric_editor.id -eq $Id }
         Interface-Key 0x41 $true
         if (-not [AutomexiaResizeDriver]::SendProfileFixtureText($window, $Value)) { throw 'Interface numeric input failed' }
@@ -114,10 +120,128 @@ function Test-AutomexiaLiveInterface {
         $null = [AutomexiaResizeDriver]::CaptureClientFrame($window, $path)
         return $path
     }
-    [void][AutomexiaResizeDriver]::MoveWindow($window, 20, 20, 1100, 680, $true)
+    $script:testStage = 'physical interface fixture size'
+    if (-not [AutomexiaResizeDriver]::MovePhysicalWindow($window, 20, 20, 1100, 680)) { throw 'Could not size the interface fixture' }
     $null = Wait-Interface { param($s) $s.window_width -ge 1000 -and $s.window_width -lt 1450 }
     $baseline = Read-AutomexiaSnapshot
     $baseTop = [double]$baseline.grid_margin.top
+    if ($OpacityChecks) {
+        # Pump the backdrop on its own thread while the driver awaits snapshots.
+        Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing -TypeDefinition @'
+using System;
+using System.Drawing;
+using System.Threading;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+public sealed class AutomexiaOpacityBackdrop : IDisposable {
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
+    private sealed class PassiveForm : Form {
+        protected override bool ShowWithoutActivation { get { return true; } }
+    }
+    private readonly Thread thread;
+    private readonly ManualResetEvent ready = new ManualResetEvent(false);
+    private Form form;
+    private Exception failure;
+    public AutomexiaOpacityBackdrop() {
+        thread = new Thread(Run);
+        thread.IsBackground = true;
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        if (!ready.WaitOne(6000) || failure != null) {
+            Dispose();
+            throw new InvalidOperationException("Opacity backdrop did not initialize", failure);
+        }
+    }
+    private void Run() {
+        try {
+            using (form = new PassiveForm()) {
+                form.Text = "Automexia opacity fixture";
+                form.FormBorderStyle = FormBorderStyle.None;
+                form.ShowInTaskbar = false;
+                form.StartPosition = FormStartPosition.Manual;
+                form.SetBounds(0, 0, 1280, 800);
+                form.BackColor = Color.FromArgb(24, 48, 72);
+                form.Shown += delegate { ready.Set(); };
+                Application.Run(form);
+            }
+        } catch (Exception error) { failure = error; ready.Set(); }
+    }
+    public void SetColor(int r, int g, int b) {
+        form.Invoke(new Action(delegate { form.BackColor = Color.FromArgb(r, g, b); form.Refresh(); }));
+    }
+    public void PlaceBehind(IntPtr terminal) {
+        form.Invoke(new Action(delegate {
+            if (!SetWindowPos(form.Handle, terminal, 0, 0, 0, 0, 0x13))
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }));
+    }
+    public void Dispose() {
+        if (form != null && form.IsHandleCreated && !form.IsDisposed)
+            form.BeginInvoke(new Action(delegate { form.Close(); }));
+        if (!thread.Join(6000)) throw new InvalidOperationException("Opacity backdrop did not close");
+        ready.Dispose();
+    }
+}
+'@
+        $backdrop = [AutomexiaOpacityBackdrop]::new()
+        $behind = @(24, 48, 72)
+        try {
+            $backdrop.PlaceBehind($window)
+            if (-not [AutomexiaResizeDriver]::ActivateWindow($window)) { throw 'Opacity fixture could not own its window' }
+            function Assert-Opacity([double]$Alpha, [string]$Phase) {
+                # Native style updates can reorder non-topmost windows. Keep
+                # the oracle's known surface immediately beneath its terminal.
+                $backdrop.PlaceBehind($window)
+                $expected = @(64, 96, 128)
+                if (-not $UseCpuRenderer) {
+                    for ($i = 0; $i -lt 3; $i++) { $expected[$i] = [Math]::Round($expected[$i] * $Alpha + $behind[$i] * (1.0 - $Alpha)) }
+                }
+                $deadline = [DateTime]::UtcNow.AddSeconds(6)
+                do {
+                    $actual = [AutomexiaResizeDriver]::ReadPresentedClientPixel($window, 4, 400)
+                    $ok = $true
+                    for ($i = 0; $i -lt 3; $i++) { if ([Math]::Abs($actual[$i] - $expected[$i]) -gt 3) { $ok = $false } }
+                    if ($ok) { return }
+                    Start-Sleep -Milliseconds 35
+                } while ([DateTime]::UtcNow -lt $deadline)
+                throw "Opacity $Phase ($Alpha) expected $($expected -join ','); saw $($actual -join ',')"
+            }
+            Assert-Opacity $InitialWindowOpacity 'startup'
+            Send-AutomexiaTestControl 'open-terminal-appearance:opacity'
+            Interface-Row 'interface.background.opacity'
+            $null = Wait-Interface { param($s) $s.settings.ready -and $s.settings.active_category -eq 'interface.background.opacity' -and (@($s.settings.controls.id) -contains 'interface.background.padding-top' -or @($s.settings.controls.id) -contains 'interface.background.opacity-cells') }
+            if ($UseCpuRenderer) {
+                Assert-Opacity 1.0 'CPU fallback'
+            } else {
+                foreach ($percent in @(20, 40, 60, 80, 100, 50, 100)) {
+                    Interface-Number 'interface.background.opacity' ([string]$percent)
+                    Assert-Opacity ($percent / 100.0) 'live edit'
+                    if ((Read-AutomexiaSnapshot).rows -ne $baseline.rows) { throw 'Opacity edit reflowed terminal rows' }
+                }
+                $behind = @(192, 208, 224)
+                $backdrop.SetColor(192, 208, 224)
+                Interface-Number 'interface.background.opacity' '50'
+                Assert-Opacity 0.5 'light backdrop'
+                if (-not [AutomexiaResizeDriver]::MovePhysicalWindow($window, 20, 20, 1040, 640)) { throw 'Opacity resize failed' }
+                $null = Wait-Interface { param($s) $s.window_width -eq 1040 -and $s.window_height -eq 640 -and $s.settings.ready }
+                Assert-Opacity 0.5 'resized surface'
+                $null = Interface-Capture 'opacity-half'
+                Interface-Number 'interface.background.opacity' '100'
+                Assert-Opacity 1.0 'return to opaque'
+            }
+            if ((Read-AutomexiaSnapshot).owned_route_count -ne $baseline.owned_route_count) { throw 'Opacity edit replaced the session' }
+            Interface-Key 0x1B
+            Interface-Key 0x1B
+            if ($UseCpuRenderer) {
+                Write-Output 'PASS: CPU startup with saved transparency remains opaque; session preserved'
+            } else {
+                Write-Output 'PASS: native startup, continuous compositor opacity, dark/light backdrops, resize and unchanged sessions'
+            }
+        } finally { $backdrop.Dispose() }
+        return
+    }
     $script:testStage = 'live header height'
     Send-AutomexiaTestControl 'open-terminal-appearance:live-interface'
     Interface-Row 'interface.header.background'

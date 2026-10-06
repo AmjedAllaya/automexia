@@ -49,6 +49,9 @@ param(
     [switch]$LiveBackdropOnly,
     [switch]$DependentControlsOnly,
     [switch]$TerminalAppearanceOnly,
+    [switch]$OpacityOnly,
+    [ValidateRange(0.0, 1.0)]
+    [double]$InitialWindowOpacity = 1.0,
     [switch]$WindowControlChoicesOnly,
     [switch]$SharedColorPickerOnly,
     [switch]$FontPickerOnly,
@@ -67,6 +70,20 @@ if ([string]::IsNullOrWhiteSpace($Binary)) {
 }
 if (-not (Test-Path -LiteralPath $Binary -PathType Leaf)) {
     throw "Automexia test binary was not found at $Binary"
+}
+if ($OpacityOnly) {
+    # Verify the actual GUI PE contract before cold HLSL compilation exercises it.
+    $image = [IO.BinaryReader]::new([IO.File]::OpenRead((Resolve-Path $Binary).Path))
+    try {
+        $image.BaseStream.Position = 0x3c
+        $pe = $image.ReadUInt32()
+        $image.BaseStream.Position = $pe
+        if ($image.ReadUInt32() -ne 0x4550) { throw 'Invalid native PE image' }
+        $image.BaseStream.Position = $pe + 24
+        if ($image.ReadUInt16() -ne 0x20b) { throw 'Opacity fixture requires a 64-bit GUI image' }
+        $image.BaseStream.Position = $pe + 24 + 72
+        if ($image.ReadUInt64() -ne 8388608) { throw 'GUI shader compiler stack reserve must be 8 MiB' }
+    } finally { $image.Dispose() }
 }
 
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'
@@ -549,6 +566,13 @@ public static class AutomexiaResizeDriver {
         return ClientToScreen(hWnd, ref point) && SetCursorPos(point.X, point.Y);
     }
 
+    public static bool MovePhysicalWindow(IntPtr hWnd, int x, int y, int width, int height) {
+        IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        if (previous == IntPtr.Zero) return false;
+        try { return MoveWindow(hWnd, x, y, width, height, true); }
+        finally { SetThreadDpiAwarenessContext(previous); }
+    }
+
     public static bool MovePhysicalPointerToClient(IntPtr hWnd, int x, int y) {
         IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
         if (previous == IntPtr.Zero) {
@@ -763,6 +787,33 @@ public static class AutomexiaResizeDriver {
             }
         } finally {
             if (screen != IntPtr.Zero) { ReleaseDC(IntPtr.Zero, screen); }
+            SetThreadDpiAwarenessContext(previous);
+        }
+    }
+
+    // Compositor oracle for the opacity fixture's owned solid backdrop. WGC
+    // returns per-window alpha, which cannot prove desktop composition itself.
+    public static int[] ReadPresentedClientPixel(IntPtr hWnd, int x, int y) {
+        RequireExclusiveCaptureOwnership(hWnd);
+        IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        if (previous == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        IntPtr screen = IntPtr.Zero;
+        try {
+            Rect bounds;
+            if (!GetClientRect(hWnd, out bounds) || x < 0 || y < 0 || x >= bounds.Right || y >= bounds.Bottom) {
+                throw new ArgumentOutOfRangeException("x");
+            }
+            Point origin = new Point { X = x, Y = y };
+            if (!ClientToScreen(hWnd, ref origin)) {
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            }
+            screen = GetDC(IntPtr.Zero);
+            if (screen == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            uint pixel = GetPixel(screen, origin.X, origin.Y);
+            if (pixel == 0xffffffff) throw new InvalidOperationException("Composited pixel unavailable");
+            return new int[] { (int)(pixel & 255), (int)((pixel >> 8) & 255), (int)((pixel >> 16) & 255) };
+        } finally {
+            if (screen != IntPtr.Zero) ReleaseDC(IntPtr.Zero, screen);
             SetThreadDpiAwarenessContext(previous);
         }
     }
@@ -1548,6 +1599,10 @@ try {
         $wallpaperConfigPath = $wallpaperPath.Replace('\', '/')
         $wallpaperConfig = "`n[window]`nbackground-image = { path = `"$wallpaperConfigPath`", opacity = 1.0 }`n"
     }
+    if ($OpacityOnly) {
+        $opacityLiteral = $InitialWindowOpacity.ToString([Globalization.CultureInfo]::InvariantCulture)
+        $wallpaperConfig = "`n[window]`nopacity = $opacityLiteral`nblur = false`n[colors]`nbackground = '#406080'`n"
+    }
     $shellProgram = if ($CommandInputColorsOnly -and $CommandInputPowerShell7) { 'pwsh.exe' } else { 'powershell.exe' }
     $inputHistorySetup = ''
     if ($CommandInputColorsOnly) {
@@ -1723,6 +1778,11 @@ $wallpaperConfig
     if ($DependentControlsOnly) {
         . (Join-Path $PSScriptRoot 'dependent-controls-windows.ps1')
         Test-AutomexiaDependentControls
+        return
+    }
+    if ($OpacityOnly) {
+        . (Join-Path $PSScriptRoot 'dependent-controls-windows.ps1')
+        Test-AutomexiaLiveInterface -OpacityChecks
         return
     }
     if ($TerminalAppearanceOnly) {

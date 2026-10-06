@@ -18,6 +18,10 @@ mod view;
 mod window;
 mod window_delegate;
 
+pub(crate) fn liquid_glass_available() -> bool {
+    glass::GlassEffect::class_available()
+}
+
 use std::fmt;
 
 pub(crate) use self::event::{

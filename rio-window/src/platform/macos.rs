@@ -21,6 +21,12 @@ use crate::keyboard::ModifiersState;
 use crate::monitor::MonitorHandle;
 use crate::window::{Window, WindowAttributes};
 
+/// Whether AppKit provides the Liquid Glass view used by glass blur styles.
+/// Query after application initialization, before choosing a clear-color policy.
+pub fn liquid_glass_available() -> bool {
+    crate::platform_impl::liquid_glass_available()
+}
+
 /// Colorspace options for macOS windows.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Colorspace {

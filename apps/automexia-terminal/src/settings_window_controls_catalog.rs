@@ -336,10 +336,15 @@ pub(super) fn apply(
                 Change::Set(SettingValue::Number(v)) => (v * 255.0 / 100.0).round() as u8,
                 _ => return Err(SettingsError::InvalidValue),
             };
-            if key == "background" {
-                profile.background = Some(Rgba::from_bytes(value));
+            let value = if matches!(edit.change, Change::Reset) && value == *default {
+                None
             } else {
-                profile.border = Some(Rgba::from_bytes(value));
+                Some(Rgba::from_bytes(value))
+            };
+            if key == "background" {
+                profile.background = value;
+            } else {
+                profile.border = value;
             }
         }
         _ => return Err(SettingsError::UnknownSetting),
