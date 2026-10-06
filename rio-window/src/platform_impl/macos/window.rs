@@ -1,9 +1,11 @@
 #![allow(clippy::unnecessary_cast)]
 
+use dispatch2::MainThreadBound;
 use objc2::rc::{autoreleasepool, Retained};
+use objc2::Message;
 use objc2::{define_class, MainThreadOnly};
 use objc2_app_kit::{NSResponder, NSWindow};
-use objc2_foundation::{MainThreadBound, MainThreadMarker, NSObject};
+use objc2_foundation::{MainThreadMarker, NSObject};
 
 use super::event_loop::ActiveEventLoop;
 use super::window_delegate::WindowDelegate;

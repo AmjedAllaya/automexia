@@ -2,10 +2,12 @@
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 
+use core_graphics::base::CGFloat;
 use core_graphics::display::{CGDisplay, CGPoint};
 use monitor::VideoModeHandle;
 use objc2::rc::{autoreleasepool, Retained};
 use objc2::runtime::{AnyObject, ProtocolObject};
+use objc2::Message;
 use objc2::{define_class, msg_send, msg_send_id, sel, DefinedClass, MainThreadOnly};
 use objc2_app_kit::{
     NSAppKitVersionNumber, NSAppKitVersionNumber10_12, NSAppearance, NSApplication,
@@ -16,10 +18,9 @@ use objc2_app_kit::{
     NSWindowTabbingMode, NSWindowTitleVisibility, NSWindowToolbarStyle,
 };
 use objc2_foundation::{
-    ns_string, CGFloat, MainThreadMarker, NSArray, NSCopying,
-    NSDistributedNotificationCenter, NSObject, NSObjectNSDelayedPerforming,
-    NSObjectNSThreadPerformAdditions, NSObjectProtocol, NSPoint, NSRect, NSSize,
-    NSString,
+    ns_string, MainThreadMarker, NSArray, NSCopying, NSDistributedNotificationCenter,
+    NSObject, NSObjectNSDelayedPerforming, NSObjectNSThreadPerformAdditions,
+    NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
 };
 
 use super::app_delegate::ApplicationDelegate;
@@ -306,9 +307,9 @@ define_class!(
             let mut options = proposed_options;
             let fullscreen = self.ivars().fullscreen.borrow();
             if let Some(Fullscreen::Exclusive(_)) = &*fullscreen {
-                options = NSApplicationPresentationOptions::NSApplicationPresentationFullScreen
-                    | NSApplicationPresentationOptions::NSApplicationPresentationHideDock
-                    | NSApplicationPresentationOptions::NSApplicationPresentationHideMenuBar;
+                options = NSApplicationPresentationOptions::FullScreen
+                    | NSApplicationPresentationOptions::HideDock
+                    | NSApplicationPresentationOptions::HideMenuBar;
             }
 
             options
@@ -593,7 +594,7 @@ fn new_window(
                 super(mtm.alloc().set_ivars(())),
                 initWithContentRect: frame,
                 styleMask: masks,
-                backing: NSBackingStoreType::NSBackingStoreBuffered,
+                backing: NSBackingStoreType::Buffered,
                 defer: false,
             ]
         };
@@ -613,22 +614,22 @@ fn new_window(
         }
 
         if attrs.content_protected {
-            window.setSharingType(NSWindowSharingType::NSWindowSharingNone);
+            window.setSharingType(NSWindowSharingType::None);
         }
 
         if attrs.platform_specific.titlebar_transparent {
             window.setTitlebarAppearsTransparent(true);
         }
         if attrs.platform_specific.title_hidden {
-            window.setTitleVisibility(NSWindowTitleVisibility::NSWindowTitleHidden);
+            window.setTitleVisibility(NSWindowTitleVisibility::Hidden);
         }
         if attrs.platform_specific.titlebar_buttons_hidden {
             for titlebar_button in &[
                 #[allow(deprecated)]
                 NSWindowFullScreenButton,
-                NSWindowButton::NSWindowMiniaturizeButton,
-                NSWindowButton::NSWindowCloseButton,
-                NSWindowButton::NSWindowZoomButton,
+                NSWindowButton::MiniaturizeButton,
+                NSWindowButton::CloseButton,
+                NSWindowButton::ZoomButton,
             ] {
                 if let Some(button) = window.standardWindowButton(*titlebar_button) {
                     button.setHidden(true);
@@ -649,8 +650,7 @@ fn new_window(
         }
 
         if !attrs.enabled_buttons.contains(WindowButtons::MAXIMIZE) {
-            if let Some(button) =
-                window.standardWindowButton(NSWindowButton::NSWindowZoomButton)
+            if let Some(button) = window.standardWindowButton(NSWindowButton::ZoomButton)
             {
                 button.setEnabled(false);
             }
@@ -695,7 +695,7 @@ fn new_window(
         }
 
         // register for drag and drop operations.
-        window.registerForDraggedTypes(&NSArray::from_id_slice(&[unsafe {
+        window.registerForDraggedTypes(&NSArray::from_retained_slice(&[unsafe {
             NSFilenamesPboardType
         }
         .copy()]));
@@ -735,10 +735,7 @@ impl WindowDelegate {
                 // place in `winit` where we allow making a window a child window is
                 // right here, just after it's been created.
                 unsafe {
-                    parent.addChildWindow_ordered(
-                        &window,
-                        NSWindowOrderingMode::NSWindowAbove,
-                    )
+                    parent.addChildWindow_ordered(&window, NSWindowOrderingMode::Above)
                 };
             }
             Some(raw) => panic!("invalid raw window handle {raw:?} on macOS"),
@@ -1387,7 +1384,7 @@ impl WindowDelegate {
         // controllable by other means in `winit`).
         if let Some(button) = self
             .window()
-            .standardWindowButton(NSWindowButton::NSWindowZoomButton)
+            .standardWindowButton(NSWindowButton::ZoomButton)
         {
             button.setEnabled(buttons.contains(WindowButtons::MAXIMIZE));
         }
@@ -1401,7 +1398,7 @@ impl WindowDelegate {
         }
         if self
             .window()
-            .standardWindowButton(NSWindowButton::NSWindowZoomButton)
+            .standardWindowButton(NSWindowButton::ZoomButton)
             .map(|b| b.isEnabled())
             .unwrap_or(true)
         {
@@ -1782,10 +1779,9 @@ impl WindowDelegate {
                     .save_presentation_opts
                     .set(Some(app.presentationOptions()));
 
-                let presentation_options =
-                    NSApplicationPresentationOptions::NSApplicationPresentationFullScreen
-                        | NSApplicationPresentationOptions::NSApplicationPresentationHideDock
-                        | NSApplicationPresentationOptions::NSApplicationPresentationHideMenuBar;
+                let presentation_options = NSApplicationPresentationOptions::FullScreen
+                    | NSApplicationPresentationOptions::HideDock
+                    | NSApplicationPresentationOptions::HideMenuBar;
                 app.setPresentationOptions(presentation_options);
 
                 let window_level =
@@ -1796,11 +1792,12 @@ impl WindowDelegate {
                 Some(Fullscreen::Exclusive(ref video_mode)),
                 Some(Fullscreen::Borderless(_)),
             ) => {
-                let presentation_options = self.ivars().save_presentation_opts.get().unwrap_or(
-                    NSApplicationPresentationOptions::NSApplicationPresentationFullScreen
-                        | NSApplicationPresentationOptions::NSApplicationPresentationAutoHideDock
-                        | NSApplicationPresentationOptions::NSApplicationPresentationAutoHideMenuBar
-                );
+                let presentation_options =
+                    self.ivars().save_presentation_opts.get().unwrap_or(
+                        NSApplicationPresentationOptions::FullScreen
+                            | NSApplicationPresentationOptions::AutoHideDock
+                            | NSApplicationPresentationOptions::AutoHideMenuBar,
+                    );
                 app.setPresentationOptions(presentation_options);
 
                 restore_and_release_display(&video_mode.monitor());
@@ -1914,9 +1911,9 @@ impl WindowDelegate {
     pub fn request_user_attention(&self, request_type: Option<UserAttentionType>) {
         let mtm = MainThreadMarker::from(self);
         let ns_request_type = request_type.map(|ty| match ty {
-            UserAttentionType::Critical => NSRequestUserAttentionType::NSCriticalRequest,
+            UserAttentionType::Critical => NSRequestUserAttentionType::CriticalRequest,
             UserAttentionType::Informational => {
-                NSRequestUserAttentionType::NSInformationalRequest
+                NSRequestUserAttentionType::InformationalRequest
             }
         });
         if let Some(ty) = ns_request_type {
@@ -1988,9 +1985,9 @@ impl WindowDelegate {
     #[inline]
     pub fn set_content_protected(&self, protected: bool) {
         self.window().setSharingType(if protected {
-            NSWindowSharingType::NSWindowSharingNone
+            NSWindowSharingType::None
         } else {
-            NSWindowSharingType::NSWindowSharingReadOnly
+            NSWindowSharingType::ReadOnly
         })
     }
 
@@ -2022,12 +2019,10 @@ impl WindowDelegate {
         let titlebar_height = window_frame.size.height - content_layout_rect.size.height;
 
         unsafe {
-            let close_button =
-                window.standardWindowButton(NSWindowButton::NSWindowCloseButton);
+            let close_button = window.standardWindowButton(NSWindowButton::CloseButton);
             let miniaturize_button =
-                window.standardWindowButton(NSWindowButton::NSWindowMiniaturizeButton);
-            let zoom_button =
-                window.standardWindowButton(NSWindowButton::NSWindowZoomButton);
+                window.standardWindowButton(NSWindowButton::MiniaturizeButton);
+            let zoom_button = window.standardWindowButton(NSWindowButton::ZoomButton);
 
             let Some(close_btn) = close_button else {
                 return;
@@ -2128,9 +2123,8 @@ impl WindowExtMacOS for WindowDelegate {
             self.ivars().is_simple_fullscreen.set(true);
 
             // Simulate pre-Lion fullscreen by hiding the dock and menu bar
-            let presentation_options =
-                NSApplicationPresentationOptions::NSApplicationPresentationAutoHideDock
-                    | NSApplicationPresentationOptions::NSApplicationPresentationAutoHideMenuBar;
+            let presentation_options = NSApplicationPresentationOptions::AutoHideDock
+                | NSApplicationPresentationOptions::AutoHideMenuBar;
             app.setPresentationOptions(presentation_options);
 
             // Hide the titlebar
@@ -2217,7 +2211,7 @@ impl WindowExtMacOS for WindowDelegate {
         if let Some(group) = self.window().tabGroup() {
             if let Some(windows) = unsafe { self.window().tabbedWindows() } {
                 if index < windows.len() {
-                    group.setSelectedWindow(Some(&windows[index]));
+                    group.setSelectedWindow(Some(&windows.objectAtIndex(index)));
                 }
             }
         }
@@ -2321,7 +2315,7 @@ pub(super) fn get_ns_theme(mtm: MainThreadMarker) -> Theme {
     }
     let appearance = app.effectiveAppearance();
     let name = appearance
-        .bestMatchFromAppearancesWithNames(&NSArray::from_id_slice(&[
+        .bestMatchFromAppearancesWithNames(&NSArray::from_retained_slice(&[
             NSString::from_str("NSAppearanceNameAqua"),
             NSString::from_str("NSAppearanceNameDarkAqua"),
         ]))
@@ -2353,7 +2347,7 @@ fn dark_appearance_name() -> &'static NSString {
 
 pub fn appearance_to_theme(appearance: &NSAppearance) -> Theme {
     let best_match =
-        appearance.bestMatchFromAppearancesWithNames(&NSArray::from_id_slice(&[
+        appearance.bestMatchFromAppearancesWithNames(&NSArray::from_retained_slice(&[
             unsafe { NSAppearanceNameAqua.copy() },
             dark_appearance_name().copy(),
         ]));

@@ -27,7 +27,7 @@ define_class!(
             let event_type = unsafe { event.r#type() };
             let modifier_flags = unsafe { event.modifierFlags() };
             if event_type == NSEventType::KeyUp
-                && modifier_flags.contains(NSEventModifierFlags::NSEventModifierFlagCommand)
+                && modifier_flags.contains(NSEventModifierFlags::Command)
             {
                 if let Some(key_window) = self.keyWindow() {
                     key_window.sendEvent(event);

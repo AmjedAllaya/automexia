@@ -5281,6 +5281,7 @@ dependencies = [
  "core-foundation 0.10.1",
  "core-graphics 0.25.0",
  "cursor-icon",
+ "dispatch2",
  "dpi",
  "image",
  "js-sys",

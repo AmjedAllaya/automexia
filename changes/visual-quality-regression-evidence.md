@@ -16,3 +16,5 @@
 - Harden native color sampling and persistence oracles so small glyphs and the
   current preference schema are actually checked. Missing reviewed baselines
   remain explicitly uncertified and are never generated as automatic approvals.
+- Update macOS window-adapter calls for the installed Objective-C bindings,
+  preserving retained ownership and using the existing main-thread dispatcher.

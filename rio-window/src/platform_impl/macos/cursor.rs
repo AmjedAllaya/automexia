@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 
 use objc2::rc::Retained;
 use objc2::runtime::Sel;
-use objc2::{msg_send, msg_send_id, sel, ClassType};
+use objc2::{msg_send, msg_send_id, sel, AnyThread, ClassType};
 use objc2_app_kit::{NSBitmapImageRep, NSCursor, NSDeviceRGBColorSpace, NSImage};
 use objc2_foundation::{
     ns_string, NSData, NSDictionary, NSNumber, NSObject, NSObjectProtocol, NSPoint,
@@ -137,17 +137,17 @@ unsafe fn load_webkit_cursor(name: &NSString) -> Retained<NSCursor> {
         ]
     };
     let mut x = 0.0;
-    if let Some(n) = info.get(&*ns_string!("hotx")) {
+    if let Some(n) = info.objectForKey(&*ns_string!("hotx")) {
         if n.is_kind_of::<NSNumber>() {
-            let ptr: *const NSObject = n;
+            let ptr: *const NSObject = &*n;
             let ptr: *const NSNumber = ptr.cast();
             x = unsafe { &*ptr }.as_cgfloat()
         }
     }
     let mut y = 0.0;
-    if let Some(n) = info.get(&*ns_string!("hotx")) {
+    if let Some(n) = info.objectForKey(&*ns_string!("hotx")) {
         if n.is_kind_of::<NSNumber>() {
-            let ptr: *const NSObject = n;
+            let ptr: *const NSObject = &*n;
             let ptr: *const NSNumber = ptr.cast();
             y = unsafe { &*ptr }.as_cgfloat()
         }

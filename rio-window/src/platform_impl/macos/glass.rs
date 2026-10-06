@@ -70,13 +70,13 @@ impl GlassEffect {
     /// callers can cache the result.
     #[inline]
     pub(crate) fn class_available() -> bool {
-        AnyClass::get("NSGlassEffectView").is_some()
+        AnyClass::get(c"NSGlassEffectView").is_some()
     }
 
     /// Allocate and `-init` a fresh `NSGlassEffectView`. Returns
     /// `None` if the class isn't available at runtime.
     pub(crate) fn new() -> Option<Self> {
-        let cls = AnyClass::get("NSGlassEffectView")?;
+        let cls = AnyClass::get(c"NSGlassEffectView")?;
         // SAFETY: NSGlassEffectView's `+alloc` / `-init` are the
         // standard NSObject lifecycle methods inherited from NSView;
         // they return a +1 retained instance with no in-band errors.
