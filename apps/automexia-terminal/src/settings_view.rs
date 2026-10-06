@@ -100,6 +100,7 @@ struct Geometry {
 #[derive(Clone, Debug)]
 struct Row {
     id: SettingId,
+    section: Option<(&'static str, Rect)>,
     bounds: Rect,
     control: Rect,
     label: Rect,
@@ -3925,6 +3926,12 @@ impl SettingsView {
         };
         let mut rows = Vec::new();
         let mut top = 0.0;
+        let mut previous_section = None;
+        let grouped_header = self
+            .customizations
+            .as_ref()
+            .and_then(|navigation| navigation.active_key.as_ref())
+            .is_some_and(|key| key.as_str() == "interface.header.background");
         if let Some((view, catalog)) = self.view.as_ref().zip(self.catalog.as_ref()) {
             for id in view.filtered_ids() {
                 let Some(entry) = catalog.get(id) else {
@@ -4002,8 +4009,28 @@ impl SettingsView {
                 } else {
                     text_height + control_h + pad * 3.0
                 };
+                let group = if grouped_header {
+                    crate::settings_catalog::interface_control_section(id.as_str())
+                } else {
+                    None
+                };
+                let section =
+                    group
+                        .filter(|group| previous_section != Some(*group))
+                        .map(|group| {
+                            let bounds = Rect {
+                                x: body.x + pad,
+                                y: top,
+                                width: (body.width - 2.0 * pad).max(0.0),
+                                height: line + pad,
+                            };
+                            top += bounds.height + pad * 0.5;
+                            (group, bounds)
+                        });
+                previous_section = group;
                 rows.push(Row {
                     id: id.clone(),
+                    section,
                     bounds: Rect {
                         x: body.x,
                         y: top,
@@ -4075,6 +4102,9 @@ impl SettingsView {
             }
         }
         for row in &mut rows {
+            if let Some((_, bounds)) = &mut row.section {
+                bounds.y += body.y - self.scroll;
+            }
             row.bounds.y += body.y - self.scroll;
             row.control.y += body.y - self.scroll;
             row.label.y += body.y - self.scroll;
@@ -4265,6 +4295,28 @@ impl SettingsView {
         };
         self.paint_search_field(canvas, theme, placeholder);
         for row in &self.rows {
+            if let Some((title, bounds)) = row.section {
+                label(
+                    canvas,
+                    bounds,
+                    title,
+                    font * 0.85,
+                    theme.accent,
+                    true,
+                    g.body,
+                );
+                rect(
+                    canvas,
+                    Rect {
+                        x: bounds.x,
+                        y: bounds.y + bounds.height - 2.0,
+                        width: bounds.width,
+                        height: 1.0,
+                    },
+                    theme.border,
+                    g.body,
+                );
+            }
             if row.bounds.intersect(g.body).is_none() {
                 continue;
             }

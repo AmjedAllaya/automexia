@@ -328,6 +328,11 @@ pub(super) fn descriptors(
         current.presentation.interface.header,
         user.appearance.header,
     );
+    pixels!(
+        "interface.header.", b, c, u, height, "height", "Header height (px)",
+        44.0, 32.0, 96.0,
+        "Logical pixels; tabs, buttons and titles adapt immediately. Reset uses responsive sizing."
+    );
     colors!(
         "interface.header.",
         b,
@@ -732,6 +737,7 @@ pub(super) fn apply(
         "interface.header.border-width",
         target.appearance.header.border_width
     );
+    pixels!("interface.header.height", target.appearance.header.height);
     pixels!(
         "interface.header.tab-radius",
         target.appearance.header.tab_radius

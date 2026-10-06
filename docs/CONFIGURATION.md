@@ -16,11 +16,11 @@ Automexia uses one writable product root:
 
 The root contains `config.toml`, `themes/`, `extensions/`, `logs/`, and
 application-owned `state/`. Runtime font, appearance, shortcut and supported
-Settings choices use the private, versioned `state/user-preferences-v13.toml`
+Settings choices use the private, versioned `state/user-preferences-v14.toml`
 overlay. It contains explicit UI overrides, not a second general configuration.
 Version-12 preferences import only when both version-13 snapshots are absent;
 older versions import only when every newer snapshot pair is absent.
-Version 13 adds bounded terminal interface overrides. Version 12 added up to 16 shared color favorites. Version 11 added independent window-control style profiles. Version 10 added the
+Version 14 adds header height and imports version 13 without rewriting it. Version 13 added bounded terminal interface overrides. Version 12 added up to 16 shared color favorites. Version 11 added independent window-control style profiles. Version 10 added the
 selected theme name and validated palette. Version 9 added font and terminal palette overrides. Version 8 added command
 timestamp appearance; version 7 added inline table appearance.
 Version 6 added connected tag shapes. Older files remain unchanged
@@ -251,6 +251,7 @@ show-context = true
 show-selection = true
 
 [presentation.interface.header]
+height = 44                # 32..96 logical px; omit for responsive sizing
 background = "#101A24FF"
 border = "#314553FF"
 border-width = 1             # 0..4 logical px
@@ -323,8 +324,8 @@ oversized, linked, permission-denied, or contended file never replaces live
 configuration; Automexia reports a warning and uses the recovered snapshot or
 `config.toml` values. Invalid or newer current-version data is never replaced by an
 automatic predecessor import. To clear individual choices, use Reset. To clear all
-runtime overrides, close Automexia and move `user-preferences-v13.toml` and
-`user-preferences-v13.previous.toml` from the configuration root's `state/`
+runtime overrides, close Automexia and move `user-preferences-v14.toml` and
+`user-preferences-v14.previous.toml` from the configuration root's `state/`
 directory to a backup, together with any retained older version pairs; leaving
 older files would import their choices again. These files never store credentials, terminal contents,
 history, paths, tabs, panes, sessions, or provider state.

@@ -98,6 +98,7 @@ impl FooterAppearance {
 }
 
 appearance!(HeaderAppearance {
+    height: UiPixels<32, 96>,
     background: Rgba,
     border: Rgba,
     border_width: UiPixels<0, 4>,
@@ -155,6 +156,9 @@ mod tests {
             "[footer]\nfont-size = 7",
             "[header]\ntab-gap = -1",
             "[header]\nfont-size = nan",
+            "[header]\nheight = 31",
+            "[header]\nheight = 97",
+            "[header]\nheight = nan",
             "[footer]\nunknown = true",
         ] {
             assert!(

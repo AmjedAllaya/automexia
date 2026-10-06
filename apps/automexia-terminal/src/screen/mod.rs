@@ -1027,6 +1027,7 @@ impl Screen<'_> {
 
         let padding_y_top = padding_top_from_config(
             &config.navigation,
+            config.presentation.interface.header,
             config.margin.top,
             config.window.macos_use_unified_titlebar,
             size.width as f32,
@@ -1803,6 +1804,7 @@ impl Screen<'_> {
         let scale = self.sugarloaf.scale_factor();
         let padding_y_top = padding_top_from_config(
             &config.navigation,
+            config.presentation.interface.header,
             config.margin.top,
             config.window.macos_use_unified_titlebar,
             window_size.width,
@@ -3431,6 +3433,7 @@ impl Screen<'_> {
         self.reconcile_grid_renderers();
         let padding_y_top = padding_top_from_config(
             &self.renderer.navigation,
+            self.renderer.presentation.interface.header,
             self.renderer.margin.top,
             self.renderer.macos_use_unified_titlebar,
             self.sugarloaf.window_size().width,
@@ -4710,8 +4713,14 @@ impl Screen<'_> {
     pub fn chrome_header_height_px(&self) -> f64 {
         let size = self.sugarloaf.window_size();
         let scale = self.sugarloaf.scale_factor();
-        (island::chrome_metrics(size.width, size.height, scale).header_height * scale)
-            as f64
+        (island::chrome_metrics(
+            size.width,
+            size.height,
+            scale,
+            self.renderer.presentation.interface.header,
+        )
+        .header_height
+            * scale) as f64
     }
 
     #[cfg(target_os = "macos")]
@@ -7842,6 +7851,7 @@ impl Screen<'_> {
         let _sequence = fields.next();
         match action {
             "open-customizations" => self.context_manager.open_customizations(),
+            "open-terminal-appearance" => self.context_manager.open_terminal_appearance(),
             "open-quick-actions" => {
                 self.renderer.confirm_quit.set_active(false);
                 self.open_action_center();

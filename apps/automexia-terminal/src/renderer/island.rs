@@ -447,12 +447,10 @@ pub fn chrome_metrics(
     window_width: f32,
     window_height: f32,
     scale_factor: f32,
+    appearance: rio_backend::config::presentation::HeaderAppearance,
 ) -> ChromeMetrics {
-    ChromeMetrics::for_viewport(Viewport::from_physical(
-        window_width,
-        window_height,
-        scale_factor,
-    ))
+    let viewport = Viewport::from_physical(window_width, window_height, scale_factor);
+    ChromeMetrics::for_viewport(viewport).with_header(viewport, appearance)
 }
 
 /// Compute the tab strip layout from the physical window width.
@@ -484,6 +482,15 @@ pub fn tab_strip_layout_for_viewport(
 ) -> TabStripLayout {
     let viewport = Viewport::from_physical(window_width, window_height, scale_factor);
     let metrics = ChromeMetrics::for_viewport(viewport);
+    tab_strip_layout_with_metrics(viewport, metrics, num_tabs, max_tab_width)
+}
+
+fn tab_strip_layout_with_metrics(
+    viewport: Viewport,
+    metrics: ChromeMetrics,
+    num_tabs: usize,
+    max_tab_width: f32,
+) -> TabStripLayout {
     #[cfg(target_os = "macos")]
     let left_margin = ISLAND_MARGIN_LEFT_MACOS;
     #[cfg(not(target_os = "macos"))]
@@ -798,17 +805,34 @@ impl Island {
         count: usize,
         max_width: f32,
     ) -> TabStripLayout {
-        let mut layout =
-            tab_strip_layout_for_viewport(width, height, scale, count, max_width);
+        let metrics = chrome_metrics(width, height, scale, self.appearance);
+        let mut layout = tab_strip_layout_with_metrics(
+            Viewport::from_physical(width, height, scale),
+            metrics,
+            count,
+            max_width,
+        );
         if let Some(gap) = self.appearance.tab_gap {
             layout.tab_gap = gap.get().min(layout.tab_width * 0.25);
         }
-        if let Some(size) = self.appearance.font_size {
-            layout.title_font_size = size
-                .get()
-                .min(chrome_metrics(width, height, scale).header_height - 14.0);
-        }
         layout
+    }
+
+    pub fn update_appearance(
+        &mut self,
+        appearance: rio_backend::config::presentation::HeaderAppearance,
+    ) {
+        if self.appearance.height != appearance.height
+            || self.appearance.tab_gap != appearance.tab_gap
+            || self.appearance.font_size != appearance.font_size
+        {
+            self.cancel_drag();
+            self.slide_springs.clear();
+            self.chrome_hover = None;
+            self.chrome_pressed = None;
+            self.close_hover = false;
+        }
+        self.appearance = appearance;
     }
 
     pub fn chrome_action_at(
@@ -820,7 +844,8 @@ impl Island {
         x: f32,
         y: f32,
     ) -> Option<ChromeAction> {
-        let metrics = chrome_metrics(window_width, window_height, scale_factor);
+        let metrics =
+            chrome_metrics(window_width, window_height, scale_factor, self.appearance);
         if !(0.0..=metrics.header_height).contains(&y) {
             return None;
         }
@@ -1363,7 +1388,8 @@ impl Island {
         let num_tabs = context_manager.len();
         let current_tab_index = context_manager.current_index();
         let logical_width = window_width / scale_factor.max(f32::EPSILON);
-        let metrics = chrome_metrics(window_width, window_height, scale_factor);
+        let metrics =
+            chrome_metrics(window_width, window_height, scale_factor, self.appearance);
 
         // Liquid-hacker top chrome: a quiet, opaque-enough navigation shelf
         // with a one-pixel lower keyline. It is intentionally static so idle
@@ -2009,7 +2035,8 @@ impl Island {
         let mouse_y_unscaled = mouse_y / scale_factor;
         let logical_width = window_width / scale_factor.max(f32::EPSILON);
         let logical_height = window_height / scale_factor.max(f32::EPSILON);
-        let metrics = chrome_metrics(window_width, window_height, scale_factor);
+        let metrics =
+            chrome_metrics(window_width, window_height, scale_factor, self.appearance);
         if picker_tab >= num_tabs
             || !picker_fits(logical_width, logical_height, metrics.header_height)
         {
@@ -3823,7 +3850,7 @@ mod tests {
     #[test]
     fn space_below_window_header_has_no_workspace_action_hit_targets() {
         let island = Island::new([1.0; 4], [1.0; 4], false, 240.0, true);
-        let metrics = chrome_metrics(1_280.0, 760.0, 1.0);
+        let metrics = chrome_metrics(1_280.0, 760.0, 1.0, Default::default());
         assert_eq!(
             island.chrome_action_at(
                 1_280.0,
@@ -4177,6 +4204,78 @@ mod tests {
     }
 
     #[test]
+    fn interface_header_height_keeps_paint_hits_and_content_reservation_together() {
+        use rio_backend::config::presentation::UiPixels;
+        for height in [32, 44, 72, 96] {
+            let mut island = test_island();
+            island.appearance.height = UiPixels::new(height);
+            for scale in [1.0, 1.25, 1.5, 2.0, 3.0] {
+                let metrics = chrome_metrics(
+                    1200.0 * scale,
+                    800.0 * scale,
+                    scale,
+                    island.appearance,
+                );
+                assert_eq!(metrics.header_height, f32::from(height));
+                let layout = island.tab_strip_layout(
+                    1200.0 * scale,
+                    800.0 * scale,
+                    scale,
+                    2,
+                    island.max_tab_width,
+                );
+                assert!(
+                    layout.title_font_size
+                        <= f32::from(height) - layout.tab_inset_y * 2.0
+                );
+                assert!(metrics.app_button_size <= f32::from(height) - 8.0);
+                let x = layout.actions_x + metrics.action_button_size * 0.5;
+                assert_eq!(
+                    island.chrome_action_at(
+                        1200.0 * scale,
+                        800.0 * scale,
+                        scale,
+                        2,
+                        x,
+                        f32::from(height) - 1.0
+                    ),
+                    Some(ChromeAction::NewTab)
+                );
+                assert_eq!(
+                    island.chrome_action_at(
+                        1200.0 * scale,
+                        800.0 * scale,
+                        scale,
+                        2,
+                        x,
+                        f32::from(height) + 1.0
+                    ),
+                    None
+                );
+                let navigation = rio_backend::config::navigation::Navigation::default();
+                assert_eq!(
+                    super::super::utils::padding_top_from_config(
+                        &navigation,
+                        island.appearance,
+                        7.0,
+                        false,
+                        1200.0 * scale,
+                        800.0 * scale,
+                        scale
+                    ),
+                    metrics.content_top() + 7.0
+                );
+            }
+        }
+        let appearance = rio_backend::config::presentation::HeaderAppearance {
+            height: UiPixels::new(96),
+            ..Default::default()
+        };
+        let small = chrome_metrics(400.0, 140.0, 1.0, appearance);
+        assert_eq!(small.header_height, 60.0);
+    }
+
+    #[test]
     fn interface_tab_layout_keeps_close_targets_inside_customized_tabs() {
         use rio_backend::config::presentation::UiPixels;
         let mut island = test_island();
@@ -4265,7 +4364,7 @@ mod tests {
     #[test]
     fn short_wide_viewport_uses_identical_minimal_draw_and_hit_geometry() {
         let layout = tab_strip_layout_for_viewport(1_600.0, 200.0, 1.0, 2, 240.0);
-        let metrics = chrome_metrics(1_600.0, 200.0, 1.0);
+        let metrics = chrome_metrics(1_600.0, 200.0, 1.0, Default::default());
         assert_eq!(
             metrics.density,
             crate::renderer::responsive::Density::Minimal

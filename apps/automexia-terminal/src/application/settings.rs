@@ -440,13 +440,7 @@ impl Application<'_> {
             }
             return;
         }
-        if edit.id.as_str().starts_with("fonts.")
-            || matches!(
-                edit.id.as_str(),
-                automexia_ui_model::settings::FONT_SIZE
-                    | automexia_ui_model::settings::APPEARANCE_THEME
-            )
-        {
+        if requires_runtime_publication(edit.id.as_str()) {
             let font_changed = candidate.apply_to(&self.base_config).fonts.size
                 != self.config.fonts.size;
             self.user_preferences = candidate;
@@ -881,10 +875,37 @@ mod extension_feature_preference_tests {
     }
 }
 
+fn requires_runtime_publication(id: &str) -> bool {
+    id.starts_with("interface.")
+        || id.starts_with("fonts.")
+        || matches!(
+            id,
+            automexia_ui_model::settings::FONT_SIZE
+                | automexia_ui_model::settings::APPEARANCE_THEME
+        )
+}
+
 #[cfg(test)]
 mod appearance_tests {
     use super::*;
     use rio_backend::config::theme::{AdaptiveColors, AppearanceTheme};
+    #[test]
+    fn interface_edits_reach_runtime_layout_and_chrome_publication() {
+        for id in [
+            "interface.header.background",
+            "interface.footer.visible",
+            "interface.footer.height",
+            "interface.panes.padding",
+            "interface.background.opacity",
+            "interface.header.tab-width",
+        ] {
+            assert!(
+                requires_runtime_publication(id),
+                "{id} must publish beyond output styling"
+            );
+        }
+        assert!(!requires_runtime_publication("tags.enabled"));
+    }
     #[test]
     fn appearance_publication_uses_loaded_palettes_and_reset_inherits_configured_or_system_theme(
     ) {

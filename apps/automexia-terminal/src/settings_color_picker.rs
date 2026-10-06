@@ -550,7 +550,7 @@ impl SettingsView {
         }
     }
 
-    #[cfg(any(test, feature = "visual-test-hooks"))]
+    #[cfg(any(test, feature = "native-gui-test-hooks"))]
     pub(super) fn color_palette_snapshot(&self) -> serde_json::Value {
         let colors = self.color_palette_colors();
         serde_json::json!({

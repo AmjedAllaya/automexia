@@ -806,6 +806,31 @@ mod pane_tab_tests {
     }
 
     #[test]
+    fn interface_color_edits_do_not_resize_but_footer_height_and_visibility_do() {
+        let mut grid = two_panel_grid();
+        let mut config = rio_backend::config::Config::default();
+        grid.update_appearance(&config);
+        let routes = grid.route_ids();
+        config.presentation.interface.footer.text =
+            Some(rio_backend::config::presentation::Rgb::from_bytes([
+                80, 140, 190,
+            ]));
+        config.presentation.interface.footer.background =
+            Some(rio_backend::config::presentation::Rgba::from_bytes([
+                10, 20, 30, 128,
+            ]));
+        assert!(!grid.update_appearance(&config));
+        assert_eq!(grid.footer_appearance, config.presentation.interface.footer);
+        config.presentation.interface.footer.height =
+            rio_backend::config::presentation::UiPixels::new(60);
+        assert!(grid.update_appearance(&config));
+        assert!(!grid.update_appearance(&config));
+        config.presentation.interface.footer.visible = Some(false);
+        assert!(grid.update_appearance(&config));
+        assert_eq!(grid.route_ids(), routes);
+    }
+
+    #[test]
     fn interface_spacing_changes_survive_zoom_and_dpi_without_changing_routes() {
         let mut grid = two_panel_grid();
         let routes = grid.route_ids();

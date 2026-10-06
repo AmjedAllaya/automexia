@@ -9189,10 +9189,21 @@ fn interface_refresh_paint_benchmark() {
     let mut prefs = crate::automexia::preferences::UserPreferences::default();
     let mut view = dependent_settings_view(&base, &prefs, "interface.footer.visible");
     let mut samples = Vec::new();
+    let mut renderer = crate::renderer::Renderer::new(&base);
     for i in 0..220 {
+        prefs.visual.interface.appearance.header.height =
+            rio_backend::config::presentation::UiPixels::new(32 + (i % 65) as u16);
+        prefs.visual.interface.appearance.footer.height =
+            rio_backend::config::presentation::UiPixels::new(24 + (i % 49) as u16);
         prefs.visual.interface.appearance.footer.visible = Some(i % 2 == 0);
         let mut raster = Raster::new(1.5);
         let start = std::time::Instant::now();
+        let effective = prefs.apply_to(&base);
+        renderer.update_config(&effective);
+        assert_eq!(
+            renderer.island.as_ref().unwrap().appearance,
+            effective.presentation.interface.header
+        );
         view.refresh_with_resources(
             crate::settings_catalog::catalog(i + 2, &base, &prefs, &[]).unwrap(),
             None,
@@ -9281,7 +9292,12 @@ fn interface_pages_paint_inside_card_across_themes_and_scaling() {
                         );
                     }
                 }
-                if width == 960.0 && page == "interface.footer.visible" {
+                if width == 960.0
+                    && matches!(
+                        page,
+                        "interface.footer.visible" | "interface.header.background"
+                    )
+                {
                     if let Some(directory) =
                         std::env::var_os("AUTOMEXIA_SETTINGS_PREVIEW_DIR")
                     {
@@ -9294,7 +9310,12 @@ fn interface_pages_paint_inside_card_across_themes_and_scaling() {
                             image_rs::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8])
                         })
                         .save(directory.join(format!(
-                            "terminal-footer-{}.png",
+                            "terminal-{}-{}.png",
+                            if page.contains("header") {
+                                "header"
+                            } else {
+                                "footer"
+                            },
                             entry.name.replace(' ', "-")
                         )))
                         .unwrap();
@@ -9302,5 +9323,71 @@ fn interface_pages_paint_inside_card_across_themes_and_scaling() {
                 }
             }
         }
+    }
+}
+
+#[test]
+fn interface_header_tabs_sections_are_ordered_searchable_and_do_not_steal_focus() {
+    let base = rio_backend::config::Config::default();
+    for (width, height, scale) in [
+        (360.0, 540.0, 1.0),
+        (960.0, 740.0, 1.5),
+        (1500.0, 980.0, 2.0),
+    ] {
+        let mut view = dependent_settings_view(
+            &base,
+            &Default::default(),
+            "interface.header.background",
+        );
+        view.fit(width, height, 16.0);
+        view.paint(&mut Raster::new(scale), theme());
+        let headings: Vec<_> = view.rows.iter().filter_map(|row| row.section).collect();
+        assert_eq!(
+            headings.iter().map(|(label, _)| *label).collect::<Vec<_>>(),
+            ["Header", "Tabs"]
+        );
+        let ids = view.view.as_ref().unwrap().filtered_ids().to_vec();
+        let split = ids
+            .iter()
+            .position(|id| id.as_str() == "interface.header.text")
+            .unwrap();
+        assert!(ids[..split]
+            .iter()
+            .any(|id| id.as_str() == "interface.header.background-opacity"));
+        for id in ids {
+            assert!(view.view.as_mut().unwrap().focus(&id));
+            view.focus = Focus::List;
+            view.reveal_focus = true;
+            view.layout_dirty = true;
+            view.paint(&mut Raster::new(scale), theme());
+            let row = view.rows.iter().find(|row| row.id == id).unwrap();
+            assert!(row.bounds.y >= view.geometry.body.y - 0.01);
+            assert!(
+                row.bounds.y + row.bounds.height
+                    <= view.geometry.body.y + view.geometry.body.height + 0.01
+            );
+            if let Some((_, section)) = row.section {
+                assert!(section.y + section.height < row.bounds.y);
+            }
+            assert_eq!(view.view.as_ref().unwrap().focused(), Some(&id));
+        }
+        view.focus = Focus::Search;
+        assert!(view.paste("Inactive tab"));
+        view.paint(&mut Raster::new(scale), theme());
+        assert!(view
+            .rows
+            .iter()
+            .any(|row| row.id.as_str() == "interface.header.inactive-text"));
+        assert!(view
+            .rows
+            .iter()
+            .all(|row| crate::settings_catalog::interface_control_section(
+                row.id.as_str()
+            ) == Some("Tabs")));
+        assert_eq!(view.rows[0].section.unwrap().0, "Tabs");
+        named(&mut view, NamedKey::Escape);
+        view.paint(&mut Raster::new(scale), theme());
+        assert_eq!(view.title(), "Terminal Appearance");
+        assert!(view.rows.iter().all(|row| row.section.is_none()));
     }
 }

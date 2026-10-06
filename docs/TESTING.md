@@ -1978,17 +1978,17 @@ screen-reader delivery remain separate platform evidence.
 
 ## Terminal appearance assurance
 
-Run `cargo test -p automexia-terminal --bin automexia interface_` for the typed
+Run `cargo test -p automexia-terminal --lib --bin automexia interface_` for the typed
 catalog, fractional/config-only values, disjoint categories, independent reset,
 keyboard footer toggling, dependency visibility, restored/zoomed pane geometry,
 tab layout and themed settings paint. The application library target covers
-version-12 migration, rollback preservation, current corruption and strict
+version-12/13 migration, rollback preservation, current corruption and strict
 predecessor rejection; `cargo test -p rio-backend --lib interface` covers the
 configuration and shared footer geometry contract. Owning targets also retain
 keyboard reveal and footer hit/accessibility tests across DPI and small panes.
 
 Set `AUTOMEXIA_SETTINGS_PREVIEW_DIR` to a disposable directory to retain the
-fictional CPU-raster footer settings images from
+fictional CPU-raster header and footer settings images from
 `interface_pages_paint_inside_card_across_themes_and_scaling`. Run
 `cargo test -p automexia-terminal --bin automexia interface_refresh_paint_benchmark
 -- --ignored --nocapture` for JSON timings with 20 warm-up and 200 measured
@@ -1996,3 +1996,18 @@ iterations; correctness assertions run each iteration. Compare only identical
 hardware, OS, toolchain, profile and configuration. This measures catalog,
 visibility, layout and draw emission, not GPU presentation or native compositor
 blur/transparency. Native platform verification remains separate evidence.
+
+
+The interface tests also exercise the settings publication decision, edit-to-renderer
+updates, header height at 100-300% scale, paint/hit/reservation agreement, grouped
+Header/Tabs controls and full keyboard row visibility. The appearance benchmark
+includes repeated header/footer geometry changes and renderer publication.
+
+On Windows, build the application with `--features visual-test-hooks,wgpu` (the
+visual hooks include native hooks and freeze fixture clocks and animations) and run
+`tests/integration/resize-stress-windows.ps1 -TerminalAppearanceOnly` against that
+binary (use `-Binary` for another build directory). It uses a disposable configuration,
+real numeric/color editor input, terminal row counts and captured pixels to check
+updates while settings remain open. `-UseCpuRenderer` exercises the CPU path;
+without it the harness checks WGPU. An unlocked idle desktop is required. These
+results do not certify another platform's native compositor.

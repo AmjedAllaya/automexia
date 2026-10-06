@@ -375,6 +375,7 @@ impl Screen<'_> {
         let scale = self.sugarloaf.scale_factor();
         let top = super::padding_top_from_config(
             &config.navigation,
+            config.presentation.interface.header,
             config.margin.top,
             config.window.macos_use_unified_titlebar,
             size.width,

@@ -203,3 +203,19 @@ window and navigation configuration remain singular owners; new header/footer
 paint options belong to Presentation. Individual reset clears an override;
 section reset is temporary and cannot reset the other section. Native compositor
 effects remain platform-dependent and require native evidence beyond model tests.
+
+
+## Live interface publication and header height
+
+Interface edits use the existing loaded-resource runtime preference publisher,
+including native window configuration, chrome and every pane layout. The lightweight
+output-style publisher cannot update those owners. Color-only changes do not resize
+PTYs; geometry changes use the existing layout owner. Header height is resolved in
+ChromeMetrics for painting, pointer targeting and terminal reservation, including
+DPI and compact windows. Header and Tabs headings add no keyboard focus stops.
+
+Preference version 14 adds bounded header height. Version 13 snapshots import
+read-only when newer snapshots are absent; old files remain available for rollback.
+Version 13 input claiming the new height is rejected. Omitted height preserves the
+responsive default. Configuration uses an optional typed height in the existing
+Presentation interface owner; no parallel theme or settings model is introduced.

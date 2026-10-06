@@ -209,6 +209,20 @@ impl SettingsView {
             );
         }
         for (index, row) in self.rows.iter().take(256).enumerate() {
+            if let Some((title, rect)) = row.section {
+                if let Some(rect) = rect.intersect(self.geometry.body) {
+                    add(
+                        1000 + index as u64,
+                        Role::Heading,
+                        title,
+                        "",
+                        "",
+                        rect,
+                        false,
+                        true,
+                    );
+                }
+            }
             let Some(rect) = row.bounds.intersect(self.geometry.body) else {
                 continue;
             };

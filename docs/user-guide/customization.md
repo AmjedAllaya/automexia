@@ -592,8 +592,8 @@ that value's saved override when no temporary preview is active.
 For a deliberate persistent reset, first close every Automexia instance. Back up
 and move only these snapshots out of the configuration root's `state/` directory:
 
-- `user-preferences-v13.toml` and `user-preferences-v13.previous.toml`;
-- any retained `user-preferences-v12.toml`, `user-preferences-v11.toml`, `user-preferences-v10.toml`, `user-preferences-v9.toml`, `user-preferences-v8.toml`, `user-preferences-v7.toml`, `user-preferences-v6.toml`, `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
+- `user-preferences-v14.toml` and `user-preferences-v14.previous.toml`;
+- any retained `user-preferences-v13.toml`, `user-preferences-v12.toml`, `user-preferences-v11.toml`, `user-preferences-v10.toml`, `user-preferences-v9.toml`, `user-preferences-v8.toml`, `user-preferences-v7.toml`, `user-preferences-v6.toml`, `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
   `user-preferences-v1.toml`, and their matching `.previous.toml` files.
 
 Moving both current and older snapshots prevents recovery or migration from
@@ -668,3 +668,19 @@ declarative preferences remain in `config.toml`. See
 [runtime preference ownership](../adr/0036-application-owned-runtime-user-preferences.md)
 for precedence, reset, recovery and storage limits. Existing configuration
 support does not establish release or native evidence for every combination.
+
+
+### Live header and footer adjustments
+
+In **Terminal Appearance > Header & Tabs**, the **Header** and **Tabs** groups
+separate the surrounding surface from individual tab styling. **Header height
+(px)** accepts 32-96 logical pixels; tabs, titles, icons and buttons adapt without
+restarting. Reset inherits the configured height, or responsive sizing when unset.
+Small windows limit the height to retain room for terminal content.
+
+In **Footer**, **Height (px)** accepts 24-72 logical pixels. Text size can impose a
+larger minimum to avoid clipping. **Show Footer** reclaims the reserved space when
+off. Header/footer colors, opacity, borders and status items apply immediately
+while the settings panel remains open. Geometry changes resize existing panes;
+color-only changes leave their PTYs at the same size. The terminal remains visible
+around the opaque settings panel.

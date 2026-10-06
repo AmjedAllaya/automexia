@@ -387,7 +387,7 @@ fn legacy_v4_import_survives_restart_and_keeps_kubernetes_independent() {
     // Create fixture permissions through the real private writer, then retain
     // only fields supported by the predecessor. This is test data, not migration.
     write_to_root(root.path(), &legacy).unwrap();
-    let current = root.path().join("state/user-preferences-v13.toml");
+    let current = root.path().join("state/user-preferences-v14.toml");
     let previous = root.path().join("state/user-preferences-v4.toml");
     let mut fixture: toml::Value =
         toml::from_str(&std::fs::read_to_string(&current).unwrap()).unwrap();

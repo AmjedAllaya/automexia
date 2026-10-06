@@ -1125,7 +1125,7 @@ impl Renderer {
         };
 
         if let Some(island) = island.as_mut() {
-            island.appearance = config.presentation.interface.header;
+            island.update_appearance(config.presentation.interface.header);
         }
         Renderer {
             unfocused_split_opacity: config.navigation.unfocused_split_opacity,
@@ -1225,7 +1225,7 @@ impl Renderer {
         }
 
         if let Some(island) = self.island.as_mut() {
-            island.appearance = config.presentation.interface.header;
+            island.update_appearance(config.presentation.interface.header);
         }
         self.unfocused_split_opacity = config.navigation.unfocused_split_opacity;
         self.unfocused_split_fill = config.navigation.unfocused_split_fill;
@@ -2757,6 +2757,52 @@ mod prompt_visual_anchor_tests {
             flags,
             ..CellStyle::default()
         }
+    }
+
+    #[test]
+    fn interface_catalog_edits_publish_to_existing_renderer_and_reset_inherits() {
+        use crate::automexia::preferences::UserPreferences;
+        use automexia_ui_model::settings::{Change, Edit, SettingId, SettingValue};
+        let base = Config::default();
+        let mut renderer = Renderer::new(&base);
+        let mut prefs = UserPreferences::default();
+        for (id, value) in [
+            ("interface.header.height", SettingValue::Number(72.0)),
+            (
+                "interface.header.background",
+                SettingValue::Color([20, 40, 60, 200]),
+            ),
+            ("interface.footer.height", SettingValue::Number(52.0)),
+            ("interface.header.tab-width", SettingValue::Number(240.0)),
+            ("interface.footer.visible", SettingValue::Boolean(false)),
+        ] {
+            let edit = Edit {
+                revision: 1,
+                id: SettingId::new(id).unwrap(),
+                change: Change::Set(value),
+            };
+            prefs = crate::settings_catalog::apply_edit(1, &base, &prefs, &[], &edit)
+                .unwrap();
+            let config = prefs.apply_to(&base);
+            renderer.update_config(&config);
+            assert_eq!(
+                renderer.presentation.interface,
+                config.presentation.interface
+            );
+            assert_eq!(
+                renderer.island.as_ref().unwrap().appearance,
+                config.presentation.interface.header
+            );
+            assert_eq!(
+                renderer.island.as_ref().unwrap().max_tab_width,
+                config.navigation.max_tab_width
+            );
+        }
+        renderer.update_config(&base);
+        assert_eq!(
+            renderer.island.as_ref().unwrap().appearance,
+            base.presentation.interface.header
+        );
     }
 
     #[test]

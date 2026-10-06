@@ -87,6 +87,30 @@ pub struct ChromeMetrics {
 }
 
 impl ChromeMetrics {
+    /// Resolve once for paint, hit testing and terminal reservation. Explicit
+    /// height keeps the density policy for horizontal reachability; tiny windows
+    /// retain terminal space and text/icons stay inside their controls.
+    pub fn with_header(
+        mut self,
+        viewport: Viewport,
+        appearance: rio_backend::config::presentation::HeaderAppearance,
+    ) -> Self {
+        if let Some(height) = appearance.height {
+            let height = height.get().min((viewport.height - 80.0).max(32.0));
+            let ratio = (height / self.header_height).clamp(0.75, 1.5);
+            self.header_height = height;
+            self.tab_inset_y = (self.tab_inset_y * ratio).min((height - 24.0) / 2.0);
+            self.app_button_size = (self.app_button_size * ratio).min(height - 8.0);
+            self.profile_icon_size = (self.profile_icon_size * ratio).min(height - 12.0);
+            self.action_glyph_size = (self.action_glyph_size * ratio).min(height - 12.0);
+            self.title_font_size = (self.title_font_size * ratio).min(20.0);
+        }
+        if let Some(size) = appearance.font_size {
+            self.title_font_size = size.get().min(self.header_height - 12.0);
+        }
+        self
+    }
+
     #[inline]
     pub fn for_viewport(viewport: Viewport) -> Self {
         let width = viewport.width;

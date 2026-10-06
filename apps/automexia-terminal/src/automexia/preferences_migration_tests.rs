@@ -453,3 +453,49 @@ fn v5_primary_wins_and_never_imports_later_legacy_changes() {
     assert_eq!(loaded.preferences, preferences);
     assert_eq!(loaded.warning, None);
 }
+
+#[test]
+fn interface_header_height_migrates_v13_without_rewriting_or_accepting_future_fields() {
+    let root = tempfile::tempdir().unwrap();
+    let old = b"schema-version = 13\n[visual.interface.appearance.footer]\nheight = 48\n[visual.interface.appearance.header]\nfont-size = 16\n";
+    fixture(root.path(), VERSION13_PRIMARY_FILE, old);
+    let loaded = load_from_root(root.path());
+    assert_eq!(loaded.source, PreferenceSource::Version13);
+    assert_eq!(
+        loaded.preferences.visual.interface.appearance.header.height,
+        None
+    );
+    assert_eq!(
+        loaded
+            .preferences
+            .apply_to(&Config::default())
+            .presentation
+            .interface
+            .footer
+            .height(),
+        48.0
+    );
+    let mut next = loaded.preferences;
+    next.visual.interface.appearance.header.height =
+        rio_backend::config::presentation::UiPixels::new(72);
+    write_to_root(root.path(), &next).unwrap();
+    assert_eq!(load_from_root(root.path()).preferences, next);
+    assert_eq!(
+        fs::read(state_root(root.path()).join(VERSION13_PRIMARY_FILE)).unwrap(),
+        old
+    );
+    assert!(parse_version13_snapshot(
+        b"schema-version = 13\n[visual.interface.appearance.header]\nheight = 72\n"
+    )
+    .is_err());
+    for height in [31, 97] {
+        let source = format!("schema-version = {SCHEMA_VERSION}\n[visual.interface.appearance.header]\nheight = {height}\n");
+        assert!(parse_snapshot(source.as_bytes()).is_err());
+    }
+    fs::write(primary_path(root.path()), b"schema-version = 999\n").unwrap();
+    assert!(write_to_root(root.path(), &next).is_err());
+    assert_eq!(
+        load_from_root(root.path()).warning,
+        Some(PreferenceErrorCode::InvalidData)
+    );
+}

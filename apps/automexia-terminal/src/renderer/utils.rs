@@ -7,6 +7,7 @@ use rio_window::window::Theme;
 #[inline]
 pub fn padding_top_from_config(
     navigation: &Navigation,
+    header: rio_backend::config::presentation::HeaderAppearance,
     padding_y_top: f32,
     #[allow(unused)] macos_use_unified_titlebar: bool,
     window_width: f32,
@@ -19,6 +20,7 @@ pub fn padding_top_from_config(
             window_width,
             window_height,
             scale_factor,
+            header,
         );
         return chrome.content_top() + padding_y_top;
     }

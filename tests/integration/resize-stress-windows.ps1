@@ -48,6 +48,7 @@ param(
     [switch]$QuickActionsOnly,
     [switch]$LiveBackdropOnly,
     [switch]$DependentControlsOnly,
+    [switch]$TerminalAppearanceOnly,
     [switch]$WindowControlChoicesOnly,
     [switch]$SharedColorPickerOnly,
     [switch]$FontPickerOnly,
@@ -1722,6 +1723,11 @@ $wallpaperConfig
     if ($DependentControlsOnly) {
         . (Join-Path $PSScriptRoot 'dependent-controls-windows.ps1')
         Test-AutomexiaDependentControls
+        return
+    }
+    if ($TerminalAppearanceOnly) {
+        . (Join-Path $PSScriptRoot 'dependent-controls-windows.ps1')
+        Test-AutomexiaLiveInterface
         return
     }
     if ($FontPickerOnly) {

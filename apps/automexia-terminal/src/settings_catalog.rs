@@ -207,18 +207,31 @@ pub(crate) fn test_installed_extensions() -> [MarketItem; 1] {
     }]
 }
 
+pub(crate) fn interface_control_section(id: &str) -> Option<&'static str> {
+    if !id.starts_with("interface.header.") {
+        return None;
+    }
+    Some(match id.trim_start_matches("interface.header.") {
+        "height" | "background" | "background-opacity" | "border" | "border-width" => {
+            "Header"
+        }
+        _ => "Tabs",
+    })
+}
+
 pub(crate) fn interface_page_catalog(
     full: &Catalog,
     snapshot: &SlotPageSnapshot,
     key: &str,
 ) -> Result<Catalog, SettingsError> {
     let prefix = key.rsplit_once('.').ok_or(SettingsError::UnknownSetting)?.0;
-    let entries = snapshot
+    let mut entries: Vec<_> = snapshot
         .interface
         .clone()?
         .into_iter()
         .filter(|row| row.id.as_str().starts_with(prefix))
         .collect();
+    entries.sort_by_key(|row| interface_control_section(row.id.as_str()) == Some("Tabs"));
     Catalog::new(full.revision(), entries)
 }
 
