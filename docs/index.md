@@ -67,6 +67,7 @@ including open-source ideas, and commercial strategy.
 |---|---|
 | Current architecture | [Architecture](ARCHITECTURE.md), [developer summary](developer/architecture.md) |
 | Source and documentation owners | [Contributor source map](developer/source-map.md) |
+| Performance measurement | [Microbenchmarks and application campaigns](../tools/renderer-benchmarks/README.md) |
 | Terminal implementation and known limitations | [Terminal maintenance status](TERMINAL-MAINTENANCE-REQUIREMENTS.md) |
 | UI ownership and verification limits | [Terminal interaction status](TERMINAL-INTERACTION-REQUIREMENTS.md) |
 | Dependency placement | [Build, wrap, and adopt](BUILD-WRAP-ADOPT-ARCHITECTURE.md) |

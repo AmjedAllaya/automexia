@@ -65,6 +65,7 @@ listed or summarized here.
 | [0080](adr/0080-installed-package-settings-projection.md) | Installed package settings projection and isolated preference writes |
 | [0081](adr/0081-kubernetes-status-capability-boundary.md) | Kubernetes status capability boundary |
 | [0094](adr/0094-shell-word-deletion.md) | Shell-owned word deletion |
+| [0095](adr/0095-application-performance-observation.md) | Separate application performance observation |
 
 ## When an ADR is required
 

@@ -917,6 +917,8 @@ fn remote_hint_can_open(text: &str) -> bool {
 }
 
 pub struct Screen<'screen> {
+    #[cfg(feature = "application-benchmarks")]
+    benchmark_window: rio_window::window::WindowId,
     bindings: crate::bindings::KeyBindings,
     binding_registry: Option<crate::bindings::registry::RegistrySnapshot>,
     binding_states:
@@ -1211,6 +1213,8 @@ impl Screen<'_> {
         }
 
         Ok(Screen {
+            #[cfg(feature = "application-benchmarks")]
+            benchmark_window: window_id,
             search_state: SearchState::default(),
             search_scope: SearchScope::Pane { route_id: 0 },
             search_results: SearchResultSummary::EmptyQuery,
@@ -5647,6 +5651,9 @@ impl Screen<'_> {
     }
 
     fn update_search(&mut self) {
+        #[cfg(feature = "application-benchmarks")]
+        let _benchmark_search =
+            crate::application_benchmarks::SearchSpan::new(self.benchmark_window);
         let Some(regex) = self.search_state.regex() else {
             self.search_results = SearchResultSummary::EmptyQuery;
             return;
@@ -7164,6 +7171,8 @@ impl Screen<'_> {
             // `contexts_mut` iteration.
             let search_focused_match = self.search_state.focused_match.clone();
             let mut panels: Vec<PanelFrame> = Vec::new();
+            #[cfg(feature = "application-benchmarks")]
+            let mut benchmark_fixture_markers = 0u32;
             for (key, item) in self
                 .context_manager
                 .current_grid_mut()
@@ -7209,6 +7218,13 @@ impl Screen<'_> {
                 // allocations.
                 let visible_rows =
                     std::mem::take(&mut ctx.renderable_content.visible_rows);
+                #[cfg(feature = "application-benchmarks")]
+                if crate::application_benchmarks::active() {
+                    for row in visible_rows.iter().take(512) {
+                        benchmark_fixture_markers |=
+                            crate::application_benchmarks::fixture_marker(&row.inner);
+                    }
+                }
                 let mut style_table =
                     std::mem::take(&mut ctx.renderable_content.style_table);
                 let extras = std::mem::take(&mut ctx.renderable_content.extras);
@@ -7679,6 +7695,33 @@ impl Screen<'_> {
                 // already consumed this frame's damage; without a retry
                 // the content is lost until unrelated PTY traffic.
                 let frame_dropped = self.sugarloaf.take_frame_dropped();
+                #[cfg(feature = "application-benchmarks")]
+                if !frame_dropped {
+                    let size = self.sugarloaf.window_size();
+                    crate::application_benchmarks::record(
+                        self.benchmark_window,
+                        crate::application_benchmarks::Kind::Present,
+                        [panels.len() as u32, size.width as u32, size.height as u32],
+                    );
+                    if benchmark_fixture_markers != 0 {
+                        let image_overlays = self
+                            .sugarloaf
+                            .image_overlays
+                            .values()
+                            .map(Vec::len)
+                            .sum::<usize>();
+                        if image_overlays == 0 || self.sugarloaf.image_data.is_empty() {
+                            // A text sentinel alone cannot prove image decoding and
+                            // composition have reached a submitted frame.
+                            benchmark_fixture_markers &= 1;
+                        }
+                        crate::application_benchmarks::record(
+                            self.benchmark_window,
+                            crate::application_benchmarks::Kind::Fixture,
+                            [benchmark_fixture_markers, image_overlays as u32, 0],
+                        );
+                    }
+                }
                 #[cfg(feature = "native-gui-test-hooks")]
                 if let Some(pending) = self.pending_native_snapshot.take() {
                     if !frame_dropped {

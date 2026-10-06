@@ -6,6 +6,8 @@
 
 mod accessibility;
 mod application;
+#[cfg(feature = "application-benchmarks")]
+mod application_benchmarks;
 pub use automexia_terminal::automexia;
 use automexia_terminal::cli;
 mod bindings;
@@ -571,6 +573,8 @@ fn setup_logs_by_filter_level(
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(feature = "application-benchmarks")]
+    application_benchmarks::start()?;
     #[cfg(windows)]
     if let Some(code) = automexia::prompt_discovery::dispatch_helper() {
         std::process::exit(code);
@@ -726,6 +730,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(not(target_arch = "wasm32"))]
     automexia::runtime::shutdown_background_services();
+
+    #[cfg(feature = "application-benchmarks")]
+    application_benchmarks::finish(true)?;
 
     #[cfg(windows)]
     unsafe {

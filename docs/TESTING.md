@@ -137,6 +137,15 @@ tables, exact mode/override guards, source-free labels, palette-only Enter, and
 literal CPU glyph pixels at 100% through 400%. The palette model benchmark is separate
 from native desktop input latency. See ADR 0051 for remaining native gates.
 
+## Application performance evidence
+
+The [performance program](../tools/renderer-benchmarks/README.md) separates
+Criterion microbenchmarks from opt-in native application campaigns. It documents
+startup, idle resources, input, throughput, resize, search, panes and image
+measurements; pinned cohorts; raw JSON; and unavailable or noisy results.
+Debug diagnostic runs do not establish release baselines. Existing S2 release
+activation and regression policy remain independent.
+
 ## QA diagnostic privacy
 
 Benchmark inventory prunes build, tool and private directories before entering

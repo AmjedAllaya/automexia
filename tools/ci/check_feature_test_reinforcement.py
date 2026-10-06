@@ -1014,6 +1014,17 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
         ),
         "native frame publication",
     )
+    publication = _source_slice(
+        frame,
+        "if let Some(pending) = self.pending_native_snapshot.take() {",
+        "if frame_dropped {",
+        "native snapshot publication",
+    )
+    _require_order(
+        publication,
+        ("if !frame_dropped", "pending.publish()"),
+        "native snapshot publication",
+    )
 
     application = sources["application"]
     close_window = _source_slice(

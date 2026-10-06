@@ -244,6 +244,10 @@ jobs:
     - name: Install benchmark build dependencies
       run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
     - run: cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-connectivity -p automexia-command-productivity -p automexia-devops-ssh -p automexia-keybindings --no-run --locked
+    - name: Compile isolated renderer microbenchmarks
+      run: cargo bench -p automexia-renderer-benchmarks --no-run --locked
+    - name: Compile application observation hooks without GUI polling
+      run: cargo check --locked -p automexia-terminal --bin automexia --features application-benchmarks
   benchmarks-controlled:
     name: Execute latency benchmarks on named controlled Linux hardware
     if: vars.AUTOMEXIA_BENCHMARK_RUNNER == '1'
@@ -536,3 +540,51 @@ jobs:
         if-no-files-found: error
         retention-days: 7
     timeout-minutes: 90
+  application-windows:
+    name: Windows application measurements on pinned hardware
+    if: github.ref == 'refs/heads/main' && vars.AUTOMEXIA_APPLICATION_BENCHMARK_RUNNER == '1'
+    runs-on: [self-hosted, Windows, X64, automexia-gpu, automexia-benchmark]
+    timeout-minutes: 90
+    concurrency:
+      group: automexia-controlled-application-benchmarks
+      cancel-in-progress: false
+    env:
+      AUTOMEXIA_APPLICATION_PROFILE: ${{ vars.AUTOMEXIA_APPLICATION_PROFILE }}
+      AUTOMEXIA_APPLICATION_FONTS: ${{ vars.AUTOMEXIA_APPLICATION_FONTS }}
+      AUTOMEXIA_APPLICATION_BASELINE: ${{ vars.AUTOMEXIA_APPLICATION_BASELINE }}
+      AUTOMEXIA_APPLICATION_RUN_KEY: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - name: Verify compiler and benchmark contracts
+      shell: pwsh
+      run: |
+        python tools/ci/rust_toolchain.py verify --kind development
+        if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
+        python -m unittest discover -s tools/ci -p 'test_application_*.py'
+        if ($LASTEXITCODE -ne 0) { throw 'application benchmark contract tests failed' }
+    - name: Build observation-only release executable
+      shell: pwsh
+      run: |
+        cargo build --release --locked -p automexia-terminal --bin automexia --features application-benchmarks
+        if ($LASTEXITCODE -ne 0) { throw 'application benchmark build failed' }
+    - name: Measure native application and compare reviewed baseline
+      shell: pwsh
+      run: |
+        python tools/renderer-benchmarks/application/ci_campaign.py
+        if ($LASTEXITCODE -ne 0) { throw 'application measurements failed, regressed, or could not establish a stable comparison' }
+    - name: Publish raw measurements and comparison
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: application-windows-${{ github.sha }}
+        path: |
+          target/performance/application-${{ github.run_id }}-${{ github.run_attempt }}/candidate.json
+          target/performance/application-${{ github.run_id }}-${{ github.run_attempt }}/summary.json
+          target/performance/application-${{ github.run_id }}-${{ github.run_attempt }}/comparison.json
+        if-no-files-found: error
+        retention-days: 90

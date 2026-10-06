@@ -1050,7 +1050,7 @@ class FeatureTestReinforcementTests(unittest.TestCase):
             ("windows_pty", "self.conout.discard_remaining();", ""),
             ("native_driver", "$shutdownTimer.ElapsedMilliseconds -lt 500", "$shutdownTimer.ElapsedMilliseconds -lt 6000"),
             ("native_driver", "$windowCloseTimer.ElapsedMilliseconds -lt 500", "$windowCloseTimer.ElapsedMilliseconds -lt 6000"),
-            ("screen", "if !frame_dropped", "if frame_dropped"),
+            ("screen", "if let Some(pending) = self.pending_native_snapshot.take() {\n                    if !frame_dropped", "if let Some(pending) = self.pending_native_snapshot.take() {\n                    if frame_dropped"),
             ("application", "manager.request_pty_shutdown()", "manager.route_ids()"),
             ("context", "self.shutdown_requested.swap(true", "self.shutdown_requested.load("),
             ("context", "self.current_grid_mut().update_dimensions(sugarloaf);", ""),

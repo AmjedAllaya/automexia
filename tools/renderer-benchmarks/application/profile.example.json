@@ -1,0 +1,23 @@
+{
+  "runner_class": "replace-with-public-cohort-label",
+  "os": "windows",
+  "os_version": "replace-with-platform-release",
+  "arch": "x86_64",
+  "cpu": "replace-with-public-CPU-model",
+  "logical_cpus": 8,
+  "gpu": "replace-with-public-GPU-model",
+  "gpu_driver": "replace-with-driver-version",
+  "power_mode": "replace-with-reviewed-power-mode",
+  "display_width": 1920,
+  "display_height": 1080,
+  "scale_milli": 1000,
+  "refresh_millihertz": 60000,
+  "compositor": "replace-with-compositor-version",
+  "renderer": "wgpu",
+  "toolchain": "replace-with-rustc-version",
+  "build_profile": "release",
+  "features": ["application-benchmarks", "wayland", "x11"],
+  "config_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "fonts_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "workload_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+}

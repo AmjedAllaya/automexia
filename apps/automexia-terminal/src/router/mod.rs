@@ -1198,6 +1198,19 @@ impl<'a> RouteWindow<'a> {
         };
 
         winit_window.set_visible(initially_visible);
+        #[cfg(feature = "application-benchmarks")]
+        if initially_visible {
+            let size = winit_window.inner_size();
+            crate::application_benchmarks::record(
+                winit_window.id(),
+                crate::application_benchmarks::Kind::Window,
+                [
+                    size.width,
+                    size.height,
+                    (winit_window.scale_factor() * 1000.0) as u32,
+                ],
+            );
+        }
         Self {
             accessibility,
             vblank_interval: monitor_vblank_interval,

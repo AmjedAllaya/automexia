@@ -3206,6 +3206,14 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 event: key_event,
                 ..
             } => {
+                #[cfg(feature = "application-benchmarks")]
+                if key_event.state == ElementState::Pressed {
+                    crate::application_benchmarks::record(
+                        window_id.into(),
+                        crate::application_benchmarks::Kind::Input,
+                        [u32::from(key_event.text.as_deref() == Some("x")), 0, 0],
+                    );
+                }
                 let intent = route.has_key_wait(&key_event, &mut self.router.clipboard);
                 if intent == crate::router::RouteKeyIntent::CreateConfiguration {
                     let proxy = self.event_proxy.clone();
@@ -3463,6 +3471,13 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 if new_size.width == 0 || new_size.height == 0 {
                     return;
                 }
+
+                #[cfg(feature = "application-benchmarks")]
+                crate::application_benchmarks::record(
+                    window_id.into(),
+                    crate::application_benchmarks::Kind::Resize,
+                    [new_size.width, new_size.height, 0],
+                );
 
                 route.window.screen.resize(new_size);
                 route.request_redraw();
@@ -3728,6 +3743,11 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
         // replace it with a safe no-op placeholder.
         self.router.clipboard = Clipboard::new_nop();
 
+        #[cfg(feature = "application-benchmarks")]
+        if crate::application_benchmarks::finish(pending == 0).is_err() {
+            tracing::error!("application benchmark observation could not be finalized");
+            std::process::exit(2);
+        }
         std::process::exit(0);
     }
 }
