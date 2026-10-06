@@ -810,6 +810,25 @@ A narrow pass never overrides a known real-workflow failure.
 
 ## Reported terminal regressions
 
+Run `cargo test -p automexia-terminal --bin automexia --locked keyboard_reveal`
+for keyboard visibility regressions. Tests use the real Settings catalog and
+key/layout paths across customization categories and general settings, checking
+the complete focused row rather than only its input control. They include
+wrapped help, oversized rows, repeated arrows, Home/End, paging, mouse-to-keyboard
+return, fractional font sizes and resize. Font and theme list checks require
+complete final cards. Connections Hub tests require selected connections,
+workspaces and providers to remain in the painted slice with matching pointer
+indices, including grouped rows and scaled/compact cards.
+
+Set `AUTOMEXIA_SETTINGS_PREVIEW_DIR` to a private evidence directory to retain
+the fictional Information tags CPU raster. Run
+`cargo test -p automexia-terminal --bin automexia --locked keyboard_reveal -- --ignored --show-output`
+for warmed p50/p95 JSON microbenchmarks of keyboard/layout/paint and hub
+layout/hit-testing. Each iteration also checks selection visibility or identity;
+normal CI runs the deterministic regressions. Compare timings only on the same
+host and build profile. These exclude GPU/presentation latency and do not certify
+native desktop keyboard or assistive-technology delivery.
+
 Command discovery regression tests live beside the palette in
 `apps/automexia-terminal/src/renderer/command_palette/navigation_tests.rs`.
 They include persistent header Back while scrolled/searching, font/extension

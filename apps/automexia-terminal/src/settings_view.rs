@@ -4030,6 +4030,14 @@ impl SettingsView {
             if let Some(row) = rows.iter().find(|row| {
                 self.view.as_ref().and_then(ViewState::focused) == Some(&row.id)
             }) {
+                // Reveal the label, help and row padding as well as the input.
+                // A short inline control must not leave the rest of its row
+                // behind the footer. Oversized rows prioritize the control.
+                let reveal_bottom = if row.bounds.height <= body.height {
+                    row.bounds.y + row.bounds.height
+                } else {
+                    row.control.y + row.control.height
+                };
                 let reveal_top =
                     if row.control.y + row.control.height - row.bounds.y <= body.height {
                         row.bounds.y
@@ -4039,10 +4047,10 @@ impl SettingsView {
                 if reveal_top < self.scroll {
                     self.scroll = reveal_top;
                 }
-                if row.control.y + row.control.height > self.scroll + body.height {
-                    self.scroll =
-                        (row.control.y + row.control.height - body.height).max(0.0);
+                if reveal_bottom > self.scroll + body.height {
+                    self.scroll = (reveal_bottom - body.height).max(0.0);
                 }
+                self.scroll = self.scroll.min((top - body.height).max(0.0));
             }
         }
         for row in &mut rows {
@@ -4059,8 +4067,8 @@ impl SettingsView {
                 self.rows
                     .iter()
                     .filter(|row| {
-                        row.control.y >= body.y
-                            && row.control.y + row.control.height <= body.y + body.height
+                        row.bounds.y >= body.y
+                            && row.bounds.y + row.bounds.height <= body.y + body.height
                     })
                     .count()
                     .max(1),

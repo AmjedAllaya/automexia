@@ -1536,6 +1536,16 @@ mod tests {
                 .targets
                 .iter()
                 .any(|(t, _)| *t == GalleryTarget::Row(5)));
+            for (target, rect) in &gallery.targets {
+                if matches!(target, GalleryTarget::Row(_)) {
+                    assert!(
+                        rect.y >= gallery.list.y
+                            && rect.y + rect.height
+                                <= gallery.list.y + gallery.list.height + 0.01,
+                        "keyboard End must reveal entire theme cards"
+                    );
+                }
+            }
         }
     }
 

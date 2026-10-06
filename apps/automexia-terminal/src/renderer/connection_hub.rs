@@ -114,6 +114,7 @@ struct Layout {
     overlay_cancel: Option<Rect>,
     close: Rect,
     rows: Vec<(Rect, Rect)>,
+    row_start: usize,
     inspector: Option<Rect>,
     edit_tags: Option<Rect>,
     setup_panel: Option<Rect>,
@@ -131,8 +132,19 @@ struct Layout {
 struct WorkspaceLayout {
     panel: Rect,
     rows: Vec<Rect>,
+    row_start: usize,
     back: Option<Rect>,
     primary: Option<Rect>,
+}
+
+// The neutral projection is bounded but can contain more rows than this card
+// fits (group headings and fixed card limits change the available space).
+// Keep selection in the actual painted slice, with the same offset for hits.
+fn focused_row_start(count: usize, capacity: usize, selected: Option<usize>) -> usize {
+    selected
+        .unwrap_or(0)
+        .saturating_sub(capacity.saturating_sub(1))
+        .min(count.saturating_sub(capacity))
 }
 
 #[derive(Default)]
@@ -296,6 +308,7 @@ impl ConnectionHub {
             if presentation.view.route == HubRoute::Providers {
                 for (visible_index, row) in provider.rows.iter().enumerate() {
                     if row.contains(mouse_x, mouse_y) {
+                        let visible_index = provider.row_start + visible_index;
                         return Some(ConnectionHubHit::SelectProvider { visible_index });
                     }
                 }
@@ -328,6 +341,7 @@ impl ConnectionHub {
             if presentation.view.route == HubRoute::Workspaces {
                 for (visible_index, row) in workspace.rows.iter().enumerate() {
                     if row.contains(mouse_x, mouse_y) {
+                        let visible_index = workspace.row_start + visible_index;
                         return Some(ConnectionHubHit::SelectWorkspace { visible_index });
                     }
                 }
@@ -487,6 +501,7 @@ impl ConnectionHub {
             return Some(ConnectionHubHit::BeginTagEditor);
         }
         for (visible_index, (row, favorite)) in layout.rows.iter().enumerate() {
+            let visible_index = layout.row_start + visible_index;
             if favorite.contains(mouse_x, mouse_y) {
                 return Some(ConnectionHubHit::ToggleFavorite { visible_index });
             }
@@ -899,11 +914,14 @@ impl ConnectionHub {
             button(sugarloaf, rect, "Cancel", false, &label, theme);
         }
 
-        for (visible_index, row) in presentation.view.rows.iter().enumerate() {
-            let Some((row_rect, favorite_rect)) = layout.rows.get(visible_index).copied()
-            else {
-                break;
-            };
+        for ((visible_index, row), &(row_rect, favorite_rect)) in presentation
+            .view
+            .rows
+            .iter()
+            .enumerate()
+            .skip(layout.row_start)
+            .zip(&layout.rows)
+        {
             rounded(
                 sugarloaf,
                 row_rect,
@@ -1558,6 +1576,11 @@ impl ConnectionHub {
             };
             rows.push((row, favorite));
         }
+        let row_start = focused_row_start(
+            presentation.view.rows.len(),
+            rows.len(),
+            presentation.view.rows.iter().position(|row| row.selected),
+        );
         let inspector = (inspector_width > 0.0).then_some(bounded_to(
             Rect {
                 x: card.x + card.width - inner - inspector_width,
@@ -1694,6 +1717,7 @@ impl ConnectionHub {
             overlay_cancel,
             close,
             rows,
+            row_start,
             inspector,
             edit_tags,
             setup_panel,
@@ -1832,6 +1856,16 @@ fn workspace_layout(
     };
     WorkspaceLayout {
         panel,
+        row_start: presentation
+            .workspace_catalog
+            .as_ref()
+            .map_or(0, |catalog| {
+                focused_row_start(
+                    catalog.rows.len(),
+                    rows.len(),
+                    catalog.rows.iter().position(|row| row.selected),
+                )
+            }),
         rows,
         back,
         primary,
@@ -1914,6 +1948,13 @@ fn provider_layout(
     };
     WorkspaceLayout {
         panel,
+        row_start: presentation.provider_catalog.as_ref().map_or(0, |catalog| {
+            focused_row_start(
+                catalog.rows.len(),
+                rows.len(),
+                catalog.rows.iter().position(|row| row.selected),
+            )
+        }),
         rows,
         back,
         primary,
@@ -1947,10 +1988,12 @@ fn render_provider_surface(
         let Some(catalog) = presentation.provider_catalog.as_ref() else {
             return;
         };
-        for (index, row) in catalog.rows.iter().enumerate() {
-            let Some(rect) = geometry.rows.get(index).copied() else {
-                break;
-            };
+        for (row, &rect) in catalog
+            .rows
+            .iter()
+            .skip(geometry.row_start)
+            .zip(&geometry.rows)
+        {
             rounded(
                 sugarloaf,
                 rect,
@@ -2107,10 +2150,12 @@ fn render_workspace_surface(
             );
             return;
         }
-        for (index, row) in catalog.rows.iter().enumerate() {
-            let Some(rect) = geometry.rows.get(index).copied() else {
-                break;
-            };
+        for (row, &rect) in catalog
+            .rows
+            .iter()
+            .skip(geometry.row_start)
+            .zip(&geometry.rows)
+        {
             rounded(
                 sugarloaf,
                 rect,
@@ -3773,6 +3818,67 @@ mod tests {
     }
 
     #[test]
+    fn keyboard_reveal_hub_selected_result_is_painted_and_hit_testable() {
+        for dimensions in [
+            (1280.0, 720.0, 1.0),
+            (1920.0, 1080.0, 1.5),
+            (520.0, 650.0, 1.0),
+        ] {
+            for grouped in [false, true] {
+                let mut p = presentation();
+                p.view.content_state = HubContentState::Ready;
+                p.view.rows = (0..20)
+                    .map(
+                        |index| automexia_ui_model::connection_hub::ConnectionRowView {
+                            id: format!("shell-{index}"),
+                            display_name: format!("Shell {index}"),
+                            provider_label: "SSH",
+                            target: "shell.example.test".into(),
+                            identity: "System agent".into(),
+                            environment: "Development".into(),
+                            risk_label: "Low",
+                            state_label: "Saved",
+                            primary_action_label: "Review",
+                            favorite: false,
+                            selected: index == 19,
+                            accessibility_label: format!("Shell {index}"),
+                        },
+                    )
+                    .collect();
+                p.row_group_labels = (0..20)
+                    .map(|index| {
+                        (grouped && index % 3 == 0).then(|| "Development".into())
+                    })
+                    .collect();
+                let layout = ConnectionHub::layout(&p, dimensions);
+                assert!(!layout.rows.is_empty());
+                let mut hub = ConnectionHub::default();
+                hub.set_presentation(Some(p));
+                assert!(layout.rows.iter().any(|(row, _)| hub.hit_test(
+                    row.x + 10.0, row.y + row.height * 0.5, dimensions)
+                    == Some(ConnectionHubHit::SelectRow { visible_index: 19 })),
+                    "the selected result must have visible geometry at {dimensions:?}, grouped={grouped}");
+                for (index, (row, favorite)) in layout.rows.iter().enumerate() {
+                    assert!(
+                        row.y + row.height
+                            <= layout.card.y + layout.card.height - 68.0 + 0.01
+                    );
+                    assert_eq!(
+                        hub.hit_test(
+                            favorite.x + favorite.width * 0.5,
+                            favorite.y + favorite.height * 0.5,
+                            dimensions
+                        ),
+                        Some(ConnectionHubHit::ToggleFavorite {
+                            visible_index: layout.row_start + index
+                        })
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn populated_catalog_is_hidden_behind_editors_and_restored_after_cancel() {
         let mut original = presentation();
         original.view.content_state = HubContentState::Ready;
@@ -4451,8 +4557,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn provider_rows_review_action_and_tab_have_distinct_pointer_targets() {
+    fn provider_presentation() -> HubControllerPresentation {
         let mut presentation = presentation();
         presentation.view.route = HubRoute::Providers;
         presentation.provider_catalog =
@@ -4479,6 +4584,136 @@ mod tests {
                 pty_input_requested: false,
                 accessibility_tree: Vec::new(),
             });
+        presentation
+    }
+
+    #[test]
+    fn keyboard_reveal_hub_workspace_and_provider_selection_survives_resize() {
+        for provider in [false, true] {
+            for selected in [0, 7, 19] {
+                let mut p = if provider {
+                    provider_presentation()
+                } else {
+                    workspace_presentation()
+                };
+                if let Some(catalog) = p.provider_catalog.as_mut() {
+                    let template = catalog.rows[0].clone();
+                    catalog.rows = (0..20)
+                        .map(|index| {
+                            let mut row = template.clone();
+                            row.public_identity = format!("Example {index}");
+                            row.selected = index == selected;
+                            row
+                        })
+                        .collect();
+                }
+                if let Some(catalog) = p.workspace_catalog.as_mut() {
+                    let template = catalog.rows[0].clone();
+                    catalog.rows = (0..20)
+                        .map(|index| {
+                            let mut row = template.clone();
+                            row.id = format!("workspace-{index}");
+                            row.selected = index == selected;
+                            row
+                        })
+                        .collect();
+                }
+                let mut hub = ConnectionHub::default();
+                hub.set_presentation(Some(p.clone()));
+                for dimensions in [
+                    (1280.0, 720.0, 1.0),
+                    (1920.0, 1080.0, 1.5),
+                    (520.0, 650.0, 1.0),
+                ] {
+                    let layout = ConnectionHub::layout(&p, dimensions);
+                    let list = if provider {
+                        provider_layout(&p, &layout)
+                    } else {
+                        workspace_layout(&p, &layout)
+                    };
+                    let selected_rect = list
+                        .rows
+                        .get(selected - list.row_start)
+                        .expect("selected row is painted");
+                    assert!(
+                        selected_rect.y >= list.panel.y
+                            && selected_rect.y + selected_rect.height
+                                <= list.panel.y + list.panel.height - 52.0 + 0.01
+                    );
+                    for (offset, row) in list.rows.iter().enumerate() {
+                        let expected_index = list.row_start + offset;
+                        let expected = if provider {
+                            ConnectionHubHit::SelectProvider {
+                                visible_index: expected_index,
+                            }
+                        } else {
+                            ConnectionHubHit::SelectWorkspace {
+                                visible_index: expected_index,
+                            }
+                        };
+                        assert_eq!(
+                            hub.hit_test(
+                                row.x + 10.0,
+                                row.y + row.height * 0.5,
+                                dimensions
+                            ),
+                            Some(expected)
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "same-host hub layout/hit-test benchmark; run explicitly"]
+    fn keyboard_reveal_hub_layout_benchmark() {
+        let mut p = workspace_presentation();
+        let catalog = p.workspace_catalog.as_mut().unwrap();
+        let template = catalog.rows[0].clone();
+        catalog.rows = (0..20)
+            .map(|index| {
+                let mut row = template.clone();
+                row.id = format!("workspace-{index}");
+                row.selected = index == 19;
+                row
+            })
+            .collect();
+        let mut hub = ConnectionHub::default();
+        hub.set_presentation(Some(p.clone()));
+        for dimensions in [(1280.0, 720.0, 1.0), (520.0, 650.0, 1.0)] {
+            let mut samples = Vec::new();
+            for iteration in 0..220 {
+                let start = std::time::Instant::now();
+                let layout = ConnectionHub::layout(std::hint::black_box(&p), dimensions);
+                let list = workspace_layout(&p, &layout);
+                let row = list.rows.last().unwrap();
+                let hit =
+                    hub.hit_test(row.x + 10.0, row.y + row.height * 0.5, dimensions);
+                let elapsed = start.elapsed().as_nanos();
+                assert_eq!(
+                    hit,
+                    Some(ConnectionHubHit::SelectWorkspace { visible_index: 19 })
+                );
+                assert!(list.rows.len() <= 20);
+                if iteration >= 20 {
+                    samples.push(elapsed);
+                }
+            }
+            samples.sort_unstable();
+            println!(
+                "{}",
+                serde_json::json!({"benchmark":"keyboard_reveal_hub_layout",
+                "viewport":[dimensions.0,dimensions.1], "samples":200,
+                "p50_ns":samples[99], "p95_ns":samples[189],
+                "excludes":["text shaping","GPU","presentation"]})
+            );
+        }
+    }
+
+    #[test]
+    fn provider_rows_review_action_and_tab_have_distinct_pointer_targets() {
+        let presentation = provider_presentation();
         let dimensions = (1280.0, 720.0, 1.0);
         let layout = ConnectionHub::layout(&presentation, dimensions);
         let (_, _, providers_tab, _, _) = hub_tabs(&layout);

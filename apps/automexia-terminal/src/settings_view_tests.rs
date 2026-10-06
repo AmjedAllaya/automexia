@@ -4705,6 +4705,240 @@ fn pointer_toggle_uses_same_control_geometry_and_requires_matching_press_release
 }
 
 #[test]
+fn keyboard_reveal_exposes_entire_information_tag_row() {
+    let mut view = workflow_tag_view();
+    view.fit(600.0, 900.0, 18.0);
+    let mut raster = Raster::new(1.0);
+    named(&mut view, NamedKey::End);
+    view.paint(&mut raster, theme());
+    let row = view.rows.last().unwrap();
+    assert_eq!(row.id.as_str(), "tags.opacity");
+    assert!(row.bounds.height <= view.geometry.body.height);
+    assert!(
+        row.bounds.y + row.bounds.height
+            <= view.geometry.body.y + view.geometry.body.height + 0.01,
+        "keyboard focus reveals the complete row, not just its control: {:?} in {:?}",
+        row.bounds,
+        view.geometry.body
+    );
+    if let Some(directory) = std::env::var_os("AUTOMEXIA_SETTINGS_PREVIEW_DIR") {
+        let directory = std::path::PathBuf::from(directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        let pixels = raster.pixels(600, 900, true);
+        image_rs::RgbImage::from_fn(600, 900, |x, y| {
+            let pixel = pixels[(y * 600 + x) as usize];
+            image_rs::Rgb([(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8])
+        })
+        .save(directory.join("keyboard-reveal-information-tags.png"))
+        .unwrap();
+    }
+}
+
+#[test]
+fn keyboard_reveal_font_picker_last_row_and_resize_remain_wholly_visible() {
+    let mut view = installed_font_picker();
+    view.font_picker_inventory(
+        (0..48).map(|i| format!("Example Mono {i:02}")).collect(),
+        false,
+    );
+    named(&mut view, NamedKey::ArrowDown);
+    named(&mut view, NamedKey::End);
+    for (width, height, font, scale) in [
+        (960.0, 620.0, 16.0, 1.0),
+        (480.0, 560.0, 16.0, 1.25),
+        (900.0, 700.0, 24.0, 2.0),
+    ] {
+        view.fit(width, height, font);
+        let mut raster = Raster::new(scale);
+        view.paint(&mut raster, theme());
+        let picker = view.font_picker.as_ref().unwrap();
+        let (_, row) = picker
+            .targets
+            .iter()
+            .find(|(target, _)| *target == FontPickerTarget::Row(picker.selected))
+            .unwrap();
+        assert!(
+            row.y >= view.geometry.body.y
+                && row.y + row.height
+                    <= view.geometry.body.y + view.geometry.body.height + 0.01
+        );
+        assert_eq!(view.font_picker_selection(), Some("Example Mono 47"));
+    }
+}
+
+fn assert_keyboard_reveal(view: &SettingsView) {
+    let id = view.view.as_ref().unwrap().focused().unwrap();
+    let row = view.rows.iter().find(|row| &row.id == id).unwrap();
+    let body = view.geometry.body;
+    let required = if row.bounds.height <= body.height {
+        row.bounds
+    } else {
+        row.control
+    };
+    // If even the input is taller than the viewport, its trailing portion
+    // fills the viewport. Complete containment is physically impossible.
+    let required = if required.height > body.height {
+        Rect {
+            y: required.y + required.height - body.height,
+            height: body.height,
+            ..required
+        }
+    } else {
+        required
+    };
+    assert!(
+        required.y >= body.y - 0.01
+            && required.y + required.height <= body.y + body.height + 0.01,
+        "{}: {} must be completely visible: {required:?} in {body:?}",
+        view.title(),
+        id.as_str()
+    );
+    assert!(
+        view.scroll >= 0.0
+            && view.scroll <= (view.content_height - body.height).max(0.0) + 0.01
+    );
+}
+
+#[test]
+fn keyboard_reveal_all_settings_pages_arrows_paging_resize_and_mouse_return() {
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    let market = crate::settings_catalog::test_installed_extensions();
+    let full = crate::settings_catalog::catalog(1, &base, &preferences, &market).unwrap();
+    let mut pages = vec![None]; // The general Settings list includes extension controls.
+    pages.extend(
+        customization_groups(&full)
+            .into_iter()
+            .map(|group| Some(group.key)),
+    );
+    let mut exercised = 0;
+    for (width, height, font) in [
+        (600.0, 900.0, 18.0),
+        (960.0, 620.0, 16.0),
+        (1280.0, 900.0, 18.0),
+        (420.0, 600.0, 20.0),
+        (350.0, 380.0, 22.0),
+    ] {
+        for page in &pages {
+            let mut view = SettingsView::default();
+            view.fit(width, height, font);
+            if let Some(page) = page {
+                view.open_customizations_with_slots(
+                    full.clone(),
+                    None,
+                    Some(crate::settings_catalog::slot_page_snapshot_with_config(
+                        &preferences,
+                        &base,
+                        &base,
+                        &market,
+                    )),
+                );
+                assert!(view.view.as_mut().unwrap().focus(page));
+                view.focus = Focus::List;
+                named(&mut view, NamedKey::Enter);
+            } else {
+                view.open(full.clone());
+                named(&mut view, NamedKey::Tab);
+            }
+            // Theme uses its own picker, checked independently below.
+            if view.gallery.is_some() {
+                continue;
+            }
+            let mut raster = Raster::new(1.25);
+            let count = view.view.as_ref().unwrap().filtered_ids().len();
+            assert!(count > 0);
+            for key in [NamedKey::ArrowDown, NamedKey::ArrowUp] {
+                for _ in 0..count + 2 {
+                    named(&mut view, key);
+                    view.prepare(&mut raster.text);
+                    assert_keyboard_reveal(&view);
+                    exercised += 1;
+                }
+            }
+            for key in [
+                NamedKey::End,
+                NamedKey::Home,
+                NamedKey::PageDown,
+                NamedKey::PageUp,
+            ] {
+                named(&mut view, key);
+                view.prepare(&mut raster.text);
+                assert_keyboard_reveal(&view);
+            }
+            named(&mut view, NamedKey::End);
+            view.prepare(&mut raster.text);
+            let last = view.view.as_ref().unwrap().focused().cloned();
+            view.scroll_by(-100_000.0);
+            view.prepare(&mut raster.text);
+            assert_eq!(view.scroll, 0.0, "wheel must not snap back to focus");
+            named(&mut view, NamedKey::ArrowDown);
+            view.prepare(&mut raster.text);
+            assert_eq!(view.view.as_ref().unwrap().focused(), last.as_ref());
+            assert_keyboard_reveal(&view);
+            // A repeated Down at the end must neither crop nor drift the row.
+            let settled = view.scroll;
+            for _ in 0..4 {
+                view.key(
+                    &Key::Named(NamedKey::ArrowDown),
+                    None,
+                    ModifiersState::empty(),
+                    true,
+                );
+                view.prepare(&mut raster.text);
+                assert_keyboard_reveal(&view);
+                assert!((view.scroll - settled).abs() < 0.01);
+            }
+            view.fit(width, height + 37.0, font + 0.5);
+            view.paint(&mut raster, theme());
+            assert_keyboard_reveal(&view);
+        }
+    }
+    assert!(
+        exercised > 200,
+        "real catalog coverage must remain nonempty"
+    );
+}
+
+#[test]
+#[ignore = "same-host keyboard reveal/layout/paint benchmark; run explicitly"]
+fn keyboard_reveal_navigation_paint_benchmark() {
+    for (width, height) in [(600.0, 900.0), (1280.0, 900.0)] {
+        let mut view = workflow_tag_view();
+        view.fit(width, height, 18.0);
+        let mut raster = Raster::new(1.25);
+        let mut samples = Vec::new();
+        for iteration in 0..220 {
+            raster.rects.clear();
+            raster.shapes.clear();
+            raster.text.clear();
+            let start = std::time::Instant::now();
+            named(
+                &mut view,
+                if iteration % 2 == 0 {
+                    NamedKey::End
+                } else {
+                    NamedKey::Home
+                },
+            );
+            view.paint(std::hint::black_box(&mut raster), theme());
+            let elapsed = start.elapsed().as_nanos();
+            assert_keyboard_reveal(&view);
+            assert!(raster.rects.len() < 2000, "draw output remains bounded");
+            if iteration >= 20 {
+                samples.push(elapsed);
+            }
+        }
+        samples.sort_unstable();
+        println!(
+            "{}",
+            serde_json::json!({"benchmark":"keyboard_reveal_navigation_paint",
+            "viewport":[width,height], "scale":1.25, "samples":200,
+            "p50_ns":samples[99], "p95_ns":samples[189], "excludes":["GPU","presentation"]})
+        );
+    }
+}
+
+#[test]
 fn focus_scrolling_reaches_last_setting_and_preserves_row_clipping() {
     let mut view = opened();
     view.fit(300.0, 270.0, 18.0);
