@@ -1870,6 +1870,16 @@ store to exercise inventory publication and actual uninstall/reinstall. It
 rejects work captured before feature disable or membership removal, including
 lease exhaustion; callback publication is checked independently of timing.
 
+The binary `devops_` filter additionally covers uninstalled membership with a
+saved On preference, independent Git/context switches, unavailable source choices,
+removed editor focus, repeated reinstall, and active/parked prompt-history
+invalidation when uninstall/reinstall occurs between frames. The UI-model
+`devops_` filter checks every preset and custom text/icon source without changing
+saved recipes. Actual VT prompt geometry verifies that unavailable literal tags
+cannot bypass discovery removal. Ordinary output coloring remains core-owned.
+Run `cargo test --locked -p automexia-terminal --lib --bin automexia` and
+`cargo test --locked -p automexia-ui-model` for the owning targets.
+
 These tests do not establish native screen-reader delivery, compositor pixels,
 or real platform IME behavior. Exercise menu and keyboard paste, composition,
 focus, save failure/restart, font changes and multiwindow removal on every native

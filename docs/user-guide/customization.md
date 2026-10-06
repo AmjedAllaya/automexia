@@ -106,7 +106,14 @@ the tag list to select disabled tags too. **On** and **Off** describe each tag's
 visibility setting. Turning **DevOps detection** off hides its tags in the preview,
 tag list and terminal, including custom tags using DevOps sources. OS, Git, user
 and independent custom-text tags remain. Turning it on restores your saved tag
-choices; real terminal tags still require detected context. **E** or the preview's **Edit** button enables stable selection through
+choices; real terminal tags still require detected context. Uninstalling the
+DevOps extension also removes its Git tag, preview samples, tag editors and
+context-source choices, even if discovery was On. Pending discovery is cancelled;
+old results cannot return after reinstall. OS/user tags, independent custom text
+and core output coloring remain available. Saved tag styles and layouts are
+retained for reinstall; extension feature switches return to their defaults after
+a confirmed uninstall. Turning only Git off keeps an **Off · Git** entry; open
+it to turn Git back on. Its inactive styling controls stay hidden. **E** or the preview's **Edit** button enables stable selection through
 the same list, including **Add custom tag**. **Terminal output colors** controls
 ordinary command backgrounds and the separate **Highlight recognized output** switch.
 Recognized output includes plain command diagnostics such as Bash/Fish

@@ -525,15 +525,43 @@ fn git_preview_tag_edits_only_the_git_feature_and_repaints_its_saved_value() {
         view.catalog.as_ref().unwrap().get(&git_id).unwrap().value,
         SettingValue::Boolean(false)
     );
+    assert_eq!(
+        view.catalog.as_ref().unwrap().entries().len(),
+        1,
+        "only the re-enable switch remains while Git is off"
+    );
+    view.paint(&mut Raster::new(1.0), theme());
+    assert!(view
+        .preview_order
+        .iter()
+        .any(|id| id.as_str() == "tags.slot.git.page"));
+    assert!(!view
+        .preview_targets
+        .iter()
+        .any(|(id, bounds)| id.as_str() == "tags.slot.git.page"
+            && bounds.y < view.preview_tag_list_area.y));
+    assert!(view.view.as_mut().unwrap().focus(&git_id));
+    named(&mut view, NamedKey::Space);
+    let reenable = view.take_edit().unwrap();
+    assert_eq!(reenable.change, Change::Set(SettingValue::Boolean(true)));
+    assert!(
+        crate::settings_catalog::apply_edit(2, &base, &changed, &market, &reenable)
+            .unwrap()
+            .extension_feature_enabled(DEVOPS_GIT_STATUS_ID)
+            .unwrap()
+    );
     view.refresh_with_resources(
         crate::settings_catalog::catalog(3, &base, &changed, &[]).unwrap(),
         None,
-        Some(crate::settings_catalog::slot_page_snapshot(
+        Some(crate::settings_catalog::slot_page_snapshot_with_config(
             &changed,
             &changed.apply_to(&base),
+            &base,
+            &[],
         )),
     );
-    assert_eq!(view.title(), "Tag slot: Git");
+    assert_eq!(view.title(), "Information tags");
+    assert!(view.customizations.as_ref().unwrap().active_slot.is_none());
     assert!(view.catalog.as_ref().unwrap().get(&git_id).is_none());
     assert!(view.take_edit().is_none());
 }
@@ -2126,7 +2154,10 @@ fn window_controls_preview_is_bounded_nonexecuting_and_keyboard_editable() {
             crate::settings_catalog::catalog(1, &base, &prefs, &[]).unwrap(),
             None,
             Some(crate::settings_catalog::slot_page_snapshot_with_config(
-                &prefs, &base, &base,
+                &prefs,
+                &base,
+                &base,
+                &crate::settings_catalog::test_installed_extensions(),
             )),
         );
         assert!(view
@@ -2167,6 +2198,7 @@ fn window_controls_preview_is_bounded_nonexecuting_and_keyboard_editable() {
                 &prefs,
                 &prefs.apply_to(&base),
                 &base,
+                &crate::settings_catalog::test_installed_extensions(),
             )),
         );
         assert_eq!(
@@ -2411,6 +2443,7 @@ fn window_style_choices_compact_layout_and_refresh_preserve_one_selection() {
                 &prefs,
                 &prefs.apply_to(&base),
                 &base,
+                &crate::settings_catalog::test_installed_extensions(),
             )),
         );
         view.paint(&mut Raster::new(1.0), UiTheme::from_colors(&base.colors));
@@ -2489,6 +2522,7 @@ fn inline_table_menu_keyboard_edits_refresh_preview_and_survive_layout_changes()
                 &original,
                 &original.apply_to(&base),
                 &base,
+                &crate::settings_catalog::test_installed_extensions(),
             )),
         );
         assert!(view
@@ -2518,6 +2552,7 @@ fn inline_table_menu_keyboard_edits_refresh_preview_and_survive_layout_changes()
                 &changed,
                 &changed.apply_to(&base),
                 &base,
+                &crate::settings_catalog::test_installed_extensions(),
             )),
         );
         assert_eq!(view.title(), "Inline tables");
@@ -2760,7 +2795,13 @@ fn all_tag_roster_exposes_optional_tags_and_adds_a_custom_tag() {
     let mut view = SettingsView::default();
     view.fit(960.0, 620.0, 16.0);
     view.open_customizations_with_slots(
-        crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+        crate::settings_catalog::catalog(
+            1,
+            &base,
+            &preferences,
+            &crate::settings_catalog::test_installed_extensions(),
+        )
+        .unwrap(),
         None,
         Some(crate::settings_catalog::slot_page_snapshot(
             &preferences,
@@ -2835,11 +2876,22 @@ fn all_tag_roster_exposes_optional_tags_and_adds_a_custom_tag() {
     let toggle = view
         .take_edit()
         .expect("the tag toggle reaches the shared settings owner");
-    let disabled =
-        crate::settings_catalog::apply_edit(1, &base, &preferences, &[], &toggle)
-            .unwrap();
+    let disabled = crate::settings_catalog::apply_edit(
+        1,
+        &base,
+        &preferences,
+        &crate::settings_catalog::test_installed_extensions(),
+        &toggle,
+    )
+    .unwrap();
     view.refresh_with_resources(
-        crate::settings_catalog::catalog(2, &base, &disabled, &[]).unwrap(),
+        crate::settings_catalog::catalog(
+            2,
+            &base,
+            &disabled,
+            &crate::settings_catalog::test_installed_extensions(),
+        )
+        .unwrap(),
         None,
         Some(crate::settings_catalog::slot_page_snapshot(
             &disabled,
@@ -2890,8 +2942,14 @@ fn all_tag_roster_exposes_optional_tags_and_adds_a_custom_tag() {
         .take_edit()
         .expect("add action reaches the shared settings owner");
     assert_eq!(pending.id.as_str(), "tags.add-slot");
-    let updated =
-        crate::settings_catalog::apply_edit(2, &base, &disabled, &[], &pending).unwrap();
+    let updated = crate::settings_catalog::apply_edit(
+        2,
+        &base,
+        &disabled,
+        &crate::settings_catalog::test_installed_extensions(),
+        &pending,
+    )
+    .unwrap();
     assert!(updated
         .visual
         .information_bar
@@ -3055,6 +3113,155 @@ fn selected_tag_controls_replace_the_left_half_while_the_live_tags_remain_clicka
         view.preview_selected.as_ref().unwrap().as_str(),
         "tags.slot.kubernetes.page"
     );
+}
+
+#[test]
+fn devops_uninstall_removes_preview_and_editor_targets_with_saved_switch_on() {
+    let base = rio_backend::config::Config::default();
+    let mut preferences = crate::automexia::preferences::UserPreferences::default();
+    preferences
+        .set_extension_feature_enabled(
+            crate::automexia::settings_extensions::DEVOPS_CONTEXT_STATUS_ID,
+            true,
+        )
+        .unwrap();
+    let market = [crate::automexia::marketplace::MarketItem {
+        id: crate::automexia::builtins::devops::ID.into(),
+        name: "DevOps".into(),
+        description: "Local context".into(),
+        installed: false,
+    }];
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &preferences, &market).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot_with_config(
+            &preferences,
+            &base,
+            &base,
+            &market,
+        )),
+    );
+    view.view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap());
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    for role in [
+        "kubernetes",
+        "docker",
+        "terraform",
+        "git",
+        "production",
+        "environment",
+    ] {
+        let id = format!("tags.slot.{role}.page");
+        assert!(
+            !view.preview_order.iter().any(|entry| entry.as_str() == id),
+            "uninstalled extension still exposes {role}"
+        );
+        assert!(!view
+            .preview_targets
+            .iter()
+            .any(|(entry, _)| entry.as_str() == id));
+    }
+    for role in ["windows", "ubuntu-wsl", "user"] {
+        assert!(view
+            .preview_order
+            .iter()
+            .any(|entry| entry.as_str() == format!("tags.slot.{role}.page")));
+    }
+    if let Some(directory) = std::env::var_os("AUTOMEXIA_SETTINGS_PREVIEW_DIR") {
+        let directory = std::path::PathBuf::from(directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        let pixels = raster.pixels(960, 620, true);
+        image_rs::RgbImage::from_fn(960, 620, |x, y| {
+            let pixel = pixels[(y * 960 + x) as usize];
+            image_rs::Rgb([(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8])
+        })
+        .save(directory.join("devops-uninstalled.png"))
+        .unwrap();
+    }
+}
+
+#[test]
+fn devops_inventory_refresh_closes_removed_editor_and_reinstall_restores_choices() {
+    let base = rio_backend::config::Config::default();
+    let mut prefs = crate::automexia::preferences::UserPreferences::default();
+    let mut recipe = prefs.visual.information_bar.recipe();
+    recipe
+        .slots
+        .iter_mut()
+        .find(|slot| slot.id == "kubernetes")
+        .unwrap()
+        .color = Some([17, 43, 91]);
+    prefs.visual.information_bar.use_custom = true;
+    prefs.visual.information_bar.custom_recipe = Some(recipe.clone());
+    let mut market = crate::settings_catalog::test_installed_extensions();
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &prefs, &market).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot_with_config(
+            &prefs, &base, &base, &market,
+        )),
+    );
+    view.view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap());
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.paint(&mut Raster::new(1.0), theme());
+    view.enter_preview_item(SettingId::new("tags.slot.kubernetes.page").unwrap());
+    assert!(view.customizations.as_ref().unwrap().active_slot.is_some());
+    for (revision, installed) in [(2, false), (3, true), (4, false), (5, true)] {
+        market[0].installed = installed;
+        view.refresh_with_resources(
+            crate::settings_catalog::catalog(revision, &base, &prefs, &market).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot_with_config(
+                &prefs, &base, &base, &market,
+            )),
+        );
+        assert!(view.pending.is_none());
+        assert!(view.customizations.as_ref().unwrap().active_slot.is_none());
+        if view.title() != "Information tags" {
+            view.view
+                .as_mut()
+                .unwrap()
+                .focus(&SettingId::new("tags.enabled").unwrap());
+            view.focus = Focus::List;
+            named(&mut view, NamedKey::Enter);
+        }
+        view.paint(&mut Raster::new(1.0), theme());
+        assert_eq!(
+            view.preview_order
+                .iter()
+                .any(|id| id.as_str() == "tags.slot.kubernetes.page"),
+            installed
+        );
+        assert_eq!(
+            view.preview_order
+                .iter()
+                .any(|id| id.as_str() == "tags.slot.git.page"),
+            installed
+        );
+        view.start_preview_edit();
+        for _ in 0..view.preview_order.len() + 1 {
+            named(&mut view, NamedKey::Tab);
+            assert_eq!(view.focus, Focus::Preview);
+            assert!(view
+                .preview_order
+                .contains(view.preview_selected.as_ref().unwrap()));
+        }
+        assert_eq!(prefs.visual.information_bar.recipe(), recipe);
+    }
 }
 
 #[test]
@@ -3276,7 +3483,13 @@ fn selected_tag_stays_in_preview_when_source_wraps_to_an_optional_role() {
     let mut view = SettingsView::default();
     view.fit(960.0, 620.0, 16.0);
     view.open_customizations_with_slots(
-        crate::settings_catalog::catalog(1, &base, &original, &[]).unwrap(),
+        crate::settings_catalog::catalog(
+            1,
+            &base,
+            &original,
+            &crate::settings_catalog::test_installed_extensions(),
+        )
+        .unwrap(),
         None,
         Some(crate::settings_catalog::slot_page_snapshot(
             &original, &base,
@@ -3301,7 +3514,7 @@ fn selected_tag_stays_in_preview_when_source_wraps_to_an_optional_role() {
         1,
         &base,
         &original,
-        &[],
+        &crate::settings_catalog::test_installed_extensions(),
         &Edit {
             revision: 1,
             id: SettingId::new("tags.slot.windows.text").unwrap(),
@@ -3310,7 +3523,13 @@ fn selected_tag_stays_in_preview_when_source_wraps_to_an_optional_role() {
     )
     .unwrap();
     view.refresh_with_resources(
-        crate::settings_catalog::catalog(2, &base, &changed, &[]).unwrap(),
+        crate::settings_catalog::catalog(
+            2,
+            &base,
+            &changed,
+            &crate::settings_catalog::test_installed_extensions(),
+        )
+        .unwrap(),
         None,
         Some(crate::settings_catalog::slot_page_snapshot(
             &changed,
@@ -3330,7 +3549,7 @@ fn repurposed_tag_does_not_duplicate_its_default_source_in_the_live_preview() {
         1,
         &base,
         &original,
-        &[],
+        &crate::settings_catalog::test_installed_extensions(),
         &Edit {
             revision: 1,
             id: SettingId::new("tags.slot.windows.text").unwrap(),
@@ -3341,7 +3560,13 @@ fn repurposed_tag_does_not_duplicate_its_default_source_in_the_live_preview() {
     let mut view = SettingsView::default();
     view.fit(960.0, 620.0, 16.0);
     view.open_customizations_with_slots(
-        crate::settings_catalog::catalog(2, &base, &changed, &[]).unwrap(),
+        crate::settings_catalog::catalog(
+            2,
+            &base,
+            &changed,
+            &crate::settings_catalog::test_installed_extensions(),
+        )
+        .unwrap(),
         None,
         Some(crate::settings_catalog::slot_page_snapshot(
             &changed,
@@ -3388,7 +3613,7 @@ fn tag_source_choice_keeps_its_editor_through_cloud_wsl_and_wrap_boundaries() {
             1,
             &base,
             &original,
-            &[],
+            &crate::settings_catalog::test_installed_extensions(),
             &Edit {
                 revision: 1,
                 id: source.clone(),
@@ -3399,7 +3624,13 @@ fn tag_source_choice_keeps_its_editor_through_cloud_wsl_and_wrap_boundaries() {
         let mut view = SettingsView::default();
         view.fit(960.0, 620.0, 16.0);
         view.open_customizations_with_slots(
-            crate::settings_catalog::catalog(2, &base, &prepared, &[]).unwrap(),
+            crate::settings_catalog::catalog(
+                2,
+                &base,
+                &prepared,
+                &crate::settings_catalog::test_installed_extensions(),
+            )
+            .unwrap(),
             None,
             Some(crate::settings_catalog::slot_page_snapshot(
                 &prepared,
@@ -3438,10 +3669,22 @@ fn tag_source_choice_keeps_its_editor_through_cloud_wsl_and_wrap_boundaries() {
             edit.change,
             Change::Set(SettingValue::Choice(expected.into()))
         );
-        let changed =
-            crate::settings_catalog::apply_edit(2, &base, &prepared, &[], &edit).unwrap();
+        let changed = crate::settings_catalog::apply_edit(
+            2,
+            &base,
+            &prepared,
+            &crate::settings_catalog::test_installed_extensions(),
+            &edit,
+        )
+        .unwrap();
         view.refresh_with_resources(
-            crate::settings_catalog::catalog(3, &base, &changed, &[]).unwrap(),
+            crate::settings_catalog::catalog(
+                3,
+                &base,
+                &changed,
+                &crate::settings_catalog::test_installed_extensions(),
+            )
+            .unwrap(),
             None,
             Some(crate::settings_catalog::slot_page_snapshot(
                 &changed,
@@ -3480,7 +3723,7 @@ fn temporarily_incomplete_tag_color_catalog_keeps_editor_and_recovers() {
         1,
         &base,
         &original,
-        &[],
+        &crate::settings_catalog::test_installed_extensions(),
         &Edit {
             revision: 1,
             id: source.clone(),
@@ -3491,7 +3734,13 @@ fn temporarily_incomplete_tag_color_catalog_keeps_editor_and_recovers() {
     let mut view = SettingsView::default();
     view.fit(960.0, 620.0, 16.0);
     view.open_customizations_with_slots(
-        crate::settings_catalog::catalog(1, &base, &original, &[]).unwrap(),
+        crate::settings_catalog::catalog(
+            1,
+            &base,
+            &original,
+            &crate::settings_catalog::test_installed_extensions(),
+        )
+        .unwrap(),
         None,
         Some(crate::settings_catalog::slot_page_snapshot(
             &original, &base,
@@ -3508,7 +3757,13 @@ fn temporarily_incomplete_tag_color_catalog_keeps_editor_and_recovers() {
     view.paint(&mut Raster::new(1.0), theme());
     view.enter_preview_item(page.clone());
 
-    let complete = crate::settings_catalog::catalog(2, &base, &changed, &[]).unwrap();
+    let complete = crate::settings_catalog::catalog(
+        2,
+        &base,
+        &changed,
+        &crate::settings_catalog::test_installed_extensions(),
+    )
+    .unwrap();
     let incomplete = Catalog::new(
         2,
         complete
@@ -3535,7 +3790,13 @@ fn temporarily_incomplete_tag_color_catalog_keeps_editor_and_recovers() {
     );
 
     view.refresh_with_resources(
-        crate::settings_catalog::catalog(3, &base, &changed, &[]).unwrap(),
+        crate::settings_catalog::catalog(
+            3,
+            &base,
+            &changed,
+            &crate::settings_catalog::test_installed_extensions(),
+        )
+        .unwrap(),
         None,
         Some(crate::settings_catalog::slot_page_snapshot(
             &changed,
@@ -3748,6 +4009,7 @@ fn timestamp_menu_edits_refresh_preview_keep_focus_and_confirm_resets() {
                 &original,
                 &original.apply_to(&base),
                 &base,
+                &crate::settings_catalog::test_installed_extensions(),
             )),
         );
         assert!(view
@@ -3791,6 +4053,7 @@ fn timestamp_menu_edits_refresh_preview_keep_focus_and_confirm_resets() {
                 &changed,
                 &changed.apply_to(&base),
                 &base,
+                &crate::settings_catalog::test_installed_extensions(),
             )),
         );
         assert_eq!(view.title(), "Command timestamps");
@@ -6186,7 +6449,13 @@ fn workflow_tag_view() -> SettingsView {
     let mut view = SettingsView::default();
     view.fit(320.0, 420.0, 16.0);
     view.open_customizations_with_slots(
-        crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+        crate::settings_catalog::catalog(
+            1,
+            &base,
+            &preferences,
+            &crate::settings_catalog::test_installed_extensions(),
+        )
+        .unwrap(),
         None,
         Some(crate::settings_catalog::slot_page_snapshot(
             &preferences,
@@ -7129,6 +7398,7 @@ fn fonts_menu_navigation_edit_refresh_reset_restore_and_scaled_preview() {
                 &original,
                 &original.apply_to(&base),
                 &base,
+                &crate::settings_catalog::test_installed_extensions(),
             )),
         );
         assert!(view
@@ -7155,6 +7425,7 @@ fn fonts_menu_navigation_edit_refresh_reset_restore_and_scaled_preview() {
                 &changed,
                 &changed.apply_to(&base),
                 &base,
+                &crate::settings_catalog::test_installed_extensions(),
             )),
         );
         assert_eq!(view.title(), "Fonts");
@@ -7225,6 +7496,7 @@ fn installed_font_picker() -> SettingsView {
             &preferences,
             &base,
             &base,
+            &crate::settings_catalog::test_installed_extensions(),
         )),
     );
     view.view
@@ -8134,6 +8406,7 @@ fn dependent_settings_view(
             preferences,
             &preferences.apply_to(base),
             base,
+            &crate::settings_catalog::test_installed_extensions(),
         )),
     );
     assert!(view
@@ -8214,6 +8487,7 @@ fn dependent_settings_refresh_preserves_choices_and_removes_stale_focus_and_sear
                 prefs,
                 &prefs.apply_to(&base),
                 &base,
+                &crate::settings_catalog::test_installed_extensions(),
             )),
         );
     };
@@ -8264,6 +8538,7 @@ fn dependent_settings_same_revision_refresh_cancels_newly_hidden_editor() {
             &prefs,
             &prefs.apply_to(&base),
             &base,
+            &crate::settings_catalog::test_installed_extensions(),
         )),
     );
     assert!(view.color_editor.is_none());
@@ -8349,6 +8624,7 @@ fn dependent_settings_refresh_paint_benchmark() {
                     &prefs,
                     &prefs.apply_to(&base),
                     &base,
+                    &crate::settings_catalog::test_installed_extensions(),
                 )),
             );
             view.paint(std::hint::black_box(&mut raster), theme());

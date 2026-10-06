@@ -16,6 +16,7 @@ mod window_controls;
 pub(crate) use visibility::visible_controls;
 pub(crate) const WINDOW_CONTROLS: &str = "window-controls.style";
 
+use automexia_ui_model::information_bar::BarContextAvailability;
 use automexia_ui_model::settings::{
     self, Catalog, Change, CoreOrigins, CoreValues, Edit, SettingValue, SettingsError,
     ValueOrigin,
@@ -30,7 +31,8 @@ use rio_backend::config::{
 pub(crate) struct SlotPageSnapshot {
     font: fonts::Snapshot,
     bar: crate::automexia::preferences::InformationBarPreferences,
-    devops_context_enabled: bool,
+    context: BarContextAvailability,
+    git_controls_available: bool,
     tags: TagAppearance,
     tables: rio_backend::config::presentation::TableAppearance,
     table_base: rio_backend::config::presentation::TableAppearance,
@@ -78,7 +80,18 @@ impl SlotPageSnapshot {
         (self.tables, self.palette)
     }
     pub(crate) fn preview_devops_enabled(&self) -> bool {
-        self.devops_context_enabled
+        self.context.devops
+    }
+
+    pub(crate) fn preview_context(&self) -> BarContextAvailability {
+        self.context
+    }
+
+    pub(crate) fn slot_available(&self, id: &str) -> bool {
+        // Git's switch lives in its tag editor. Keep this one re-enable entry
+        // while installed, but never after removal. Its preview stays hidden.
+        (id == "git" && self.git_controls_available && !self.context.git)
+            || self.bar.recipe().slot_available(id, self.context)
     }
 
     pub(crate) fn preview_recipe(
@@ -112,7 +125,21 @@ pub(crate) fn slot_page_snapshot_with_config(
     preferences: &UserPreferences,
     effective: &Config,
     base: &Config,
+    market: &[MarketItem],
 ) -> SlotPageSnapshot {
+    // Reuse validated, bounded extension descriptors. A missing or invalid
+    // inventory must never turn a saved On preference into admission.
+    let extensions = settings_extensions::extension_settings(market, |id| {
+        preferences.extension_feature_enabled(id)
+    })
+    .unwrap_or_default();
+    let enabled = |id| {
+        extensions.iter().any(|entry| {
+            entry.id.as_str() == id
+                && entry.value == SettingValue::Boolean(true)
+                && entry.availability.reason().is_none()
+        })
+    };
     let [red, green, blue, _] = effective
         .colors
         .foreground
@@ -120,9 +147,14 @@ pub(crate) fn slot_page_snapshot_with_config(
     SlotPageSnapshot {
         font: fonts::Snapshot::new(base, effective, preferences),
         bar: preferences.visual.information_bar.clone(),
-        devops_context_enabled: preferences
-            .extension_feature_enabled(settings_extensions::DEVOPS_CONTEXT_STATUS_ID)
-            .unwrap_or(true),
+        context: BarContextAvailability {
+            devops: enabled(settings_extensions::DEVOPS_CONTEXT_STATUS_ID),
+            git: enabled(settings_extensions::DEVOPS_GIT_STATUS_ID),
+        },
+        git_controls_available: extensions.iter().any(|entry| {
+            entry.id.as_str() == settings_extensions::DEVOPS_GIT_STATUS_ID
+                && entry.availability.reason().is_none()
+        }),
         tags: effective.presentation.tags,
         tables: effective.presentation.tables,
         table_base: base.presentation.tables,
@@ -148,7 +180,22 @@ pub(crate) fn slot_page_snapshot(
     preferences: &UserPreferences,
     effective: &Config,
 ) -> SlotPageSnapshot {
-    slot_page_snapshot_with_config(preferences, effective, &Config::default())
+    slot_page_snapshot_with_config(
+        preferences,
+        effective,
+        &Config::default(),
+        &test_installed_extensions(),
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn test_installed_extensions() -> [MarketItem; 1] {
+    [MarketItem {
+        id: crate::automexia::builtins::devops::ID.into(),
+        name: "DevOps".into(),
+        description: "Fixture".into(),
+        installed: true,
+    }]
 }
 
 pub(crate) fn window_controls_page_catalog(
@@ -854,7 +901,7 @@ pub(crate) fn slot_page_actions(
                 .then(|| (id, format!("Custom tag {number}")))
         }));
     for (slot_id, label) in specs {
-        if !recipe.slot_visible_with_devops(&slot_id, snapshot.preview_devops_enabled()) {
+        if !snapshot.slot_available(&slot_id) {
             continue;
         }
         let mut action = visual_row(
@@ -908,6 +955,16 @@ pub(crate) fn selected_tag_catalog(
     use automexia_ui_model::information_bar::{
         preset_recipe, role_id, BarIconSource, BarTextSource,
     };
+
+    if slot_id == "git" && snapshot.git_controls_available && !snapshot.context.git {
+        let feature = full
+            .entries()
+            .iter()
+            .find(|entry| entry.id.as_str() == settings_extensions::DEVOPS_GIT_STATUS_ID)
+            .cloned()
+            .ok_or(SettingsError::Unavailable)?;
+        return Catalog::new(full.revision(), vec![feature]);
+    }
 
     let mut entries = slot_page_catalog(full.revision(), snapshot, slot_id)?
         .entries()
@@ -1164,7 +1221,11 @@ pub(crate) fn apply_edit_with_palette(
             preferences,
             &preferences.apply_to(base),
             base,
+            market,
         );
+        if !snapshot.slot_available(slot_id) {
+            return Err(SettingsError::Unavailable);
+        }
         slot_page_catalog(revision, &snapshot, slot_id)?.validate_edit(edit)?;
     } else if edit.id.as_str().starts_with("window-controls.") {
         window_controls::catalog(revision, base, preferences, palette, edit.id.as_str())?
@@ -1580,9 +1641,10 @@ fn choice_kind(values: &[(&str, &str)]) -> settings::SettingKind {
     }
 }
 
-fn role_choices() -> Vec<settings::ChoiceOption> {
+fn role_choices(availability: BarContextAvailability) -> Vec<settings::ChoiceOption> {
     automexia_ui_model::information_bar::STANDARD_ROLES
         .into_iter()
+        .filter(|role| availability.role_available(*role))
         .map(|role| settings::ChoiceOption {
             value: automexia_ui_model::information_bar::role_id(role).into(),
             label: automexia_ui_model::information_bar::role_label(role).into(),
@@ -1693,6 +1755,12 @@ pub(crate) fn slot_page_catalog(
     snapshot: &SlotPageSnapshot,
     slot_id: &str,
 ) -> Result<Catalog, SettingsError> {
+    if !snapshot
+        .preview_recipe()
+        .slot_available(slot_id, snapshot.preview_context())
+    {
+        return Err(SettingsError::Unavailable);
+    }
     let rows = slot_descriptors(snapshot, slot_id)?;
     if rows.is_empty() {
         return Err(SettingsError::UnknownSetting);
@@ -1790,7 +1858,7 @@ fn slot_descriptors(
             SettingValue::Boolean(slot.enabled),
             SettingValue::Boolean(default.enabled),
         )?;
-        let mut text_options = role_choices();
+        let mut text_options = role_choices(snapshot.preview_context());
         text_options.push(settings::ChoiceOption {
             value: "literal".into(),
             label: "Custom text".into(),
@@ -1857,7 +1925,7 @@ fn slot_descriptors(
             "icon context",
             "Icon from another context.",
             settings::SettingKind::Choice {
-                options: role_choices(),
+                options: role_choices(snapshot.preview_context()),
             },
             SettingValue::Choice(role_id(icon_role(&slot.icon)).into()),
             SettingValue::Choice(role_id(icon_role(&default.icon)).into()),
@@ -3630,7 +3698,14 @@ mod tests {
                 Change::Set(SettingValue::Choice("fixed".into())),
             ),
         ] {
-            saved = apply_edit(7, &base, &saved, &[], &edit(id, change)).unwrap();
+            saved = apply_edit(
+                7,
+                &base,
+                &saved,
+                &crate::settings_catalog::test_installed_extensions(),
+                &edit(id, change),
+            )
+            .unwrap();
         }
         let slot = saved
             .visual
@@ -3650,7 +3725,7 @@ mod tests {
             7,
             &base,
             &saved,
-            &[],
+            &crate::settings_catalog::test_installed_extensions(),
             &edit(
                 "tags.slot.windows.icon",
                 Change::Set(SettingValue::Choice("context".into())),
@@ -4363,7 +4438,7 @@ mod tests {
                         7,
                         &base,
                         &original,
-                        &[],
+                        &crate::settings_catalog::test_installed_extensions(),
                         &edit(
                             "tags.slot.windows.text",
                             Change::Set(SettingValue::Choice("none".into())),
@@ -4377,14 +4452,20 @@ mod tests {
                     7,
                     &base,
                     &prepared,
-                    &[],
+                    &crate::settings_catalog::test_installed_extensions(),
                     &edit(
                         &format!("tags.slot.windows.{source}"),
                         Change::Set(SettingValue::Choice(role_id.into())),
                     ),
                 )
                 .unwrap();
-                let full = catalog(7, &base, &selected, &[]).unwrap();
+                let full = catalog(
+                    7,
+                    &base,
+                    &selected,
+                    &crate::settings_catalog::test_installed_extensions(),
+                )
+                .unwrap();
                 let snapshot = slot_page_snapshot(&selected, &selected.apply_to(&base));
                 let detail = selected_tag_catalog(&full, &snapshot, "windows").unwrap();
                 assert!(
@@ -4835,6 +4916,123 @@ pub(crate) fn prune_removed_extension_features(
 #[cfg(test)]
 mod inventory_tests {
     use super::*;
+    #[test]
+    fn devops_preview_admission_matches_membership_and_independent_switches() {
+        let base = Config::default();
+        for installed in [false, true] {
+            for context in [false, true] {
+                for git in [false, true] {
+                    let mut prefs = UserPreferences::default();
+                    prefs
+                        .set_extension_feature_enabled(
+                            settings_extensions::DEVOPS_CONTEXT_STATUS_ID,
+                            context,
+                        )
+                        .unwrap();
+                    prefs
+                        .set_extension_feature_enabled(
+                            settings_extensions::DEVOPS_GIT_STATUS_ID,
+                            git,
+                        )
+                        .unwrap();
+                    let mut market = test_installed_extensions();
+                    market[0].installed = installed;
+                    let snapshot =
+                        slot_page_snapshot_with_config(&prefs, &base, &base, &market);
+                    assert_eq!(
+                        snapshot.slot_available("kubernetes"),
+                        installed && context
+                    );
+                    assert_eq!(snapshot.slot_available("git"), installed);
+                    assert_eq!(snapshot.preview_context().git, installed && git);
+                    assert!(snapshot.slot_available("user"));
+                    let full = catalog(1, &base, &prefs, &market).unwrap();
+                    let visible = visible_controls(full.clone(), &full).unwrap();
+                    for (role, enabled) in [
+                        ("kubernetes", installed && context),
+                        ("git", installed && git),
+                        ("user", true),
+                    ] {
+                        assert_eq!(
+                            visible
+                                .get(
+                                    &settings::SettingId::new(format!(
+                                        "tags.colors.{role}"
+                                    ))
+                                    .unwrap()
+                                )
+                                .is_some(),
+                            enabled
+                        );
+                    }
+                    let controls = slot_page_catalog(1, &snapshot, "user").unwrap();
+                    for id in ["tags.slot.user.text", "tags.slot.user.icon-context"] {
+                        let settings::SettingKind::Choice { options } = &controls
+                            .get(&settings::SettingId::new(id).unwrap())
+                            .unwrap()
+                            .kind
+                        else {
+                            panic!("expected source choices");
+                        };
+                        assert_eq!(
+                            options.iter().any(|option| option.value == "kubernetes"),
+                            installed && context
+                        );
+                        assert_eq!(
+                            options.iter().any(|option| option.value == "git"),
+                            installed && git
+                        );
+                    }
+                    if !installed || !context {
+                        assert!(matches!(
+                            slot_page_catalog(1, &snapshot, "kubernetes"),
+                            Err(SettingsError::Unavailable)
+                        ));
+                        let edit = Edit {
+                            revision: 1,
+                            id: settings::SettingId::new("tags.slot.kubernetes.enabled")
+                                .unwrap(),
+                            change: Change::Set(SettingValue::Boolean(true)),
+                        };
+                        assert!(matches!(
+                            apply_edit(1, &base, &prefs, &market, &edit),
+                            Err(SettingsError::Unavailable)
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn devops_preview_missing_or_invalid_inventory_fails_closed_without_losing_style() {
+        let base = Config::default();
+        let mut prefs = UserPreferences::default();
+        let mut recipe = prefs.visual.information_bar.recipe();
+        recipe.slots[0].color = Some([17, 43, 91]);
+        prefs.visual.information_bar.use_custom = true;
+        prefs.visual.information_bar.custom_recipe = Some(recipe.clone());
+        let item = test_installed_extensions()[0].clone();
+        for market in [
+            vec![],
+            vec![item.clone(), item.clone()],
+            vec![item; settings_extensions::MAX_EXTENSION_SNAPSHOT_ITEMS + 1],
+        ] {
+            let snapshot = slot_page_snapshot_with_config(&prefs, &base, &base, &market);
+            assert!(!snapshot.slot_available("kubernetes"));
+            assert!(!snapshot.slot_available("git"));
+            assert_eq!(snapshot.preview_recipe(), recipe);
+        }
+        let restored = slot_page_snapshot_with_config(
+            &prefs,
+            &base,
+            &base,
+            &test_installed_extensions(),
+        );
+        assert!(restored.slot_available("kubernetes"));
+        assert_eq!(restored.preview_recipe(), recipe);
+    }
+
     #[test]
     fn settings_inventory_prunes_only_after_ready_and_preserves_unrelated_overrides() {
         let mut prefs = UserPreferences {

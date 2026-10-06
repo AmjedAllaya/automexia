@@ -375,8 +375,12 @@ mod tests {
             )
             .unwrap();
             let full = crate::settings_catalog::catalog(17, &base, &prefs, &[]).unwrap();
-            let snapshot =
-                slot_page_snapshot_with_config(&prefs, &prefs.apply_to(&base), &base);
+            let snapshot = slot_page_snapshot_with_config(
+                &prefs,
+                &prefs.apply_to(&base),
+                &base,
+                &crate::settings_catalog::test_installed_extensions(),
+            );
             let page = window_controls_page_catalog(&full, &snapshot).unwrap();
             assert!(page.entries().len() >= 14);
             for row in page

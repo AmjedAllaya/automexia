@@ -4972,6 +4972,10 @@ impl SettingsView {
             }
             let state = slot_id_from_page(&entry.id)
                 .and_then(|slot_id| recipe.slots.iter().find(|slot| slot.id == slot_id));
+            let enabled = state.is_some_and(|slot| {
+                slot.enabled
+                    && recipe.slot_available(&slot.id, snapshot.preview_context())
+            });
             let is_add = entry.id.as_str() == "tags.add-slot";
             let state_width = (self.font * 3.5).min(row.width * 0.26);
             let state_rect = Rect {
@@ -4984,13 +4988,13 @@ impl SettingsView {
                 state_rect,
                 if is_add {
                     "+"
-                } else if state.is_some_and(|slot| slot.enabled) {
+                } else if enabled {
                     "On"
                 } else {
                     "Off"
                 },
                 (self.font * 0.76).clamp(10.0, 16.0),
-                if is_add || state.is_some_and(|slot| slot.enabled) {
+                if is_add || enabled {
                     theme.text
                 } else {
                     theme.muted_text
@@ -5010,7 +5014,7 @@ impl SettingsView {
                     .strip_prefix("Tag slot: ")
                     .unwrap_or(&entry.label),
                 (self.font * 0.76).clamp(10.0, 16.0),
-                if state.is_some_and(|slot| slot.enabled) || is_add {
+                if enabled || is_add {
                     theme.text
                 } else {
                     theme.muted_text
@@ -5044,8 +5048,7 @@ impl SettingsView {
             return;
         };
         let configured_recipe = snapshot.preview_recipe();
-        let recipe =
-            configured_recipe.with_devops_context(snapshot.preview_devops_enabled());
+        let recipe = configured_recipe.with_context(snapshot.preview_context());
         let appearance = snapshot.preview_appearance();
         let foreground = snapshot.preview_foreground();
         let (terminal_background, _) = snapshot.preview_terminal_colors();
@@ -6298,11 +6301,11 @@ fn preview_page_still_available(
         return false;
     }
     if let Some(slot_id) = slot_id_from_page(key) {
-        if navigation.slot_pages.as_ref().is_some_and(|snapshot| {
-            !snapshot
-                .preview_recipe()
-                .slot_visible_with_devops(slot_id, snapshot.preview_devops_enabled())
-        }) {
+        if navigation
+            .slot_pages
+            .as_ref()
+            .is_some_and(|snapshot| !snapshot.slot_available(slot_id))
+        {
             return false;
         }
         if automexia_ui_model::information_bar::role_from_id(slot_id).is_some() {

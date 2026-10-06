@@ -173,8 +173,9 @@ usable and clean up its workers, queues, caches, and temporary state.
 Network, credential, provider, filesystem, and process authority do not belong
 on input, PTY, resize, startup, or renderer hot paths.
 
-Plain operational status classification stays in the optional `automexia-devops`
-extension. Its bounded, allocation-free recognizer distinguishes lifecycle from
+Plain operational status classification belongs to the application's
+`automexia::output_semantics`, independently of optional DevOps discovery.
+Its bounded, allocation-free recognizer distinguishes lifecycle from
 readiness; the core grid emitter maps generic severity to active palette colours
 and preserves explicit application ANSI. No provider access, worker or persisted
 state participates in this row path. See

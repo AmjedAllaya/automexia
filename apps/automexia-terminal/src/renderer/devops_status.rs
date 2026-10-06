@@ -1853,6 +1853,39 @@ mod tests {
     }
 
     #[test]
+    fn devops_reinstallation_invalidates_active_and_parked_history_even_with_same_switches(
+    ) {
+        let mut renderer =
+            super::super::Renderer::new(&rio_backend::config::Config::default());
+        renderer.apply_context_activation((41, true, true));
+        renderer.devops_status = history_status(10, "old-active", "live-active");
+        renderer
+            .devops_statuses
+            .insert(20, history_status(20, "old-parked", "live-parked"));
+        assert!(!renderer.apply_context_activation((41, true, true)));
+        assert_eq!(
+            historical_value(&renderer.devops_status, 10),
+            Some("old-active")
+        );
+        assert!(renderer.apply_context_activation((42, true, true)));
+        for (route, status) in [
+            (10, &renderer.devops_status),
+            (20, &renderer.devops_statuses[&20]),
+        ] {
+            let segments = status.segments_for_prompt(route, &history_anchor());
+            assert!(segments
+                .iter()
+                .any(|segment| segment.role == SegmentRole::UbuntuWsl));
+            assert!(!segments
+                .iter()
+                .any(|segment| segment.role == SegmentRole::Kubernetes));
+            assert!(status.contribution.is_none());
+            assert!(!status.request_in_flight);
+            assert!(!status.refresh_pending);
+        }
+    }
+
+    #[test]
     fn disabling_optional_discovery_keeps_historical_core_identity_only() {
         let mut status = history_status(10, "old-namespace", "new-namespace");
         assert_eq!(historical_value(&status, 10), Some("old-namespace"));

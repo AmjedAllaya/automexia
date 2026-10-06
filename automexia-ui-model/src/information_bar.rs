@@ -513,25 +513,72 @@ pub struct BarRecipe {
     pub slots: Vec<BarSlot>,
 }
 
+/// Effective host admission, separate from persisted slot choices. A missing
+/// extension disables both features; switching discovery off can keep Git on.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BarContextAvailability {
+    pub devops: bool,
+    pub git: bool,
+}
+
+impl BarContextAvailability {
+    pub fn role_available(self, role: SegmentRole) -> bool {
+        if role == SegmentRole::Git {
+            self.git
+        } else {
+            !devops_role(role) || self.devops
+        }
+    }
+
+    fn slot_available(self, slot: &BarSlot) -> bool {
+        role_from_id(&slot.id).is_none_or(|role| self.role_available(role))
+            && !matches!(slot.text, BarTextSource::Role(role) if !self.role_available(role))
+            && !matches!(slot.icon, BarIconSource::Role(role) if !self.role_available(role))
+    }
+}
+
 impl BarRecipe {
     /// Project visibility without changing saved slot choices. Both terminal
     /// bands and the editor use this gate, including literal and icon-only tags.
     pub fn with_devops_context(&self, enabled: bool) -> Cow<'_, Self> {
-        if enabled || self.slots.iter().all(|slot| !slot_uses_devops(slot)) {
+        self.with_context(BarContextAvailability {
+            devops: enabled,
+            git: true,
+        })
+    }
+
+    pub fn with_context(&self, availability: BarContextAvailability) -> Cow<'_, Self> {
+        if (availability.devops && availability.git)
+            || self
+                .slots
+                .iter()
+                .all(|slot| availability.slot_available(slot))
+        {
             return Cow::Borrowed(self);
         }
         let mut visible = self.clone();
-        visible.slots.retain(|slot| !slot_uses_devops(slot));
+        visible
+            .slots
+            .retain(|slot| availability.slot_available(slot));
         Cow::Owned(visible)
     }
 
     /// The editor also lists disabled/default slots absent from a preset.
     pub fn slot_visible_with_devops(&self, id: &str, enabled: bool) -> bool {
-        enabled
-            || !self.slots.iter().find(|slot| slot.id == id).map_or_else(
-                || role_from_id(id).is_some_and(devops_role),
-                slot_uses_devops,
-            )
+        self.slot_available(
+            id,
+            BarContextAvailability {
+                devops: enabled,
+                git: true,
+            },
+        )
+    }
+
+    pub fn slot_available(&self, id: &str, availability: BarContextAvailability) -> bool {
+        self.slots.iter().find(|slot| slot.id == id).map_or_else(
+            || role_from_id(id).is_none_or(|role| availability.role_available(role)),
+            |slot| availability.slot_available(slot),
+        )
     }
 }
 
@@ -543,14 +590,6 @@ fn devops_role(role: SegmentRole) -> bool {
             | SegmentRole::Git
             | SegmentRole::User
     )
-}
-
-fn slot_uses_devops(slot: &BarSlot) -> bool {
-    // A built-in DevOps tag remains in that group when its label is customized.
-    // Independent custom literals and decorative fixed icons need no discovery.
-    role_from_id(&slot.id).is_some_and(devops_role)
-        || matches!(slot.text, BarTextSource::Role(role) if devops_role(role))
-        || matches!(slot.icon, BarIconSource::Role(role) if devops_role(role))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1020,6 +1059,73 @@ mod tests {
             color: None,
             prefix: String::new(),
             suffix: String::new(),
+        }
+    }
+
+    #[test]
+    fn devops_membership_projection_gates_git_custom_sources_and_preserves_recipes() {
+        for preset in InformationBarPreset::ALL {
+            let mut recipe = preset_recipe(preset);
+            for (id, text, icon) in [
+                (
+                    "custom-1",
+                    BarTextSource::Literal("team".into()),
+                    BarIconSource::None,
+                ),
+                (
+                    "custom-2",
+                    BarTextSource::Role(SegmentRole::Git),
+                    BarIconSource::None,
+                ),
+                (
+                    "custom-3",
+                    BarTextSource::Literal("cluster".into()),
+                    BarIconSource::Role(SegmentRole::Kubernetes),
+                ),
+            ] {
+                let mut custom = slot(text, icon);
+                custom.id = id.into();
+                recipe.slots.push(custom);
+            }
+            let saved = recipe.clone();
+            for (devops, git) in [
+                (true, true),
+                (false, true),
+                (false, false),
+                (true, false),
+                (true, true),
+            ] {
+                let availability = BarContextAvailability { devops, git };
+                let visible = recipe.with_context(availability);
+                for entry in &visible.slots {
+                    assert!(
+                        !matches!(entry.text, BarTextSource::Role(SegmentRole::Git))
+                            || git
+                    );
+                    assert!(
+                        !matches!(
+                            entry.icon,
+                            BarIconSource::Role(SegmentRole::Kubernetes)
+                        ) || devops
+                    );
+                }
+                assert!(visible.slots.iter().any(|entry| entry.id == "custom-1"));
+                assert_eq!(
+                    visible.slots.iter().any(|entry| entry.id == "custom-2"),
+                    git
+                );
+                assert_eq!(
+                    visible.slots.iter().any(|entry| entry.id == "custom-3"),
+                    devops
+                );
+                assert_eq!(recipe.slot_available("git", availability), git);
+                assert_eq!(recipe.slot_available("kubernetes", availability), devops);
+                assert!(recipe.slot_available("user", availability));
+                assert_eq!(recipe, saved);
+                if devops && git {
+                    assert!(matches!(visible, Cow::Borrowed(_)));
+                }
+            }
         }
     }
 

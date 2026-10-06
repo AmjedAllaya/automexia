@@ -363,7 +363,12 @@ mod tests {
         let root = catalog(7, &base, &prefs, &[]).unwrap();
         let page = font_page_catalog(
             &root,
-            &slot_page_snapshot_with_config(&prefs, &base, &base),
+            &slot_page_snapshot_with_config(
+                &prefs,
+                &base,
+                &base,
+                &crate::settings_catalog::test_installed_extensions(),
+            ),
         )
         .unwrap();
         assert_eq!(page.entries().len(), 34);

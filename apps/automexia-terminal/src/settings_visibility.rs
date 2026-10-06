@@ -142,8 +142,23 @@ impl<'a> Visibility<'a> {
             if id == "tags.opacity" {
                 return self.choice("tags.style", "tinted") != "plain";
             }
-            if id.starts_with("tags.colors.") && !self.selected_slot_enabled {
-                return false;
+            if id.starts_with("tags.colors.") {
+                if !self.selected_slot_enabled {
+                    return false;
+                }
+                let availability = BarContextAvailability {
+                    devops: self
+                        .boolean(settings_extensions::DEVOPS_CONTEXT_STATUS_ID, false),
+                    git: self.boolean(settings_extensions::DEVOPS_GIT_STATUS_ID, false),
+                };
+                if crate::automexia::presentation::TAG_COLOR_BINDINGS
+                    .iter()
+                    .any(|binding| {
+                        binding.id == id && !availability.role_available(binding.role)
+                    })
+                {
+                    return false;
+                }
             }
             if let Some((slot, field)) = id
                 .strip_prefix("tags.slot.")
@@ -266,8 +281,12 @@ mod tests {
         for enabled in [false, true, false, true] {
             prefs.fonts.bold_enabled = Some(enabled);
             let full = catalog(1, &base, &prefs, &[]).unwrap();
-            let snapshot =
-                slot_page_snapshot_with_config(&prefs, &prefs.apply_to(&base), &base);
+            let snapshot = slot_page_snapshot_with_config(
+                &prefs,
+                &prefs.apply_to(&base),
+                &base,
+                &crate::settings_catalog::test_installed_extensions(),
+            );
             let page =
                 visible_controls(font_page_catalog(&full, &snapshot).unwrap(), &full)
                     .unwrap();
@@ -359,6 +378,7 @@ mod tests {
                         &prefs,
                         &prefs.apply_to(&base),
                         &base,
+                        &crate::settings_catalog::test_installed_extensions(),
                     );
                     let raw = table_page_catalog(&full, &snapshot).unwrap();
                     let page = visible_controls(raw, &full).unwrap();
@@ -414,6 +434,7 @@ mod tests {
                             &prefs,
                             &prefs.apply_to(&base),
                             &base,
+                            &crate::settings_catalog::test_installed_extensions(),
                         );
                         let raw = timestamp_page_catalog(&full, &snapshot).unwrap();
                         let page = visible_controls(raw, &full).unwrap();
@@ -538,8 +559,12 @@ mod tests {
             .unwrap();
         }
         let full = catalog(1, &base, &prefs, &[]).unwrap();
-        let snapshot =
-            slot_page_snapshot_with_config(&prefs, &prefs.apply_to(&base), &base);
+        let snapshot = slot_page_snapshot_with_config(
+            &prefs,
+            &prefs.apply_to(&base),
+            &base,
+            &crate::settings_catalog::test_installed_extensions(),
+        );
         let raw = selected_tag_catalog(&full, &snapshot, "windows").unwrap();
         let page = visible_controls(raw, &full).unwrap();
         for suffix in ["literal", "prefix", "suffix", "icon-context"] {
@@ -561,8 +586,12 @@ mod tests {
         )
         .unwrap();
         let full = catalog(2, &base, &prefs, &[]).unwrap();
-        let snapshot =
-            slot_page_snapshot_with_config(&prefs, &prefs.apply_to(&base), &base);
+        let snapshot = slot_page_snapshot_with_config(
+            &prefs,
+            &prefs.apply_to(&base),
+            &base,
+            &crate::settings_catalog::test_installed_extensions(),
+        );
         let raw = selected_tag_catalog(&full, &snapshot, "windows").unwrap();
         let page = visible_controls(raw, &full).unwrap();
         assert!(present(&page, "tags.slot.windows.enabled"));
@@ -617,8 +646,12 @@ mod tests {
             prefs.visual.timestamps.result_position = Some(result);
             prefs.visual.timestamps.order = Some(order);
             let full = catalog(1, &base, &prefs, &[]).unwrap();
-            let snapshot =
-                slot_page_snapshot_with_config(&prefs, &prefs.apply_to(&base), &base);
+            let snapshot = slot_page_snapshot_with_config(
+                &prefs,
+                &prefs.apply_to(&base),
+                &base,
+                &crate::settings_catalog::test_installed_extensions(),
+            );
             let raw = timestamp_page_catalog(&full, &snapshot).unwrap();
             let page = visible_controls(raw, &full).unwrap();
             assert_eq!(present(&page, "timestamps.date-time-separator"), date_time);

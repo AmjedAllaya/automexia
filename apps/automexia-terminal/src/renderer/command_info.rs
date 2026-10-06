@@ -658,7 +658,13 @@ mod tests {
         }
         let saved = recipe.clone();
         let mut text = rio_backend::sugarloaf::text::Text::new(&fonts());
-        for enabled in [true, false, true] {
+        for (enabled, git) in [
+            (true, true),
+            (false, true),
+            (false, false),
+            (true, false),
+            (true, true),
+        ] {
             let mut content = RenderableContent::default();
             let mut pane = snapshot(&mut terminal, &mut content);
             let mut status = devops_status::DevOpsStatus::default();
@@ -668,7 +674,12 @@ mod tests {
                 &pane.historical_anchors,
                 pane.live_anchor,
             );
-            let visible = recipe.with_devops_context(enabled);
+            let visible = recipe.with_context(
+                automexia_ui_model::information_bar::BarContextAvailability {
+                    devops: enabled,
+                    git,
+                },
+            );
             let (_, paints) = prepare_with_recipe(
                 &mut pane,
                 Some(&status),
@@ -682,7 +693,8 @@ mod tests {
                 .iter()
                 .map(|paint| paint.items[paint.fragment.item].slot_id.as_str())
                 .collect();
-            for id in ["ubuntu-wsl", "windows", "git", "user"] {
+            assert_eq!(ids.contains("git"), git);
+            for id in ["ubuntu-wsl", "windows", "user"] {
                 assert!(ids.contains(id), "core tag {id} must remain visible");
             }
             for id in [

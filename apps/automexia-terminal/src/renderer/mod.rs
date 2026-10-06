@@ -1020,6 +1020,7 @@ pub struct Renderer {
     /// Application-owned recipe shared by every prompt row in this window.
     pub information_bar_recipe: automexia_ui_model::information_bar::BarRecipe,
     extension_generation: u32,
+    context_revision: u64,
     /// Operational prompt state for the selected route.
     pub devops_status: devops_status::DevOpsStatus,
     /// The public active status and inactive map are two storage locations for
@@ -1091,6 +1092,9 @@ impl Renderer {
     }
 
     pub fn new(config: &Config) -> Renderer {
+        let extension_generation = crate::automexia::runtime::generation();
+        let (context_revision, devops_context_enabled, git_context_enabled) =
+            crate::automexia::runtime::context_activation();
         let named_colors = config.colors;
         let colors = List::from(&named_colors);
 
@@ -1146,13 +1150,14 @@ impl Renderer {
             compatibility_inspector:
                 compatibility_inspector::CompatibilityInspector::default(),
             connection_hub: connection_hub::ConnectionHub::default(),
-            devops_context_enabled: crate::automexia::runtime::context_status_enabled(),
-            git_context_enabled: crate::automexia::runtime::git_status_enabled(),
+            devops_context_enabled,
+            git_context_enabled,
             presentation: config.presentation,
             information_bar_recipe: automexia_ui_model::information_bar::preset_recipe(
                 automexia_ui_model::information_bar::InformationBarPreset::default(),
             ),
-            extension_generation: crate::automexia::runtime::generation(),
+            extension_generation,
+            context_revision,
             devops_status: devops_status::DevOpsStatus::default(),
             devops_status_route: None,
             devops_statuses: FxHashMap::default(),
@@ -1396,10 +1401,17 @@ impl Renderer {
             return false;
         }
         self.extension_generation = generation;
-        let context_enabled = crate::automexia::runtime::context_status_enabled();
-        let git_enabled = crate::automexia::runtime::git_status_enabled();
+        self.apply_context_activation(crate::automexia::runtime::context_activation())
+    }
+
+    fn apply_context_activation(
+        &mut self,
+        (revision, context_enabled, git_enabled): (u64, bool, bool),
+    ) -> bool {
         let changed = context_enabled != self.devops_context_enabled
-            || git_enabled != self.git_context_enabled;
+            || git_enabled != self.git_context_enabled
+            || revision != self.context_revision;
+        self.context_revision = revision;
         self.devops_context_enabled = context_enabled;
         self.git_context_enabled = git_enabled;
         if changed {
@@ -1959,9 +1971,12 @@ impl Renderer {
         self.command_result_states
             .retain(|route, _| visible_inactive_routes.contains(route));
 
-        let visible_information_bar = self
-            .information_bar_recipe
-            .with_devops_context(self.devops_context_enabled);
+        let visible_information_bar = self.information_bar_recipe.with_context(
+            automexia_ui_model::information_bar::BarContextAvailability {
+                devops: self.devops_context_enabled,
+                git: self.git_context_enabled,
+            },
+        );
 
         for item in context_manager
             .current_grid_mut()

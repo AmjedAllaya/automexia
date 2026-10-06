@@ -144,6 +144,7 @@ impl Application<'_> {
                 &self.user_preferences,
                 &self.config,
                 &self.base_config,
+                &market,
             )
         });
         let package_status = self.package_customizations.status();
@@ -234,6 +235,7 @@ impl Application<'_> {
             &self.user_preferences,
             &self.config,
             &self.base_config,
+            &market,
         );
         for route in self.router.routes.values_mut() {
             if !route.window.screen.settings_view.is_open() {

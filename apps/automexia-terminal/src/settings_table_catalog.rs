@@ -258,7 +258,12 @@ mod tests {
         assert_eq!(table_rows.len(), 19);
         let page = table_page_catalog(
             &full,
-            &slot_page_snapshot_with_config(&original, &base, &base),
+            &slot_page_snapshot_with_config(
+                &original,
+                &base,
+                &base,
+                &crate::settings_catalog::test_installed_extensions(),
+            ),
         )
         .unwrap();
         assert_eq!(page.entries().len(), 20);

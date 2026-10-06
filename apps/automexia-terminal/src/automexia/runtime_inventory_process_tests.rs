@@ -158,7 +158,30 @@ fn membership_cycle_rejects_old_request() {
         }
     };
     let old = capture();
+    assert!(runtime::write_runtime().register_refresh(
+        old.session.session_id,
+        old.operation_id,
+        old.capsule_revision,
+        old.context_revision,
+        old.cancellation.clone(),
+    ));
     assert!(!runtime::toggle("automexia.devops").unwrap());
+    assert!(old.cancellation.is_cancelled());
+    assert!(!runtime::context_status_enabled());
+    assert!(!runtime::git_status_enabled());
+    assert!(!runtime::market_items()
+        .iter()
+        .any(|item| item.id == "automexia.devops" && item.installed));
+    assert_eq!(
+        runtime::request_devops_refresh(&old.session, None),
+        runtime::RefreshSubmission::Rejected
+    );
+    {
+        let state = runtime::read_runtime();
+        assert!(state.pending.is_empty());
+        assert!(state.capsules.is_empty());
+        assert_eq!(state.devops_snapshots.len(), 0);
+    }
     assert!(runtime::toggle("automexia.devops").unwrap());
     let current = capture();
     let mut state = runtime::write_runtime();

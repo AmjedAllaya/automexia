@@ -617,6 +617,14 @@ pub fn git_status_enabled() -> bool {
     read_runtime().git_status_enabled()
 }
 
+/// One coherent lifecycle snapshot. The revision changes even if removal and
+/// reinstallation happen between two rendered frames with identical switches.
+pub fn context_activation() -> (u64, bool, bool) {
+    let runtime = read_runtime();
+    let scope = runtime.discovery_scope();
+    (runtime.context_revision, scope.devops, scope.git)
+}
+
 pub fn is_installed(id: &str) -> bool {
     let runtime = read_runtime();
     !runtime.stopping
