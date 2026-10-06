@@ -29,3 +29,10 @@
   when a test stalls; keep the complete capture and mutation inventory required.
 - Stream bounded source fingerprints so large reviewed image changes can be
   tested before committing, without retaining the complete patch in memory.
+- Require resource-sensor fixtures to acknowledge startup before sampling;
+  preserve positive-memory and exited-process rejection checks on every OS.
+- Recognize both native retired-object replies during AT-SPI subtree changes;
+  retain the original deadline and reject unrelated or malformed provider errors.
+- Add independently reviewed Windows, Linux, Apple Silicon and Intel Mac
+  reference sets: 431 scenes per platform, with exact pixels, font identities
+  and deduplicated lossless image storage.

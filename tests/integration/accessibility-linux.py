@@ -120,8 +120,13 @@ def wait_for(process, predicate, message: str, repaint=None):
                 # subtree replacement with this specific error. All other
                 # native errors still fail and retain private diagnostics.
                 retired_application = error.code == 0 and error.message == "The application no longer exists"
-                retired_node = error.code == 1 and re.fullmatch(
-                    r"Unknown object '/org/a11y/atspi/accessible/[0-9]{1,20}/[0-9]{1,40}'", error.message)
+                retired_path = r"/org/a11y/atspi/accessible/[0-9]{1,20}/[0-9]{1,40}"
+                # AccessKit's map_error emits just the object path for a node
+                # retired during a query; zbus emits the decorated form when
+                # its interface has already been removed. Both are code 1.
+                retired_node = error.code == 1 and (
+                    re.fullmatch(retired_path, error.message) or
+                    re.fullmatch("Unknown object '" + retired_path + "'", error.message))
                 if error.domain != "atspi_error" or not (retired_application or retired_node):
                     raise
         if repaint is not None:

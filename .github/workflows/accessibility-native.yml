@@ -79,6 +79,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m unittest discover -s tools/ci -p test_visual_quality.py
+          python -m unittest discover -s tools/ci -p test_application_collector.py
           cargo test -p xtask --locked visual_diff
           cargo build -p xtask --locked
       - name: Capture actual grid and UI primitives and prove mutation detection

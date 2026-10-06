@@ -117,7 +117,8 @@ class LinuxProbeContract(unittest.TestCase):
 
     def test_explicitly_retired_objects_retry_within_the_original_deadline(self):
         for error in (probe.ReplacedTree(), NativeError("The application no longer exists"),
-                      NativeError("Unknown object '/org/a11y/atspi/accessible/0/590295810358705651712'", code=1)):
+                      NativeError("Unknown object '/org/a11y/atspi/accessible/0/590295810358705651712'", code=1),
+                      NativeError("/org/a11y/atspi/accessible/0/590295810358705651712", code=1)):
             with self.subTest(error=type(error).__name__):
                 self.assertEqual(self.wait([error, ["ready"]]), (["ready"], 2))
 
@@ -127,6 +128,10 @@ class LinuxProbeContract(unittest.TestCase):
                       NativeError("The application no longer exists", domain="different"),
                       NativeError("Unknown object '/unrelated/0/1'", code=1),
                       NativeError("Unknown object '/org/a11y/atspi/accessible/0/1'", code=0),
+                      NativeError("/org/a11y/atspi/accessible/0/1", code=0),
+                      NativeError("/org/a11y/atspi/accessible/0/1", domain="different", code=1),
+                      NativeError("/org/a11y/atspi/accessible/0/1 extra", code=1),
+                      NativeError("/org/a11y/atspi/accessible/0/" + "1" * 41, code=1),
                       probe.ProbeFailure("oversized tree")):
             with self.subTest(error=str(error)), self.assertRaises(type(error)):
                 self.wait([error, ["ready"]])
@@ -136,6 +141,8 @@ class LinuxProbeContract(unittest.TestCase):
             self.wait([NativeError("The application no longer exists")] * 30)
         with self.assertRaisesRegex(probe.ProbeFailure, "deadline"):
             self.wait([NativeError("Unknown object '/org/a11y/atspi/accessible/0/1'", code=1)] * 30)
+        with self.assertRaisesRegex(probe.ProbeFailure, "deadline"):
+            self.wait([NativeError("/org/a11y/atspi/accessible/0/1", code=1)] * 30)
 
     def test_oversized_and_negative_child_counts_fail_without_defunct_state(self):
         state = SimpleNamespace(contains=lambda _state: False)

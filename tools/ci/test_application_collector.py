@@ -4,6 +4,7 @@ import os
 import io
 import subprocess
 import sys
+import time
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -104,18 +105,33 @@ class CollectorTests(unittest.TestCase):
     def test_native_resource_sensor_tracks_owned_process_then_rejects_exit(self):
         if sys.platform not in ('win32', 'linux', 'darwin'):
             self.skipTest('native resource adapter unavailable')
-        with subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(2)'],
-                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as process:
-            try:
-                counter = native.Resources(process)
-                rss, cpu, clock = counter.sample()
-                self.assertGreater(rss, 0); self.assertGreaterEqual(cpu, 0); self.assertGreater(clock, 0)
-                process.wait(timeout=5)
-                with self.assertRaises(BenchmarkError):
-                    counter.sample()
-            finally:
-                if process.poll() is None:
-                    process.terminate(); process.wait(timeout=5)
+        # Popen completion does not mean the child has initialized: Linux can
+        # legitimately expose zero RSS before Python maps its working set.
+        # Keep the real counter assertions; acknowledge fixture readiness and
+        # retain the child until sampling instead of racing a fixed sleep.
+        with TemporaryDirectory() as temporary:
+            ready = Path(temporary) / 'ready'
+            script = 'from pathlib import Path; import sys; Path(sys.argv[1]).write_bytes(b"ready"); sys.stdin.buffer.read(1)'
+            with subprocess.Popen([sys.executable, '-c', script, str(ready)],
+                                  stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as process:
+                try:
+                    deadline = time.monotonic() + 5
+                    while time.monotonic() < deadline and process.poll() is None:
+                        if ready.is_file() and ready.read_bytes() == b'ready':
+                            break
+                        time.sleep(.01)
+                    else:
+                        self.fail('resource fixture did not acknowledge readiness')
+                    counter = native.Resources(process)
+                    rss, cpu, clock = counter.sample()
+                    self.assertGreater(rss, 0); self.assertGreaterEqual(cpu, 0); self.assertGreater(clock, 0)
+                    process.stdin.close()
+                    self.assertEqual(process.wait(timeout=5), 0)
+                    with self.assertRaises(BenchmarkError):
+                        counter.sample()
+                finally:
+                    if process.poll() is None:
+                        process.terminate(); process.wait(timeout=5)
 
     def test_no_interactive_driver_is_silently_emulated_on_unsupported_os(self):
         with patch.object(native.os, 'name', 'posix'), patch.object(native.sys, 'platform', 'unsupported'):
