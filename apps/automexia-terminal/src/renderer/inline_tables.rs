@@ -254,8 +254,10 @@ pub(super) fn draw(
                 .is_some_and(|next| next.kind == TableRowKind::Rule);
             for (ci, cell) in row.cells.iter().enumerate() {
                 let column = &surface.layout.columns[ci];
-                let cell_left = x + column.content_x as f32 * cell_w;
-                let cell_right = cell_left + column.content_width as f32 * cell_w;
+                let cell_left =
+                    x + (column.content_x + cell.leading_cells) as f32 * cell_w;
+                let cell_right =
+                    x + (column.content_x + column.content_width) as f32 * cell_w;
                 let decoration = table_style.background(is_header, data_row, ci);
                 let custom_foreground = table_style.foreground(is_header, data_row, ci);
                 let foreground_override = if is_header {

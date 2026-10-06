@@ -40,6 +40,53 @@ fn pipeline_state(term: &Crosswords<VoidListener>) -> InlineTables {
 }
 
 #[test]
+fn inline_pipeline_compact_table_does_not_retry_data_as_a_narrow_header() {
+    mod compact {
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../automexia-ui-model/tests/support/compact_table_fixture.rs"
+        ));
+    }
+    let rows = compact::disk_rows();
+    let output = format!("{}\r\n\r\nprompt ", rows.join("\r\n"));
+    for columns in [100, 32, 31, 24] {
+        for chunk in [1, 7, 4096] {
+            let term = pipeline_terminal(columns, output.as_bytes(), chunk);
+            let state = pipeline_state(&term);
+            if columns >= 32 {
+                assert_eq!(state.surfaces.len(), 1);
+                assert_eq!(state.surfaces[0].table.source(), rows);
+                assert_eq!(state.surfaces[0].layout.columns.len(), 6);
+            } else {
+                assert!(state.surfaces.is_empty());
+                assert_eq!(
+                    state.diagnostics().last_fallback,
+                    Some(InlineFallbackReason::TooNarrow)
+                );
+                assert!(!state.hides_native(1));
+            }
+            assert!(state.diagnostics().model_attempts <= MAX_PIPELINE_MODEL_ATTEMPTS);
+        }
+    }
+}
+
+#[test]
+fn inline_pipeline_unrecognized_shell_prelude_still_allows_the_real_header() {
+    for rows in [
+        vec!["NAME     COUNT", "alpha       12", "beta         3"],
+        vec!["| NAME | COUNT |", "|------|-------|", "| alpha|     12|"],
+    ] {
+        let output =
+            format!("cat fixture | sort\r\n{}\r\n\r\nprompt ", rows.join("\r\n"));
+        let term = pipeline_terminal(80, output.as_bytes(), 1);
+        let state = pipeline_state(&term);
+        assert_eq!(state.surfaces.len(), 1, "{:?}", state.diagnostics());
+        assert_eq!(state.surfaces[0].table.source(), rows);
+        assert!(!state.hides_native(0));
+    }
+}
+
+#[test]
 fn inline_pipeline_live_completed_records_need_no_resize_or_scroll() {
     let rows = [
         [

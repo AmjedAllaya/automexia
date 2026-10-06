@@ -163,6 +163,35 @@ mod tests {
     }
 
     #[test]
+    fn compact_disk_capture_keeps_six_fields_after_extreme_resize() {
+        mod fixture {
+            include!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../automexia-ui-model/tests/support/compact_table_fixture.rs"
+            ));
+        }
+        let source = fixture::disk_rows();
+        let mut terminal = terminal();
+        let output = format!("{}\r\n\r\nprompt ", source.join("\r\n"));
+        let mut parser = Processor::default();
+        for chunk in output.as_bytes().chunks(7) {
+            parser.advance(&mut terminal, chunk);
+        }
+        for (columns, rows) in [(80, 24), (12, 8), (2, 4), (160, 48), (80, 24)] {
+            terminal.resize(CrosswordsSize::new(columns, rows));
+            let table = capture(&terminal).unwrap();
+            assert_eq!(table.source(), source);
+            let wrapped = table.wrap(100, cell_width).unwrap();
+            assert_eq!(wrapped.columns.len(), 6);
+            assert_eq!(
+                &source[4][wrapped.rows[4].cells[5].source_bytes.clone()],
+                "/mnt/archive volume"
+            );
+        }
+        assert!(terminal.selection.is_none());
+    }
+
+    #[test]
     fn core_table_capture_uses_real_tab_stops_and_retains_cursor_history_and_copy() {
         let mut terminal = terminal();
         let mut parser = Processor::default();

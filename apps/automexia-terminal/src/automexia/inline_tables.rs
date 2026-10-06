@@ -522,13 +522,15 @@ impl InlineTables {
                     .get((y as usize).min(cell.fragments.len().saturating_sub(1)))
                 {
                     fragment.source_cells.start
-                        + column.saturating_sub(col.content_x).min(
-                            fragment
-                                .source_cells
-                                .end
-                                .saturating_sub(fragment.source_cells.start)
-                                .saturating_sub(1),
-                        )
+                        + column
+                            .saturating_sub(col.content_x + cell.leading_cells)
+                            .min(
+                                fragment
+                                    .source_cells
+                                    .end
+                                    .saturating_sub(fragment.source_cells.start)
+                                    .saturating_sub(1),
+                            )
                 } else {
                     cell.source_cells.start
                 };

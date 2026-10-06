@@ -12,6 +12,9 @@ pub const MAX_TABLE_COLUMNS: usize = 64;
 /// source into unbounded row geometry or per-fragment allocations.
 pub const MAX_WRAPPED_TABLE_LINES: usize = 4096;
 pub const MAX_WRAPPED_TABLE_FRAGMENTS: usize = 32 * 1024;
+// Keep compact aligned values (sizes, percentages, counts) readable, without
+// making a long identifier or an arbitrary source field an unbreakable column.
+const MAX_COMPACT_ALIGNED_WIDTH: usize = 16;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TableError {
@@ -98,6 +101,8 @@ pub struct WrappedFragment {
 pub struct WrappedCell {
     pub source_bytes: Range<usize>,
     pub source_cells: Range<usize>,
+    /// Presentation-only padding for an unwrapped, source-right-aligned value.
+    pub leading_cells: usize,
     pub fragments: Vec<WrappedFragment>,
 }
 
@@ -137,13 +142,48 @@ impl Table {
         if self.header == HeaderConfidence::None {
             return Err(WrapError::UncertainHeader);
         }
+        let right_aligned: Vec<_> = (0..self.starts.len())
+            .map(|column| {
+                let mut edge = None;
+                let mut first_start = None;
+                let mut varied = false;
+                for (row, kind) in self.cells.iter().zip(&self.kinds) {
+                    let cell = &row[column];
+                    if *kind == TableRowKind::Rule || cell.bytes.is_empty() {
+                        continue;
+                    }
+                    if edge.is_some_and(|end| end != cell.cells.end) {
+                        return false;
+                    }
+                    edge = Some(cell.cells.end);
+                    varied |= first_start.is_some_and(|start| start != cell.cells.start);
+                    first_start.get_or_insert(cell.cells.start);
+                }
+                varied
+            })
+            .collect();
         let mut widths = vec![1; self.starts.len()];
         let mut desired = vec![1; self.starts.len()];
-        for row in &self.cells {
-            for ((minimum, desired), cell) in widths.iter_mut().zip(&mut desired).zip(row)
+        let mut data_widths = vec![0; self.starts.len()];
+        for (row, kind) in self.cells.iter().zip(&self.kinds) {
+            for (((minimum, desired), data_width), cell) in widths
+                .iter_mut()
+                .zip(&mut desired)
+                .zip(&mut data_widths)
+                .zip(row)
             {
                 *minimum = (*minimum).max(cell.minimum_width);
                 *desired = (*desired).max(cell.cells.len());
+                if *kind == TableRowKind::Data {
+                    *data_width = (*data_width).max(cell.cells.len());
+                }
+            }
+        }
+        for ((minimum, data_width), right_aligned) in
+            widths.iter_mut().zip(&data_widths).zip(&right_aligned)
+        {
+            if *right_aligned && *data_width <= MAX_COMPACT_ALIGNED_WIDTH {
+                *minimum = (*minimum).max(*data_width);
             }
         }
         let minimum_width = widths.iter().sum::<usize>() + widths.len() * 2;
@@ -189,7 +229,9 @@ impl Table {
         {
             let mut cells = Vec::with_capacity(columns.len());
             let mut height = 1;
-            for (cell, column) in source_cells.iter().zip(&columns) {
+            for ((cell, column), right_aligned) in
+                source_cells.iter().zip(&columns).zip(&right_aligned)
+            {
                 let fragments = wrap_cell(
                     source,
                     cell,
@@ -201,6 +243,11 @@ impl Table {
                 cells.push(WrappedCell {
                     source_bytes: cell.bytes.clone(),
                     source_cells: cell.cells.clone(),
+                    leading_cells: if *right_aligned && fragments.len() == 1 {
+                        column.content_width.saturating_sub(cell.cells.len())
+                    } else {
+                        0
+                    },
                     fragments,
                 });
             }
@@ -312,11 +359,17 @@ impl Table {
                 gaps.push(start..column);
             }
         }
-        // Prefer established two-space gutters so multiword labels remain cells.
-        // Single gutters require independent header evidence as a fallback.
+        // Preserve wide gutters and compound labels, but do not let an early
+        // coarse schema merge a compact run of independently typed columns.
+        let compact =
+            compact_numeric_gutters(&source, &kinds, &gaps, first, &cell_width)?;
         for minimum_gap in [2, 1] {
-            let selected: Vec<_> =
-                gaps.iter().filter(|g| g.len() >= minimum_gap).collect();
+            let selected: Vec<_> = gaps
+                .iter()
+                .enumerate()
+                .filter(|(index, gap)| gap.len() >= minimum_gap || compact[*index])
+                .map(|(_, gap)| gap)
+                .collect();
             let mut starts = vec![first];
             starts.extend(selected.iter().map(|g| g.end));
             if starts.len() > MAX_TABLE_COLUMNS {
@@ -430,6 +483,85 @@ impl Table {
         }
         visible
     }
+}
+
+/// A single blank can separate right-aligned numbers even when other gutters
+/// are wider. Require a shared header/data numeric right edge or at least two
+/// typed subcolumns; an isolated number inside a compound name is insufficient.
+fn compact_numeric_gutters(
+    source: &[String],
+    kinds: &[TableRowKind],
+    gaps: &[Range<usize>],
+    first: usize,
+    cell_width: &impl Fn(&str) -> usize,
+) -> Result<Vec<bool>, TableError> {
+    let mut compact = vec![false; gaps.len()];
+    if gaps.len() >= MAX_TABLE_COLUMNS
+        || !gaps.iter().any(|gap| gap.len() == 1)
+        || !gaps.iter().any(|gap| gap.len() >= 2)
+    {
+        return Ok(compact);
+    }
+    let Some(head) = kinds.iter().position(|kind| *kind != TableRowKind::Rule) else {
+        return Ok(compact);
+    };
+    let starts: Vec<_> = std::iter::once(first)
+        .chain(gaps.iter().map(|g| g.end))
+        .collect();
+    let cells: Vec<_> = source
+        .iter()
+        .map(|row| source_cells(row, &starts, cell_width))
+        .collect::<Result<_, _>>()?;
+    let mut populated = vec![false; starts.len()];
+    let mut numeric = vec![false; starts.len()];
+    let mut anchored = vec![false; starts.len()];
+    for column in 0..starts.len() {
+        if !valid_label(&source[head][cells[head][column].bytes.clone()]) {
+            continue;
+        }
+        let mut typed = false;
+        let mut other = false;
+        let mut same_edge = true;
+        for row in head + 1..source.len() {
+            if kinds[row] == TableRowKind::Rule {
+                continue;
+            }
+            let value = &source[row][cells[row][column].bytes.clone()];
+            if value.is_empty() {
+                continue;
+            }
+            populated[column] = true;
+            same_edge &= cells[row][column].cells.end == cells[head][column].cells.end;
+            if matches!(value, "-" | "--" | "N/A" | "n/a" | "<none>") {
+                continue;
+            }
+            let is_number = numeric_value(value) && !value.contains(' ');
+            typed |= is_number;
+            other |= !is_number;
+        }
+        numeric[column] = typed && !other;
+        anchored[column] = numeric[column] && same_edge;
+    }
+    let mut first_column = 0;
+    for end_column in 0..starts.len() {
+        if end_column < gaps.len() && gaps[end_column].len() < 2 {
+            continue;
+        }
+        let typed_group = numeric[first_column..=end_column]
+            .iter()
+            .filter(|value| **value)
+            .count()
+            >= 2;
+        for gap in first_column..end_column {
+            compact[gap] = populated[gap]
+                && populated[gap + 1]
+                && (anchored[gap]
+                    || anchored[gap + 1]
+                    || (typed_group && (numeric[gap] || numeric[gap + 1])));
+        }
+        first_column = end_column + 1;
+    }
+    Ok(compact)
 }
 
 /// Locate content once in original terminal coordinates. Only the shared

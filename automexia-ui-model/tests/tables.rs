@@ -1,5 +1,196 @@
 use automexia_ui_model::tables::{Table, TableError, TableViewport};
 
+#[path = "support/compact_table_fixture.rs"]
+mod compact_table_fixture;
+
+#[test]
+fn compact_disk_table_keeps_all_six_columns_and_multiword_fields() {
+    let source = compact_table_fixture::disk_rows();
+    let table = Table::detect(source.clone(), cells).unwrap();
+    for width in [33, 39, 80, 160] {
+        let wrapped = table.wrap(width, cells).unwrap();
+        assert_eq!(wrapped.columns.len(), 6, "width {width}");
+        for (row, expected) in [
+            (
+                0,
+                ["Filesystem", "Size", "Used", "Avail", "Use%", "Mounted on"],
+            ),
+            (3, ["/dev/data", "1007G", "108G", "849G", "12%", "/"]),
+            (
+                4,
+                [
+                    "disk one",
+                    "5.9G",
+                    "1024M",
+                    "4.9G",
+                    "17%",
+                    "/mnt/archive volume",
+                ],
+            ),
+            (
+                5,
+                ["snapfuse", "128K", "128K", "0", "100%", "/snap/example/5"],
+            ),
+        ] {
+            for (cell, expected) in wrapped.rows[row].cells.iter().zip(expected) {
+                assert_eq!(&source[row][cell.source_bytes.clone()], expected);
+                let joined: String = cell
+                    .fragments
+                    .iter()
+                    .map(|fragment| &source[row][fragment.bytes.clone()])
+                    .collect();
+                assert_eq!(joined, expected, "wrapping must retain every original byte");
+            }
+        }
+        assert!(wrapped.width <= width);
+    }
+    assert_eq!(table.source(), source);
+}
+
+#[test]
+fn compact_numeric_gutters_accept_mixed_spacing_and_missing_values() {
+    for mask in 0..32 {
+        let rows = [
+            ["Filesystem", "Size", "Used", "Avail", "Use%", "Mounted on"],
+            ["disk", "1007G", "1024M", "5.9G", "100%", "/mnt/work space"],
+            ["none", "5.9G", "0", "-", "0%", "/mnt/cache"],
+        ];
+        let source: Vec<String> = rows
+            .iter()
+            .map(|row| {
+                let mut text = format!("{:<16}", row[0]);
+                for (column, value) in row.iter().enumerate().skip(1) {
+                    text.push_str(if mask & (1 << (column - 1)) == 0 {
+                        " "
+                    } else {
+                        "  "
+                    });
+                    text.push_str(&match column {
+                        1..=3 => format!("{value:>5}"),
+                        4 => format!("{value:>4}"),
+                        _ => (*value).to_owned(),
+                    });
+                }
+                text
+            })
+            .collect();
+        let table = Table::detect(source.clone(), cells).unwrap();
+        let wrapped = table.wrap(120, cells).unwrap();
+        assert_eq!(wrapped.columns.len(), 6, "gap mask {mask}");
+        for (index, row) in wrapped.rows.iter().enumerate() {
+            for (cell, expected) in row.cells.iter().zip(rows[index]) {
+                assert_eq!(
+                    &source[index][cell.source_bytes.clone()],
+                    expected,
+                    "gap mask {mask}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn compact_refinement_does_not_split_compound_names_or_units() {
+    for source in [
+        vec![
+            "Release Version    Count".into(),
+            "release 1          12".into(),
+            "release 2          13".into(),
+        ],
+        vec![
+            "Process Name    Working Set (MB)".into(),
+            "alpha worker    32.5".into(),
+            "beta daemon     64.0".into(),
+        ],
+    ] {
+        let table = Table::detect(source.clone(), cells).unwrap();
+        let wrapped = table.wrap(80, cells).unwrap();
+        assert_eq!(wrapped.columns.len(), 2);
+        assert_eq!(
+            &source[0][wrapped.rows[0].cells[0].source_bytes.clone()],
+            source[0].split("    ").next().unwrap()
+        );
+    }
+}
+
+#[test]
+fn source_right_alignment_survives_wrapping_without_synthetic_source_bytes() {
+    let source = compact_table_fixture::disk_rows();
+    let table = Table::detect(source.clone(), cells).unwrap();
+    for width in [33, 39, 80, 160] {
+        let wrapped = table.wrap(width, cells).unwrap();
+        for row in &wrapped.rows {
+            for (index, cell) in row.cells.iter().enumerate() {
+                let available = wrapped.columns[index].content_width;
+                if (1..=4).contains(&index) && cell.fragments.len() == 1 {
+                    assert_eq!(cell.leading_cells + cell.source_cells.len(), available);
+                } else {
+                    assert_eq!(cell.leading_cells, 0);
+                }
+                assert!(cell
+                    .fragments
+                    .iter()
+                    .all(|f| cell.leading_cells + f.source_cells.len() <= available));
+            }
+        }
+    }
+    assert_eq!(table.source(), source);
+}
+
+#[test]
+fn compact_numeric_fields_stay_whole_or_leave_output_unmodified() {
+    use automexia_ui_model::tables::WrapError;
+    let source = compact_table_fixture::disk_rows();
+    let table = Table::detect(source.clone(), cells).unwrap();
+    for width in [32, 36, 40] {
+        let wrapped = table.wrap(width, cells).unwrap();
+        for row in &wrapped.rows[1..] {
+            for cell in &row.cells[1..=4] {
+                assert_eq!(
+                    cell.fragments.len(),
+                    1,
+                    "numeric fields split at width {width}"
+                );
+            }
+        }
+    }
+    for width in [24, 31] {
+        assert_eq!(
+            table.wrap(width, cells),
+            Err(WrapError::TooNarrow { minimum_width: 32 })
+        );
+    }
+    assert_eq!(table.source(), source);
+}
+
+#[test]
+fn compact_alignment_reservation_has_a_bound_for_long_identifiers() {
+    use automexia_ui_model::tables::WrapError;
+    for length in [16, 17] {
+        let source = vec![
+            format!("{:<6}{:>length$}", "Name", "Quantity"),
+            format!("{:<6}{}", "x", "1".repeat(length)),
+            format!("{:<6}{:>length$}", "y", "2"),
+        ];
+        let table = Table::detect(source.clone(), cells).unwrap();
+        if length == 16 {
+            assert_eq!(
+                table.wrap(20, cells),
+                Err(WrapError::TooNarrow { minimum_width: 21 })
+            );
+        } else {
+            let wrapped = table.wrap(20, cells).unwrap();
+            assert!(wrapped.rows[1].cells[1].fragments.len() > 1);
+            let restored: String = wrapped.rows[1].cells[1]
+                .fragments
+                .iter()
+                .map(|fragment| &source[1][fragment.bytes.clone()])
+                .collect();
+            assert_eq!(restored, "1".repeat(17));
+        }
+    }
+}
+
 fn cells(text: &str) -> usize {
     // Independent fixture widths; the native adapter supplies terminal widths.
     text.chars()

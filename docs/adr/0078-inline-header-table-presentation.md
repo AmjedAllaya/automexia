@@ -75,6 +75,25 @@ an invented schema. A producer's hard line breaks
 cannot be reconstructed as missing cells. Alternate-screen, mouse-reporting
 and terminal vi-mode output remain outside inline presentation.
 
+Compact numeric output can mix one- and multi-space gutters. A coarse whitespace
+candidate must not merge those fields merely because some gutters are wider.
+The shared detector refines narrow gutters using populated header/data fields,
+a matching numeric right edge or multiple typed fields within the coarse cell.
+An isolated digit in a compound name is insufficient, and empty fragments of
+multiword labels or units cannot introduce columns. The refinement shares the
+existing row/cell/column budgets and does not recognize command names.
+Wrapped cells retain source right alignment when all occupied header/data right
+edges agree; multi-line fragments use the ordinary wrapping policy. Presentation
+padding is separate from source bytes, and paint and inverse hit mapping consume
+the same offset, preserving original copy text and ANSI/selection coordinates.
+Aligned data fields up to 16 cells reserve their full width before distributing
+space to longer fields, keeping short numbers and units intact. Headers and
+longer identifiers remain wrappable. If those minimum widths cannot fit, inline
+presentation falls back to native output rather than splitting a compact value
+across lines. Once a header is recognized, layout failure must not admit its first
+data row through the shell-prelude retry. Independently ruled subsequent tables
+remain eligible; an unrecognized command prelude can still precede a real header.
+
 ## Evidence and limits
 
 Model tests preserve literal source ranges, shared column geometry, word and

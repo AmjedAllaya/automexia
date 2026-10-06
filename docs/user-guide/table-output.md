@@ -17,6 +17,11 @@ health from a value. Unsupported output
 keeps its ordinary terminal presentation. Supported tables update as complete
 rows arrive; resizing the pane is not needed to start recognition.
 
+Compact output such as disk usage can mix narrow and wide column gaps. Numeric
+evidence keeps those fields separate without splitting multiword labels or paths.
+Source-right-aligned values stay right aligned. Short aligned data fields retain
+their full width, while headers and longer values can wrap.
+
 Borders and glyphs stay inside their pane and cell bounds. Source terminal
 colours and the selection-foreground preference remain authoritative. Hovered
 links retain their underline in the active pane. Pointer selection maps displayed characters back
@@ -90,8 +95,9 @@ When output is rewritten in place, row status colors follow the current values;
 explicit command colors and selection styling still take precedence for text.
 Exhausted budgets stop optional source cloning before another probe. Wrapping
 is bounded to 4,096 content lines and 32,768 fragments per table. A pane must fit
-at least one complete grapheme and the cell padding in every column; if it
-cannot, or a limit is exceeded, the original terminal output remains available.
+at least one complete grapheme and the cell padding in every column, plus the
+full width of source-aligned data fields up to 16 cells. If it cannot, or a limit
+is exceeded, the original terminal output remains available.
 Enlarging the pane allows a supported inline layout to return.
 
 Opening the focused viewer without a selection discovers candidates within at

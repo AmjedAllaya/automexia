@@ -1745,6 +1745,18 @@ partial selection at fractional scales. Generic fixtures cover typed mixed-case
 and lowercase headers, empty columns, rulers, Markdown and ASCII/Unicode frames,
 including adjacent pipeline text. Contextual font runs retain ligatures and
 wide-cell selection, with native macOS color/joining tests gated to that OS.
+Compact disk-usage fixtures require all six fields across 32 combinations of
+one- and two-space gutters, missing values, multiword labels/paths and narrow
+wrapping. Compound-name controls reject numeric over-splitting. Short aligned
+fields stay intact; minimum-width fallback and the 16/17-cell reservation boundary
+remain checked independently. The real VT capture and renderer tests check
+fragmented input, resize round trips, every
+displayed character's source position, numeric right alignment, cyan ANSI text
+and literal selection rectangles. Pipeline regressions reject data-row header
+retries after layout failure and retain genuine command-prelude handling.
+Set `AUTOMEXIA_COMPACT_TABLE_PREVIEW_DIR` to a
+private directory to inspect controlled CPU rasters at wide and narrow widths;
+these are not native compositor evidence.
 Mouse-reporting programs keep native
 coordinates. Run the unchanged focused-table and command-information suites to
 cover coexistence, then the owning targets and required readiness profile.
@@ -1767,7 +1779,13 @@ short-pane limitation, deployment contract and remaining native evidence gaps.
 
 `cargo bench --locked -p automexia-terminal --bench automexia_services -- core_table_view`
 also exercises bounded inline wrapping with literal source checks. These model
-and controlled-raster results are separate from native window/compositor,
+benchmarks include `compact_numeric_checked_6` and
+`compact_numeric_checked_256`: detection and wrapping at three widths, exact
+column/source invariants and per-fragment bounds remain asserted while timing.
+Use `--profile dev` for a local development-profile measurement when appropriate,
+and retain the profile/toolchain/OS with results; these timings do not measure
+native input-to-present latency. Model and controlled-raster results are separate
+from native window/compositor,
 physical input, clipboard and screen-reader evidence. Native Windows, Linux and
 macOS checks must use fictional data and verify pane isolation, resize/scroll,
 prompt editing, selection/copy, ANSI styles, program modes and theme/scale changes.

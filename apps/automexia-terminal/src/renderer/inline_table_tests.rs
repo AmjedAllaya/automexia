@@ -25,6 +25,158 @@ use rio_backend::{
 
 const SENTINEL: u32 = 0x00112233;
 
+#[test]
+fn compact_disk_table_keeps_numeric_alignment_ansi_selection_and_source_mapping() {
+    mod fixture {
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../automexia-ui-model/tests/support/compact_table_fixture.rs"
+        ));
+    }
+    let plain = fixture::disk_rows();
+    let mut colored = plain.clone();
+    // Include the first data row: at the minimum width later rows can be below
+    // the viewport. The wide raster independently checks both colored rows.
+    for row in [1, 3] {
+        colored[row] = format!("\x1b[36m{}\x1b[0m", plain[row]);
+    }
+    let output = format!("{}\r\n\r\nprompt ", colored.join("\r\n"));
+    let mut terminal = terminal(&output, 100, 40);
+    for columns in [100, 40, 32, 31, 24, 100] {
+        terminal.resize(CrosswordsSize::new(columns, 40));
+        terminal.scroll_display(Scroll::Top);
+        let mut content = content(&mut terminal);
+        if columns < 32 {
+            assert!(
+                content.inline_tables.surfaces.is_empty(),
+                "insufficient room at {columns} columns must keep native output: {:?}",
+                content
+                    .inline_tables
+                    .surfaces
+                    .iter()
+                    .map(|surface| surface.table.source())
+                    .collect::<Vec<_>>()
+            );
+            assert!(!content.inline_tables.hides_native(0));
+            assert!(!content.command_rows.expanded());
+            continue;
+        }
+        assert_eq!(content.inline_tables.surfaces.len(), 1);
+        let surface = &content.inline_tables.surfaces[0];
+        assert_eq!(surface.table.source(), plain);
+        assert_eq!(surface.layout.columns.len(), 6);
+        for (r, row) in surface.layout.rows.iter().enumerate() {
+            let (top, _) = content
+                .inline_tables
+                .row_geometry(0, r, &content.command_rows)
+                .unwrap();
+            for (c, cell) in row.cells.iter().enumerate() {
+                for (line, fragment) in cell.fragments.iter().enumerate() {
+                    for (offset, expected) in
+                        plain[r][fragment.bytes.clone()].chars().enumerate()
+                    {
+                        let display = surface.layout.columns[c].content_x
+                            + cell.leading_cells
+                            + offset;
+                        let (native, column) = content
+                            .inline_tables
+                            .source_position(
+                                &content.command_rows,
+                                (top + line as isize) as usize,
+                                display,
+                            )
+                            .unwrap();
+                        let actual = terminal.grid
+                            [Line(native - terminal.display_offset() as i32)]
+                            [Column(column)]
+                        .c();
+                        assert_eq!(
+                            actual, expected,
+                            "{columns} columns, row {r}, field {c}, offset {offset}"
+                        );
+                    }
+                }
+            }
+        }
+        for scale in [1.0, 1.25, 2.0] {
+            let mut canvas = render(&content, scale, 8.0, 14.0);
+            let width = ((columns * 8 + 16) as f32 * scale) as u32;
+            let height = (816.0 * scale) as u32;
+            let pixels = canvas.pixels(width, height, true);
+            assert!(
+                pixels.iter().any(|p| (p >> 16 & 255) < 30
+                    && (p >> 8 & 255) > 80
+                    && (p & 255) > 80),
+                "explicit cyan output must survive table layout"
+            );
+            if columns == 100 {
+                for row in [1, 3] {
+                    let start = ((9 + row * 20) as f32 * scale).ceil() as u32;
+                    let end = ((27 + row * 20) as f32 * scale).floor() as u32;
+                    let cyan = (start..end)
+                        .flat_map(|y| {
+                            pixels[(y * width) as usize..((y + 1) * width) as usize]
+                                .iter()
+                        })
+                        .filter(|p| {
+                            (**p >> 16 & 255) < 30
+                                && (**p >> 8 & 255) > 80
+                                && (**p & 255) > 80
+                        })
+                        .count();
+                    assert!(cyan > 10, "explicit ANSI row {row} has no cyan ink");
+                }
+            }
+            if scale == 1.0 {
+                if let Some(directory) =
+                    std::env::var_os("AUTOMEXIA_COMPACT_TABLE_PREVIEW_DIR")
+                {
+                    let directory = std::path::PathBuf::from(directory);
+                    std::fs::create_dir_all(&directory).unwrap();
+                    image_rs::RgbImage::from_fn(width, height, |x, y| {
+                        let pixel = pixels[(y * width + x) as usize];
+                        image_rs::Rgb([
+                            (pixel >> 16) as u8,
+                            (pixel >> 8) as u8,
+                            pixel as u8,
+                        ])
+                    })
+                    .save(directory.join(format!("compact-table-{columns}.png")))
+                    .unwrap();
+                }
+            }
+        }
+        if columns == 100 {
+            // Literal wide layout: widths 10/5/5/5/4/29 plus two-cell padding.
+            // Source row 3's Used field is 108G at native columns 24..28.
+            // Selecting its final 8G must paint exactly display cells 23..25.
+            content.selection_range = Some(SelectionRange::new(
+                Pos::new(Line(3), Column(26)),
+                Pos::new(Line(3), Column(27)),
+                false,
+            ));
+            let canvas = render(&content, 1.0, 8.0, 14.0);
+            let selection: Vec<_> = canvas
+                .rects
+                .iter()
+                .filter(|(_, color)| *color == Colors::default().selection_background)
+                .map(|(rect, _)| *rect)
+                .collect();
+            assert!(!selection.is_empty());
+            assert!(
+                selection.iter().all(|r| r[0] >= 192.0
+                    && r[0] + r[2] <= 208.0
+                    && r[1] >= 68.0
+                    && r[1] + r[3] <= 88.0),
+                "{selection:?}"
+            );
+            assert!(selection
+                .iter()
+                .any(|r| r[0] <= 192.5 && r[0] + r[2] > 200.5));
+        }
+    }
+}
+
 #[path = "table_appearance_tests.rs"]
 mod table_appearance_tests;
 

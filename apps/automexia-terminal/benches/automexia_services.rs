@@ -298,6 +298,54 @@ fn core_table_view(c: &mut Criterion) {
             assert_eq!(headed.source()[1], source[1]);
         })
     });
+    mod compact_fixture {
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../automexia-ui-model/tests/support/compact_table_fixture.rs"
+        ));
+    }
+    let compact = compact_fixture::disk_rows();
+    for count in [6, 256] {
+        let source: Vec<_> = std::iter::once(compact[0].clone())
+            .chain(compact[1..].iter().cycle().take(count - 1).cloned())
+            .collect();
+        group.bench_function(format!("compact_numeric_checked_{count}"), |b| {
+            b.iter(|| {
+                let table = Table::detect(black_box(source.clone()), cell_width).unwrap();
+                assert_eq!(table.source(), source);
+                assert!(matches!(
+                    table.wrap(24, cell_width),
+                    Err(automexia_ui_model::tables::WrapError::TooNarrow {
+                        minimum_width: 32
+                    })
+                ));
+                for width in [40, 80, 160] {
+                    let wrapped = table.wrap(black_box(width), cell_width).unwrap();
+                    assert_eq!(wrapped.columns.len(), 6);
+                    assert_eq!(wrapped.rows.len(), count);
+                    assert!(wrapped.width <= width);
+                    let last = &wrapped.rows[count - 1].cells[5];
+                    let value: String = last
+                        .fragments
+                        .iter()
+                        .map(|fragment| &source[count - 1][fragment.bytes.clone()])
+                        .collect();
+                    assert_eq!(value, "/snap/example/5");
+                    for row in &wrapped.rows {
+                        for (column, cell) in wrapped.columns.iter().zip(&row.cells) {
+                            assert!(cell
+                                .fragments
+                                .iter()
+                                .all(|fragment| cell.leading_cells
+                                    + fragment.source_cells.len()
+                                    <= column.content_width));
+                        }
+                    }
+                    black_box(wrapped);
+                }
+            });
+        });
+    }
     group.finish();
 }
 

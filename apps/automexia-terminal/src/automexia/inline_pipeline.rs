@@ -198,6 +198,7 @@ impl InlineTables {
                     starts.push(first);
                 }
             }
+            let mut recognized_header = false;
             for first in starts {
                 let has_ruler = snapshot
                     .lines
@@ -209,8 +210,10 @@ impl InlineTables {
                 // an intact, top-anchored snapshot. Permit the immediately
                 // following header to be tried after that prelude; an interior
                 // scrollback window has no such source provenance.
-                let witnessed_single_prelude =
-                    snapshot.authentic_prefix && range.start == 0 && first == 1;
+                let witnessed_single_prelude = !recognized_header
+                    && snapshot.authentic_prefix
+                    && range.start == 0
+                    && first == 1;
                 if !witnessed_boundary && !witnessed_single_prelude && !has_ruler {
                     diagnostics
                         .last_fallback
@@ -296,9 +299,16 @@ impl InlineTables {
                                 InlineFallbackReason::UncertainHeader
                             }
                             WrapError::TooNarrow { .. } => {
+                                // This is an established table that cannot fit.
+                                // Do not retry its first data row as a header;
+                                // only an independently ruled table may follow.
+                                recognized_header = true;
                                 InlineFallbackReason::TooNarrow
                             }
-                            WrapError::Capacity => InlineFallbackReason::LayoutCapacity,
+                            WrapError::Capacity => {
+                                recognized_header = true;
+                                InlineFallbackReason::LayoutCapacity
+                            }
                         });
                         continue;
                     }
