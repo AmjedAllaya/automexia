@@ -223,4 +223,4 @@ For a typical multi-step task:
 
 This keeps the visual hierarchy meaningful: **tabs separate contexts; panes preserve simultaneous visibility; local tabs provide alternatives inside one region.**
 
-For the complete binding table, see [Keyboard and input reference](../reference/keyboard.md).
+For the complete binding table, see [Keyboard and input reference](../KEYBOARD.md).

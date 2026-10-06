@@ -30,11 +30,13 @@ listed or summarized here.
 | [0027](adr/0027-redacted-compatibility-inspector.md) | Redacted compatibility inspector |
 | [0028](adr/0028-bounded-parked-pty-topology-history.md) | Bounded closed-tab topology history |
 | [0031](adr/0031-versioned-hosted-ci-and-repository-protection.md) | Hosted CI and repository protection |
+| [0035](adr/0035-core-domain-and-optional-extension-ownership.md) | Core terminal and optional extension ownership |
 | [0036](adr/0036-application-owned-runtime-user-preferences.md) | Application-owned appearance preferences |
 | [0037](adr/0037-public-binary-release-distribution.md) | Public binary release distribution |
 | [0038](adr/0038-owned-pty-trees-and-broadcast-shutdown.md) | Owned PTY trees and broadcast-first shutdown |
 | [0039](adr/0039-content-addressed-development-cache.md) | Content-addressed development cache lifecycle |
 | [0040](adr/0040-owner-authorized-linux-releases.md) | Owner-authorized Linux Early Access releases |
+| [0045](adr/0045-exact-parked-session-removal.md) | Exact parked-session removal and restoration |
 | [0049](adr/0049-grouped-command-discovery-and-pane-shortcuts.md) | Grouped command discovery (pane chords superseded by 0051) |
 | [0051](adr/0051-mnemonic-pane-shortcuts-and-honest-discovery.md) | Mnemonic pane shortcuts, shortcut-family audit and effective discovery |
 | [0053](adr/0053-effective-rust-toolchain-identity.md) | Explicit compiler selection and verified MSRV |
@@ -61,6 +63,8 @@ listed or summarized here.
 | [0078](adr/0078-inline-header-table-presentation.md) | Inline header tables with bounded cell wrapping and source mapping |
 | [0079](adr/0079-shared-settings-and-presentation-preferences.md) | Shared Settings catalogue and application-owned presentation preferences |
 | [0080](adr/0080-installed-package-settings-projection.md) | Installed package settings projection and isolated preference writes |
+| [0081](adr/0081-kubernetes-status-capability-boundary.md) | Kubernetes status capability boundary |
+| [0094](adr/0094-shell-word-deletion.md) | Shell-owned word deletion |
 
 ## When an ADR is required
 

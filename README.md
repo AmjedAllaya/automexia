@@ -5,7 +5,7 @@
 <h1 align="center">Automexia Terminal</h1>
 
 <p align="center">
-  <strong>A flexible terminal for focused command-line work.</strong>
+  <strong>A cross-platform terminal for focused command-line work.</strong>
 </p>
 
 <p align="center">
@@ -22,18 +22,18 @@
 </p>
 
 <p align="center">
-  <strong>Linux v0.4.0 Early Access</strong> &nbsp;·&nbsp; x64 + Arm64 &nbsp;·&nbsp; DEB, RPM and portable archives &nbsp;·&nbsp; MIT
+  <strong>Windows · Linux · macOS</strong> &nbsp;·&nbsp; Native shells &nbsp;·&nbsp; MIT
 </p>
 
 ---
 
-Automexia is a keyboard-first terminal that keeps the shell and the tools you
+Automexia is a cross-platform, keyboard-first terminal that keeps the shell and the tools you
 already use in control while giving command-driven work a more organized place
 to live. It combines native shell sessions, windows, tabs, split panes,
 pane-local tabs, search, command navigation, images, configuration, keyboard
 discovery, and explicit local tooling in one focused application.
 
-The released Linux terminal is deliberately useful without an account, hosted service,
+The terminal works without an account, hosted service,
 provider login, paid dependency, or model. Automexia does not replace your
 shell, SSH client, credential store, cloud CLI, editor, or specialist tools; it
 provides the terminal workspace around them.
@@ -50,30 +50,26 @@ provides the terminal workspace around them.
 | Keep related work together with windows, global tabs, split panes, and pane-local tabs. | Search the selected pane or visible workspace, navigate marked commands, and discover actions from the keyboard. | Configure themes, fonts, cursor behavior, shells, navigation, shortcuts, and platform overrides in readable TOML. | The active shell owns command editing and execution; Automexia never silently adds Enter or turns displayed text into a command. |
 | Start clean sessions or clone the documented launch context into an independent PTY. | Selection, scrollback, hyperlinks, command boundaries, and scoped search remain tied to the exact active route. | Invalid configuration keeps the last-known-good state instead of replacing a working setup. | External tools keep ownership of credentials, networking, authentication, and provider state. |
 
-## Current release status
+## Platforms and package status
 
-Automexia v0.4.0 is publicly available as **Linux Early Access** for x64 and
-Arm64. The official binary archive contains DEB, RPM, and portable packages.
-Verify the signature and package checksum before installation.
+Build and run Automexia on **Windows, Linux, or macOS** using the same
+[source workflow](docs/INSTALLATION.md). Each platform has native shell, PTY,
+windowing and rendering adapters. BSD and other Unix systems are best-effort.
 
-**Official release:**
-[Automexia v0.4.0 Linux Early Access](https://github.com/AmjedAllaya/automexia-releases/releases/tag/v0.4.0)
-
-Windows and macOS have source, native-platform, packaging, and release ownership
-in the project, but **stable Windows and macOS installers are not currently
-published**. BSD and other Unix systems remain best-effort and have no required
-v0.4 release artifact.
-
-| Platform | Terminal/session path | Public release status |
+| Platform | Native terminal path | Build and run |
 |---|---|---|
-| Linux | Unix PTY; X11 and Wayland build paths | **v0.4.0 Early Access published** for x64 and Arm64 |
-| Windows | ConPTY; PowerShell, CMD, and WSL integration | Stable installer not published |
-| macOS | Unix PTY; native macOS/Metal/WGPU release path | Stable installer not published |
-| BSD / other Unix | Shared Unix PTY and selected X11-compatible paths | Best-effort; no v0.4 artifact |
+| Windows | ConPTY; PowerShell, CMD and WSL integration | MSVC toolchain and Windows SDK |
+| Linux | Unix PTY; X11 and Wayland | Distribution development libraries |
+| macOS | Unix PTY; native macOS windowing and Metal/WGPU | Xcode Command Line Tools |
 
-See [Installation](docs/INSTALLATION.md), [Platform support](docs/PLATFORMS.md),
-and [Release trust](docs/RELEASE-TRUST.md) for the exact evidence and package
-boundaries.
+Product platform support and published packages are separate. The existing
+[v0.4.0 Linux Early Access prerelease](https://github.com/AmjedAllaya/automexia-releases/releases/tag/v0.4.0)
+contains x64/Arm64 DEB, RPM and portable packages. It does not include subsequent
+source changes or establish Windows/macOS package availability. Stable Windows
+and macOS installers are not published.
+
+See [Platform support](docs/PLATFORMS.md) for native evidence and limitations,
+and [Release trust](docs/RELEASE-TRUST.md) for package verification.
 
 ## What Automexia provides
 
@@ -246,24 +242,16 @@ See [CLI reference](docs/CLI-REFERENCE.md),
 [Command productivity](docs/COMMAND-PRODUCTIVITY.md), and
 [Features](docs/FEATURES.md).
 
-## Install Automexia
+## Build and run Automexia
 
-### Linux Early Access
+Clone the [public source repository](https://github.com/AmjedAllaya/automexia)
+and follow [Build and run](docs/INSTALLATION.md) for Windows, Linux or macOS
+prerequisites. Use the same contributor commands on each platform. Source builds
+are local builds, not signed release packages.
 
-For a published Linux build, download the exact versioned package for your
-architecture from the official v0.4.0 release together with its checksum and
-signature files. Follow the verification steps in
-[Installation](docs/INSTALLATION.md) before installing.
-
-Do not treat GitHub-generated source archives or an unverified third-party
-package as an Automexia application release.
-
-### Build from source for authorized contributors
-
-If you have authorized access to the private source repository, use an approved
-checkout. Install the platform prerequisites described in
-[Installation](docs/INSTALLATION.md), then install the repository tools and run
-the project doctor before the first expensive build.
+For the separate existing Linux prerelease, use only its versioned official
+assets and [package verification instructions](docs/INSTALLATION.md#verify-a-linux-early-access-package).
+GitHub-generated source archives are not installed application packages.
 
 A contributor-oriented first launch is:
 
@@ -556,7 +544,7 @@ Automexia Terminal is available under the [MIT License](LICENSE).
 
 <p align="center">
   <strong>Automexia Terminal</strong><br>
-  A flexible terminal for focused command-line work.<br><br>
+  A cross-platform terminal for focused command-line work.<br><br>
   <a href="docs/INSTALLATION.md">Install</a> ·
   <a href="docs/index.md">Documentation</a> ·
   <a href="docs/FEATURES.md">Feature status</a> ·

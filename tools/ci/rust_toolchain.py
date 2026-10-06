@@ -23,7 +23,7 @@ VERSION = re.compile(r"[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}")
 RUST_WORKFLOWS = ("ci.yml", "release.yml", "nightly.yml", "linux-early-access.yml", "accessibility-native.yml")
 COMPILER_EXECUTABLE_ENV = ("RUSTC", "RUSTDOC", "CARGO_BUILD_RUSTC", "CARGO_BUILD_RUSTDOC")
 CACHE_DOCS = ("docs/CI-ASSURANCE.md", "docs/CI-BUILD-PERFORMANCE-PLAN.md", ".github/FREE-PRIVATE-PRODUCTION-SETUP.md")
-COMPILER_DOCS = (".github/TOOLCHAIN-POLICY.md", ".github/PATCH-REPORT.md")
+COMPILER_DOCS = (".github/TOOLCHAIN-POLICY.md",)
 PYTHON_SETUP = "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
 
 

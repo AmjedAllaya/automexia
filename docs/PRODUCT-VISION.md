@@ -5,8 +5,8 @@ Status: public purpose for the open-source terminal. The
 
 ## Purpose
 
-Automexia is a flexible open-source terminal that helps people organize and
-control command-line work without hiding the shell.
+Automexia is a cross-platform, open-source terminal for Windows, Linux, and macOS.
+It helps people organize and control command-line work without hiding the shell.
 
 It combines familiar terminal capabilities—shell sessions, tabs, panes, search,
 images, configuration, and keyboard navigation—in one focused workspace.
@@ -41,7 +41,7 @@ external tool defines every user.
 
 ## Current product
 
-The current v0.4 source focuses on well-known terminal capabilities:
+The current source provides these terminal capabilities:
 
 - Windows, tabs, split panes, and pane-local tabs;
 - PowerShell, Command Prompt, WSL, Bash, Zsh, and Fish integration;

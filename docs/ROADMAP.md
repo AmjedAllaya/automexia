@@ -51,7 +51,7 @@ colour/font evidence does not certify native GPU frames or screen readers.
 See [visual language](LIQUID-HACKER-UX.md#shared-chrome-hierarchy).
 
 **Partially done (native evidence open):** current source opens the palette on
-six categories, retains global search and provides Back/paging/mouse navigation.
+seven categories, retains global search and provides Back/paging/mouse navigation.
 Alt+R/D clones right/down; adding Shift creates a fresh pane on Windows/Linux/BSD.
 Ctrl+R/D and explicit bindings are preserved; shell Alt editing is deliberately
 replaced only in normal mode. Back uses a left arrow, and all palette labels
@@ -166,6 +166,10 @@ See the [public/private documentation policy](PRIVATE-DOCUMENTATION-POLICY.md),
 [Readiness](READINESS-AUDIT.md).
 
 ## Command-productivity release evidence
+
+Command productivity preserves native editor authority. The remaining native and release evidence
+covers the source-owned completion, insertion, alias, and static-pack boundaries.
+Source presence is not an activation or availability claim.
 
 Complete release evidence for command productivity across supported native
 shells, platforms, accessibility environments, packages, lifecycle operations,

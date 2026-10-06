@@ -9,15 +9,17 @@ regressions, platform regressions, and upstream-port proposals. Search existing
 issues first and include `automexia --version`, OS/build details, relevant
 configuration with secrets removed, and minimal reproduction steps.
 
-Security issues use GitHub's **Report a vulnerability** form when it is visible;
-while this private repository's current plan does not expose that form, invited
-collaborators use an already-established private maintainer channel. Never post
-security details publicly. A dedicated security route and the separate conduct
-address must be configured before the public v0.4.0 launch. General usage
-questions may use GitHub Discussions once enabled.
+This source repository is public. Security issues use GitHub's **Report a
+vulnerability** form when available. It is not currently enabled; use an
+already-established private maintainer contact, or request a private reporting
+route without including vulnerability details. Never post security details in
+public issues. See [Security](SECURITY.md). General usage questions can use the
+issue tracker; GitHub Discussions is not currently enabled.
 
-The latest v0.4 patch is supported. Once v0.5 ships, v0.4 receives only critical
-security fixes for 90 days.
+Report the exact source revision or package version affected. The separately
+published v0.4.0 Linux Early Access package and current cross-platform source
+have different verification evidence; see [platform status](docs/PLATFORMS.md).
+No fixed maintenance window for older versions is promised by this document.
 
 ## Windows fullscreen brightness
 

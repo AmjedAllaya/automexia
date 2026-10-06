@@ -129,7 +129,7 @@ The config root is:
 | macOS | `~/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal` |
 | Linux | `$XDG_CONFIG_HOME/automexia`, or `~/.config/automexia` |
 
-Start with only the values you need; omitted settings retain tested defaults. See [Configuration and customization](customization.md) for a practical workflow and [Configuration reference](../reference/configuration.md) for the complete schema.
+Start with only the values you need; omitted settings retain tested defaults. See [Configuration and customization](customization.md) for a practical workflow and [Configuration reference](../CONFIGURATION.md) for the complete schema.
 
 ## 6. Optional logging for one launch
 
@@ -181,7 +181,7 @@ A healthy first session should show:
 4. A pane footer containing operational information such as encoding, newline convention, grid size, and local time when the pane is large enough to show it.
 5. Normal shell behavior: history, quoting, completion, scripts, and tools continue to be owned by the shell.
 
-If icon-aware `ls`/`ll`, prompt metadata, or other shell-enhanced behavior is missing, continue with [Commands and shell workflows](commands-and-shell.md) and [Troubleshooting](../guide/troubleshooting.md).
+If icon-aware `ls`/`ll`, prompt metadata, or other shell-enhanced behavior is missing, continue with [Commands and shell workflows](commands-and-shell.md) and [Troubleshooting](../TROUBLESHOOTING.md).
 
 ## 9. What to learn next
 

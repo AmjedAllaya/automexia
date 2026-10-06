@@ -29,7 +29,7 @@ environments recorded by the existing tests and retained evidence are claimed.
 
 ## Command discovery correction
 
-Current source replaces the flat initial palette with six categories, global
+Current source replaces the flat initial palette with seven categories, global
 type-to-search, a Back row, paging and retained mouse scrolling. Keyboard and
 pointer activation share one application owner; empty results do not dismiss
 the query, and repeated Enter cannot activate through a category transition.

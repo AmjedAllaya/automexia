@@ -191,8 +191,10 @@ Use the palette's shortcut editor to change it. See the
 
 `Ctrl+Shift+P` (`Cmd+Shift+P` on macOS) opens seven categories: Tabs & Windows,
 Panes & Sessions, Search & History, Clipboard & Input, Appearance,
-Customizations, and Tools. Customizations opens the feature list in the native
-settings sheet. Enter or Space opens one feature's
+Customizations, and Tools. Customizations offers **Workflow & Output** for
+information tags, output colors, tables and timestamps, and **Terminal Appearance**
+for header/tabs, footer, panes/background, themes, window controls and fonts.
+Each section opens its feature list in the native settings sheet. Enter or Space opens one feature's
 controls. **Esc / Alt+Left** returns one level at a time; **Backspace** (Delete
 on Mac keyboards) does the same outside value fields or in an empty search.
 At the root, Back returns to the command menu that opened the sheet, preserving

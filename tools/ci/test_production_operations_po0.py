@@ -30,7 +30,6 @@ class ProductionOperationsBoundaryTests(unittest.TestCase):
         for relative in (
             Path("Cargo.toml"),
             Path("docs/CONFIGURATION.md"),
-            Path("docs/reference/configuration.md"),
         ):
             path = root / relative
             path.parent.mkdir(parents=True, exist_ok=True)

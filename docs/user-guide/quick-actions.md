@@ -1,6 +1,6 @@
 # Quick Actions and reviewed workflows
 
-Open **Quick Actions** from `Ctrl/Cmd+K`. Use the arrows or Tab to choose a row,
+Open **Quick Actions** from `Ctrl+Shift+P` (`Cmd+Shift+P` on macOS). Use the arrows or Tab to choose a row,
 Enter to open it, and Escape to go back. Typing searches actions and management
 commands. All rows also support pointer activation.
 

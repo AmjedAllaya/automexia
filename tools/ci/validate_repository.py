@@ -259,8 +259,24 @@ def validate_action_pins() -> int:
     return uses
 
 
+def validate_source_layout() -> None:
+    """Keep contributor tooling and architecture decisions with their owners."""
+    script_suffixes = {".py", ".ps1", ".sh", ".bat", ".cmd"}
+    for path in ROOT.iterdir():
+        if path.is_file() and path.suffix.lower() in script_suffixes:
+            raise ValueError("root-level scripts belong under tools/ or tests/")
+    docs = ROOT / "docs"
+    for directory, children, _ in os.walk(docs):
+        for child in children:
+            path = Path(directory) / child
+            if child.casefold() == "adr" and path != docs / "adr":
+                raise ValueError("architecture decisions belong only in docs/adr/")
+
+
 def validate() -> None:
     counts: dict[str, int] = {}
+    validate_source_layout()
+    counts["source layout"] = 1
 
     toml_files = files_with_suffixes(".toml") + [ROOT / "Cargo.lock"]
     for path in toml_files:

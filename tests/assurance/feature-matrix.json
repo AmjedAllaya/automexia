@@ -253,7 +253,7 @@
       "components": ["automexia-keybindings", "apps/automexia-terminal", "rio-backend", "rio-vt"],
       "documentation": {
         "guide": ["docs/GHOSTTY-KEYBOARD-COMPATIBILITY.md"],
-        "reference": ["docs/generated/ghostty-1.3-keybindings.md", "docs/generated/ghostty-1.3-actions.md", "docs/reference/cli.md#ghostty-compatibility-inspection-and-migration"],
+        "reference": ["docs/generated/ghostty-1.3-keybindings.md", "docs/generated/ghostty-1.3-actions.md", "docs/CLI-REFERENCE.md#keyboard-compatibility-inspection"],
         "explanation": ["docs/adr/0026-versioned-ghostty-keybinding-profiles.md", "docs/adr/0027-redacted-compatibility-inspector.md", "docs/adr/0028-bounded-parked-pty-topology-history.md"]
       },
       "quality": {

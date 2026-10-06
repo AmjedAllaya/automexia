@@ -37,7 +37,7 @@ Important practical rules:
 - In CMD, built-in `dir` is deliberately not replaced.
 - A user-defined `EZA_COLORS` is not overwritten by Automexia.
 
-If icons are missing, first check [Troubleshooting](../guide/troubleshooting.md) rather than installing unrelated shell/profile modifications.
+If icons are missing, first check [Troubleshooting](../TROUBLESHOOTING.md) rather than installing unrelated shell/profile modifications.
 
 ## Semantic output
 

@@ -1,12 +1,12 @@
 # Automexia user guide
 
-Automexia is a keyboard-first terminal for local shells, command-line tools, and
-ordinary system OpenSSH workflows. This guide documents only public free
+Automexia is a cross-platform, keyboard-first terminal for Windows, Linux, and
+macOS. It hosts local shells, command-line tools and system OpenSSH workflows. This guide documents only public free
 terminal behavior.
 
 ## Start here
 
-- [Install Automexia](../INSTALLATION.md)
+- [Build and run Automexia](../INSTALLATION.md)
 - [Start and launch](start-and-launch.md)
 - [Terminal workspace](workspace.md)
 - [Session recovery](session-recovery.md)

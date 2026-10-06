@@ -134,7 +134,7 @@ from library tests. No native editor acceptance is implied by these commands.
 
 Shortcut coverage includes all classic catalog actions against actual platform
 tables, exact mode/override guards, source-free labels, palette-only Enter, and
-literal CPU glyph pixels at 100ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ400%. The palette model benchmark is separate
+literal CPU glyph pixels at 100% through 400%. The palette model benchmark is separate
 from native desktop input latency. See ADR 0051 for remaining native gates.
 
 ## QA diagnostic privacy
@@ -860,7 +860,7 @@ The native test snapshot adds a privacy-safe `palette_accessibility_summary`;
 it is evidence plumbing, not a platform screen-reader implementation.
 
 For native review, wait for application readiness, open the palette, visit all
-six categories by keyboard and mouse, return by Back/Alt+Left, search from inside
+seven categories by keyboard and mouse, return by Back/Alt+Left, search from inside
 a category, clear the query and verify restoration. Hold Enter during category
 entry and verify no command runs. Resize and scale before pointer activation;
 verify the visible row is the activated row, the scrollbar remains discoverable,

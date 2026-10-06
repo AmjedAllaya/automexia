@@ -1,7 +1,7 @@
 # Getting started
 
-This tutorial builds, verifies, and opens Automexia Terminal from a clean
-checkout. It is for contributors and source users; signed stable installers are
+This tutorial builds, verifies, and opens Automexia Terminal on Windows, Linux,
+or macOS from a clean checkout. It is for contributors and source users; signed stable installers are
 not published until the release prerequisites in [Releasing](../RELEASING.md)
 are satisfied.
 
@@ -47,7 +47,7 @@ cargo dev
 ```
 
 This one command performs the complete contributor gate, builds the debug
-application, checks `automexia --version`, installs or repairs the host shell
+application, checks `automexia --version`, prepares session-only shell
 integration, and opens Automexia. A cold build can spend several minutes in
 WGPU, shader, and workspace tests. The window opens only after verification
 passes.
@@ -71,8 +71,9 @@ In the opened terminal, check:
 3. The complete working path appears below the context tags.
 4. `ls` uses icon-aware presentation where the installed shell integration
    supports it.
-5. The footer remains attached to the pane bottom and reports encoding,
-   newline convention, grid size, and local time.
+5. With **Show Footer** enabled, the pane footer reports the selected status
+   items, such as encoding, newline convention, grid size and local time.
+   Customize it under **Customizations → Terminal Appearance → Footer**.
 
 PowerShell, CMD, WSL, Bash, and Zsh behavior is explained in
 [Shell integration](SHELL-INTEGRATION.md). If a check fails, use the focused

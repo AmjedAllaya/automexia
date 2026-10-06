@@ -1,5 +1,13 @@
 # Releasing Automexia Terminal
 
+Automexia is cross-platform: Windows, Linux and macOS have independent native
+verification and packaging gates. Source availability is not evidence that a
+signed package has been published. See [platform status](docs/PLATFORMS.md) for
+available packages and [native release targets](.github/RELEASE-PLATFORMS.md) for
+the runner and artifact matrix.
+
+## Separate Linux Early Access lane
+
 Linux Early Access has a separate zero-cost public binary lane. An internal
 `release/linux/X.Y.Z` pull request activates `.github/workflows/linux-early-access.yml`
 after merge. It publishes only the exact six Linux packages and public evidence
@@ -39,7 +47,15 @@ and cannot sign, publish, tag, or activate the website. A real publication also
 requires GitHub release-level and per-asset attestation verification after
 immutable publication and before the activation handoff.
 
-Stable releases are tag-driven from protected `main`. Run:
+## Cross-platform stable release workflow
+
+`.github/workflows/release.yml` starts after an approved `release/X.Y.Z` pull
+request is merged into protected `main`; the separate `release/linux/` lane is
+excluded. It validates the merged commit and creates the annotated version tag
+only after the release gates pass. Pushing a tag alone does not start this
+workflow.
+
+For local release preparation, run the helper with the workspace version:
 
 ```text
 cargo xtask release --version 0.4.0
@@ -47,16 +63,16 @@ cargo xtask release --version 0.4.0
 
 On its first invocation for a version, this command assembles reviewed
 `changes/` fragments into `CHANGELOG.md` and asks the maintainer to commit the
-result before tagging. On the tagged commit it is a preflight, not a publisher.
+result before release. Once the changelog is prepared it is a preflight, not a publisher.
 It requires a clean full CI gate, final approved brand assets under the process
 in `docs/BRANDING.md`, the private
 conduct contact, Windows Authenticode credentials, and Apple Developer
 ID/notarization credentials.
 
-The tag preflight also enforces the versioned stable-source policy. The tag must
-be annotated and pushed, resolve to the exact current remote `main` commit, and
-retain complete clean history from the annotated and remotely published Rio
-fork tag. Every downstream commit must be linear and carry an author-matching
+The hosted preflight also enforces the versioned stable-source policy. The
+candidate must resolve to the exact current remote `main` commit and retain
+complete clean history from the annotated and remotely published Rio fork tag.
+Every downstream commit must be linear and carry an author-matching
 DCO sign-off. `stable-release` must provide the private
 `AUTOMEXIA_REPOSITORY_AUDIT_TOKEN`, scoped only to read repository
 administration, Actions, collaborator, and security state. Preflight runs the
@@ -82,10 +98,10 @@ cargo-packager 0.11.x WiX 3 backend cannot create ARM64 MSI databases. The
 Windows runner therefore needs the .NET SDK, and xtask restores the exact WiX
 5.0.2 tool from `.config/dotnet-tools.json`. The workflow also produces
 SHA-256 checksums, semantic CycloneDX/SPDX SBOMs, and a signed
-repository-owned release manifest. On the current GitHub-Free/private plan,
-GitHub artifact attestations remain an external Enterprise entitlement and are
-not claimed by this release process. The SBOM input combines final signed
-packages with the tagged
+repository-owned release manifest. GitHub artifact-attestation eligibility
+depends on repository visibility and account policy; visibility alone is not
+evidence that this workflow emitted or verified an attestation. The SBOM input combines final signed
+packages with the release commit's
 `Cargo.lock`; validation rejects empty documents and version/component drift.
 The workflow signs every Windows PowerShell/format resource before packaging,
 and both portable ZIPs plus the ARM64 MSI include the complete resource tree.
@@ -104,15 +120,15 @@ signature/notarization verification, desktop/AppStream/icon/URL/terminfo checks,
 `automexia --version` for every portable archive, config migration preservation,
 and the manual controlled-hardware GPU/PTY checklist in `docs/TESTING.md`.
 
-The tag workflow will not enter preflight unless all four protected runner
+The stable workflow will not enter preflight unless all four protected runner
 gates succeed: `AUTOMEXIA_NATIVE_GUI_RUNNER=1` drives real PowerShell/ConPTY
 clone and resize storms; `AUTOMEXIA_WSL_RUNNER=1` plus the configured distro
 proves WSL identity/isolation; and `AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER=1`
 runs the exact native-resource and nine-target Criterion workload on the named
 Windows GPU/benchmark runner. The performance job composes classified latency
 with native private-byte/working-set evidence and calls
-`evaluate --require-active --expected-commit <tag-commit>`. Therefore the
-checked-in `collecting` S2 baseline intentionally blocks stable tags until 30
+`evaluate --require-active --expected-commit <release-commit>`. Therefore the
+checked-in `collecting` S2 baseline intentionally blocks stable publication until 30
 consecutive comparable days are independently reviewed and activated. Evidence
 must be fresh, clean-source and exact-commit bound, carry public operator and
 runner identity, and satisfy the policy's repeated-sample/confidence limits.

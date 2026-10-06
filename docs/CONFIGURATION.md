@@ -323,9 +323,10 @@ oversized, linked, permission-denied, or contended file never replaces live
 configuration; Automexia reports a warning and uses the recovered snapshot or
 `config.toml` values. Invalid or newer current-version data is never replaced by an
 automatic predecessor import. To clear individual choices, use Reset. To clear all
-runtime overrides, close Automexia and move the version-10 primary and
-previous snapshots and all retained version-1 through version-9 snapshots to a backup; leaving
-older files would import their choices again. This file never stores credentials, terminal contents,
+runtime overrides, close Automexia and move `user-preferences-v13.toml` and
+`user-preferences-v13.previous.toml` from the configuration root's `state/`
+directory to a backup, together with any retained older version pairs; leaving
+older files would import their choices again. These files never store credentials, terminal contents,
 history, paths, tabs, panes, sessions, or provider state.
 
 ## Runtime font and appearance
@@ -362,8 +363,8 @@ clears the saved override and inherits the current configured size. An unsupport
 configured size has an explanatory unavailable control; Customizations does not rewrite
 or clamp the configuration file.
 
-**Theme** opens a visual gallery, also available through **Ctrl/Cmd+K → Theme
-Gallery**. Arrow keys preview a palette in the current window without saving;
+**Theme** opens a visual gallery, also available through **Ctrl+Shift+P**
+(**Cmd+Shift+P** on macOS) → **Theme Gallery**. Arrow keys preview a palette in the current window without saving;
 Enter or **Apply** saves it for all windows and the next launch. Escape restores
 the applied palette. **Use configuration** removes both saved theme and legacy
 light/dark appearance overrides. Explicit colors in **Fonts** still take
@@ -407,6 +408,29 @@ Reset default previews the configured Fonts values after confirmation; Restore s
 returns to the earlier choices. Individual value resets clear only that override.
 Per-face named styles, symbol maps and additional font directories remain in
 `config.toml`. No fonts are installed or downloaded by this page.
+
+## Window controls
+
+**Window controls** styles Automexia-owned minimize, maximize/restore and close
+buttons. `[presentation.window-controls]` accepts `style = "soft"` (the default),
+`"glass"`, `"outline"` or `"circles"`. Each style has its own optional profile,
+such as `[presentation.window-controls.glass]`:
+
+| Key | Default | Values / effect |
+|---|---|---|
+| `size` | `"standard"` | `"compact"`, `"standard"`, `"large"`; changes visible size within the existing click targets. |
+| `spacing` | `"balanced"` | `"tight"`, `"balanced"`, `"airy"`; gap between visible buttons. |
+| `roundness` | `45` | Integer 0–100 percent; Circles always stays circular. |
+| `icon-size` | `"standard"` | `"compact"`, `"standard"`, `"large"`; fits inside the chosen button size. |
+| `icon-weight` | `"regular"` | `"fine"`, `"regular"`, `"bold"`. |
+| `hover-strength` | `16` | Integer 0–100 percent; pressing adds stronger feedback. |
+| `inactive-opacity` | `65` | Integer 0–100 percent; inactive surfaces dim while icons retain readable contrast. |
+| `minimize`, `maximize`, `close` | Theme colors | Six-digit RGB icon colors. `maximize` also colors the restore icon. |
+| `background`, `border` | Style and theme | RGB or RGBA hex colors; the alpha channel controls opacity. |
+
+These settings do not change platform-native decorations. The UI saves edits per
+style, uses the same painter for previews, and never activates window actions from
+a preview. Background and border opacity controls edit their RGBA alpha bytes.
 
 ## Output presentation
 

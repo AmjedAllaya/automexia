@@ -159,7 +159,6 @@ def _validate_nonactivation(root: Path) -> int:
         )
     for relative in (
         Path("docs/CONFIGURATION.md"),
-        Path("docs/reference/configuration.md"),
     ):
         text = _bounded_text(root / relative, relative.as_posix())
         if "[production-operations]" in text:

@@ -160,7 +160,7 @@ grid. The gap scales with cell height (normally 2–3 logical pixels, capped at 
 larger gap before the next prompt is unchanged. Output without supported command
 boundaries and full-screen applications keep their normal terminal behavior.
 For more space between the text itself, the existing `line-height` setting applies
-uniformly to the terminal; see [configuration](../reference/configuration.md).
+uniformly to the terminal; see [configuration](../CONFIGURATION.md).
 
 ## Command boundaries and pane borders
 

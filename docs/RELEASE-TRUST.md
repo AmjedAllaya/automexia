@@ -78,8 +78,9 @@ Microsoft.Windows.Console.ConPTY NuGet PURL, version, MIT license and package
 SHA-256 in both formats. The offline enrichment step adds this binary dependency
 from the shared recipe; conflicting scanner entries fail for review. The release manifest, checksums, signed
 package evidence, and SBOMs bind the final packages to the reviewed release
-process. GitHub provenance/SBOM attestations for this private repository are an
-external Enterprise entitlement and are not claimed by the GitHub-Free flow.
+process. GitHub provenance/SBOM attestations require separate workflow evidence;
+the public source repository's visibility does not prove that a particular
+release produced or verified them.
 
 Publication is create-once. The publish job calls GitHub's immutable-releases
 endpoint and fails unless the repository has immutable releases enabled. It
@@ -157,15 +158,18 @@ the staple, and asks Gatekeeper to assess both the DMG and mounted application.
 Linux packages retain the platform-native model: deterministic DEB/RPM/tar.gz
 payloads, clean install/uninstall validation, exact SHA-256 checksums, SBOMs,
 and a signed repository-owned release manifest. GitHub artifact attestations
-for this private repository are an external Enterprise entitlement. Distribution-
+must be verified separately for the exact published artifacts. Distribution-
 repository signing is not provided by this GitHub release signature contract;
 it does not configure a signed APT or RPM repository or an automatic updater.
 
 Linux Early Access additionally uses the separate public binary archive
-`AmjedAllaya/automexia-releases`. Its private-source workflow publishes exactly
-six Linux packages plus checksums, a detached minisign signature and public key,
-two SBOMs, public guidance/notices, and a source-commit-bound distribution
-manifest. A repository-scoped one-hour GitHub App token receives contents write
+`AmjedAllaya/automexia-releases`. The current source workflow publishes exactly
+six Linux packages plus eight verification and user-document assets, including
+checksums, a detached minisign signature, public key and a source-commit-bound
+distribution manifest. Full scanner SBOMs remain private workflow evidence;
+see the [current SBOM boundary](PUBLIC-RELEASE-DISTRIBUTION.md#sbom-privacy-boundary-in-current-source)
+for the distinction from the immutable first release. A repository-scoped
+one-hour GitHub App token receives contents write
 and administration read only after the signed bundle passes local verification.
 The draft is byte/digest checked before publication and the immutable release is
 checked again afterward. GitHub's signed release attestation and every local

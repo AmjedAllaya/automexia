@@ -50,7 +50,8 @@ The exact public/private rule is in
 - `docs/GETTING-STARTED.md` and `docs/user-guide/` own user workflows.
 - `docs/CONFIGURATION.md`, `docs/KEYBOARD.md`, and
   `docs/CLI-REFERENCE.md` own exact public reference.
-- `docs/ARCHITECTURE.md` and accepted ADRs own current technical rationale.
+- `docs/ARCHITECTURE.md` and accepted ADRs in `docs/adr/` own current technical
+  rationale. Keep one copy of each decision and link it from summaries.
 - `docs/TESTING.md` owns evidence levels and contributor commands.
 - `docs/ROADMAP.md` records current implementation and release-evidence status.
 - `docs/PRIVATE-DOCUMENTATION-POLICY.md` owns confidentiality and publication.

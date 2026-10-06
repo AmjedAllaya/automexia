@@ -506,7 +506,7 @@ opacity = 1.0
 decorations = "Disabled"
 ```
 
-Other supported controls include blur, background image, colorspace, initial title, platform-specific decoration options, and quake-window dimensions. Use [Configuration reference](../reference/configuration.md#window) before changing advanced compositor/renderer settings; some are intentionally platform-specific.
+Other supported controls include blur, background image, colorspace, initial title, platform-specific decoration options, and quake-window dimensions. Use [Configuration reference](../CONFIGURATION.md#window) before changing advanced compositor/renderer settings; some are intentionally platform-specific.
 
 ### Opacity or background image?
 
@@ -532,7 +532,7 @@ Pane-local tab rails and operational footers follow responsive product rules and
 
 ## Theme Gallery
 
-Open **Ctrl/Cmd+K**, search for **Theme Gallery**, then press Enter. You can also
+Open **Ctrl+Shift+P** (**Cmd+Shift+P** on macOS), search for **Theme Gallery**, then press Enter. You can also
 open **Customizations → Terminal Appearance → Theme**.
 
 - Use the arrow keys or click a palette to preview it instantly. No settings are
@@ -618,7 +618,7 @@ keys = [
 
 Use custom bindings for frequent operations with a clear personal mnemonic. Do not assign a new shortcut just because an action exists; the command palette is a lower-maintenance choice for occasional actions.
 
-Bindings are explicit overrides. Unknown action names are rejected rather than silently removing a matching default. The full stable action-name list is in [Keyboard and input reference](../reference/keyboard.md#custom-bindings).
+Bindings are explicit overrides. Unknown action names are rejected rather than silently removing a matching default. The full stable action-name list is in [Keyboard and input reference](../KEYBOARD.md#custom-bindings).
 
 ## 10. Reload safely
 
@@ -651,7 +651,7 @@ Use these for controlled environments, test setups, portable launch scripts, or 
 6. Keep comments explaining non-obvious platform workarounds.
 7. Periodically remove overrides that no longer solve a real problem.
 
-For every available key, type, range, default, and platform override, use [Configuration reference](../reference/configuration.md).
+For every available key, type, range, default, and platform override, use [Configuration reference](../CONFIGURATION.md).
 
 ## Current implementation limits
 

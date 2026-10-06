@@ -384,6 +384,8 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
         "docs/ROADMAP.md": {
             "Complete release evidence for command productivity",
             "Some capabilities may exist in source but remain disabled or release-gated",
+            "Command productivity",
+            "remaining native and release evidence",
         },
         "docs/PHASE-IMPLEMENTATION-AUDIT.md": {
             "Command productivity foundations",
@@ -396,10 +398,6 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
         "docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md": {
             "CP5.0 fully done",
             "CP5.1-CP5.4 are fully implemented at their source/local boundaries",
-        },
-        "docs/project/roadmap.md": {
-            "Command productivity",
-            "remaining native and release evidence",
         },
         "docs/index.md": {
             "Accepted source work partial overall",

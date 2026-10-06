@@ -1,6 +1,7 @@
 # Automexia Terminal documentation
 
-This public documentation covers current open-source terminal behavior and
+Automexia is a cross-platform terminal for Windows, Linux and macOS. This public
+documentation covers current open-source terminal behavior and
 implemented free terminal capabilities. It excludes all future features,
 including open-source ideas, and commercial strategy.
 
@@ -8,7 +9,7 @@ including open-source ideas, and commercial strategy.
 
 | Goal | Page |
 |---|---|
-| Install and launch | [Installation](INSTALLATION.md) |
+| Build and launch on Windows, Linux or macOS | [Build and run](INSTALLATION.md) |
 | Learn the basics | [Getting started](GETTING-STARTED.md) |
 | Follow the complete user guide | [User guide](user-guide/index.md) |
 | Check exact feature status | [Features](FEATURES.md) |
@@ -32,11 +33,11 @@ including open-source ideas, and commercial strategy.
 
 | Subject | Page |
 |---|---|
-| Configuration | [Configuration](CONFIGURATION.md), [compact reference](reference/configuration.md) |
-| Keyboard | [Keyboard](KEYBOARD.md), [compact reference](reference/keyboard.md) |
+| Configuration | [Configuration](CONFIGURATION.md) |
+| Keyboard | [Keyboard](KEYBOARD.md) |
 | Table output | [Focused core table view](user-guide/table-output.md) |
 | Keyboard hyperlinks | [Link review, opening and copying](user-guide/hyperlinks.md) |
-| Command line | [CLI](CLI-REFERENCE.md), [compact reference](reference/cli.md) |
+| Command line | [CLI](CLI-REFERENCE.md) |
 | Directory opening | [Desktop handoff and preview](user-guide/open-directory.md) |
 | File editing | [Editor choice, file position and preview](user-guide/edit-file.md) |
 | Repository navigation | [Git remote and issue-page opening](user-guide/open-repository.md) |
@@ -65,6 +66,7 @@ including open-source ideas, and commercial strategy.
 | Subject | Page |
 |---|---|
 | Current architecture | [Architecture](ARCHITECTURE.md), [developer summary](developer/architecture.md) |
+| Source and documentation owners | [Contributor source map](developer/source-map.md) |
 | Terminal implementation and known limitations | [Terminal maintenance status](TERMINAL-MAINTENANCE-REQUIREMENTS.md) |
 | UI ownership and verification limits | [Terminal interaction status](TERMINAL-INTERACTION-REQUIREMENTS.md) |
 | Dependency placement | [Build, wrap, and adopt](BUILD-WRAP-ADOPT-ARCHITECTURE.md) |

@@ -50,7 +50,7 @@ class RustToolchainTests(unittest.TestCase):
             with self.subTest(owner=name):
                 source = (contract.ROOT / name).read_text(encoding='utf-8')
                 self.assertEqual(set(re.findall(r'automexia-rust-[0-9.]+-v[0-9]+', source)), {expected})
-        for name in ('.github/TOOLCHAIN-POLICY.md', '.github/PATCH-REPORT.md'):
+        for name in ('.github/TOOLCHAIN-POLICY.md',):
             with self.subTest(owner=name):
                 source = (contract.ROOT / name).read_text(encoding='utf-8')
                 self.assertIn('rust-toolchain.toml', source)
@@ -92,8 +92,7 @@ class RustToolchainTests(unittest.TestCase):
         original = contract.read_text
         pin, _ = contract.versions()
         owners = ('docs/CI-ASSURANCE.md', 'docs/CI-BUILD-PERFORMANCE-PLAN.md',
-                  '.github/FREE-PRIVATE-PRODUCTION-SETUP.md', '.github/TOOLCHAIN-POLICY.md',
-                  '.github/PATCH-REPORT.md')
+                  '.github/FREE-PRIVATE-PRODUCTION-SETUP.md', '.github/TOOLCHAIN-POLICY.md')
         for name in owners:
             def mutated(path):
                 source = original(path)

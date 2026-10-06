@@ -1,11 +1,14 @@
 # Platform support
 
-Automexia v0.4 has release and CI ownership for Windows, Linux, and macOS.
+Automexia is a cross-platform terminal with native source, release and CI
+ownership for Windows, Linux, and macOS.
 Portable Rust tests are necessary but not sufficient: an OS-specific adapter is
 accepted on the native host that owns its window server, PTY, shell, graphics,
 packaging, and accessibility APIs.
 
-Current public binaries: [v0.4.0 Linux Early Access](https://github.com/AmjedAllaya/automexia-releases/releases/tag/v0.4.0)
+Build and run all three desktop platforms from the [same source workflow](INSTALLATION.md).
+
+Separately published packages: [v0.4.0 Linux Early Access](https://github.com/AmjedAllaya/automexia-releases/releases/tag/v0.4.0)
 for x64 and Arm64, in DEB, RPM and portable formats. Windows and macOS stable
 installers are not published. The matrix below describes implementation and
 release-gate ownership, not a claim that every listed package is available.
@@ -15,10 +18,10 @@ release-gate ownership, not a claim that every listed package is available.
 | Surface | Windows | Linux | macOS |
 |---|---|---|---|
 | Native architecture | x86_64; ARM64 compile/package checks | x86_64 and ARM64 artifacts | Universal x86_64 + ARM64 app |
-| Shells | PowerShell 5/7, CMD, WSL Bash/Zsh | Bash, Zsh, other shells without enhanced integration | Zsh, Bash; other shells without enhanced integration |
+| Shells | PowerShell 5/7, CMD, WSL Bash/Zsh/Fish | Bash, Zsh, Fish; other shells without enhanced integration | Zsh, Bash, Fish; other shells without enhanced integration |
 | PTY | ConPTY | Unix PTY | Unix PTY |
 | Display/render | WGPU/DX path plus experimental CPU fallback | X11-only, Wayland-only, and combined builds | Metal/WGPU path plus experimental CPU fallback |
-| Package | Signed MSI and ZIP | DEB, RPM, tar.gz | Signed/notarized universal app in DMG |
+| Release packaging target (not proof of publication) | Signed MSI and ZIP | DEB, RPM, tar.gz | Signed/notarized universal app in DMG |
 | Native deep evidence | ConPTY/resize/clone/image/AppVerifier/WPR controlled gates | controlled X11/Wayland GPU/PTY and package containers | controlled Metal/GPU/PTY, VoiceOver, Gatekeeper/notarization |
 
 Ordinary pull requests run the locked all-feature Rust quality gate on the

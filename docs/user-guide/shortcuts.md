@@ -1,6 +1,6 @@
 # Shortcuts and input
 
-This page is the practical shortcut guide: the keys users reach for every day, how they differ by platform, and when the command palette or mouse is a better approach. The exhaustive binding/action list remains in [Keyboard and input reference](../reference/keyboard.md).
+This page is the practical shortcut guide: the keys users reach for every day, how they differ by platform, and when the command palette or mouse is a better approach. The exhaustive binding/action list remains in [Keyboard and input reference](../KEYBOARD.md).
 
 ## Choose an input approach
 
@@ -335,4 +335,4 @@ Explicit user bindings replace matching default triggers. Unknown actions are re
 
 Use a custom binding when the action is frequent enough to justify muscle memory. For occasional actions, the command palette is easier to maintain and avoids unnecessary shortcut collisions.
 
-The complete action-name list, mode syntax, key names, and platform defaults are in [Keyboard and input reference](../reference/keyboard.md).
+The complete action-name list, mode syntax, key names, and platform defaults are in [Keyboard and input reference](../KEYBOARD.md).
