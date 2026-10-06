@@ -13,7 +13,9 @@ class VisualQualityTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        # Hosted Windows/macOS temporary directories can have canonical aliases
+        # (for example /var -> /private/var). Match the production path owner.
+        self.root = Path(self.temporary.name).resolve()
 
     def fixture(self, **updates):
         image = b'owned-image-fixture'
