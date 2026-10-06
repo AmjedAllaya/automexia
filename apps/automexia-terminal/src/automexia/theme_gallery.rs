@@ -54,7 +54,7 @@ impl ThemeSource {
             Self::BuiltIn => "Built-in",
             Self::Local => "Local",
             Self::Configuration => "Configuration",
-            Self::Saved => "Saved choice",
+            Self::Saved => "Saved palette",
         }
     }
 }

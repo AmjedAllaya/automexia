@@ -1885,6 +1885,18 @@ actual catalogue; they do not prove native terminal palette presentation. The
 restart fixture persists fractional font values and restores a configured
 forced theme after Reset.
 
+The binary filter `gallery_` covers applied-theme identity independently of
+temporary keyboard preview: stable library order without a duplicate saved row,
+configuration inheritance, exact saved name/palette matching, missing/changed/
+invalid local sources, imports, refresh, cancellation and stale pointer presses.
+Controlled paint and accessibility checks cover the persistent full-card highlight
+and **Current theme** label across every built-in palette, narrow/wide layouts,
+larger fonts and 1×/1.25×/2× scaling. Text and indicator contrast are checked
+separately from preview focus. Set `AUTOMEXIA_SETTINGS_PREVIEW_DIR` to a private
+evidence directory to export the gallery fixture rasters. Actual glyph bounds
+also reject sample/caption overlap in compact previews. These are controlled
+CPU images, not native compositor or screen-reader certification.
+
 ## Workspace recovery
 
 `cargo test -p automexia-terminal --lib session_recovery` checks hostile/oversized

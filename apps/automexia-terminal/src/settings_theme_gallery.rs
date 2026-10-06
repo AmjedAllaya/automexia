@@ -37,6 +37,8 @@ pub(super) enum GalleryTarget {
 pub(super) struct Gallery {
     entries: Vec<ThemeDescriptor>,
     selected: usize,
+    // Applied palette; keyboard selection independently drives temporary preview.
+    current: usize,
     source_selected: usize,
     first: usize,
     visible: usize,
@@ -59,6 +61,28 @@ const ACTIONS: [GalleryTarget; 7] = [
     GalleryTarget::Refresh,
     GalleryTarget::Back,
 ];
+
+fn current_row_theme(theme: UiTheme) -> UiTheme {
+    let background = std::array::from_fn(|i| {
+        if i == 3 {
+            1.0
+        } else {
+            theme.surface[i] * 0.76 + theme.accent[i] * 0.24
+        }
+    });
+    UiTheme {
+        background,
+        text: automexia_ui_model::ensure_contrast(theme.text, background, 4.55),
+        muted_text: automexia_ui_model::ensure_contrast(
+            theme.muted_text,
+            background,
+            4.55,
+        ),
+        outline: automexia_ui_model::ensure_contrast(theme.outline, background, 3.1),
+        accent: automexia_ui_model::ensure_contrast(theme.accent, background, 3.1),
+        ..theme
+    }
+}
 
 impl SettingsView {
     pub(super) fn gallery_accessibility_surface(
@@ -101,13 +125,18 @@ impl SettingsView {
                         }
                     } else if let Some(entry) = gallery.entries.get(index) {
                         format!(
-                            "{}. {}. {}",
+                            "{}. {}. {}{}",
                             entry.name,
                             entry.source.label(),
                             match entry.validation {
                                 ValidationStatus::Valid => "Valid",
                                 ValidationStatus::LowContrast => "Low contrast",
                                 ValidationStatus::Invalid(_) => "Invalid file",
+                            },
+                            if index == gallery.current {
+                                ". Current theme"
+                            } else {
+                                ""
                             }
                         )
                     } else {
@@ -176,6 +205,30 @@ impl SettingsView {
 }
 
 impl Gallery {
+    fn reconcile_current(&mut self, saved: Option<&ThemeSelection>) {
+        self.entries
+            .retain(|entry| entry.source != ThemeSource::Saved);
+        self.current = 0;
+        let Some(saved) = saved else { return };
+        // Preferences own a palette snapshot, not a file ID. A changed file with
+        // the same name must not appear to be the applied palette.
+        if let Some(index) = self.entries.iter().position(|entry| {
+            matches!(entry.source, ThemeSource::BuiltIn | ThemeSource::Local)
+                && entry.name == saved.name
+                && entry.theme.as_ref() == Some(&saved.theme)
+        }) {
+            self.current = index;
+        } else {
+            self.current = self.entries.len();
+            self.entries.push(ThemeDescriptor::parsed(
+                "saved".into(),
+                saved.name.clone(),
+                "Your applied palette; its original is not in this library".into(),
+                ThemeSource::Saved,
+                saved.theme.clone(),
+            ));
+        }
+    }
     fn actions(&self) -> &'static [GalleryTarget] {
         if self.draft.is_some() {
             &[
@@ -233,7 +286,7 @@ impl SettingsView {
     #[cfg(feature = "native-gui-test-hooks")]
     pub(super) fn gallery_snapshot(&self) -> serde_json::Value {
         self.gallery.as_ref().map_or(serde_json::Value::Null,|g|serde_json::json!({
-            "count":g.count(),"selected":g.selected,"busy":g.busy,"customizing":g.draft.is_some(),
+            "count":g.count(),"selected":g.selected,"current":g.current,"busy":g.busy,"customizing":g.draft.is_some(),
             "builtin":g.entries.get(g.selected).filter(|e|e.source==ThemeSource::BuiltIn).map(|e|e.id.as_str()),
             "targets":g.targets.iter().map(|(target,bounds)|serde_json::json!({"id":format!("{target:?}"),"bounds":bounds.array()})).collect::<Vec<_>>(),
             "preview":g.preview.array(),
@@ -243,7 +296,8 @@ impl SettingsView {
         let g = self.gallery.as_ref()?;
         let entry = g.entries.get(g.selected);
         Some(format!(
-            "Themes. {}. {}. Preview only. Enter: apply. Escape: restore. {}",
+            "Themes. Current theme: {}. Preview: {}. {}. Enter: apply. Escape: restore. {}",
+            g.entries.get(g.current).map_or("", |e| e.name.as_str()),
             entry.map_or("", |e| e.name.as_str()),
             entry.map_or("", |e| e.description.as_str()),
             g.notice
@@ -280,16 +334,8 @@ impl SettingsView {
             ThemeSource::Configuration,
             context.configured.clone(),
         ));
-        if let Some(saved) = &context.saved {
-            gallery.entries.push(ThemeDescriptor::parsed(
-                "saved".into(),
-                saved.name.clone(),
-                "Your applied palette".into(),
-                ThemeSource::Saved,
-                saved.theme.clone(),
-            ));
-            gallery.selected = 1;
-        }
+        gallery.reconcile_current(context.saved.as_ref());
+        gallery.selected = gallery.current;
         gallery.notice = "Loading theme library…".into();
         gallery.busy = true;
         self.gallery = Some(gallery);
@@ -312,14 +358,18 @@ impl SettingsView {
             .entries
             .get(gallery.selected)
             .map(|entry| (entry.id.clone(), entry.selection()));
-        gallery.entries.retain(|e| {
-            matches!(e.source, ThemeSource::Configuration | ThemeSource::Saved)
-        });
+        let was_current = gallery.selected == gallery.current;
+        gallery
+            .entries
+            .retain(|e| e.source == ThemeSource::Configuration);
         gallery.entries.extend(entries);
+        gallery.reconcile_current(
+            self.theme_context.as_ref().and_then(|c| c.saved.as_ref()),
+        );
         gallery.selected = selected
             .as_ref()
             .and_then(|(id, _)| gallery.entries.iter().position(|e| &e.id == id))
-            .unwrap_or(0);
+            .unwrap_or(if was_current { gallery.current } else { 0 });
         let changed = gallery
             .entries
             .get(gallery.selected)
@@ -332,7 +382,9 @@ impl SettingsView {
         }
         .into();
         gallery.busy = false;
+        self.pressed = None;
         self.layout_dirty = true;
+        self.reveal_focus = true;
         if changed {
             self.gallery_preview();
         }
@@ -341,15 +393,24 @@ impl SettingsView {
         let Some(gallery) = &mut self.gallery else {
             return;
         };
-        gallery.entries.retain(|e| e.id != entry.id);
+        let id = entry.id.clone();
+        gallery.entries.retain(|e| e.id != id);
         gallery.entries.push(entry);
-        gallery.selected = gallery.entries.len() - 1;
+        gallery.reconcile_current(
+            self.theme_context.as_ref().and_then(|c| c.saved.as_ref()),
+        );
+        gallery.selected = gallery
+            .entries
+            .iter()
+            .position(|e| e.id == id)
+            .unwrap_or(gallery.current);
         gallery.draft = None;
         gallery.original = None;
         gallery.fields.clear();
         gallery.busy = false;
         gallery.focus = 0;
         gallery.notice = "Imported locally. Preview now; Apply to use it.".into();
+        self.pressed = None;
         self.gallery_preview();
         self.layout_dirty = true;
         self.reveal_focus = true;
@@ -856,11 +917,17 @@ impl SettingsView {
         );
         for (target, bounds) in &gallery.targets {
             if let GalleryTarget::Row(index) = target {
+                let current = gallery.draft.is_none() && *index == gallery.current;
+                let row_theme = if current {
+                    current_row_theme(theme)
+                } else {
+                    theme
+                };
                 control(
                     canvas,
                     *bounds,
                     *index == gallery.selected && gallery.focus == 0,
-                    theme,
+                    row_theme,
                     gallery.list,
                 );
                 if let Some(draft) = &gallery.draft {
@@ -886,15 +953,52 @@ impl SettingsView {
                         gallery.list,
                     );
                 } else if let Some(entry) = gallery.entries.get(*index) {
+                    let badge_width = if current { f * 8.3 } else { 0.0 };
+                    if current {
+                        rounded_fill(
+                            canvas,
+                            Rect {
+                                x: bounds.x + 3.0,
+                                y: bounds.y + 8.0,
+                                width: 3.0,
+                                height: (bounds.height - 16.0).max(0.0),
+                            },
+                            1.5,
+                            row_theme.accent,
+                            gallery.list,
+                        );
+                        let badge = Rect {
+                            x: bounds.x + bounds.width - badge_width - 8.0,
+                            y: bounds.y + 6.0,
+                            width: badge_width,
+                            height: f * 1.35,
+                        };
+                        rounded_surface(canvas, badge, row_theme.accent, gallery.list);
+                        label(
+                            canvas,
+                            badge,
+                            "Current theme",
+                            f * 0.73,
+                            automexia_ui_model::ensure_contrast(
+                                theme.background,
+                                row_theme.accent,
+                                4.55,
+                            ),
+                            true,
+                            gallery.list,
+                        );
+                    }
                     label(
                         canvas,
                         Rect {
+                            x: bounds.x + 8.0,
+                            width: (bounds.width - badge_width - 24.0).max(0.0),
                             height: f * 1.5,
                             ..*bounds
                         },
                         &entry.name,
                         f * 0.95,
-                        theme.text,
+                        row_theme.text,
                         true,
                         gallery.list,
                     );
@@ -917,13 +1021,14 @@ impl SettingsView {
                     label(
                         canvas,
                         Rect {
+                            x: bounds.x + 8.0,
+                            width: (bounds.width - 16.0).max(0.0),
                             y: bounds.y + f * 1.6,
                             height: f,
-                            ..*bounds
                         },
                         &metadata,
                         f * 0.69,
-                        theme.muted_text,
+                        row_theme.muted_text,
                         false,
                         gallery.list,
                     );
@@ -931,7 +1036,7 @@ impl SettingsView {
                         rounded_surface(
                             canvas,
                             Rect {
-                                x: bounds.x + 8.0 + swatch as f32 * f * 1.6,
+                                x: bounds.x + 12.0 + swatch as f32 * f * 1.6,
                                 y: bounds.y + f * 3.0,
                                 width: f * 1.2,
                                 height: f * 0.7,
@@ -1012,6 +1117,12 @@ impl SettingsView {
             let c = selection.theme.colors;
             let p = gallery.preview;
             rounded_surface(canvas, p, c.background.0, g.card);
+            let caption = Rect {
+                x: p.x + 8.0,
+                y: (p.y + p.height - f * 2.6).max(p.y),
+                width: (p.width - 16.0).max(0.0),
+                height: f * 2.3,
+            };
             let rows = [
                 ("  Terminal preview", c.foreground, true),
                 ("", c.foreground, false),
@@ -1023,19 +1134,16 @@ impl SettingsView {
                 ("  const theme = 'your style'", c.magenta, false),
             ];
             for (index, (text, color, bold)) in rows.iter().enumerate() {
-                label(
-                    canvas,
-                    Rect {
-                        y: p.y + 12.0 + index as f32 * f * 1.7,
-                        height: f * 1.6,
-                        ..p
-                    },
-                    text,
-                    f * 0.83,
-                    *color,
-                    *bold,
-                    p,
-                );
+                let row = Rect {
+                    y: p.y + 12.0 + index as f32 * f * 1.7,
+                    height: f * 1.6,
+                    ..p
+                };
+                // Keep complete sample lines above the caption in compact layouts.
+                if row.y + row.height > caption.y - 4.0 {
+                    break;
+                }
+                label(canvas, row, text, f * 0.83, *color, *bold, p);
             }
             let contrast = theme_gallery::text_contrast(&selection.theme);
             let note = if contrast < 4.5 {
@@ -1047,15 +1155,14 @@ impl SettingsView {
             };
             label(
                 canvas,
-                Rect {
-                    x: p.x + 8.0,
-                    y: (p.y + p.height - f * 2.6).max(p.y),
-                    width: (p.width - 16.0).max(0.0),
-                    height: f * 2.3,
-                },
+                caption,
                 note,
                 f * 0.68,
-                theme.muted_text,
+                automexia_ui_model::ensure_contrast(
+                    theme.muted_text,
+                    c.background.0,
+                    4.55,
+                ),
                 false,
                 p,
             );
@@ -1099,6 +1206,166 @@ mod tests {
     }
     fn key(view: &mut SettingsView, key: NamedKey) {
         view.key(&Key::Named(key), None, ModifiersState::empty(), false);
+    }
+    #[test]
+    fn gallery_applied_theme_uses_one_stable_library_row() {
+        let library = theme_gallery::builtins();
+        for entry in &library {
+            let mut view = gallery();
+            view.theme_context.as_mut().unwrap().saved = entry.selection();
+            view.open_theme_gallery();
+            view.take_theme_intent();
+            view.theme_inventory(library.clone(), false);
+            let gallery = view.gallery.as_ref().unwrap();
+            let ids: Vec<_> = gallery.entries.iter().map(|e| e.id.as_str()).collect();
+            let expected: Vec<_> = std::iter::once("configuration")
+                .chain(library.iter().map(|e| e.id.as_str()))
+                .collect();
+            assert_eq!(
+                ids, expected,
+                "saved choice must not duplicate or reorder the library"
+            );
+            assert_eq!(gallery.entries[gallery.selected].id, entry.id);
+            assert_eq!(gallery.current, gallery.selected);
+        }
+    }
+    #[test]
+    fn gallery_current_marker_does_not_follow_preview_or_customize() {
+        let mut view = gallery();
+        let saved = theme_gallery::builtins()[0].selection();
+        view.theme_context.as_mut().unwrap().saved = saved.clone();
+        view.open_theme_gallery();
+        view.theme_inventory(theme_gallery::builtins(), false);
+        view.take_theme_intent();
+        key(&mut view, NamedKey::ArrowDown);
+        assert_eq!(view.gallery.as_ref().unwrap().current, 1);
+        assert_eq!(view.gallery.as_ref().unwrap().selected, 2);
+        assert!(
+            matches!(view.take_theme_intent(), Some(ThemeIntent::Preview(Some(s))) if s.name == "Solar Dusk")
+        );
+        view.gallery_activate(GalleryTarget::Customize);
+        assert_eq!(view.gallery.as_ref().unwrap().current, 1);
+        key(&mut view, NamedKey::Escape);
+        assert_eq!(view.gallery.as_ref().unwrap().selected, 2);
+        view.gallery_activate(GalleryTarget::Apply);
+        assert!(
+            matches!(view.take_theme_intent(), Some(ThemeIntent::Apply(Some(s))) if s.name == "Solar Dusk")
+        );
+        // Only Application may commit the selection after successful persistence.
+        assert_eq!(view.theme_context.as_ref().unwrap().saved, saved);
+        assert_eq!(view.gallery.as_ref().unwrap().current, 1);
+        key(&mut view, NamedKey::Escape);
+        assert!(matches!(
+            view.take_theme_intent(),
+            Some(ThemeIntent::Cancel)
+        ));
+        view.open_theme_gallery();
+        view.theme_inventory(theme_gallery::builtins(), false);
+        assert_eq!(view.gallery.as_ref().unwrap().selected, 1);
+    }
+    #[test]
+    fn gallery_configuration_remains_current_until_an_override_is_applied() {
+        let mut view = gallery();
+        key(&mut view, NamedKey::ArrowDown);
+        assert_eq!(view.gallery.as_ref().unwrap().current, 0);
+        view.gallery_activate(GalleryTarget::Configuration);
+        assert!(matches!(
+            view.take_theme_intent(),
+            Some(ThemeIntent::Apply(None))
+        ));
+        assert!(view.theme_context.as_ref().unwrap().saved.is_none());
+    }
+    #[test]
+    fn gallery_current_matches_name_and_palette_and_survives_missing_sources() {
+        let mut view = gallery();
+        let mut local = theme_gallery::builtins().remove(0);
+        local.id = "local:workspace.toml".into();
+        local.name = "Workspace".into();
+        local.source = ThemeSource::Local;
+        let saved = local.selection();
+        view.theme_context.as_mut().unwrap().saved = saved.clone();
+        view.open_theme_gallery();
+        let mut renamed = local.clone();
+        renamed.name = "Different name".into();
+        let mut changed = local.clone();
+        changed.theme = theme_gallery::builtins().remove(1).theme;
+        let invalid = ThemeDescriptor::invalid(
+            local.id.clone(),
+            local.name.clone(),
+            "Invalid colors".into(),
+        );
+        for library in [vec![], vec![renamed], vec![changed], vec![invalid]] {
+            view.theme_inventory(library, false);
+            let g = view.gallery.as_ref().unwrap();
+            assert_eq!(g.entries[g.current].id, "saved");
+            assert_eq!(g.entries[g.current].selection(), saved);
+            assert_eq!(
+                g.entries
+                    .iter()
+                    .filter(|e| e.source == ThemeSource::Saved)
+                    .count(),
+                1
+            );
+        }
+        view.theme_inventory(vec![local.clone()], false);
+        let g = view.gallery.as_ref().unwrap();
+        assert_eq!(g.entries.len(), 2);
+        assert_eq!(g.entries[g.current].id, local.id);
+        assert_eq!(g.selected, g.current);
+        view.theme_inventory(vec![], false);
+        let g = view.gallery.as_ref().unwrap();
+        assert_eq!(g.entries[g.current].id, "saved");
+        assert_eq!(g.selected, g.current);
+        view.theme_added(local.clone());
+        let g = view.gallery.as_ref().unwrap();
+        assert_eq!(g.entries.len(), 2);
+        assert_eq!(g.entries[g.current].id, local.id);
+        assert_eq!(g.selected, g.current);
+    }
+    #[test]
+    fn gallery_refresh_keeps_preview_identity_when_current_source_changes() {
+        let mut view = gallery();
+        let mut library = theme_gallery::builtins();
+        let saved = library[0].selection();
+        view.theme_context.as_mut().unwrap().saved = saved.clone();
+        view.open_theme_gallery();
+        view.theme_inventory(library.clone(), false);
+        view.take_theme_intent();
+        library[0].theme = library[1].theme.clone();
+        view.theme_inventory(library.clone(), false);
+        let g = view.gallery.as_ref().unwrap();
+        assert_eq!(g.selected, 1);
+        assert_eq!(g.entries[g.current].selection(), saved);
+        assert_ne!(g.selected, g.current);
+        assert!(
+            matches!(view.take_theme_intent(), Some(ThemeIntent::Preview(selection)) if selection == library[0].selection())
+        );
+        // Replacing an earlier entry during import must also recalculate indices.
+        view.theme_added(library[0].clone());
+        let g = view.gallery.as_ref().unwrap();
+        assert_eq!(g.entries[g.current].selection(), saved);
+        assert_eq!(g.entries[g.selected].id, library[0].id);
+        assert_ne!(g.current, g.selected);
+    }
+    #[test]
+    fn gallery_current_palette_preserves_text_and_indicator_contrast() {
+        for entry in theme_gallery::builtins() {
+            let base = UiTheme::from_colors(&entry.theme.unwrap().colors);
+            let row = current_row_theme(base);
+            assert_ne!(row.background, base.background);
+            assert_eq!(row.background[3], 1.0);
+            for ink in [row.text, row.muted_text] {
+                assert!(automexia_ui_model::contrast_ratio(ink, row.background) >= 4.5);
+            }
+            for marker in [row.accent, row.outline] {
+                assert!(
+                    automexia_ui_model::contrast_ratio(marker, row.background) >= 3.0
+                );
+            }
+            let badge_ink =
+                automexia_ui_model::ensure_contrast(base.background, row.accent, 4.55);
+            assert!(automexia_ui_model::contrast_ratio(badge_ink, row.accent) >= 4.5);
+        }
     }
     #[test]
     fn menu_back_leaves_gallery_and_cancels_preview_once() {

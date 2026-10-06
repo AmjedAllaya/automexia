@@ -1221,6 +1221,239 @@ fn theme() -> UiTheme {
 }
 
 #[test]
+fn gallery_current_highlight_stays_distinct_from_keyboard_preview_across_palettes() {
+    use crate::automexia::theme_gallery;
+    let library = theme_gallery::builtins();
+    for entry in &library {
+        let palette = entry.theme.as_ref().unwrap();
+        let theme = UiTheme::from_colors(&palette.colors);
+        for (width, height, font, scale) in [
+            (500.0, 900.0, 16.0, 1.0),
+            (1280.0, 900.0, 20.0, 1.25),
+            (1600.0, 1000.0, 24.0, 2.0),
+        ] {
+            let mut view = opened();
+            view.fit(width, height, font);
+            view.set_theme_context(ThemeContext {
+                configured: palette.clone(),
+                saved: library[0].selection(),
+                font_colors: false,
+            });
+            view.open_theme_gallery();
+            view.theme_inventory(library.clone(), false);
+            view.take_theme_intent();
+            named(&mut view, NamedKey::ArrowDown);
+            let mut raster = Raster::new(scale);
+            view.paint(&mut raster, theme);
+            let surface = view.accessibility_surface(
+                scale,
+                accesskit::Rect::new(
+                    0.0,
+                    0.0,
+                    (width * scale) as f64,
+                    (height * scale) as f64,
+                ),
+            );
+            let current: Vec<_> = surface
+                .elements
+                .iter()
+                .filter(|e| {
+                    e.node
+                        .label()
+                        .is_some_and(|label| label.contains("Current theme"))
+                })
+                .collect();
+            assert_eq!(current.len(), 1, "one explicit applied theme");
+            assert_eq!(
+                current[0].node.author_id(),
+                Some("theme:builtin:aurora-night")
+            );
+            assert_eq!(current[0].node.is_selected(), Some(false));
+            let preview = surface
+                .elements
+                .iter()
+                .find(|e| e.node.author_id() == Some("theme:builtin:solar-dusk"))
+                .unwrap();
+            assert_eq!(preview.node.is_selected(), Some(true));
+            let logical = |node: &accesskit::Node| {
+                let bounds = node.bounds().unwrap();
+                Rect {
+                    x: bounds.x0 as f32 / scale,
+                    y: bounds.y0 as f32 / scale,
+                    width: bounds.width() as f32 / scale,
+                    height: bounds.height() as f32 / scale,
+                }
+            };
+            let applied = logical(&current[0].node);
+            let preview = logical(&preview.node);
+            let fill_at = |card: Rect, inset: f32| {
+                raster
+                    .rects
+                    .iter()
+                    .find(|(r, _)| {
+                        (r[0] - card.x - inset).abs() < 0.01
+                            && (r[1] - card.y - inset).abs() < 0.01
+                            && (r[2] - card.width + inset * 2.0).abs() < 0.01
+                            && (r[3] - card.height + inset * 2.0).abs() < 0.01
+                    })
+                    .unwrap()
+                    .1
+            };
+            let fill = fill_at(applied, 1.0);
+            assert_ne!(
+                fill, theme.background,
+                "applied row keeps a full-card highlight without focus"
+            );
+            assert_eq!(fill[3], 1.0);
+            assert_eq!(
+                fill_at(preview, 2.0),
+                theme.background,
+                "preview has a focus outline, not the applied fill"
+            );
+            let markers: Vec<_> = raster
+                .rects
+                .iter()
+                .filter(|(r, c)| {
+                    r[0] >= applied.x
+                        && r[1] >= applied.y
+                        && r[0] + r[2] <= applied.x + applied.width + 0.01
+                        && r[1] + r[3] <= applied.y + applied.height + 0.01
+                        && automexia_ui_model::contrast_ratio(*c, fill) >= 3.0
+                })
+                .collect();
+            assert!(
+                markers.iter().any(|(r, _)| (r[2] - 3.0).abs() < 0.01),
+                "persistent edge marker"
+            );
+            assert!(
+                markers
+                    .iter()
+                    .any(|(r, _)| r[2] >= font * 8.0 && r[3] < font * 1.5),
+                "current badge fits within the card"
+            );
+            if scale == 1.0 {
+                if let Some(directory) =
+                    std::env::var_os("AUTOMEXIA_SETTINGS_PREVIEW_DIR")
+                {
+                    let pixels = raster.pixels(width as u32, height as u32, true);
+                    let directory = std::path::PathBuf::from(directory);
+                    std::fs::create_dir_all(&directory).unwrap();
+                    image_rs::RgbImage::from_fn(width as u32, height as u32, |x, y| {
+                        let pixel = pixels[(y * width as u32 + x) as usize];
+                        image_rs::Rgb([
+                            (pixel >> 16) as u8,
+                            (pixel >> 8) as u8,
+                            pixel as u8,
+                        ])
+                    })
+                    .save(directory.join(format!(
+                        "gallery-current-{}.png",
+                        entry.id.replace(':', "-")
+                    )))
+                    .unwrap();
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn gallery_inventory_change_cancels_pointer_press_on_reindexed_rows() {
+    let mut view = opened();
+    view.fit(1280.0, 900.0, 16.0);
+    let library = crate::automexia::theme_gallery::builtins();
+    view.set_theme_context(ThemeContext {
+        configured: library[0].theme.clone().unwrap(),
+        saved: library[2].selection(),
+        font_colors: false,
+    });
+    view.open_theme_gallery();
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    let surface =
+        view.accessibility_surface(1.0, accesskit::Rect::new(0.0, 0.0, 1280.0, 900.0));
+    let bounds = surface
+        .elements
+        .iter()
+        .find(|e| e.node.author_id() == Some("theme:saved"))
+        .unwrap()
+        .node
+        .bounds()
+        .unwrap();
+    let row = Rect {
+        x: bounds.x0 as f32,
+        y: bounds.y0 as f32,
+        width: bounds.width() as f32,
+        height: bounds.height() as f32,
+    };
+    pointer_event(&mut view, row, 1.0, ElementState::Pressed);
+    assert!(view.pressed.is_some());
+    view.theme_inventory(library, false);
+    assert!(view.pressed.is_none());
+    view.take_theme_intent();
+    view.paint(&mut Raster::new(1.0), theme());
+    pointer_event(&mut view, row, 1.0, ElementState::Released);
+    assert!(
+        view.take_theme_intent().is_none(),
+        "old saved row must not activate a different theme"
+    );
+}
+
+#[test]
+fn gallery_preview_sample_glyphs_do_not_overlap_caption() {
+    let library = crate::automexia::theme_gallery::builtins();
+    let palette = library[1].theme.clone().unwrap();
+    let ui = UiTheme::from_colors(&library[0].theme.as_ref().unwrap().colors);
+    for (width, height, font, scale) in [
+        (500.0, 900.0, 16.0, 1.0),
+        (640.0, 900.0, 20.0, 1.25),
+        (1600.0, 1000.0, 24.0, 2.0),
+    ] {
+        let mut view = opened();
+        view.fit(width, height, font);
+        view.set_theme_context(ThemeContext {
+            configured: palette.clone(),
+            saved: None,
+            font_colors: false,
+        });
+        view.open_theme_gallery();
+        view.theme_inventory(library.clone(), false);
+        let mut raster = Raster::new(scale);
+        view.paint(&mut raster, ui);
+        let (p, _) = raster
+            .rects
+            .iter()
+            .find(|(r, c)| *c == palette.colors.background.0 && r[3] > 100.0)
+            .unwrap();
+        let in_preview = |glyph: &&rio_backend::sugarloaf::text::TextInstance| {
+            glyph.pos[0] >= p[0] * scale
+                && glyph.pos[0] < (p[0] + p[2]) * scale
+                && glyph.pos[1] >= p[1] * scale
+                && glyph.pos[1] < (p[1] + p[3]) * scale
+        };
+        let glyphs: Vec<_> = raster.text.instances().iter().filter(in_preview).collect();
+        let caption_top = glyphs
+            .iter()
+            .filter(|g| g.color == color_u8(ui.muted_text))
+            .map(|g| g.pos[1] + g.bearings[1] as f32)
+            .reduce(f32::min)
+            .unwrap();
+        let sample: Vec<_> = glyphs
+            .iter()
+            .filter(|g| g.color != color_u8(ui.muted_text))
+            .collect();
+        assert!(!sample.is_empty());
+        assert!(
+            sample
+                .iter()
+                .all(|g| g.pos[1] + g.bearings[1] as f32 + g.glyph_size[1] as f32
+                    <= caption_top),
+            "sample glyphs must end before the preview caption"
+        );
+    }
+}
+
+#[test]
 fn tag_preview_dispatches_each_shared_shape_geometry_in_filled_and_plain_modes() {
     let bounds = Rect {
         x: 23.0,

@@ -497,6 +497,14 @@ open **Customizations → Theme**.
   current palette as a TOML file. **Refresh** discovers local changes.
 - **Use configuration** removes the UI theme override and follows `config.toml`.
 
+The applied theme stays in its normal library position with a full-card highlight
+and **Current theme** badge. Browsing moves the preview outline independently;
+the badge changes only after you apply a theme. There is no duplicate saved-choice
+row when the applied name and palette match a library entry. If the original
+file changes or disappears, one **Saved palette** entry preserves your applied
+colors until the matching palette returns or you choose another theme. Without
+a UI override, **Use configuration** carries the current-theme badge.
+
 Try **Aurora Night** for cyan/violet, **Solar Dusk** for amber/rose,
 **Forest Operator** for green/mint, **Arctic Glass** for cool slate or
 **Arctic Day** for a light background. Preview labels identify built-in, local and
