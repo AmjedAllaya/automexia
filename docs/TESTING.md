@@ -1316,6 +1316,10 @@ python tools/ci/visual_quality.py --build --xtask target/debug/xtask --output ta
 On Windows, use `target/debug/xtask.exe`. The Python process owner waits for the
 GUI-subsystem test executable, bounds output and deadlines, and retires owned
 processes. Do not launch that executable with an asynchronous desktop launcher.
+Each discovered visual test runs exactly once in an owned process, with a
+two-minute deadline per test and twenty minutes for the entire capture campaign.
+Partial logs survive timeouts; ignored, empty or partial runs cannot pass. This
+separates a slow platform's total raster workload from a stuck individual test.
 Use a new output directory for every run. `--build` resolves Cargo's reported test
 artifact; `--test-binary` requires the caller to establish source/build identity.
 The report binds the binary digest, commit and local source fingerprint and

@@ -864,6 +864,7 @@ impl Text {
                         m.ascent.round().clamp(i16::MIN as f32, i16::MAX as f32) as i16
                     });
 
+            let ignored = crate::font::emoji_ignorable_glyphs(font_ref, text, is_color);
             // Shape with swash. Flatten clusters to a Vec<ShapedGlyph>
             // with UTF-8 byte offset as `cluster`.
             let mut shaper = self
@@ -875,6 +876,7 @@ impl Text {
                         .find(|script| strong_script(*script))
                         .unwrap_or(Script::Common),
                 )
+                .retain_ignorables(ignored.is_some())
                 .size(size_u16 as f32)
                 .variations(var_slice.iter().copied())
                 .build();
@@ -883,6 +885,9 @@ impl Text {
             shaper.shape_with(|cluster| {
                 let byte_offset = cluster.source.start;
                 for g in cluster.glyphs {
+                    if ignored.as_ref().is_some_and(|ids| ids.contains(&g.id)) {
+                        continue;
+                    }
                     glyphs.push(ShapedGlyph {
                         id: g.id,
                         x: g.x,

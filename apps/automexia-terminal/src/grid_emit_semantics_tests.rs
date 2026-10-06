@@ -128,19 +128,14 @@ fn parsed_combining_marks_shape_without_moving_following_cells() {
 }
 
 #[cfg(any(windows, target_os = "macos"))]
-#[test]
-fn parsed_emoji_zwj_reaches_one_native_color_glyph() {
+fn native_emoji_grid(input: &str) -> (Vec<CellText>, usize) {
     let mut data = FontLibraryData::default();
     data.insert(FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap());
     let fonts = FontLibrary {
         inner: Arc::new(parking_lot::RwLock::new(data)),
     };
-    let mut term = terminal("👩\u{200d}💻X");
-    assert_eq!(
-        term.cursor().pos.col.0,
-        5,
-        "rendering must preserve legacy PTY cell widths"
-    );
+    let mut term = terminal(input);
+    let cursor = term.cursor().pos.col.0;
     let (rows, styles, extras) = snapshot(&mut term);
     let mut glyphs = Vec::new();
     build_row_fg_classified(
@@ -165,6 +160,14 @@ fn parsed_emoji_zwj_reaches_one_native_color_glyph() {
         None,
         &[],
     );
+    (glyphs, cursor)
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+#[test]
+fn parsed_emoji_zwj_reaches_one_native_color_glyph() {
+    let (glyphs, cursor) = native_emoji_grid("👩\u{200d}💻X");
+    assert_eq!(cursor, 5, "preserve legacy PTY cell widths");
     let emoji: Vec<_> = glyphs
         .iter()
         .filter(|g| g.atlas == CellText::ATLAS_COLOR)
@@ -179,6 +182,27 @@ fn parsed_emoji_zwj_reaches_one_native_color_glyph() {
         glyphs.iter().any(|g| g.grid_pos == [4, 0]),
         "following text must retain its PTY column"
     );
+}
+
+#[cfg(windows)]
+#[test]
+fn joined_emoji_grid_preserves_composite_parts_without_painting_joiners() {
+    for (input, components, next_column) in [
+        ("👨\u{200d}👩\u{200d}👧\u{200d}👦X", 4, 8),
+        ("😀\u{200d}😀X", 2, 4),
+        ("😀\u{200d}X", 1, 2),
+        ("😀\u{200b}\u{200d}X", 1, 2),
+    ] {
+        let (glyphs, cursor) = native_emoji_grid(input);
+        assert_eq!(cursor, next_column + 1);
+        let emoji: Vec<_> = glyphs
+            .iter()
+            .filter(|g| g.atlas == CellText::ATLAS_COLOR)
+            .collect();
+        assert_eq!(emoji.len(), components, "complete native emoji: {input:?}");
+        assert_eq!(glyphs.len(), components + 1, "no joiner tofu: {input:?}");
+        assert!(glyphs.iter().any(|g| g.grid_pos == [next_column as u16, 0]));
+    }
 }
 
 #[test]

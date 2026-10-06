@@ -23,3 +23,9 @@
   missing and malformed coordinate values.
 - Reuse retained CoreText fallback handles for coverage checks and preserve
   their optional file identity without reading font bytes on the render path.
+- Preserve substituted parts of joined color emoji in both grid and UI text
+  while keeping unchanged joiner/control glyphs invisible; keep PTY widths.
+- Isolate visual tests behind individual deadlines and preserve partial logs
+  when a test stalls; keep the complete capture and mutation inventory required.
+- Stream bounded source fingerprints so large reviewed image changes can be
+  tested before committing, without retaining the complete patch in memory.

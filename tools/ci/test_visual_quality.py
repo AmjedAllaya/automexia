@@ -86,6 +86,41 @@ class VisualQualityTests(unittest.TestCase):
         self.assertEqual(json.loads((target / 'summary.json').read_bytes())['status'], 'failed')
         self.assertEqual(json.loads((target / 'summary.json').read_bytes())['stage'], 'capture')
 
+    def test_capture_runs_each_exact_test_with_individual_deadline(self):
+        log = self.root / 'tests.log'
+        success = b'test result: ok. 1 passed; 0 failed; 0 ignored;'
+        with patch.object(visual, 'command', side_effect=[
+                (0, b'a::visual_quality_one: test\nb::visual_quality_two: test\n'),
+                (0, success), (0, success)]) as command:
+            visual.capture_tests(self.root / 'harness', {}, log)
+        self.assertEqual(command.call_args_list[1].args[0][1:],
+                         ['a::visual_quality_one', '--exact', '--test-threads=1'])
+        self.assertEqual(command.call_args_list[2].args[0][1:],
+                         ['b::visual_quality_two', '--exact', '--test-threads=1'])
+        self.assertTrue(all(call.args[1] <= 120 for call in command.call_args_list))
+        self.assertEqual(log.read_bytes().count(success), 2)
+
+    def test_capture_rejects_empty_duplicate_malformed_and_ignored_tests(self):
+        for listing in (b'', b'elsewhere: test', b'a::visual_quality: test\n' * 2,
+                        b'a::visual_quality: benchmark', b'a::visual_quality: test\n' * 65):
+            with self.subTest(listing=listing[:60]), patch.object(visual, 'command', return_value=(0, listing)), self.assertRaises(ValueError):
+                visual.capture_tests(self.root, {}, self.root / 'log')
+        for result in (b'test result: ok. 0 passed; 0 failed; 1 ignored;',
+                       b'test result: ok. 2 passed; 0 failed; 0 ignored;'):
+            with patch.object(visual, 'command', side_effect=[(0, b'a::visual_quality: test'), (0, result)]), self.assertRaises(ValueError):
+                visual.capture_tests(self.root, {}, self.root / 'log')
+
+    def test_capture_retains_partial_failure_log_and_stops_after_deadline(self):
+        log = self.root / 'tests.log'
+        with patch.object(visual, 'command', side_effect=[(0, b'a::visual_quality: test'),
+                visual.CommandFailure(['fixture'], True, False, b'partial fixture output')]), self.assertRaises(visual.CommandFailure):
+            visual.capture_tests(self.root, {}, log)
+        self.assertIn(b'partial fixture output', log.read_bytes())
+        with patch.object(visual, 'command', return_value=(0, b'a::visual_quality: test')) as command, \
+                patch.object(visual.time, 'monotonic', side_effect=[1, 1202]), self.assertRaises(visual.CommandFailure):
+            visual.capture_tests(self.root, {}, log)
+        self.assertEqual(command.call_count, 1)
+
     def test_receipts_reject_dirty_partial_duplicate_and_unbounded_inventories(self):
         path = self.root / 'receipts.json'
         self.assertEqual(visual.load_receipts(path, {'case'}), {})
@@ -114,8 +149,10 @@ class VisualQualityTests(unittest.TestCase):
             if argv[0] == 'git':
                 return 0, b''
             if argv[0] == str(binary):
+                if '--list' in argv:
+                    return 0, b'a::visual_quality: test'
                 (target / 'captures' / 'case.capture.json').write_bytes(b'{}')
-                return 0, b'test result: ok. 1 passed;'
+                return 0, b'test result: ok. 1 passed; 0 failed; 0 ignored;'
             self.assertIn('--validate-metadata', argv)
             return 0, b''
         with patch.object(visual, 'command', side_effect=run), \
@@ -155,10 +192,34 @@ class VisualQualityTests(unittest.TestCase):
         self.assertEqual(visual.file_digest(path, len(data)), hashlib.sha256(data).hexdigest())
         with self.assertRaises(ValueError):
             visual.file_digest(path, len(data) - 1)
-        with patch.object(visual, 'ROOT', self.root), patch.object(visual, 'command', side_effect=[(0, b'diff'), (0, b'fixture\0')] * 2):
+        with patch.object(visual, 'ROOT', self.root), \
+                patch.object(visual, 'hash_source_diff', side_effect=lambda digest: digest.update(b'diff')), \
+                patch.object(visual, 'command', return_value=(0, b'fixture\0')):
             before = visual.source_fingerprint('a' * 40)
             path.write_bytes(b'changed')
             self.assertNotEqual(before, visual.source_fingerprint('a' * 40))
+
+    def test_source_diff_streams_large_fixtures_and_rejects_overflow_or_failure(self):
+        from types import SimpleNamespace
+        chunk = b'fixture-patch' * 8192
+        def git(*args, **kwargs):
+            self.assertFalse(kwargs['merge_stderr'])
+            self.assertEqual(kwargs['timeout_seconds'], 30)
+            for _ in range(24):
+                kwargs['consume'](chunk)
+            return SimpleNamespace(timed_out=False, error=None, return_code=0)
+        digest = hashlib.sha256()
+        with patch.object(visual.qa_process, 'run', side_effect=git):
+            visual.hash_source_diff(digest)
+        self.assertEqual(digest.digest(), hashlib.sha256(chunk * 24).digest())
+        with patch.object(visual.qa_process, 'run', side_effect=git), \
+                patch.object(visual, 'MAX_SOURCE_DIFF', len(chunk)), self.assertRaises(ValueError):
+            visual.hash_source_diff(hashlib.sha256())
+        for result in (SimpleNamespace(timed_out=True, error=None, return_code=None),
+                       SimpleNamespace(timed_out=False, error='failed', return_code=None),
+                       SimpleNamespace(timed_out=False, error=None, return_code=1)):
+            with patch.object(visual.qa_process, 'run', return_value=result), self.assertRaises((ValueError, visual.CommandFailure)):
+                visual.hash_source_diff(hashlib.sha256())
 
     def test_command_output_overflow_is_not_silently_truncated(self):
         from types import SimpleNamespace

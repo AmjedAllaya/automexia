@@ -97,6 +97,45 @@ pub struct LookupAttrs {
     pub bold: bool,
 }
 
+/// Swash can substitute an emoji component onto a ZWJ's glyph slot while
+/// retaining its default-ignorable flag (e.g. Segoe's four-part family glyph).
+/// Preserve those substituted components, but still suppress the font's
+/// *unsubstituted* ignorable glyphs. Reuse Swash's Unicode parser/classification;
+/// do not maintain another Unicode table or change normal text shaping.
+/// Called only on a shape-cache miss; no font discovery or I/O occurs here.
+#[cfg(not(target_os = "macos"))]
+pub fn emoji_ignorable_glyphs(
+    font: FontRef<'_>,
+    text: &str,
+    is_emoji: bool,
+) -> Option<smallvec::SmallVec<[u16; 4]>> {
+    if !is_emoji || !text.contains('\u{200d}') {
+        return None;
+    }
+    let mut parser = Parser::new(
+        Script::Common,
+        text.char_indices().map(|(offset, ch)| Token {
+            ch,
+            offset: offset as u32,
+            len: ch.len_utf8() as u8,
+            info: ch.properties().into(),
+            data: 0,
+        }),
+    );
+    let mut cluster = CharCluster::new();
+    let charmap = font.charmap();
+    let mut ignored = smallvec::SmallVec::new();
+    while parser.next(&mut cluster) {
+        cluster.map(|ch| charmap.map(ch));
+        for ch in cluster.mapped_chars().iter().filter(|ch| ch.ignorable) {
+            if !ignored.contains(&ch.glyph_id) {
+                ignored.push(ch.glyph_id);
+            }
+        }
+    }
+    Some(ignored)
+}
+
 /// Whether the font registered under `font_id` carries a glyph for
 /// every codepoint in `cluster`.
 fn cluster_covered(

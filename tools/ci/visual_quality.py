@@ -15,6 +15,7 @@ import platform
 import re
 import sys
 import tempfile
+import time
 
 import qa_process
 
@@ -24,6 +25,7 @@ MAX_CASES = 512
 MAX_JSON = 65536
 MAX_IMAGE = 64 * 1024 * 1024
 MAX_OUTPUT = 1024 * 1024
+MAX_SOURCE_DIFF = 128 * 1024 * 1024
 TOKEN = re.compile(r'[A-Za-z0-9._+-]{1,96}\Z')
 MUTATIONS = {'baseline-one-pixel', 'missing-glyph', 'clipped-glyph', 'wrong-foreground', 'cell-shift',
              'cursor-one-pixel', 'cursor-hidden', 'cursor-low-contrast', 'cell-padding', 'line-height',
@@ -31,11 +33,12 @@ MUTATIONS = {'baseline-one-pixel', 'missing-glyph', 'clipped-glyph', 'wrong-fore
 
 
 class CommandFailure(RuntimeError):
-    def __init__(self, argv: list[str], timed_out: bool, process_error: bool):
+    def __init__(self, argv: list[str], timed_out: bool, process_error: bool, output: bytes = b''):
         super().__init__('visual command did not complete under process ownership')
         self.command_kind = ('git-' + argv[1] if argv and argv[0] == 'git' and len(argv) > 1
                              and argv[1] in ('diff', 'ls-files', 'rev-parse', 'status') else 'visual-tool')
         self.reason = 'deadline' if timed_out else ('process-owner' if process_error else 'missing-exit-status')
+        self.output = output[:MAX_OUTPUT]
 
 
 def read(path: Path, limit: int) -> bytes:
@@ -77,7 +80,7 @@ def atomic_json(path: Path, value: object) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def command(argv: list[str], timeout: int, environment: dict[str, str] | None = None,
+def command(argv: list[str], timeout: float, environment: dict[str, str] | None = None,
             *, merge_stderr: bool = True) -> tuple[int, bytes]:
     output = bytearray()
     overflow = False
@@ -88,21 +91,70 @@ def command(argv: list[str], timeout: int, environment: dict[str, str] | None = 
     result = qa_process.run(argv, cwd=ROOT, timeout_seconds=timeout, consume=consume,
                             environment=environment, merge_stderr=merge_stderr)
     if result.timed_out or result.error or result.return_code is None:
-        raise CommandFailure(argv, result.timed_out, bool(result.error))
+        raise CommandFailure(argv, result.timed_out, bool(result.error), bytes(output))
     if overflow:
         raise ValueError('visual command exceeded its output bound')
     return result.return_code, bytes(output)
 
 
+def capture_tests(binary: Path, environment: dict[str, str], log_path: Path) -> None:
+    """Bound individual tests, not 448 raster frames as one opaque process.
+
+    Slow hosted CPUs get the same assertions. A hung case is retired after
+    at most two minutes, with a twenty-minute ceiling for the whole campaign.
+    Partial output survives failure; it is never treated as passing evidence.
+    """
+    code, listing = command([str(binary), 'visual_quality', '--list', '--format=terse'], 30, environment)
+    names = listing.decode('ascii').splitlines()
+    pattern = re.compile(r'(?:[A-Za-z0-9_]+::)*[A-Za-z0-9_]*visual_quality[A-Za-z0-9_]*: test\Z')
+    if code or not 1 <= len(names) <= 64 or len(set(names)) != len(names) or any(not pattern.fullmatch(n) for n in names):
+        raise ValueError('visual test inventory is empty, duplicated or malformed')
+    deadline = time.monotonic() + 1200
+    log = bytearray()
+    for entry in names:
+        name = entry.removesuffix(': test')
+        argv = [str(binary), name, '--exact', '--test-threads=1']
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise CommandFailure(argv, True, False)
+        log.extend(f'\n== {name} ==\n'.encode('ascii'))
+        try:
+            code, output = command(argv, min(120, remaining), environment)
+        except CommandFailure as error:
+            log.extend(error.output[:max(0, MAX_OUTPUT - len(log))])
+            log_path.write_bytes(log[:MAX_OUTPUT])
+            raise
+        if len(log) + len(output) > MAX_OUTPUT:
+            log_path.write_bytes(log[:MAX_OUTPUT])
+            raise ValueError('visual campaign exceeded its output bound')
+        log.extend(output)
+        log_path.write_bytes(log)
+        if code or not re.search(rb'test result: ok\. 1 passed; 0 failed; 0 ignored;', output):
+            raise ValueError('controlled renderer test failed, was ignored or did not execute exactly once')
+
+
+def hash_source_diff(digest) -> None:
+    """Stream fixture-heavy patches without retaining source or image bytes."""
+    # Conversion warnings are diagnostics, not source bytes. Their presence can
+    # vary after an index refresh even when the actual patch is unchanged.
+    argv = ['git', 'diff', '--no-ext-diff', '--binary', 'HEAD', '--']
+    total = 0
+    def consume(chunk: bytes) -> None:
+        nonlocal total
+        total += len(chunk)
+        if total <= MAX_SOURCE_DIFF:
+            digest.update(chunk)
+    result = qa_process.run(argv, cwd=ROOT, timeout_seconds=30, consume=consume, merge_stderr=False)
+    if result.timed_out or result.error or result.return_code is None:
+        raise CommandFailure(argv, result.timed_out, bool(result.error))
+    if result.return_code or total > MAX_SOURCE_DIFF:
+        raise ValueError('source diff unavailable')
+
+
 def source_fingerprint(commit: str) -> str:
     """Bind local edits without putting source text or filenames in reports."""
     digest = hashlib.sha256(commit.encode('ascii'))
-    # Conversion warnings are diagnostics, not source bytes. Their presence can
-    # vary after an index refresh even when the actual patch is unchanged.
-    code, changes = command(['git', 'diff', '--no-ext-diff', '--binary', 'HEAD', '--'], 30, merge_stderr=False)
-    if code:
-        raise ValueError('source diff unavailable')
-    digest.update(changes)
+    hash_source_diff(digest)
     code, names = command(['git', 'ls-files', '--others', '--exclude-standard', '-z'], 15, merge_stderr=False)
     entries = sorted(name for name in names.split(b'\0') if name)
     if code or len(entries) > 1024:
@@ -310,10 +362,7 @@ def main(argv: list[str] | None = None) -> int:
         summary['test_binary_sha256'] = file_digest(binary, 1024 * 1024 * 1024)
         env = dict(os.environ, AUTOMEXIA_VISUAL_CAPTURE_DIR=str(captures))
         summary['stage'] = 'capture'
-        code, log = command([str(binary), 'visual_quality', '--test-threads=1'], 600, env)
-        (output / 'controlled-tests.log').write_bytes(log)
-        if code or not re.search(rb'test result: ok\. [1-9][0-9]* passed;', log):
-            raise ValueError('controlled renderer tests failed or executed no tests')
+        capture_tests(binary, env, output / 'controlled-tests.log')
         files = sorted(captures.glob('*.capture.json'))
         if not 1 <= len(files) <= MAX_CASES:
             raise ValueError('visual capture count is outside bounds')

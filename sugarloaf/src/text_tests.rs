@@ -118,6 +118,32 @@ fn native_mixed_label_uses_color_emoji_and_keeps_zwj_cluster_intact() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn joined_emoji_ui_preserves_composite_parts_without_painting_joiners() {
+    let mut text = Text::new(&fixture_fonts());
+    text.init_cpu();
+    let opts = DrawOpts {
+        font_size: 24.0,
+        ..Default::default()
+    };
+    for (sample, components) in [
+        ("👨\u{200d}👩\u{200d}👧\u{200d}👦", 4),
+        ("😀\u{200d}😀", 2),
+        ("😀\u{200d}", 1),
+        ("😀\u{200b}\u{200d}", 1),
+    ] {
+        let run = text.shape_for(sample, &opts).unwrap();
+        assert_eq!(
+            run.glyphs.len(),
+            components,
+            "complete native emoji: {sample:?}"
+        );
+        assert!(run.is_color);
+        assert!(Arc::ptr_eq(&run, &text.shape_for(sample, &opts).unwrap()));
+    }
+}
+
 #[test]
 fn fixed_cell_baseline_preserves_descenders_styles_and_fractional_scale() {
     let sample = "Hjpqy";

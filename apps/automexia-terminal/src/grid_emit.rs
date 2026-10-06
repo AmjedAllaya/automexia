@@ -1864,6 +1864,7 @@ fn shape_run_swash(
     size_u16: u16,
     size_bucket: u16,
     font_library: &FontLibrary,
+    is_emoji: bool,
 ) -> Option<(Vec<ShapedGlyph>, i16)> {
     use rio_backend::sugarloaf::swash::{FontRef, Setting};
 
@@ -1901,6 +1902,11 @@ fn shape_run_swash(
         tag: WGHT_TAG,
         value: v,
     });
+    let ignored = rio_backend::sugarloaf::font::emoji_ignorable_glyphs(
+        font_ref,
+        &rasterizer.run_str_scratch,
+        is_emoji,
+    );
     let mut shaper = rasterizer
         .shape_ctx
         .builder(font_ref)
@@ -1911,6 +1917,7 @@ fn shape_run_swash(
                 .find_map(shaping_script)
                 .unwrap_or(rio_backend::sugarloaf::swash::text::Script::Common),
         )
+        .retain_ignorables(ignored.is_some())
         .size(size_u16 as f32)
         .features(features.iter().copied())
         .variations(wght_var.iter().copied())
@@ -1920,6 +1927,9 @@ fn shape_run_swash(
     shaper.shape_with(|cluster| {
         let byte_offset = cluster.source.start;
         for g in cluster.glyphs {
+            if ignored.as_ref().is_some_and(|ids| ids.contains(&g.id)) {
+                continue;
+            }
             glyphs.push(ShapedGlyph {
                 id: g.id,
                 x: g.x,
@@ -2463,8 +2473,14 @@ pub fn build_row_fg_classified(
             let shaped_opt =
                 shape_run_ct(rasterizer, font_id, size_u16, size_bucket, font_library);
             #[cfg(not(target_os = "macos"))]
-            let shaped_opt =
-                shape_run_swash(rasterizer, font_id, size_u16, size_bucket, font_library);
+            let shaped_opt = shape_run_swash(
+                rasterizer,
+                font_id,
+                size_u16,
+                size_bucket,
+                font_library,
+                is_emoji,
+            );
             let Some((glyphs, ascent_px)) = shaped_opt else {
                 x = end;
                 continue;
