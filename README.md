@@ -53,43 +53,66 @@ provides the terminal workspace around them.
 
 ## Feature gallery
 
-These **AI-generated illustrations** explain features documented in the current
-source. They are approximate views, **not screenshots or native test evidence**;
-layout, icons, colors, and availability can vary with configuration and build.
-All terminal output and filenames below are fictional examples.
+These **AI-generated feature illustrations** follow the visual style of the
+[Automexia landing-page reference](https://www.automexia.com/automexia-terminal-hero-native-v9.png):
+compact terminal text, arrow-shaped prompt tags, thin pane borders, and readable
+output colors. They are approximate views, **not native screenshots or test
+evidence**. All commands, filenames, and output use fictional demo data; exact
+layout and availability depend on configuration and build.
 
-### Global tabs, split panes, and pane-local tabs
+### Split panes
 
-![Illustration of global workspace tabs above three terminal panes, with separate Shell and Tests tabs inside the active pane.](assets/gallery/panes-and-tabs.png)
+![Reference-based illustration of four terminal panes showing files, tests, containers, and logs, with a cyan border around the focused pane.](assets/gallery/panes-and-tabs.png)
 
-Group work with top-level tabs, keep commands visible in split panes, and switch
-between pane-local tabs without giving up the surrounding layout. Each session
-has its own PTY; dividers and a focus border make the active pane visible.
+Keep files, tests, container output, and logs visible together. Each session has
+its own PTY, the focus border identifies the pane receiving keyboard input, and
+resizable dividers let you give a busy session more room. The example uses one
+large pane beside three smaller panes.
 See [Workspaces](docs/guide/terminal-experience.md) and [Keyboard](docs/KEYBOARD.md).
+
+### Global tabs and pane-local tabs
+
+![Reference-based illustration of global Development, Operations, and Assets tabs above two panes, each with its own local tabs.](assets/gallery/tabs.png)
+
+Top-level tabs organize work within the window. Pane-local tabs switch the
+session shown in one pane while the surrounding panes stay in place. The example
+keeps **Shell / Tests** on the left and **Logs / Build** on the right, making the
+two levels of navigation visible. See [Workspaces](docs/user-guide/workspace.md).
 
 ### Local image preview
 
-![Illustration of a pinned coast.png preview over a terminal image listing, with arrow-key navigation and Escape to close.](assets/gallery/image-preview.png)
+![Reference-based illustration of a selected landscape.png path and a pinned mountain-lake image preview inside the terminal pane.](assets/gallery/image-preview.png)
 
 Hover a supported local image path for a quick look, or click to pin the preview.
 While pinned, use the arrow keys to browse visible image paths and Escape to
-close. Keyboard users can select a path and invoke **Preview Selected Image**
-from the command palette. See [Image previews](docs/IMAGE-PREVIEWS.md).
+close. The preview keeps the image's aspect ratio and stays inside its pane.
+Keyboard users can select a path and invoke **Preview Selected Image** from the
+command palette, or use `Ctrl+Alt+I` on Windows/Linux and `Cmd+Alt+I` on macOS.
+See [Image previews](docs/IMAGE-PREVIEWS.md).
 
-### File icons, colors, and bordered tables
+### Bordered tables
 
-![Illustration of a file listing with distinct folder, source, configuration, image, and document icons inside a bordered table with alternating row backgrounds.](assets/gallery/files-and-tables.png)
+![Reference-based illustration of Docker output and a small generic output table with aligned columns, outer borders, and row separators.](assets/gallery/files-and-tables.png)
 
-Enhanced interactive listings make file types easier to scan with icons and
-colors. Recognized tables can have an outer frame, row and column separators,
-and alternating backgrounds. Configure these in **Inline tables**; decoration
-does not replace the underlying terminal text or native pipeline objects.
-See [Shell integration](docs/SHELL-INTEGRATION.md#icon-aware-listings) and
-[Customization](docs/user-guide/customization.md).
+Recognized header tables gain aligned, bordered cells. **Inline tables** controls
+the outer frame, row and column separators, border style and weight, and optional
+alternating backgrounds. The illustration shows container output and a small
+generic table; this is presentation over terminal text, and copied output keeps
+the underlying text. See [Customization](docs/user-guide/customization.md).
+
+### File icons and colors
+
+![Reference-based illustration of a terminal file listing with cyan folders and distinct source-code, configuration, document, image, archive, and log glyphs.](assets/gallery/file-icons.png)
+
+Enhanced interactive listings use compact glyphs and colors to make folders and
+file types easier to distinguish. Filenames remain ordinary terminal text for
+selection and copying. Native pipeline data stays intact; the decoration belongs
+to the interactive display. See
+[Shell integration](docs/SHELL-INTEGRATION.md#icon-aware-listings).
 
 ### Kubernetes status colors
 
-![Illustration of fictional Kubernetes pod rows: fully ready Running in green, partial Running and Pending in amber, Completed in cyan, and CrashLoopBackOff in red.](assets/gallery/kubernetes-colors.png)
+![Reference-based illustration of fully colored Kubernetes table rows: ready Running in green, partial Running and Pending in amber, Completed in cyan, and CrashLoopBackOff in red, above severity-colored logs.](assets/gallery/kubernetes-colors.png)
 
 Recognized plain-text output distinguishes healthy readiness, partial or waiting
 states, completed jobs, and failures. Both the status and readiness matter:
