@@ -64,6 +64,22 @@ pub fn sha256(bytes: &[u8]) -> String {
     result
 }
 
+pub fn font_hashes(fonts: &FontLibrary) -> Vec<String> {
+    let library = fonts.inner.read();
+    assert!(
+        library.inner.len() <= 16,
+        "font cascade exceeded capture bound"
+    );
+    (0..library.inner.len())
+        .map(|id| {
+            let (data, _, _) = library
+                .get_data(&id)
+                .expect("capture requires actual font bytes");
+            sha256(data.as_ref())
+        })
+        .collect()
+}
+
 /// Geometry is measured by the production layout/emission owner in physical px.
 pub fn export(
     name: &str,

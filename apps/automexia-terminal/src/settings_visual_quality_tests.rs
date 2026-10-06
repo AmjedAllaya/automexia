@@ -5,16 +5,19 @@ use rio_backend::sugarloaf::renderer::Renderer as PrimitiveRenderer;
 struct ActualCanvas {
     renderer: PrimitiveRenderer,
     text: Text,
+    fonts: rio_backend::sugarloaf::font::FontLibrary,
     scale: f32,
 }
 impl ActualCanvas {
     fn new(scale: f32) -> Self {
-        let mut text = Text::new(&crate::visual_quality::fonts());
+        let fonts = crate::visual_quality::fonts();
+        let mut text = Text::new(&fonts);
         text.init_cpu();
         text.set_scale_factor(scale);
         Self {
             renderer: PrimitiveRenderer::controlled_cpu(),
             text,
+            fonts,
             scale,
         }
     }
@@ -211,8 +214,9 @@ fn settings_golden_page(page: &str, name: &str) {
                     }
                 }
             }
-            crate::visual_quality::export(
+            crate::visual_quality::export_with_fonts(
                 &format!("settings-{name}-{theme_name}-{}", (scale * 100.0) as u32),
+                "correct",
                 &pixels,
                 size,
                 scale,
@@ -221,6 +225,7 @@ fn settings_golden_page(page: &str, name: &str) {
                     ("card", bounds),
                     ("viewport", [0.0, 0.0, size[0] as f32, size[1] as f32]),
                 ],
+                &crate::visual_quality::font_hashes(&canvas.fonts),
             );
         }
     }

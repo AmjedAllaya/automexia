@@ -18,3 +18,6 @@
   remain explicitly uncertified and are never generated as automatic approvals.
 - Update macOS window-adapter calls for the installed Objective-C bindings,
   preserving retained ownership and using the existing main-thread dispatcher.
+- Record actual settings fallback fonts, exercise the installed emoji chain,
+  and fix independent macOS cursor hotspot coordinates, with native tests for
+  missing and malformed coordinate values.

@@ -91,6 +91,9 @@ jobs:
           # Retain native compiler diagnostics in the job log. The driver then
           # resolves the already-built harness from Cargo's structured receipt.
           cargo test -p automexia-terminal --bin automexia --features visual-test-hooks --locked --no-run
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            cargo test -p rio-window --lib --locked webkit_cursor_hotspot
+          fi
           python tools/ci/visual_quality.py --build --xtask "$comparator" --output artifacts/visual-quality --baseline-receipts "tests/fixtures/visual-baselines/${{ matrix.runner }}.json" --baseline-images tests/fixtures/visual-baselines/images --require-baseline
       - name: Native Linux window pixels and AT-SPI projection
         if: always() && !cancelled() && runner.os == 'Linux' && steps.visual.outcome != 'skipped'

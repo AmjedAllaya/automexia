@@ -80,6 +80,24 @@ fn render_scene(
     selected: bool,
     defect: &str,
 ) -> (Vec<u32>, [u32; 2], FontLibrary) {
+    render_scene_with_fonts(
+        text,
+        scale,
+        colors,
+        selected,
+        defect,
+        crate::visual_quality::fonts(),
+    )
+}
+
+fn render_scene_with_fonts(
+    text: &str,
+    scale: f32,
+    colors: rio_backend::config::colors::Colors,
+    selected: bool,
+    defect: &str,
+    fonts: FontLibrary,
+) -> (Vec<u32>, [u32; 2], FontLibrary) {
     assert!(defect == "correct" || DEFECTS.contains(&defect));
     let mut terminal = Crosswords::new(
         CrosswordsSize::new(80, 20),
@@ -94,7 +112,6 @@ fn render_scene(
         parser.advance(&mut terminal, part);
     }
     let (rows, styles, extras) = snapshot(&mut terminal);
-    let fonts = crate::visual_quality::fonts();
     let mut renderer = Renderer::new(&Config {
         colors,
         ..Default::default()
@@ -265,9 +282,42 @@ fn visual_quality_unicode_fallback_golden_matrix() {
         .theme
         .unwrap()
         .colors;
+    // Keep the four pinned primary faces, but obtain the installed emoji chain
+    // from the real loader. Otherwise a script fallback discovered earlier in
+    // this scene can win emoji with monochrome glyphs, unlike the application.
+    let fonts = crate::visual_quality::fonts();
+    let (native, _) = FontLibrary::new(Default::default());
+    {
+        let native = native.inner.read();
+        let mut fixture = fonts.inner.write();
+        for id in 0..native.inner.len() {
+            let face = native.get(&id);
+            if face.is_emoji
+                && !face.postscript_name().is_some_and(|name| {
+                    fixture.font_id_for_postscript_name(name).is_some()
+                })
+            {
+                fixture.insert(face.clone());
+            }
+        }
+        assert!(
+            fixture.inner.len() > 4,
+            "native emoji prerequisite is missing"
+        );
+        let (_, is_emoji) = fixture
+            .find_best_font_match_strict('😀', &Default::default(), None)
+            .expect("the native emoji chain must cover the fixture");
+        assert!(is_emoji, "emoji must use the installed color-emoji policy");
+    }
     for scale in [1.0, 1.25, 1.5, 1.75, 2.0] {
-        let (pixels, size, fonts) =
-            render_scene(UNICODE, scale, colors, false, "correct");
+        let (pixels, size, fonts) = render_scene_with_fonts(
+            UNICODE,
+            scale,
+            colors,
+            false,
+            "correct",
+            fonts.clone(),
+        );
         let library = fonts.inner.read();
         for ch in ['中', '文', '日', '本', '한', '국', 'م', 'ر', 'ש', 'ל', '😀']
         {
@@ -279,18 +329,8 @@ fn visual_quality_unicode_fallback_golden_matrix() {
                 ch as u32
             );
         }
-        assert!(
-            library.inner.len() <= 16,
-            "font cascade exceeded capture bound"
-        );
-        let hashes: Vec<_> = (0..library.inner.len())
-            .map(|id| {
-                let (data, _, _) = library
-                    .get_data(&id)
-                    .expect("capture requires the actual font bytes");
-                crate::visual_quality::sha256(data.as_ref())
-            })
-            .collect();
+        drop(library);
+        let hashes = crate::visual_quality::font_hashes(&fonts);
         crate::visual_quality::export_with_fonts(
             &format!("unicode-fallback-{}", (scale * 100.0) as u32),
             "correct",

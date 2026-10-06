@@ -7,8 +7,7 @@ use objc2::runtime::Sel;
 use objc2::{msg_send, msg_send_id, sel, AnyThread, ClassType};
 use objc2_app_kit::{NSBitmapImageRep, NSCursor, NSDeviceRGBColorSpace, NSImage};
 use objc2_foundation::{
-    ns_string, NSData, NSDictionary, NSNumber, NSObject, NSObjectProtocol, NSPoint,
-    NSSize, NSString,
+    ns_string, NSData, NSDictionary, NSNumber, NSObject, NSPoint, NSSize, NSString,
 };
 
 use crate::cursor::{CursorImage, OnlyCursorImageSource};
@@ -130,31 +129,42 @@ unsafe fn load_webkit_cursor(name: &NSString) -> Retained<NSCursor> {
 
     // TODO: Handle PLists better
     let info_path = cursor_path.stringByAppendingPathComponent(ns_string!("info.plist"));
-    let info: Retained<NSDictionary<NSObject, NSObject>> = unsafe {
+    let info: Retained<NSDictionary<NSString, NSObject>> = unsafe {
         msg_send_id![
-            <NSDictionary<NSObject, NSObject>>::class(),
+            <NSDictionary<NSString, NSObject>>::class(),
             dictionaryWithContentsOfFile: &*info_path,
         ]
     };
-    let mut x = 0.0;
-    if let Some(n) = info.objectForKey(&*ns_string!("hotx")) {
-        if n.is_kind_of::<NSNumber>() {
-            let ptr: *const NSObject = &*n;
-            let ptr: *const NSNumber = ptr.cast();
-            x = unsafe { &*ptr }.as_cgfloat()
-        }
-    }
-    let mut y = 0.0;
-    if let Some(n) = info.objectForKey(&*ns_string!("hotx")) {
-        if n.is_kind_of::<NSNumber>() {
-            let ptr: *const NSObject = &*n;
-            let ptr: *const NSNumber = ptr.cast();
-            y = unsafe { &*ptr }.as_cgfloat()
-        }
-    }
-
-    let hotspot = NSPoint::new(x, y);
+    let hotspot = webkit_cursor_hotspot(&info);
     NSCursor::initWithImage_hotSpot(NSCursor::alloc(), &image, hotspot)
+}
+
+fn webkit_cursor_hotspot(info: &NSDictionary<NSString, NSObject>) -> NSPoint {
+    let coordinate = |key| {
+        info.objectForKey(key)
+            .and_then(|value| value.downcast::<NSNumber>().ok())
+            .map_or(0.0, |value| value.as_cgfloat())
+    };
+    NSPoint::new(
+        coordinate(ns_string!("hotx")),
+        coordinate(ns_string!("hoty")),
+    )
+}
+
+#[test]
+fn webkit_cursor_hotspot_preserves_independent_axes_and_missing_values() {
+    let x = NSNumber::new_f64(2.5);
+    let y = NSNumber::new_f64(8.75);
+    let values: [&NSObject; 2] = [&x, &y];
+    let info =
+        NSDictionary::from_slices(&[ns_string!("hotx"), ns_string!("hoty")], &values);
+    assert_eq!(webkit_cursor_hotspot(&info), NSPoint::new(2.5, 8.75));
+    let values: [&NSObject; 1] = [&y];
+    let only_y = NSDictionary::from_slices(&[ns_string!("hoty")], &values);
+    assert_eq!(webkit_cursor_hotspot(&only_y), NSPoint::new(0.0, 8.75));
+    let invalid: [&NSObject; 1] = [ns_string!("invalid")];
+    let invalid_x = NSDictionary::from_slices(&[ns_string!("hotx")], &invalid);
+    assert_eq!(webkit_cursor_hotspot(&invalid_x), NSPoint::new(0.0, 0.0));
 }
 
 fn webkit_move() -> Retained<NSCursor> {
