@@ -17,6 +17,7 @@
   <a href="docs/GETTING-STARTED.md">Get started</a> ·
   <a href="docs/user-guide/index.md">User guide</a> ·
   <a href="docs/FEATURES.md">Features</a> ·
+  <a href="#feature-gallery">Gallery</a> ·
   <a href="docs/CONFIGURATION.md">Customize</a> ·
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
@@ -49,6 +50,52 @@ provides the terminal workspace around them.
 |---|---|---|---|
 | Keep related work together with windows, global tabs, split panes, and pane-local tabs. | Search the selected pane or visible workspace, navigate marked commands, and discover actions from the keyboard. | Configure themes, fonts, cursor behavior, shells, navigation, shortcuts, and platform overrides in readable TOML. | The active shell owns command editing and execution; Automexia never silently adds Enter or turns displayed text into a command. |
 | Start clean sessions or clone the documented launch context into an independent PTY. | Selection, scrollback, hyperlinks, command boundaries, and scoped search remain tied to the exact active route. | Invalid configuration keeps the last-known-good state instead of replacing a working setup. | External tools keep ownership of credentials, networking, authentication, and provider state. |
+
+## Feature gallery
+
+These **AI-generated illustrations** explain features documented in the current
+source. They are approximate views, **not screenshots or native test evidence**;
+layout, icons, colors, and availability can vary with configuration and build.
+All terminal output and filenames below are fictional examples.
+
+### Global tabs, split panes, and pane-local tabs
+
+![Illustration of global workspace tabs above three terminal panes, with separate Shell and Tests tabs inside the active pane.](assets/gallery/panes-and-tabs.png)
+
+Group work with top-level tabs, keep commands visible in split panes, and switch
+between pane-local tabs without giving up the surrounding layout. Each session
+has its own PTY; dividers and a focus border make the active pane visible.
+See [Workspaces](docs/guide/terminal-experience.md) and [Keyboard](docs/KEYBOARD.md).
+
+### Local image preview
+
+![Illustration of a pinned coast.png preview over a terminal image listing, with arrow-key navigation and Escape to close.](assets/gallery/image-preview.png)
+
+Hover a supported local image path for a quick look, or click to pin the preview.
+While pinned, use the arrow keys to browse visible image paths and Escape to
+close. Keyboard users can select a path and invoke **Preview Selected Image**
+from the command palette. See [Image previews](docs/IMAGE-PREVIEWS.md).
+
+### File icons, colors, and bordered tables
+
+![Illustration of a file listing with distinct folder, source, configuration, image, and document icons inside a bordered table with alternating row backgrounds.](assets/gallery/files-and-tables.png)
+
+Enhanced interactive listings make file types easier to scan with icons and
+colors. Recognized tables can have an outer frame, row and column separators,
+and alternating backgrounds. Configure these in **Inline tables**; decoration
+does not replace the underlying terminal text or native pipeline objects.
+See [Shell integration](docs/SHELL-INTEGRATION.md#icon-aware-listings) and
+[Customization](docs/user-guide/customization.md).
+
+### Kubernetes status colors
+
+![Illustration of fictional Kubernetes pod rows: fully ready Running in green, partial Running and Pending in amber, Completed in cyan, and CrashLoopBackOff in red.](assets/gallery/kubernetes-colors.png)
+
+Recognized plain-text output distinguishes healthy readiness, partial or waiting
+states, completed jobs, and failures. Both the status and readiness matter:
+`1/1 Running` is green, while `0/1 Running` is amber. A successful `kubectl get`
+does not imply that every pod is healthy. Tool-supplied ANSI colors retain
+priority. See [Operational status colors](docs/user-guide/commands-and-shell.md#operational-status-colours).
 
 ## Platforms and package status
 
