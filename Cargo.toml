@@ -168,15 +168,15 @@ loom = "0.7.2"
 proptest = "1.11.0"
 dashmap = "6.2.1"
 # Keep PNG's miniz_oxide 0.8 family; 1.1.10 adds a second compression engine.
-flate2 = "=1.1.9"
+flate2 = "=1.1.10"
 configparser = { version = "3.2.0", default-features = false }
 time = { version = "=0.3.55", default-features = false, features = ["std", "parsing"] }
 zip = { version = "=8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 ed25519-dalek = { version = "3.0.0", default-features = false, features = ["alloc", "fast", "zeroize"] }
 wasmtime = { version = "48.0.4", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "wat"] }
 # Keep the tools on the reviewed Wasmtime parser generation (D7/CP6).
-wit-parser = "=0.254.2"
-wat = "=1.254.2"
+wit-parser = "=0.261.0"
+wat = "=1.261.0"
 
 [profile.release]
 strip = "symbols"           # See split-debuginfo - allows us to drop the size by ~65%
