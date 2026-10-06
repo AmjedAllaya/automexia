@@ -18,15 +18,23 @@ pub(crate) enum Failure {
     TimedOut,
     Cancelled,
 }
+pub(crate) enum Prepared {
+    Library(FontLibrary),
+    Inventory(Vec<String>, bool),
+}
+enum Job {
+    Library(Box<SugarloafFonts>),
+    Inventory(FontLibrary),
+}
 struct Request {
     id: u64,
-    fonts: SugarloafFonts,
+    job: Job,
     cancelled: Arc<AtomicBool>,
     window: WindowId,
 }
 struct Completion {
     id: u64,
-    result: Result<FontLibrary, Failure>,
+    result: Result<Prepared, Failure>,
 }
 struct Pending {
     id: u64,
@@ -97,7 +105,14 @@ impl FontPreparation {
                 let result = if request.cancelled.load(Ordering::Acquire) {
                     Err(Failure::Cancelled)
                 } else {
-                    load(request.fonts)
+                    match request.job {
+                        Job::Library(fonts) => load(*fonts).map(Prepared::Library),
+                        Job::Inventory(library) => {
+                            let (entries, limited) =
+                                normalize_inventory(library.family_names());
+                            Ok(Prepared::Inventory(entries, limited))
+                        }
+                    }
                 };
                 // A late loaded library is disposed on its worker when cancelled.
                 let result = if request.cancelled.load(Ordering::Acquire) {
@@ -121,6 +136,25 @@ impl FontPreparation {
         window: WindowId,
         now: Instant,
     ) -> RefreshSubmission {
+        self.submit_job(Job::Library(Box::new(fonts)), window, now)
+    }
+    pub fn submit_inventory(
+        &mut self,
+        library: FontLibrary,
+        window: WindowId,
+        now: Instant,
+    ) -> RefreshSubmission {
+        self.submit_job(Job::Inventory(library), window, now)
+    }
+    pub fn busy(&self) -> bool {
+        self.pending.is_some()
+    }
+    fn submit_job(
+        &mut self,
+        job: Job,
+        window: WindowId,
+        now: Instant,
+    ) -> RefreshSubmission {
         if self.pending.is_some() {
             return RefreshSubmission::Busy;
         }
@@ -137,7 +171,7 @@ impl FontPreparation {
         });
         let result = self.worker.try_submit(Request {
             id,
-            fonts,
+            job,
             cancelled,
             window,
         });
@@ -157,7 +191,7 @@ impl FontPreparation {
             .filter(|p| !p.timed_out && !p.cancelled.load(Ordering::Acquire))
             .map(|p| p.deadline)
     }
-    pub fn take(&mut self, now: Instant) -> Option<Result<FontLibrary, Failure>> {
+    pub fn take(&mut self, now: Instant) -> Option<Result<Prepared, Failure>> {
         if let Ok(completion) = self.completed.try_recv() {
             let pending = self.pending.take()?;
             if completion.id == pending.id && !pending.cancelled.load(Ordering::Acquire) {
@@ -178,6 +212,35 @@ impl FontPreparation {
         None
     }
 }
+pub(crate) const MAX_INSTALLED_FAMILIES: usize = 4096;
+fn normalize_inventory(names: Vec<String>) -> (Vec<String>, bool) {
+    use crate::automexia::font_preferences::valid_family;
+    let mut limited = names.len() > MAX_INSTALLED_FAMILIES;
+    let mut entries: Vec<_> = names
+        .into_iter()
+        .take(MAX_INSTALLED_FAMILIES * 4)
+        .filter(|name| {
+            valid_family(name)
+                && !name.chars().any(
+                    |c| matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'),
+                )
+        })
+        .map(|name| (name.to_lowercase(), name))
+        .collect();
+    entries.sort_unstable();
+    entries.dedup_by(|a, b| a.0 == b.0);
+    limited |= entries.len() > MAX_INSTALLED_FAMILIES;
+    entries.truncate(MAX_INSTALLED_FAMILIES);
+    let mut entries: Vec<_> = entries.into_iter().map(|(_, name)| name).collect();
+    let bundled = rio_backend::sugarloaf::font::constants::DEFAULT_FONT_FAMILY;
+    if !entries
+        .iter()
+        .any(|name| name.eq_ignore_ascii_case(bundled))
+    {
+        entries.insert(0, bundled.to_owned());
+    }
+    (entries, limited)
+}
 impl Drop for FontPreparation {
     fn drop(&mut self) {
         self.cancel();
@@ -188,7 +251,46 @@ impl Drop for FontPreparation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn await_result(owner: &mut FontPreparation) -> Result<FontLibrary, Failure> {
+    #[test]
+    fn installed_font_inventory_is_bounded_sorted_deduplicated_and_safe() {
+        let (names, limited) = normalize_inventory(vec![
+            "Zulu Mono".into(),
+            "Alpha Mono".into(),
+            "alpha mono".into(),
+            "../font.ttf".into(),
+            "Bad\nName".into(),
+            "Bad\u{202e}Name".into(),
+            "a".repeat(129),
+            "".into(),
+        ]);
+        assert!(!limited);
+        assert_eq!(names, ["cascadiacode", "Alpha Mono", "Zulu Mono"]);
+        let (names, limited) = normalize_inventory(
+            (0..MAX_INSTALLED_FAMILIES * 5)
+                .map(|i| format!("Font {i:05}"))
+                .collect(),
+        );
+        assert!(limited);
+        assert_eq!(names.len(), MAX_INSTALLED_FAMILIES + 1);
+    }
+
+    #[test]
+    fn installed_font_inventory_uses_native_discovery_off_thread() {
+        let mut owner = FontPreparation::with_loader(None, prepare_library);
+        let (library, _) = FontLibrary::new(Default::default());
+        assert_eq!(
+            owner.submit_inventory(library, WindowId::from(0), Instant::now()),
+            RefreshSubmission::Queued
+        );
+        assert!(owner.busy());
+        let result = await_result(&mut owner);
+        let Ok(Prepared::Inventory(names, _)) = result else {
+            panic!("Expected font inventory");
+        };
+        assert!(names.iter().any(|name| name == "cascadiacode"));
+        assert!(!owner.busy());
+    }
+    fn await_result(owner: &mut FontPreparation) -> Result<Prepared, Failure> {
         let until = Instant::now() + Duration::from_secs(5);
         loop {
             if let Some(result) = owner.take(Instant::now()) {

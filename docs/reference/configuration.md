@@ -279,6 +279,14 @@ Customizations includes **Fonts**, with these controls:
 - default, bright and dim text, terminal background, cursor, selection colors,
   and the 16 normal/bright ANSI palette colors.
 
+The Font family control opens a searchable native installed-font inventory.
+Arrows or a row click preview the font in the terminal without saving; Enter or
+Apply saves, and Escape restores the current choice. F5 refreshes the inventory.
+Picker controls retain their current UI font until Apply. Discovery/loading uses
+one background worker; newer selections supersede old work. No fonts are downloaded
+or installed. The current configured family and bundled Cascadia Code remain
+selectable even when absent from the system inventory.
+
 Family names are limited to 128 bytes and cannot contain path separators or
 control characters. Font family and faces are shared by terminal and interface
 text. Settings text follows the terminal size within its existing 10–32 point

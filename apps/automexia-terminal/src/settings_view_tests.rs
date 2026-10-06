@@ -6966,6 +6966,265 @@ fn fonts_menu_navigation_edit_refresh_reset_restore_and_scaled_preview() {
     }
 }
 
+#[test]
+fn installed_font_picker_opens_from_the_real_fonts_control() {
+    let mut view = installed_font_picker();
+    assert!(
+        view.color_editor.is_none(),
+        "Font family must open a font list, not the manual text editor"
+    );
+    assert!(view.accessibility_summary().contains("Choose font"));
+    assert!(
+        view.take_edit().is_none(),
+        "Opening the picker must not save a preference"
+    );
+}
+
+fn installed_font_picker() -> SettingsView {
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot_with_config(
+            &preferences,
+            &base,
+            &base,
+        )),
+    );
+    view.view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new(automexia_ui_model::settings::FONT_SIZE).unwrap());
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("fonts.family").unwrap());
+    named(&mut view, NamedKey::Enter);
+    view
+}
+
+#[test]
+fn installed_font_picker_search_preview_apply_cancel_and_reopen() {
+    let mut view = installed_font_picker();
+    let original = view.font_picker_session().unwrap();
+    assert!(matches!(
+        view.take_font_picker_intent(),
+        Some(FontPickerIntent::Load)
+    ));
+    // Typing while discovery is active must not cancel the inventory worker.
+    assert!(view.paste("Mono"));
+    assert!(view.take_font_picker_intent().is_none());
+    view.font_picker_inventory(
+        vec![
+            "Example Mono".into(),
+            "Other Mono".into(),
+            "Example Sans".into(),
+        ],
+        false,
+    );
+    assert_eq!(view.font_picker_selection(), Some("Example Mono"));
+    named(&mut view, NamedKey::ArrowDown);
+    assert!(
+        matches!(view.take_font_picker_intent(),Some(FontPickerIntent::Preview(s)) if s=="Example Mono")
+    );
+    named(&mut view, NamedKey::ArrowDown);
+    assert!(
+        matches!(view.take_font_picker_intent(),Some(FontPickerIntent::Preview(s)) if s=="Other Mono")
+    );
+    named(&mut view, NamedKey::ArrowDown);
+    assert_eq!(view.font_picker_selection(), Some("Example Mono"));
+    named(&mut view, NamedKey::Enter);
+    assert!(
+        matches!(view.take_font_picker_intent(),Some(FontPickerIntent::Apply(s)) if s=="Example Mono")
+    );
+    assert!(
+        view.take_edit().is_none(),
+        "Only the application may validate/save prepared fonts"
+    );
+    named(&mut view, NamedKey::Escape);
+    assert!(view.font_picker_session().is_none());
+    assert!(matches!(
+        view.take_font_picker_intent(),
+        Some(FontPickerIntent::Cancel)
+    ));
+    assert_eq!(view.title(), "Fonts");
+    named(&mut view, NamedKey::Enter);
+    assert!(view.font_picker_session().unwrap().0 > original.0);
+    assert_eq!(view.query(), "");
+}
+
+#[test]
+fn installed_font_picker_empty_search_clipboard_ime_and_compact_isolation() {
+    let mut view = installed_font_picker();
+    view.take_font_picker_intent();
+    view.font_picker_inventory(vec!["字体 Mono".into(), "Other Mono".into()], false);
+    view.event(
+        &WindowEvent::Ime(Ime::Preedit("字体".into(), Some((0, 6)))),
+        ModifiersState::empty(),
+        1.0,
+    );
+    named(&mut view, NamedKey::Enter);
+    assert!(view.take_font_picker_intent().is_none());
+    view.event(
+        &WindowEvent::Ime(Ime::Commit("字体".into())),
+        ModifiersState::empty(),
+        1.0,
+    );
+    assert_eq!(view.query(), "字体");
+    assert_eq!(view.font_picker_selection(), Some("字体 Mono"));
+    view.key(
+        &Key::Character("a".into()),
+        None,
+        ModifiersState::CONTROL,
+        false,
+    );
+    assert_eq!(view.clipboard_selection(), Some("字体".into()));
+    assert!(view.paste("No such family"));
+    assert_eq!(view.font_picker_selection(), None);
+    assert!(matches!(
+        view.take_font_picker_intent(),
+        Some(FontPickerIntent::Cancel)
+    ));
+    named(&mut view, NamedKey::Enter);
+    assert!(view.take_font_picker_intent().is_none());
+    assert!(!view.paste("\n"));
+    assert!(!view.paste(&"a".repeat(MAX_QUERY_BYTES + 1)));
+    view.fit(200.0, 180.0, 16.0);
+    assert!(!view.paste("Mono"));
+    named(&mut view, NamedKey::Enter);
+    assert!(view.take_font_picker_intent().is_none());
+    named(&mut view, NamedKey::Escape);
+    assert!(view.font_picker_session().is_none());
+}
+
+#[test]
+fn installed_font_picker_selection_highlight_clips_and_accessibility_follow_focus() {
+    for entry in crate::automexia::theme_gallery::builtins() {
+        for (width, height, scale) in [
+            (480.0, 560.0, 1.0),
+            (960.0, 620.0, 1.5),
+            (1920.0, 1080.0, 2.0),
+        ] {
+            let mut view = installed_font_picker();
+            view.fit(width, height, 16.0);
+            view.font_picker_inventory(
+                vec!["Example Mono".into(), "Other Mono".into()],
+                false,
+            );
+            named(&mut view, NamedKey::ArrowDown);
+            let mut raster = Raster::new(scale);
+            let theme = UiTheme::from_colors(&entry.theme.as_ref().unwrap().colors);
+            view.paint(&mut raster, theme);
+            let selected = view
+                .font_picker
+                .as_ref()
+                .unwrap()
+                .targets
+                .iter()
+                .find_map(|(target, bounds)| {
+                    (*target
+                        == FontPickerTarget::Row(
+                            view.font_picker.as_ref().unwrap().selected,
+                        ))
+                    .then_some(*bounds)
+                })
+                .unwrap();
+            assert!(
+                raster
+                    .rects
+                    .iter()
+                    .any(|(bounds, color)| *bounds == selected.array()
+                        && *color == theme.raised),
+                "Full-row selection must be visible"
+            );
+            let card = view.geometry.card;
+            for ([x, y, w, h], _) in raster.rects {
+                assert!(
+                    x >= card.x - 0.01
+                        && y >= card.y - 0.01
+                        && x + w <= card.x + card.width + 0.01
+                        && y + h <= card.y + card.height + 0.01
+                );
+            }
+            let surface = view
+                .font_picker_accessibility_surface(
+                    scale,
+                    accesskit::Rect::new(
+                        0.0,
+                        0.0,
+                        (width * scale) as f64,
+                        (height * scale) as f64,
+                    ),
+                )
+                .unwrap();
+            assert!(surface
+                .elements
+                .iter()
+                .any(|e| e.node.label() == Some("Example Mono")));
+            // A pointer row selects a preview, never implicitly saves it.
+            view.take_font_picker_intent();
+            view.font_picker_activate(FontPickerTarget::Row(1));
+            assert!(matches!(
+                view.take_font_picker_intent(),
+                Some(FontPickerIntent::Preview(_))
+            ));
+            assert!(view.take_edit().is_none());
+        }
+    }
+}
+
+#[test]
+fn installed_font_picker_rejects_stale_revision_and_retains_original_search() {
+    let mut view = installed_font_picker();
+    view.font_picker_inventory(vec!["Example Mono".into()], false);
+    view.invalidate_font_picker(2);
+    assert!(view.font_picker_session().is_none());
+    assert!(matches!(
+        view.take_font_picker_intent(),
+        Some(FontPickerIntent::Cancel)
+    ));
+    assert_eq!(view.title(), "Fonts");
+}
+
+#[test]
+fn installed_font_picker_large_text_tab_order_and_hidden_controls() {
+    let mut view = installed_font_picker();
+    view.font_picker_inventory(vec!["Example Mono".into()], false);
+    view.fit(1920.0, 1080.0, 32.0);
+    assert!(!view.requires_larger_window());
+    let mut raster = Raster::new(2.0);
+    view.paint(&mut raster, theme());
+    for focus in [
+        Focus::List,
+        Focus::PreviewButton,
+        Focus::Reset,
+        Focus::Close,
+        Focus::Search,
+    ] {
+        named(&mut view, NamedKey::Tab);
+        assert_eq!(view.focus, focus);
+    }
+    assert!(view
+        .font_picker
+        .as_ref()
+        .unwrap()
+        .targets
+        .iter()
+        .any(|(t, _)| *t == FontPickerTarget::Apply));
+    view.fit(280.0, 180.0, 32.0);
+    view.paint(&mut raster, theme());
+    assert_eq!(view.font_picker.as_ref().unwrap().targets.len(), 1);
+    assert_eq!(
+        view.font_picker.as_ref().unwrap().targets[0].0,
+        FontPickerTarget::Back
+    );
+}
+
 fn package_notice_view() -> SettingsView {
     let mut view = SettingsView::default();
     view.fit(960.0, 620.0, 16.0);

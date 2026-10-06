@@ -322,6 +322,14 @@ impl Application<'_> {
             self.handle_profile_intent(window_id, intent);
             return;
         }
+        if let Some(intent) =
+            self.router.routes.get_mut(&window_id).and_then(|route| {
+                route.window.screen.settings_view.take_font_picker_intent()
+            })
+        {
+            self.apply_font_picker_intent(event_loop, window_id, intent);
+            return;
+        }
         if let Some(intent) = self
             .router
             .routes

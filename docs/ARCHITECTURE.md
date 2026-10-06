@@ -232,6 +232,13 @@ and Sugarloaf font library. One bounded preparation worker admits one request;
 font discovery/loading stays off input and rendering threads. A prepared library
 is published only while the editor, pane and settings revision still match.
 Cancellation and a 30-second deadline retain cleanup ownership until work returns.
+The installed-font picker shares that worker for native inventory and previews.
+It bounds/sanitizes names, keeps one latest queued selection, and checks picker
+generation as well as revision/window/pane before publishing. Temporary previews
+replace only the originating screen resources; its immediate UI text retains the
+saved library for legibility. Escape/close/stale targets restore the router's
+current library. Apply reuses the prepared preview in the existing typed edit;
+previewing never modifies preferences. No second font parser or installer exists.
 Only successful preparation updates the router, existing screens and saved
 preferences; screen font caches and every local tab's metrics refresh together.
 Version-10 preferences add a validated theme snapshot and migrate strict version-9

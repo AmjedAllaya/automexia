@@ -9,6 +9,33 @@ fn fixture_fonts() -> FontLibrary {
 }
 
 #[test]
+fn font_picker_bitmap_glyphs_keep_texels_aligned_at_fractional_positions() {
+    let fonts = fixture_fonts();
+    for scale in [1.0, 1.25, 1.5, 2.0] {
+        let mut text = Text::new(&fonts);
+        text.init_cpu();
+        text.set_scale_factor(scale);
+        text.draw_clipped(
+            12.5,
+            5.25,
+            "Courier New · Preview only",
+            &DrawOpts {
+                font_size: 15.3,
+                ..DrawOpts::default()
+            },
+            [0.0, 0.0, 600.0, 80.0],
+        );
+        assert!(!text.instances.is_empty());
+        for glyph in &text.instances {
+            for axis in 0..2 {
+                let origin = glyph.pos[axis] + f32::from(glyph.bearings[axis]);
+                assert_eq!(origin.fract(), 0.0, "bitmap texel origin at scale {scale}");
+            }
+        }
+    }
+}
+
+#[test]
 fn mixed_unicode_labels_select_fallback_for_each_grapheme_run() {
     let fonts = fixture_fonts();
     fonts.inner.write().insert(
@@ -1037,7 +1064,8 @@ fn stacked_combining_marks_keep_font_vertical_offsets_in_labels_and_cells() {
             // Font coordinates are y-up; the UI surface is y-down. Compare
             // ink origins: clipping folds the atlas bearing into the position.
             // A stacked accent must move above the base letter in both paths.
-            let expected = 30.0 - glyph.y + f32::from(bearing);
+            // Bitmap placement snaps only the final physical ink origin.
+            let expected = (30.0 - glyph.y + f32::from(bearing)).round();
             let actual = instance.pos[1] + f32::from(instance.bearings[1]);
             assert!(
                 (actual - expected).abs() < 0.01,

@@ -265,6 +265,8 @@ pub struct Application<'a> {
     settings_revision: u64,
     font_preparation: crate::font_loading::FontPreparation,
     pending_font: Option<fonts::PendingFont>,
+    queued_font_picker: Option<fonts::PendingFont>,
+    font_preview: Option<fonts::FontPreview>,
     theme_library: crate::automexia::theme_gallery_io::ThemeLibrary,
     profile_library: crate::automexia::profiles::ProfileLibrary,
     pending_profile: Option<profiles::PendingProfile>,
@@ -359,6 +361,8 @@ impl Application<'_> {
                 event_proxy.clone(),
             ),
             pending_font: None,
+            queued_font_picker: None,
+            font_preview: None,
             theme_library: crate::automexia::theme_gallery_io::ThemeLibrary::new(
                 rio_backend::config::config_dir_path(),
                 Some(event_proxy.clone()),

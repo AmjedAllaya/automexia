@@ -3638,6 +3638,7 @@ fn verify_architecture() -> TaskResult {
     for relative in [
         "settings_view.rs",
         "settings_theme_gallery.rs",
+        "settings_font_picker.rs",
         "renderer/command_palette.rs",
         "renderer/command_palette/shortcut_editor.rs",
         "renderer/confirm_quit.rs",

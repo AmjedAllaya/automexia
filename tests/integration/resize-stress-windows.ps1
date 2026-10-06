@@ -50,6 +50,7 @@ param(
     [switch]$DependentControlsOnly,
     [switch]$WindowControlChoicesOnly,
     [switch]$SharedColorPickerOnly,
+    [switch]$FontPickerOnly,
     [switch]$AccessibilityOnly
 )
 
@@ -1721,6 +1722,11 @@ $wallpaperConfig
     if ($DependentControlsOnly) {
         . (Join-Path $PSScriptRoot 'dependent-controls-windows.ps1')
         Test-AutomexiaDependentControls
+        return
+    }
+    if ($FontPickerOnly) {
+        . (Join-Path $PSScriptRoot 'font-picker-windows.ps1')
+        Test-AutomexiaFontPicker
         return
     }
     if ($SharedColorPickerOnly) {

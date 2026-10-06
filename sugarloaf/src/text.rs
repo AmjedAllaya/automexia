@@ -983,7 +983,14 @@ impl Text {
             &mut self.instances
         };
         target.push(TextInstance {
-            pos,
+            // Atlas glyphs are whole-pixel bitmaps. Keep their geometry on
+            // physical pixel boundaries so GPU interpolation cannot sample a
+            // neighbouring texel. Round the ink origin as the terminal grid does;
+            // shaped advances retain their full precision.
+            pos: [
+                (pos[0] + f32::from(slot.bearing_x)).round() - f32::from(slot.bearing_x),
+                (pos[1] + f32::from(slot.bearing_y)).round() - f32::from(slot.bearing_y),
+            ],
             glyph_pos: [slot.x as u32, slot.y as u32],
             glyph_size: [slot.w as u32, slot.h as u32],
             bearings: [slot.bearing_x, slot.bearing_y],

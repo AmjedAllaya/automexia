@@ -54,7 +54,7 @@ pub(super) fn descriptors(
         SettingValue::Text(family(base)),
         visual_origin(user.family.is_some(), true, ValueOrigin::Default),
     )?;
-    row.description = "Installed family name, shared by terminal and interface text. Missing fonts keep the current font.".into();
+    row.description = "Browse installed fonts with a live terminal preview. Enter applies; Escape restores the current font.".into();
     unavailable_unless(
         &mut row,
         valid_family(&family(current)) && valid_family(&family(base)),

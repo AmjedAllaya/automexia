@@ -31,6 +31,10 @@ use rio_window::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
+#[path = "settings_font_picker.rs"]
+mod font_picker;
+pub(crate) use font_picker::FontPickerIntent;
+use font_picker::{FontPicker, FontPickerTarget};
 #[path = "settings_color_picker.rs"]
 mod color_picker;
 
@@ -239,6 +243,7 @@ struct ColorGeometry {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Target {
+    FontPicker(FontPickerTarget),
     Theme(GalleryTarget),
     Confirmation(bool),
     Search,
@@ -342,6 +347,9 @@ impl Canvas for Sugarloaf<'_> {
 pub(crate) struct SettingsView {
     back_to_menu: bool,
     gallery: Option<Gallery>,
+    font_picker: Option<FontPicker>,
+    font_picker_generation: u64,
+    pending_font_picker: Option<FontPickerIntent>,
     profiles: Option<ProfilesView>,
     profile_generation: u64,
     theme_context: Option<ThemeContext>,
@@ -637,6 +645,8 @@ impl SettingsView {
         self.back_to_menu = false;
         self.profiles = None;
         self.gallery = None;
+        self.font_picker = None;
+        self.pending_font_picker = None;
         self.pending_theme = None;
         self.theme_editor_backup = None;
         self.catalog = None;
@@ -737,6 +747,7 @@ impl SettingsView {
         serde_json::json!({
             "open": self.is_open(), "ready": ready,
             "gallery": self.gallery_snapshot(),
+            "font_picker": self.font_picker_snapshot(),
             "profiles": self.profiles.as_ref().map(|p| serde_json::json!({"busy":p.busy,"editing":p.draft.is_some(),"selected":p.selected.is_some()})),
             "active_slot": self.customizations.as_ref()
                 .and_then(|navigation| navigation.active_slot.as_ref()).map(SettingId::as_str),
@@ -837,6 +848,7 @@ impl SettingsView {
             self.pending = None;
             self.pressed = None;
         }
+        self.invalidate_font_picker(catalog.revision());
         if self.color_editor.as_ref().is_some_and(|editor| {
             editor.revision != catalog.revision()
                 || catalog.get(&editor.id).is_none_or(|entry| {
@@ -913,6 +925,7 @@ impl SettingsView {
             self.pending_customization = None;
             self.pressed = None;
         }
+        self.invalidate_font_picker(navigation.full_catalog.revision());
         if self.color_editor.as_ref().is_some_and(|editor| {
             editor.revision != navigation.full_catalog.revision()
                 || self
@@ -1917,6 +1930,12 @@ impl SettingsView {
     }
     pub(crate) fn requires_larger_window(&self) -> bool {
         let font = self.font.max(10.0);
+        if self.font_picker.is_some() {
+            return (self.width - 32.0).clamp(0.0, (font * 38.0).max(640.0))
+                < font * 22.0
+                || (self.height - 32.0).clamp(0.0, (font * 34.0).max(680.0))
+                    < font * 18.0;
+        }
         let margin = if self.width < 360.0 || self.height < 300.0 {
             4.0
         } else {
@@ -2096,10 +2115,23 @@ impl SettingsView {
         }
         let mut candidate = query.to_owned();
         candidate.replace_range(start..finish, text);
-        let Some((view, catalog)) = self.view.as_mut().zip(self.catalog.as_ref()) else {
-            return false;
+        let valid = if self.font_picker.is_some() {
+            if candidate.len() > MAX_QUERY_BYTES
+                || candidate.chars().any(char::is_control)
+            {
+                false
+            } else {
+                self.set_font_picker_query(candidate);
+                true
+            }
+        } else if let Some((view, catalog)) =
+            self.view.as_mut().zip(self.catalog.as_ref())
+        {
+            view.set_query(&candidate, catalog).is_ok()
+        } else {
+            false
         };
-        if view.set_query(&candidate, catalog).is_err() {
+        if !valid {
             self.status =
                 "Search text is too long or contains unsupported characters.".into();
             return false;
@@ -2147,6 +2179,9 @@ impl SettingsView {
         Some(selected)
     }
     pub(crate) fn accessibility_summary(&self) -> String {
+        if let Some(summary) = self.font_picker_summary() {
+            return summary;
+        }
         if let Some(summary) = self.gallery_summary() {
             return summary;
         }
@@ -2283,7 +2318,8 @@ impl SettingsView {
         text
     }
     fn query(&self) -> &str {
-        self.view.as_ref().map_or("", ViewState::query)
+        self.font_picker_query()
+            .unwrap_or_else(|| self.view.as_ref().map_or("", ViewState::query))
     }
     pub(crate) fn back_alias(&self, key: &Key, modifiers: ModifiersState) -> bool {
         let backspace_available = if self.confirmation.is_some() {
@@ -2350,6 +2386,9 @@ impl SettingsView {
             return;
         }
         if self.profiles.is_some() && self.profile_key(key, modifiers, repeat) {
+            return;
+        }
+        if self.font_picker.is_some() && self.font_picker_key(key, modifiers, repeat) {
             return;
         }
         if self.gallery.is_some() {
@@ -3046,6 +3085,10 @@ impl SettingsView {
         let Some(entry) = self.focused_entry() else {
             return;
         };
+        if entry.id.as_str() == "fonts.family" {
+            self.open_font_picker();
+            return;
+        }
         if matches!(
             entry.kind,
             SettingKind::Color { .. } | SettingKind::Text { .. }
@@ -3309,6 +3352,13 @@ impl SettingsView {
             })
             .map(|(_, focus)| Target::Color(focus));
         }
+        if self.font_picker.is_some() {
+            return if self.layout_dirty {
+                None
+            } else {
+                self.font_picker_target(x, y)
+            };
+        }
         if self.gallery.is_some() {
             return self.gallery_target(x, y);
         }
@@ -3456,6 +3506,7 @@ impl SettingsView {
             self.cancel_numeric();
         }
         match target {
+            Target::FontPicker(target) => self.font_picker_activate(target),
             Target::Theme(target) => self.gallery_activate(target),
             Target::Confirmation(_) | Target::Back => {}
             Target::Color(focus) => {
@@ -3557,6 +3608,10 @@ impl SettingsView {
         if self.color_editor.is_some() || !delta.is_finite() || delta == 0.0 {
             return;
         }
+        if self.font_picker.is_some() {
+            self.font_picker_scroll(delta);
+            return;
+        }
         if self.gallery.is_some() {
             self.gallery_scroll(delta);
             return;
@@ -3583,6 +3638,10 @@ impl SettingsView {
             self.prepare_color(viewport);
             self.layout_dirty = false;
             self.reveal_focus = false;
+            return;
+        }
+        if self.font_picker.is_some() {
+            self.prepare_font_picker(viewport);
             return;
         }
         if self.gallery.is_some() {
@@ -4008,6 +4067,76 @@ impl SettingsView {
             );
         }
     }
+    fn paint_search_field(
+        &mut self,
+        canvas: &mut impl Canvas,
+        theme: UiTheme,
+        placeholder: &str,
+    ) {
+        let g = self.geometry;
+        let font = self.font.max(10.0);
+        let pad = 12.0_f32.min(g.card.width * 0.1);
+        control(canvas, g.search, self.focus == Focus::Search, theme, g.card);
+        let query = self.query();
+        let display = if query.is_empty() && self.preedit.is_empty() {
+            placeholder.into()
+        } else {
+            format!(
+                "{}{}{}",
+                &query[..self.caret],
+                self.preedit,
+                &query[self.caret..]
+            )
+        };
+        let opts = DrawOpts {
+            font_size: font,
+            color: color_u8(if query.is_empty() && self.preedit.is_empty() {
+                theme.muted_text
+            } else {
+                theme.text
+            }),
+            ..DrawOpts::default()
+        };
+        let caret_width = canvas.text().measure(&query[..self.caret], &opts);
+        let shift = (caret_width - (g.search.width - pad * 3.0)).max(0.0);
+        let selection =
+            self.anchor
+                .filter(|anchor| *anchor != self.caret)
+                .map(|anchor| {
+                    let start = anchor.min(self.caret);
+                    let end = anchor.max(self.caret);
+                    let left = canvas.text().measure(&query[..start], &opts);
+                    let right = canvas.text().measure(&query[..end], &opts);
+                    Rect {
+                        x: g.search.x + pad + left - shift,
+                        y: g.search.y + 3.0,
+                        width: (right - left).max(0.0),
+                        height: (g.search.height - 6.0).max(0.0),
+                    }
+                });
+        self.caret_rect = Rect {
+            x: g.search.x + pad + caret_width - shift,
+            y: g.search.y + 3.0,
+            width: 1.0,
+            height: (g.search.height - 6.0).max(0.0),
+        };
+        if let Some(selection) = selection {
+            rect(canvas, selection, theme.raised, g.search);
+        }
+
+        if let Some(clip) = g.search.intersect(g.card) {
+            canvas.text().draw_clipped(
+                g.search.x + pad - shift,
+                g.search.y + font.min(g.search.height) * 0.15,
+                &display,
+                &opts,
+                clip.array(),
+            );
+        }
+        if self.focus == Focus::Search && self.preedit.is_empty() {
+            rect(canvas, self.caret_rect, theme.outline, g.search);
+        }
+    }
     fn paint(&mut self, canvas: &mut impl Canvas, theme: UiTheme) {
         if !self.is_open() {
             return;
@@ -4019,6 +4148,10 @@ impl SettingsView {
         self.prepare(canvas.text());
         if self.color_editor.is_some() {
             self.paint_color(canvas, theme);
+            return;
+        }
+        if self.font_picker.is_some() {
+            self.paint_font_picker(canvas, theme);
             return;
         }
         if self.gallery.is_some() {
@@ -4092,74 +4225,16 @@ impl SettingsView {
             );
         }
         label(canvas, title, self.title(), font, theme.text, true, g.card);
-        control(canvas, g.search, self.focus == Focus::Search, theme, g.card);
-        let query = self.query();
-        let display = if query.is_empty() && self.preedit.is_empty() {
-            if self.is_category_root() {
-                "Search customizations".into()
-            } else if self.is_category_detail() {
-                "Search this feature".into()
-            } else if self.profiles.is_some() {
-                "Search profiles and controls".into()
-            } else {
-                "Search settings".into()
-            }
+        let placeholder = if self.is_category_root() {
+            "Search customizations"
+        } else if self.is_category_detail() {
+            "Search this feature"
+        } else if self.profiles.is_some() {
+            "Search profiles and controls"
         } else {
-            format!(
-                "{}{}{}",
-                &query[..self.caret],
-                self.preedit,
-                &query[self.caret..]
-            )
+            "Search settings"
         };
-        let opts = DrawOpts {
-            font_size: font,
-            color: color_u8(if query.is_empty() && self.preedit.is_empty() {
-                theme.muted_text
-            } else {
-                theme.text
-            }),
-            ..DrawOpts::default()
-        };
-        let caret_width = canvas.text().measure(&query[..self.caret], &opts);
-        let shift = (caret_width - (g.search.width - pad * 3.0)).max(0.0);
-        let selection =
-            self.anchor
-                .filter(|anchor| *anchor != self.caret)
-                .map(|anchor| {
-                    let start = anchor.min(self.caret);
-                    let end = anchor.max(self.caret);
-                    let left = canvas.text().measure(&query[..start], &opts);
-                    let right = canvas.text().measure(&query[..end], &opts);
-                    Rect {
-                        x: g.search.x + pad + left - shift,
-                        y: g.search.y + 3.0,
-                        width: (right - left).max(0.0),
-                        height: (g.search.height - 6.0).max(0.0),
-                    }
-                });
-        self.caret_rect = Rect {
-            x: g.search.x + pad + caret_width - shift,
-            y: g.search.y + 3.0,
-            width: 1.0,
-            height: (g.search.height - 6.0).max(0.0),
-        };
-        if let Some(selection) = selection {
-            rect(canvas, selection, theme.raised, g.search);
-        }
-
-        if let Some(clip) = g.search.intersect(g.card) {
-            canvas.text().draw_clipped(
-                g.search.x + pad - shift,
-                g.search.y + font.min(g.search.height) * 0.15,
-                &display,
-                &opts,
-                clip.array(),
-            );
-        }
-        if self.focus == Focus::Search && self.preedit.is_empty() {
-            rect(canvas, self.caret_rect, theme.outline, g.search);
-        }
+        self.paint_search_field(canvas, theme, placeholder);
         for row in &self.rows {
             if row.bounds.intersect(g.body).is_none() {
                 continue;

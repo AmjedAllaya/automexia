@@ -525,6 +525,7 @@ struct NativeWindowSnapshot {
     recovery_active: bool,
     recovery_ready: bool,
     settings: serde_json::Value,
+    font_primary: Option<String>,
     connection_hub_active: bool,
     connection_hub_route: Option<&'static str>,
     connection_hub_literal_entry: bool,
@@ -734,6 +735,7 @@ fn write_native_resize_snapshot(
         "panel_count": panels.len(),
         "panels": panels,
     });
+    snapshot["font_primary"] = serde_json::json!(window.font_primary);
     snapshot["recovery_active"] = serde_json::json!(window.recovery_active);
     snapshot["recovery_ready"] = serde_json::json!(window.recovery_ready);
     snapshot["window_tab_titles"] = serde_json::json!(window.window_tab_titles);
@@ -6812,6 +6814,7 @@ impl Screen<'_> {
                     recovery_active: self.renderer.confirm_quit.is_recovery(),
                     recovery_ready: self.renderer.confirm_quit.recovery_ready(),
                     settings: self.settings_view.native_test_snapshot(),
+                    font_primary: self.sugarloaf.font_library().inner.read().try_get(&0).and_then(|font| font.postscript_name()).map(str::to_owned),
                     connection_hub_active: self.connection_hub.is_active(),
                     connection_hub_route: self
                         .connection_hub

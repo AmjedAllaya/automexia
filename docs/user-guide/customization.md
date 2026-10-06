@@ -411,11 +411,30 @@ OpenType features. Text, selection, cursor, background and ANSI palette colors
 have separate color controls. The live sample shows the active font and colors.
 Use the search field to find a control, Tab to move focus, and Enter to edit.
 
-Family names refer to installed fonts; the page does not install fonts. Font
-family also applies to interface text. Loading happens in the background. Keep
-the editor open until the change finishes; a missing font or failed load leaves
-the current font active with an explanation. Size and color edits apply immediately.
-All windows, panes and local tabs update, including inactive ones.
+Select **Font family** to open the installed-font picker. It discovers the host's
+fonts through DirectWrite on Windows, CoreText on macOS and fontconfig on Linux.
+The bundled Cascadia Code and the current configured family remain available.
+Fonts installed only inside a remote machine or WSL distribution do not change
+the local desktop's font inventory.
+
+- Type in **Search installed fonts** to filter; Unicode input and paste work.
+- Use arrows, Home/End or Page Up/Down to browse. Clicking a row also previews it.
+- The highlighted family previews in the terminal behind the picker. The picker
+  controls keep their current UI font so they stay readable while browsing.
+- Press **Enter** or choose **Apply** to save. **Escape** or **Alt+Left** cancels
+  and restores the current font. Tab moves between search, list and actions.
+- **F5 / Refresh** detects fonts installed since opening the list.
+
+Loading runs in the background. Rapid browsing keeps only the newest requested
+preview; missing families or unavailable styles leave the previous preview active
+and show an explanation. Nothing is saved while browsing. Applying updates the
+shared terminal/interface font in all windows, panes and local tabs. Size and
+color edits apply immediately. The picker lists up to 4,096 system families plus
+the bundled/current choices. Additional-directory families are not enumerated;
+the current configured family remains selectable.
+
+This page does not download or install fonts. Install fonts using your OS's font
+manager, then Refresh the list.
 
 Reset default previews configured values after confirmation; Restore saved
 returns to your earlier choices. Individual resets remove just that override.

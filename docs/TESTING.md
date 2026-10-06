@@ -325,6 +325,22 @@ and the current preference file.
 Run a `visual-test-hooks,wgpu` build with both WGPU and `-UseCpuRenderer`;
 `-ModalCaptureDirectory` keeps screenshots for private inspection.
 
+Installed font selection has `installed_font_` application tests covering the real
+Fonts control, bounded native discovery, invalid/duplicate names, search/IME,
+clipboard, preview/apply/cancel intents, stale revisions, reopening, compact
+layouts, full-row selection, accessibility and built-in-theme/DPI clipping.
+`resize-stress-windows.ps1 -FontPickerOnly` exercises real Windows font discovery,
+Consolas/Courier previews, rapid search replacement, preference bytes remaining
+unchanged during preview/cancel, actual renderer font restoration, explicit save
+and refresh. Pixel checks require visible search/action labels, a selected row and
+an opaque panel in both immediate and settled captures. Run CPU and WGPU with
+the same visual-test-hooks build; native
+macOS/Linux font selection remains a separate platform validation requirement.
+The Sugarloaf `font_picker_bitmap_glyphs_keep_texels_aligned_at_fractional_positions`
+regression checks physical-pixel bitmap origins at fractional coordinates and
+100/125/150/200% scaling; shaping advances remain fractional. Native CPU/WGPU
+captures additionally check for atlas-edge artifacts after preview reloads.
+
 Close confirmation replaces both pending modal geometry and labels after all
 other overlay producers. Covered editors keep their state until cancellation.
 The focused native `resize-stress-windows.ps1` modes `-TagCustomizationOnly` and

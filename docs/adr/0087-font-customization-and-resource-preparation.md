@@ -59,3 +59,28 @@ Tests cover typed catalog edits, strict migration/recovery, real process restart
 bounded worker failure/timeout/cancellation, stale targets, responsive previews
 and existing renderer reload/metrics contracts. Controlled raster evidence is not
 native desktop or assistive-technology evidence for every OS/font combination.
+
+## Installed-family picker refinement
+
+The family control now opens `settings_font_picker.rs` within SettingsView.
+It shares the existing Unicode search editor and semantic/painter helpers. Font
+preparation also accepts an inventory request, reusing Sugarloaf's CoreText or
+font-kit system-family adapter on the same single-admission worker. Names are
+validated, case-insensitively deduplicated and capped at 4,096, with bounded
+bundled/current-family additions. Refresh is explicit; painting never scans.
+
+One application-owned queued selection coalesces rapid navigation. Completion
+must match the picker generation, settings revision, window, pane and selected
+family. Cancelled work retains its worker admission until completion. Preview
+uses Screen's resource-reload boundary without modifying the router library or
+preferences; immediate UI text keeps the saved library for legible controls.
+Apply reuses the prepared library and the existing typed family edit. Escape,
+closing, reopening or changed settings restores the current authoritative library.
+There is no new persistence version, dependency or font-installation authority.
+
+The optional online installer is not part of this refinement: the project has
+no trusted downloadable font catalog or cross-platform installation boundary.
+Users can install through their OS font manager and refresh the picker. Remote
+and WSL guest fonts are outside the local renderer's inventory. Configured
+additional directories remain declarative; the current family is retained even
+if absent from the system list.

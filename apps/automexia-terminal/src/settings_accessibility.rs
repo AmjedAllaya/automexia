@@ -180,6 +180,9 @@ impl SettingsView {
         }
         // These pages have their own layout owners; never expose the underlying
         // settings rows while they cover the sheet.
+        if let Some(picker) = self.font_picker_accessibility_surface(scale, viewport) {
+            return picker;
+        }
         if let Some(gallery) = self.gallery_accessibility_surface(scale, viewport) {
             return gallery;
         }
