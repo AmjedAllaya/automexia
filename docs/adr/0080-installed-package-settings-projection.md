@@ -22,9 +22,9 @@ generations. The Settings sheet projects each installed package as a category,
 each declared feature as a page, and each option as a typed control. Removal
 discards the page and its saved overrides only after a successful inventory
 refresh. An unavailable inventory preserves preferences and core controls.
-An uninitialized store is also insufficient evidence of removal. During a
-temporary reset, confirmed removal prunes the in-memory restore snapshot while
-the preview write guard continues to protect saved files.
+An uninitialized store is also insufficient evidence of removal. After a reset,
+confirmed removal prunes both saved preferences and the in-memory undo snapshot;
+explicit restoration cannot resurrect uninstalled package choices.
 
 Declaration updates retain retired choices for rollback within the existing
 preference limits. An edit that would exceed those limits reclaims only the

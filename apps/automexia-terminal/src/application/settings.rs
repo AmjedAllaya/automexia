@@ -12,12 +12,16 @@ pub(super) enum PreferenceWriteKind {
     Package,
 }
 
-fn preference_write_allowed(
-    preview: Option<&UserPreferences>,
-    kind: PreferenceWriteKind,
-) -> bool {
-    match kind {
-        PreferenceWriteKind::Settings | PreferenceWriteKind::Package => preview.is_none(),
+impl PreferenceWriteKind {
+    fn submit(
+        self,
+        writer: &mut crate::automexia::preferences::PreferenceWriter,
+        preferences: UserPreferences,
+    ) -> u64 {
+        match self {
+            Self::Settings => writer.submit(preferences),
+            Self::Package => writer.submit_package(preferences),
+        }
     }
 }
 
@@ -68,8 +72,7 @@ fn prune_inventory_preferences(
     };
     let changed = prune(current);
     if let Some(restore) = restore {
-        // Confirmed uninstall applies to both live choices and the in-memory
-        // restore point. The existing preview write gate still protects disk.
+        // Confirmed uninstall applies to live choices and the undo point.
         prune(restore);
     }
     changed
@@ -170,17 +173,12 @@ impl Application<'_> {
                 .screen
                 .settings_view
                 .set_theme_context(theme_context.clone());
-            if self.temporary_customizations.is_some() {
+            if self.customization_restore_point.is_some() {
                 route
                     .window
                     .screen
                     .settings_view
-                    .set_temporary_customizations(true);
-                route
-                    .window
-                    .screen
-                    .settings_view
-                    .set_status("Temporary defaults. Restore saved to return.");
+                    .set_restore_available(true);
             }
         } else {
             route.window.screen.open_settings_view(catalog);
@@ -189,15 +187,12 @@ impl Application<'_> {
                 .screen
                 .settings_view
                 .set_theme_context(theme_context);
-            if self.temporary_customizations.is_some() {
+            if self.customization_restore_point.is_some() {
                 route
                     .window
                     .screen
                     .settings_view
-                    .set_temporary_customizations(true);
-                route.window.screen.settings_view.set_status(
-                    "Temporary preview active. Restore saved in Customizations.",
-                );
+                    .set_restore_available(true);
             }
         }
         route
@@ -255,7 +250,7 @@ impl Application<'_> {
                 .window
                 .screen
                 .settings_view
-                .set_temporary_customizations(self.temporary_customizations.is_some());
+                .set_restore_available(self.customization_restore_point.is_some());
             route
                 .window
                 .screen
@@ -445,11 +440,7 @@ impl Application<'_> {
                 != self.config.fonts.size;
             self.user_preferences = candidate;
             let revision = self.publish_user_preferences(event_loop, font_changed);
-            if let Some(revision) = revision {
-                self.settings_save_started(revision);
-            } else {
-                self.mark_temporary_customizations();
-            }
+            self.settings_save_started(revision);
             return;
         }
         self.config.presentation = candidate.apply_to(&self.base_config).presentation;
@@ -489,40 +480,19 @@ impl Application<'_> {
     }
 
     fn save_settings_preferences(&mut self) {
-        if let Some(revision) = self.queue_preference_write(PreferenceWriteKind::Settings)
-        {
-            self.settings_save_started(revision);
-        } else {
-            self.mark_temporary_customizations();
-        }
+        let revision = self.queue_preference_write(PreferenceWriteKind::Settings);
+        self.settings_save_started(revision);
     }
 
     fn save_package_preferences(&mut self) {
-        if let Some(revision) = self.queue_preference_write(PreferenceWriteKind::Package)
-        {
-            self.settings_save_started(revision);
-        } else {
-            self.mark_temporary_customizations();
-        }
+        let revision = self.queue_preference_write(PreferenceWriteKind::Package);
+        self.settings_save_started(revision);
     }
 
-    /// The single application-owned gate for every persisted preference write.
-    /// Temporary resets and subsequent edits stay live only until Restore saved
-    /// or restart; neither file family is rewritten by that preview.
-    pub(super) fn queue_preference_write(
-        &mut self,
-        kind: PreferenceWriteKind,
-    ) -> Option<u64> {
-        if !preference_write_allowed(self.temporary_customizations.as_ref(), kind) {
-            return None;
-        }
-        let preferences = self.user_preferences.clone();
-        Some(match kind {
-            PreferenceWriteKind::Settings => self.preference_writer.submit(preferences),
-            PreferenceWriteKind::Package => {
-                self.preference_writer.submit_package(preferences)
-            }
-        })
+    /// The single application-owned path for committed preference writes.
+    /// An optional reset undo point never inhibits saving new choices.
+    pub(super) fn queue_preference_write(&mut self, kind: PreferenceWriteKind) -> u64 {
+        kind.submit(&mut self.preference_writer, self.user_preferences.clone())
     }
 
     fn settings_save_started(&mut self, revision: u64) {
@@ -536,24 +506,6 @@ impl Application<'_> {
                 route.window.screen.settings_view.save_started(revision);
             }
             route.request_overlay_redraw();
-        }
-    }
-
-    fn mark_temporary_customizations(&mut self) {
-        for route in self.router.routes.values_mut() {
-            if route.window.screen.settings_view.is_open() {
-                route
-                    .window
-                    .screen
-                    .settings_view
-                    .set_temporary_customizations(true);
-                route
-                    .window
-                    .screen
-                    .settings_view
-                    .set_status("Temporary preview only. Restore saved to return.");
-                route.request_overlay_redraw();
-            }
         }
     }
 
@@ -601,23 +553,25 @@ impl Application<'_> {
                     }
                     return;
                 }
-                if self.temporary_customizations.is_none() {
-                    self.temporary_customizations = Some(self.user_preferences.clone());
-                }
+                let package_changed = candidate.package_overrides
+                    != self.user_preferences.package_overrides;
+                self.customization_restore_point = Some(self.user_preferences.clone());
                 let font_changed = candidate.apply_to(&self.base_config).fonts.size
                     != self.config.fonts.size;
                 self.user_preferences = candidate;
                 self.apply_live_user_preferences(event_loop, font_changed);
-                self.mark_temporary_customizations();
+                if package_changed {
+                    self.save_package_preferences();
+                } else {
+                    self.save_settings_preferences();
+                }
             }
             CustomizationIntent::RestoreSaved => {
-                let Some(mut saved) = self.temporary_customizations.as_ref().cloned()
+                let Some(mut saved) = self.customization_restore_point.as_ref().cloned()
                 else {
                     return;
                 };
-                // An extension removed during a preview must not regain live
-                // state from the old snapshot. Its on-disk preferences remain
-                // untouched by this temporary workflow.
+                // Undo must never revive choices for an uninstalled extension.
                 settings_catalog::prune_removed_extension_features(
                     &mut saved,
                     &runtime::market_items(),
@@ -638,7 +592,7 @@ impl Application<'_> {
                         Err(_) => {
                             if let Some(route) = self.router.routes.get_mut(&window_id) {
                                 route.window.screen.settings_view.set_status(
-                                    "Saved shortcuts conflict with current configuration. Preview remains active.",
+                                    "Previous shortcuts conflict with current configuration. Current choices remain active.",
                                 );
                                 route.request_overlay_redraw();
                             }
@@ -654,7 +608,7 @@ impl Application<'_> {
                 if !publish_devops_feature_preferences(&saved) {
                     if let Some(route) = self.router.routes.get_mut(&window_id) {
                         route.window.screen.settings_view.set_status(
-                            "Saved choices could not be restored. Preview remains active.",
+                            "Previous choices could not be restored. Current choices remain active.",
                         );
                         route.request_overlay_redraw();
                     }
@@ -662,8 +616,10 @@ impl Application<'_> {
                 }
                 let font_changed = saved.apply_to(&self.base_config).fonts.size
                     != self.config.fonts.size;
+                let package_changed =
+                    saved.package_overrides != self.user_preferences.package_overrides;
                 self.user_preferences = saved;
-                self.temporary_customizations = None;
+                self.customization_restore_point = None;
                 self.apply_live_user_preferences(event_loop, font_changed);
                 if let Some(bindings) = prepared_bindings {
                     for route in self.router.routes.values_mut() {
@@ -674,13 +630,10 @@ impl Application<'_> {
                         route.request_redraw();
                     }
                 }
-                for route in self.router.routes.values_mut() {
-                    if route.window.screen.settings_view.is_open() {
-                        route.window.screen.settings_view.set_status(
-                            "Previous choices restored. Saved files were unchanged.",
-                        );
-                        route.request_overlay_redraw();
-                    }
+                if package_changed {
+                    self.save_package_preferences();
+                } else {
+                    self.save_settings_preferences();
                 }
             }
         }
@@ -690,7 +643,7 @@ impl Application<'_> {
         let packages = self.package_customizations.snapshot();
         let (changed, package_changed) = prune_inventory_preferences(
             &mut self.user_preferences,
-            self.temporary_customizations.as_mut(),
+            self.customization_restore_point.as_mut(),
             &runtime::market_items(),
             runtime::inventory_status() == runtime::InventoryStatus::Ready,
             packages.as_deref(),
@@ -800,9 +753,6 @@ mod extension_feature_preference_tests {
                 ),
                 (false, false),
             );
-            for kind in [PreferenceWriteKind::Settings, PreferenceWriteKind::Package] {
-                assert!(!preference_write_allowed(restore.as_ref(), kind));
-            }
             let restored = restore.unwrap();
             assert!(restored.extension_features.is_empty());
             assert!(restored.package_overrides.is_empty());
@@ -836,16 +786,58 @@ mod extension_feature_preference_tests {
     }
 
     #[test]
-    fn temporary_preview_blocks_both_preference_file_writes_until_restore() {
-        let previous = UserPreferences::default();
-        let mut preview = Some(previous);
+    fn reset_all_does_not_block_either_preference_file_write() {
+        use crate::automexia::preferences::{load_from_root, PreferenceWriter};
+        use crate::settings_catalog::CustomizationResetScope;
+        use std::time::Duration;
+
+        let root = tempfile::tempdir().unwrap();
+        let mut writer = PreferenceWriter::new(root.path().into());
+        let saved = saved_extension_choices();
+        assert_ne!(
+            PreferenceWriteKind::Package.submit(&mut writer, saved.clone()),
+            0
+        );
+        assert!(writer.flush(Duration::from_secs(5)));
+        let reset = settings_catalog::reset_customizations(
+            &saved,
+            &CustomizationResetScope::All,
+            None,
+        )
+        .unwrap();
+        assert_ne!(
+            PreferenceWriteKind::Package.submit(&mut writer, reset.clone()),
+            0
+        );
+        assert!(writer.flush(Duration::from_secs(5)));
+        assert_eq!(load_from_root(root.path()).preferences, reset);
+
+        // These use the same submission owner as every Application save. Keeping
+        // an undo snapshot cannot make core edits, favorites or packages transient.
+        let mut fresh = reset;
+        fresh.font_size = Some(18.0);
+        fresh.theme_selection =
+            crate::automexia::theme_gallery::builtins()[1].selection();
+        fresh.remember_color([12, 34, 56, 255]);
         for kind in [PreferenceWriteKind::Settings, PreferenceWriteKind::Package] {
-            assert!(!preference_write_allowed(preview.as_ref(), kind));
+            if matches!(kind, PreferenceWriteKind::Package) {
+                fresh.package_overrides = saved.package_overrides.clone();
+            }
+            assert_ne!(kind.submit(&mut writer, fresh.clone()), 0);
+            assert!(writer.flush(Duration::from_secs(5)));
+            assert_eq!(load_from_root(root.path()).preferences, fresh);
         }
-        preview = None;
-        for kind in [PreferenceWriteKind::Settings, PreferenceWriteKind::Package] {
-            assert!(preference_write_allowed(preview.as_ref(), kind));
-        }
+        assert_ne!(
+            PreferenceWriteKind::Package.submit(&mut writer, saved.clone()),
+            0
+        );
+        assert!(writer.flush(Duration::from_secs(5)));
+        assert_eq!(
+            load_from_root(root.path()).preferences,
+            saved,
+            "explicit undo is durable too"
+        );
+        assert!(writer.shutdown(Duration::from_secs(5)));
     }
 
     #[test]

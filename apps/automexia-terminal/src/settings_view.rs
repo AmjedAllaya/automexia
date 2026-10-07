@@ -365,7 +365,7 @@ pub(crate) struct SettingsView {
     pending_customization: Option<CustomizationIntent>,
     confirmation: Option<SettingsConfirmation>,
     confirmation_geometry: ConfirmationGeometry,
-    temporary_customizations: bool,
+    can_restore_customizations: bool,
     color_editor: Option<ColorEditor>,
     color_favorites: Vec<[u8; 4]>,
     color_suggestions: Vec<[u8; 4]>,
@@ -671,7 +671,7 @@ impl SettingsView {
         self.pending_customization = None;
         self.confirmation = None;
         self.confirmation_geometry = ConfirmationGeometry::default();
-        self.temporary_customizations = false;
+        self.can_restore_customizations = false;
         self.color_editor = None;
         self.numeric_editor = None;
         self.color_geometry = ColorGeometry::default();
@@ -801,7 +801,7 @@ impl SettingsView {
             "edit_button": self.preview_button.array(),
             "reset_button": self.geometry.reset.array(),
             "restore_button": self.geometry.restore.array(),
-            "temporary_defaults": self.temporary_customizations,
+            "can_restore_customizations": self.can_restore_customizations,
             "save_pending": self.saving.is_some(),
             "package_settings_notice": self.package_notice.id(),
             "package_inventory_ready": self.package_inventory_ready,
@@ -1905,18 +1905,13 @@ impl SettingsView {
     pub(crate) fn take_customization_intent(&mut self) -> Option<CustomizationIntent> {
         self.pending_customization.take()
     }
-    pub(crate) fn set_temporary_customizations(&mut self, temporary: bool) {
-        let mut changed = self.temporary_customizations != temporary;
+    pub(crate) fn set_restore_available(&mut self, available: bool) {
+        let mut changed = self.can_restore_customizations != available;
         if changed {
             self.dismiss_confirmation();
         }
-        self.temporary_customizations = temporary;
-        if changed && temporary {
-            // A write submitted before Reset may complete after Restore saved.
-            // Retire only this view's receipt token; the writer still flushes.
-            self.saving = None;
-        }
-        if !temporary && self.focus == Focus::Restore {
+        self.can_restore_customizations = available;
+        if !available && self.focus == Focus::Restore {
             self.focus = Focus::Reset;
             changed = true;
         }
@@ -1936,9 +1931,7 @@ impl SettingsView {
             return;
         }
         self.saving = None;
-        if self.temporary_customizations {
-            self.status = "Temporary preview only. Restore saved to return.".into();
-        } else if success {
+        if success {
             self.status = "Saved".into();
         } else {
             self.save_failed();
@@ -1998,20 +1991,16 @@ impl SettingsView {
     }
     pub(crate) fn save_failed(&mut self) {
         self.saving = None;
-        if self.temporary_customizations {
-            self.set_status("Temporary preview only. Restore saved to return.");
-        } else {
-            self.set_status(
-                "Active this session; could not be saved. Change a value to retry.",
-            );
-        }
+        self.set_status(
+            "Active this session; could not be saved. Change a value to retry.",
+        );
     }
     pub(crate) fn restore_save_status(
         &mut self,
         status: crate::automexia::preferences::PreferenceSaveStatus,
     ) {
         use crate::automexia::preferences::PreferenceSaveStatus;
-        if !self.is_open() || self.temporary_customizations {
+        if !self.is_open() {
             return;
         }
         match status {
@@ -2059,34 +2048,10 @@ impl SettingsView {
     }
 
     /// Resource notices survive navigation without becoming editor feedback or
-    /// replacing save/validation errors. Preview context stays visible too.
+    /// replacing save/validation errors.
     fn status_message(&self) -> Option<&str> {
-        let preview_status = matches!(
-            self.status.as_str(),
-            "Temporary defaults. Restore saved to return."
-                | "Temporary preview only. Restore saved to return."
-                | "Temporary preview active. Restore saved in Customizations."
-        );
-        if !self.status.is_empty()
-            && self.status != "Saved"
-            && !(self.temporary_customizations && preview_status)
-        {
+        if !self.status.is_empty() && self.status != "Saved" {
             return Some(&self.status);
-        }
-        if self.temporary_customizations {
-            return Some(match self.package_notice {
-                PackageSettingsNotice::Loading => {
-                    "Preview only. Loading package settings..."
-                }
-                PackageSettingsNotice::Unavailable
-                | PackageSettingsNotice::ProjectionFailed => {
-                    "Preview only. Packages unavailable; reopen to retry."
-                }
-                PackageSettingsNotice::None if preview_status => &self.status,
-                PackageSettingsNotice::None => {
-                    "Temporary defaults. Restore saved to return."
-                }
-            });
         }
         self.package_notice
             .message()
@@ -2328,8 +2293,8 @@ impl SettingsView {
                 " Tab: focus. Arrows: choose. R: confirm reset of this value. C: close. Esc: back or close.",
             );
         }
-        if self.temporary_customizations {
-            text.push_str(" Preview only. Restore saved: previous choices.");
+        if self.can_restore_customizations {
+            text.push_str(" Restore saved: undo the last reset and changes since it.");
         }
         text
     }
@@ -2478,7 +2443,7 @@ impl SettingsView {
                 stops.push(Focus::PreviewButton);
             }
             stops.push(Focus::Reset);
-            if self.customizations.is_some() && self.temporary_customizations {
+            if self.customizations.is_some() && self.can_restore_customizations {
                 stops.push(Focus::Restore);
             }
             stops.push(Focus::Close);
@@ -2791,7 +2756,7 @@ impl SettingsView {
         match confirmation.action {
             ConfirmedSettingsAction::Profile(action) => self.confirm_profile(action),
             ConfirmedSettingsAction::Customization(CustomizationIntent::RestoreSaved)
-                if !self.temporary_customizations =>
+                if !self.can_restore_customizations =>
             {
                 return
             }
@@ -3063,19 +3028,19 @@ impl SettingsView {
         self.ask_confirmation(
             ConfirmedSettingsAction::Customization(intent),
             format!("Reset {}?", self.title()),
-            "Preview defaults temporarily. Saved files stay unchanged.",
+            "Save defaults for this section. You can keep customizing or undo with Restore saved.",
             "Reset",
         );
     }
     fn request_restore_saved(&mut self) {
-        if self.temporary_customizations
+        if self.can_restore_customizations
             && self.pending.is_none()
             && self.pending_customization.is_none()
         {
             self.ask_confirmation(
                 ConfirmedSettingsAction::Customization(CustomizationIntent::RestoreSaved),
-                "Restore saved customizations?".into(),
-                "Discard temporary changes and return to your saved choices.",
+                "Undo the last reset?".into(),
+                "Restore and save the choices from before the last reset, replacing changes made since then.",
                 "Restore",
             );
         }
@@ -3392,7 +3357,7 @@ impl SettingsView {
         if self.geometry.reset.contains(x, y) {
             return Some(Target::Reset);
         }
-        if self.temporary_customizations && self.geometry.restore.contains(x, y) {
+        if self.can_restore_customizations && self.geometry.restore.contains(x, y) {
             return Some(Target::Restore);
         }
         if self.geometry.search.contains(x, y) {
@@ -4657,7 +4622,10 @@ impl SettingsView {
                     "S",
                 ),
                 font,
-                (self.focus == Focus::Restore, self.temporary_customizations),
+                (
+                    self.focus == Focus::Restore,
+                    self.can_restore_customizations,
+                ),
                 theme,
                 g.card,
             );

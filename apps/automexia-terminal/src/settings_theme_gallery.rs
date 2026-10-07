@@ -189,9 +189,7 @@ impl SettingsView {
             }
             node.set_label(sanitize_accessible_text(&label));
             node.set_bounds(bounds);
-            if let Some(reason) =
-                gallery.unavailable(*target, self.temporary_customizations)
-            {
+            if let Some(reason) = gallery.unavailable(*target) {
                 node.set_disabled();
                 node.set_description(reason);
             }
@@ -240,21 +238,12 @@ impl Gallery {
             &ACTIONS
         }
     }
-    fn unavailable(
-        &self,
-        target: GalleryTarget,
-        temporary: bool,
-    ) -> Option<&'static str> {
+    fn unavailable(&self, target: GalleryTarget) -> Option<&'static str> {
         if matches!(target, GalleryTarget::Back | GalleryTarget::Row(_)) {
             return None;
         }
         if self.busy {
             return Some("Please wait for the current file operation.");
-        }
-        if temporary
-            && matches!(target, GalleryTarget::Apply | GalleryTarget::Configuration)
-        {
-            return Some("Restore saved customizations before applying a theme.");
         }
         if matches!(
             target,
@@ -575,18 +564,13 @@ impl SettingsView {
             self.layout_dirty = true;
             return;
         }
-        if let Some(reason) = gallery.unavailable(target, self.temporary_customizations) {
+        if let Some(reason) = gallery.unavailable(target) {
             gallery.notice = reason.into();
             self.layout_dirty = true;
             return;
         }
         match target {
             GalleryTarget::Apply => {
-                if self.temporary_customizations {
-                    gallery.notice =
-                        "Restore saved customizations before applying a theme.".into();
-                    return;
-                }
                 if let Some(draft) = &gallery.draft {
                     self.pending_theme = Some(ThemeIntent::SaveCopy(draft.clone()));
                 } else if gallery
@@ -624,9 +608,7 @@ impl SettingsView {
                     self.pending_theme = Some(ThemeIntent::Export(selection));
                 }
             }
-            GalleryTarget::Configuration
-                if !self.temporary_customizations && gallery.draft.is_none() =>
-            {
+            GalleryTarget::Configuration if gallery.draft.is_none() => {
                 self.pending_theme = Some(ThemeIntent::Apply(None))
             }
             GalleryTarget::Refresh if gallery.draft.is_none() => {
@@ -1052,9 +1034,7 @@ impl SettingsView {
                     .iter()
                     .position(|a| a == target)
                     .unwrap_or(0);
-                let enabled = gallery
-                    .unavailable(*target, self.temporary_customizations)
-                    .is_none();
+                let enabled = gallery.unavailable(*target).is_none();
                 control(canvas, *bounds, gallery.focus == index + 1, theme, g.card);
                 let caption = match target {
                     GalleryTarget::Apply => {
@@ -1477,7 +1457,7 @@ mod tests {
         ));
     }
     #[test]
-    fn gallery_invalid_files_and_temporary_resets_cannot_apply() {
+    fn gallery_after_reset_all_accepts_valid_themes_but_rejects_invalid_files() {
         let mut view = gallery();
         view.theme_added(ThemeDescriptor::invalid(
             "bad".into(),
@@ -1489,11 +1469,31 @@ mod tests {
         assert!(view.take_theme_intent().is_none());
         view.gallery_activate(GalleryTarget::Row(1));
         view.take_theme_intent();
-        view.set_temporary_customizations(true);
+        view.set_restore_available(true);
         view.gallery_activate(GalleryTarget::Apply);
-        assert!(view.take_theme_intent().is_none());
+        assert!(matches!(
+            view.take_theme_intent(),
+            Some(ThemeIntent::Apply(Some(_)))
+        ));
         view.gallery_activate(GalleryTarget::Configuration);
-        assert!(view.take_theme_intent().is_none());
+        assert!(matches!(
+            view.take_theme_intent(),
+            Some(ThemeIntent::Apply(None))
+        ));
+        view.gallery_activate(GalleryTarget::Customize);
+        assert!(view.gallery.as_ref().unwrap().draft.is_some());
+        view.gallery_activate(GalleryTarget::Apply);
+        assert!(matches!(
+            view.take_theme_intent(),
+            Some(ThemeIntent::SaveCopy(_))
+        ));
+        view.gallery_back();
+        view.take_theme_intent();
+        view.gallery_back();
+        assert!(matches!(
+            view.take_theme_intent(),
+            Some(ThemeIntent::Cancel)
+        ));
     }
     #[test]
     fn gallery_layout_and_scrolling_keep_targets_within_viewport() {

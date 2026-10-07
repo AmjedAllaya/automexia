@@ -229,6 +229,13 @@ function Test-AutomexiaThemeGallery {
     [void][AutomexiaResizeDriver]::SetCaptureTopmost($window,$true)
     try {
         $originalConfig = [IO.File]::ReadAllText((Join-Path $configRoot 'config.toml'))
+        $script:testStage = 'reset all keeps the theme and customization save paths available'
+        Send-AutomexiaTestControl ('open-terminal-appearance:' + [guid]::NewGuid().ToString('N'))
+        $root = Wait-ThemeState {param($s) $s.settings.ready -and $s.settings.open -and $null -eq $s.settings.active_category}
+        Click-Theme $root.settings.reset_button
+        $null = Wait-ThemeState {param($s) $s.settings.ready -and $null -ne $s.settings.confirmation -and -not $s.settings.confirmation.accept_selected}
+        Theme-Key 0x59
+        $null = Wait-ThemeState {param($s) $s.settings.ready -and $s.settings.can_restore_customizations -and -not $s.settings.save_pending -and $null -eq $s.settings.confirmation}
         $script:testStage = 'open theme gallery'
         $null = Open-Themes
         $originalPreferences = Preference-Text
@@ -252,12 +259,12 @@ function Test-AutomexiaThemeGallery {
         if ((Preference-Text) -notmatch 'Solar Dusk') {throw 'Applied theme was not saved'}
         # Independent literal palette/surface oracles catch fixed header/footer
         # skins and fill values accidentally consumed as tab text colors.
-        Check-ThemeChrome 'solar-dusk' @(33,26,23) @(242,230,216)
+        if (-not $ResetCustomizationsOnly) { Check-ThemeChrome 'solar-dusk' @(33,26,23) @(242,230,216) }
         $null = Open-Themes
         $null = Select-Theme 'arctic-day'
         Theme-Key 0x0D
         $null = Wait-ThemeState {param($s) -not $s.settings.open}
-        Check-ThemeChrome 'arctic-day' @(233,237,241) @(37,55,68)
+        if (-not $ResetCustomizationsOnly) { Check-ThemeChrome 'arctic-day' @(233,237,241) @(37,55,68) }
         $script:testStage = 'customize a copy using the shared color editor'
         $state = Open-Themes
         $state = Select-Theme 'forest-operator'
@@ -281,8 +288,37 @@ function Test-AutomexiaThemeGallery {
         $deadline = [DateTime]::UtcNow.AddSeconds(12)
         while ((Preference-Text) -match 'theme-selection' -and [DateTime]::UtcNow -lt $deadline) {Start-Sleep -Milliseconds 50}
         if ((Preference-Text) -match 'theme-selection') {throw 'Use configuration left a theme override'}
+        if ($ResetCustomizationsOnly) {
+            $script:testStage = 'ordinary customization saves after reset and theme changes'
+            Send-AutomexiaTestControl ('open-terminal-appearance:' + [guid]::NewGuid().ToString('N'))
+            $root = Wait-ThemeState {param($s) $s.settings.ready -and $null -eq $s.settings.active_category}
+            Click-Theme ($root.settings.controls | Where-Object id -eq 'interface.footer.visible').bounds
+            $page = Wait-ThemeState {param($s) $s.settings.ready -and $s.settings.active_category -eq 'interface.footer.visible'}
+            Click-Theme ($page.settings.controls | Where-Object id -eq 'interface.footer.visible').bounds
+            $page = Wait-ThemeState {param($s) $s.settings.ready -and @($s.settings.controls).Count -eq 1 -and -not $s.settings.save_pending}
+            if ((Preference-Text) -notmatch '(?m)^visible = false\r?$') {throw 'Footer edit after reset was not saved'}
+            Theme-Key 0x1B
+            $null = Wait-ThemeState {param($s) $s.settings.ready -and $null -eq $s.settings.active_category}
+            Theme-Key 0x1B
+            $null = Wait-ThemeState {param($s) -not $s.settings.open}
+            Send-AutomexiaTestControl ('open-terminal-appearance:' + [guid]::NewGuid().ToString('N'))
+            $root = Wait-ThemeState {param($s) $s.settings.ready -and $s.settings.can_restore_customizations}
+            Click-Theme ($root.settings.controls | Where-Object id -eq 'interface.footer.visible').bounds
+            $null = Wait-ThemeState {param($s) $s.settings.ready -and $s.settings.active_category -eq 'interface.footer.visible' -and @($s.settings.controls).Count -eq 1}
+            Theme-Key 0x1B
+            $null = Wait-ThemeState {param($s) $s.settings.ready -and $null -eq $s.settings.active_category}
+            Theme-Key 0x53
+            $null = Wait-ThemeState {param($s) $s.settings.ready -and $null -ne $s.settings.confirmation}
+            Theme-Key 0x59
+            $null = Wait-ThemeState {param($s) $s.settings.ready -and -not $s.settings.can_restore_customizations -and -not $s.settings.save_pending}
+            if ((Preference-Text) -match '(?m)^visible = false\r?$') {throw 'Optional undo was not saved'}
+        }
         if ([IO.File]::ReadAllText((Join-Path $configRoot 'config.toml')) -ne $originalConfig) {throw 'Theme gallery modified config.toml'}
-        Write-Host "Native theme gallery passed: $expectedRendererBackend; five previews, cancel, apply, copy, configuration, dark/light chrome and seven menu categories."
+        if ($ResetCustomizationsOnly) {
+            Write-Host "Native reset customization passed: $expectedRendererBackend; reset, theme preview/cancel/apply/copy/configuration, footer edit, reopen and optional undo."
+        } else {
+            Write-Host "Native theme gallery passed: $expectedRendererBackend; reset, five previews, cancel, apply, copy, configuration, dark/light chrome and seven menu categories."
+        }
     } finally {
         [void][AutomexiaResizeDriver]::SetCaptureTopmost($window,$false)
     }

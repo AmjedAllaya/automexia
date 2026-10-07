@@ -201,9 +201,27 @@ imports only when both current snapshots are absent and remains unchanged for
 rollback. Corrupt current data cannot silently downgrade. Existing panel, margin,
 window and navigation configuration remain singular owners; new header/footer
 paint options belong to Presentation. Individual reset clears an override;
-section reset is temporary and cannot reset the other section. Native compositor
+section reset is scoped and cannot reset the other section. Native compositor
 effects remain platform-dependent and require native evidence beyond model tests.
 
+
+## 2026-10-07 durable customization reset amendment
+
+A confirmed section/feature reset now publishes and saves its scoped defaults
+through the existing application preference writer. The old temporary-reset write
+guard blocked theme Apply and prevented all later edits from surviving restart;
+it is removed. Theme and font browsing retain their separate preview/cancel
+lifecycles and do not save until explicitly applied.
+
+The application retains one bounded in-memory snapshot from before the latest
+reset. **Restore saved** is an optional, confirmed undo which replaces subsequent
+edits and saves the restored choices; its availability cannot gate other edits
+or hide save errors. The snapshot expires on undo or application exit. Extension
+removal prunes it as well as current preferences. Reset/undo that changes package
+overrides queues the existing two-family write. A failed package write is retried
+with the latest preferences on the next submission, including core-only edits.
+Revision checks, deferred font preparation and file validation remain unchanged;
+no persistence schema or additional worker is introduced.
 
 ## Live interface publication and header height
 

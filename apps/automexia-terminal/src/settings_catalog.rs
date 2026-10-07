@@ -395,8 +395,8 @@ pub(crate) struct CustomizationGroup {
     pub(crate) root_action: settings::SettingDescriptor,
 }
 
-/// A user-selected temporary reset target. Navigation creates these only from
-/// currently admitted catalogue pages; this type never represents a save.
+/// A user-confirmed reset target from currently admitted catalogue pages.
+/// Application owns live publication, persistence and the optional undo point.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum CustomizationResetScope {
     All,
@@ -411,7 +411,7 @@ pub(crate) enum CustomizationResetScope {
 }
 
 /// Clear only the selected customization overlays. Explicit core On values
-/// make the preview independent of a user's configured feature switches;
+/// make reset defaults independent of a user's configured feature switches;
 /// optional extension/package features retain their declared defaults.
 pub(crate) fn reset_customizations(
     current: &UserPreferences,

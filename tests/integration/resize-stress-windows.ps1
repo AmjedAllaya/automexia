@@ -32,6 +32,7 @@ param(
     [switch]$CloseConfirmationOnly,
     [switch]$TagCustomizationOnly,
     [switch]$ThemeGalleryOnly,
+    [switch]$ResetCustomizationsOnly,
     [switch]$NamedProfilesOnly,
     [switch]$TagShapesOnly,
     [switch]$OutputColorsOnly,
@@ -1657,7 +1658,7 @@ $wallpaperConfig
         # This applies only to the fixture's disposable configuration root.
         $config += "`n[presentation.tags]`nstyle = 'tinted'`nopacity = 100`n"
     }
-    if ($ThemeGalleryOnly) {
+    if ($ThemeGalleryOnly -or $ResetCustomizationsOnly) {
         # Exercise dense table decoration in each applied dark/light theme.
         # These choices belong only to this disposable fixture configuration.
         $config += "`n[presentation]`ncommand-output-highlighting = false`noutput-highlighting = false`n[presentation.tables]`nborder-style = 'dashed'`nborder-weight = 'thick'`nbanding = 'columns'`nheader-bold = true`n"
@@ -1799,7 +1800,7 @@ $wallpaperConfig
         Test-AutomexiaNamedProfiles
         return
     }
-    if ($ThemeGalleryOnly) {
+    if ($ThemeGalleryOnly -or $ResetCustomizationsOnly) {
         . (Join-Path $PSScriptRoot 'theme-gallery-windows.ps1')
         Test-AutomexiaThemeGallery
         return
@@ -1875,14 +1876,15 @@ $wallpaperConfig
             }
         }
         function Confirm-TagAction([switch]$CheckCancel) {
-            $confirmation = Wait-TagState { param($s) $s.settings.ready -and $null -ne $s.settings.confirmation }
+            $confirmation = Wait-TagState { param($s) $s.settings.ready -and $null -ne $s.settings.confirmation -and -not $s.settings.save_pending }
             if ($confirmation.settings.confirmation.accept_selected) { throw 'Confirmation must initially select Cancel' }
-            if ((Get-CustomizationFixtureHashes) -ne $savedHashes) { throw 'Opening confirmation changed saved files' }
+            $confirmationHashes = Get-CustomizationFixtureHashes
+            if ($confirmationHashes -ne $savedHashes) { throw 'Opening confirmation changed saved files' }
             if ($CheckCancel) {
-                $before = $confirmation.settings.temporary_defaults
+                $before = $confirmation.settings.can_restore_customizations
                 if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x1B, $false, $false, $false)) { throw 'Confirmation Escape failed' }
-                $null = Wait-TagState { param($s) $s.settings.ready -and $null -eq $s.settings.confirmation -and $s.settings.temporary_defaults -eq $before }
-                if ((Get-CustomizationFixtureHashes) -ne $savedHashes) { throw 'Cancel changed saved files' }
+                $null = Wait-TagState { param($s) $s.settings.ready -and $null -eq $s.settings.confirmation -and $s.settings.can_restore_customizations -eq $before }
+                if ((Get-CustomizationFixtureHashes) -ne $confirmationHashes) { throw 'Cancel changed saved files' }
                 if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x52, $false, $false, $false)) { throw 'Reset shortcut failed' }
                 $confirmation = Wait-TagState { param($s) $s.settings.ready -and $null -ne $s.settings.confirmation }
             }
@@ -2066,23 +2068,22 @@ $wallpaperConfig
                 }) -join '|')
             }
             $savedHashes = Get-CustomizationFixtureHashes
-            $script:testStage = 'temporary information-tag defaults'
+            $script:testStage = 'persistent information-tag defaults'
             Click-TagBounds $roster.settings.reset_button
             Confirm-TagAction -CheckCancel
-            $resetState = Wait-TagState { param($s) $s.settings.ready -and $s.settings.temporary_defaults -and $s.settings.tags_enabled }
+            $resetState = Wait-TagState { param($s) $s.settings.ready -and $s.settings.can_restore_customizations -and $s.settings.tags_enabled }
             Click-TagBounds ($resetState.settings.controls | Where-Object id -eq 'tags.enabled').bounds
-            $editedPreview = Wait-TagState { param($s) $s.settings.ready -and $s.settings.temporary_defaults -and -not $s.settings.tags_enabled }
-            if ((Get-CustomizationFixtureHashes) -ne $savedHashes) { throw 'Temporary customization changed saved files' }
+            $editedPreview = Wait-TagState { param($s) $s.settings.ready -and $s.settings.can_restore_customizations -and -not $s.settings.tags_enabled -and -not $s.settings.save_pending }
+            if ((Get-CustomizationFixtureHashes) -eq $savedHashes) { throw 'Reset and subsequent edit were not saved' }
 
-            # Closing the sheet must not end the application-owned preview or
-            # replace its original saved snapshot with temporary choices.
-            $script:testStage = 'close and reopen temporary customizations'
+            # Closing the sheet preserves the live choices and optional undo.
+            $script:testStage = 'close and reopen reset customizations'
             [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
             $null = Wait-TagState { param($s) $s.settings.ready -and @($s.settings.targets).Count -eq 0 }
             [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
             $closedPreview = Wait-TagState { param($s) -not $s.settings.open }
             if ([string](Get-ActiveAutomexiaPanel $closedPreview).raw_cursor_line_text -ne $blankPromptLine) {
-                throw 'Closing temporary customizations changed terminal input'
+                throw 'Closing customizations changed terminal input'
             }
             # The store belongs solely to this fixture. A regular file at the
             # directory boundary reproduces a real asynchronous inventory error.
@@ -2090,7 +2091,7 @@ $wallpaperConfig
             if (Test-Path -LiteralPath $packageProbe) { throw 'Package failure fixture requires an absent store' }
             [IO.File]::WriteAllText($packageProbe, 'unavailable-store-fixture', [Text.Encoding]::ASCII)
             Send-AutomexiaTestControl 'open-customizations:temporary-reopen'
-            $reopenedPreview = Wait-TagState { param($s) $s.settings.ready -and $s.settings.temporary_defaults -and -not $s.settings.tags_enabled -and $s.settings.package_settings_notice -eq 'unavailable' }
+            $reopenedPreview = Wait-TagState { param($s) $s.settings.ready -and $s.settings.can_restore_customizations -and -not $s.settings.tags_enabled -and $s.settings.package_settings_notice -eq 'unavailable' }
             if (@($reopenedPreview.settings.controls | Where-Object id -eq 'tags.enabled').Count -ne 1) {
                 throw 'Unavailable package inventory hid core customizations'
             }
@@ -2100,37 +2101,45 @@ $wallpaperConfig
                 [void][AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $captureRoot 'package-unavailable-customizations.png'))
             }
             [IO.File]::Delete($packageProbe)
-            $script:testStage = 'retry package inventory without losing temporary choices'
+            $script:testStage = 'retry package inventory without losing new choices'
             [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
             $null = Wait-TagState { param($s) -not $s.settings.open }
             Send-AutomexiaTestControl 'open-customizations:inventory-retry'
-            $reopenedPreview = Wait-TagState { param($s) $s.settings.ready -and $s.settings.temporary_defaults -and -not $s.settings.tags_enabled -and $s.settings.package_inventory_ready -and $s.settings.package_settings_notice -eq 'none' }
+            $reopenedPreview = Wait-TagState { param($s) $s.settings.ready -and $s.settings.can_restore_customizations -and -not $s.settings.tags_enabled -and $s.settings.package_inventory_ready -and $s.settings.package_settings_notice -eq 'none' }
             Click-TagBounds ($reopenedPreview.settings.controls | Where-Object id -eq 'tags.enabled').bounds
             $editedPreview = Wait-TagState { param($s) $s.settings.ready -and @($s.settings.targets | Where-Object roster).Count -ge 13 }
-            $script:testStage = 'repeat feature reset without replacing saved choices'
+            $script:testStage = 'repeat feature reset and save another edit'
+            $null = Wait-TagState { param($s) -not $s.settings.save_pending }
+            $savedHashes = Get-CustomizationFixtureHashes
             Click-TagBounds $editedPreview.settings.reset_button
             Confirm-TagAction
-            $resetState = Wait-TagState { param($s) $s.settings.ready -and $s.settings.temporary_defaults -and $s.settings.tags_enabled }
+            $resetState = Wait-TagState { param($s) $s.settings.ready -and $s.settings.can_restore_customizations -and $s.settings.tags_enabled }
             Click-TagBounds ($resetState.settings.controls | Where-Object id -eq 'tags.enabled').bounds
-            $editedPreview = Wait-TagState { param($s) $s.settings.ready -and $s.settings.temporary_defaults -and -not $s.settings.tags_enabled }
-            if ((Get-CustomizationFixtureHashes) -ne $savedHashes) { throw 'Repeated temporary reset changed saved files' }
+            $editedPreview = Wait-TagState { param($s) $s.settings.ready -and $s.settings.can_restore_customizations -and -not $s.settings.tags_enabled -and -not $s.settings.save_pending }
+            $beforeLastReset = [IO.File]::ReadAllText($preferencePath)
 
-            $script:testStage = 'global reset retains the original saved choices'
+            $script:testStage = 'global reset saves defaults and retains the latest undo point'
             [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
             $rootPreview = Wait-TagState { param($s) $s.settings.ready -and @($s.settings.targets).Count -eq 0 }
+            $savedHashes = Get-CustomizationFixtureHashes
             Click-TagBounds $rootPreview.settings.reset_button
             Confirm-TagAction
-            $allDefaults = Wait-TagState { param($s) $s.settings.ready -and $s.settings.temporary_defaults -and $s.settings.tags_enabled -and $s.settings.devops_detection }
-            if ((Get-CustomizationFixtureHashes) -ne $savedHashes) { throw 'Global temporary reset changed saved files' }
+            $allDefaults = Wait-TagState { param($s) $s.settings.ready -and $s.settings.can_restore_customizations -and $s.settings.tags_enabled -and $s.settings.devops_detection -and -not $s.settings.save_pending }
+            if ([IO.File]::ReadAllText($preferencePath) -eq $beforeLastReset) { throw 'Global reset was not saved' }
             $script:testStage = 'restore saved information-tag choices'
+            $savedHashes = Get-CustomizationFixtureHashes
             if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x53, $false, $false, $false)) { throw 'Restore shortcut failed' }
             Confirm-TagAction
-            $rootSettings = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.temporary_defaults -and $s.settings.tags_enabled -and -not $s.settings.devops_detection }
+            $rootSettings = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.can_restore_customizations -and -not $s.settings.tags_enabled -and $s.settings.devops_detection -and -not $s.settings.save_pending }
+            if ([IO.File]::ReadAllText($preferencePath) -ne $beforeLastReset) { throw 'Restore did not save the latest undo point' }
             Click-TagBounds ($rootSettings.settings.controls | Where-Object id -eq 'tags.enabled').bounds
-            $roster = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.temporary_defaults -and $s.settings.tags_enabled -and -not $s.settings.devops_detection -and @($s.settings.targets | Where-Object roster).Count -eq 5 }
+            $roster = Wait-TagState { param($s) $s.settings.ready -and $s.settings.active_category -eq 'tags.enabled' }
+            Click-TagBounds ($roster.settings.controls | Where-Object id -eq 'tags.enabled').bounds
+            $roster = Wait-TagState { param($s) $s.settings.ready -and $s.settings.tags_enabled -and $s.settings.devops_detection }
+            Click-TagBounds ($roster.settings.controls | Where-Object id -eq 'extension.automexia.devops.context_status.enabled').bounds
+            $roster = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.can_restore_customizations -and $s.settings.tags_enabled -and -not $s.settings.devops_detection -and @($s.settings.targets | Where-Object roster).Count -eq 5 }
             Assert-DevOpsTagsHidden $roster
-            if ((Get-CustomizationFixtureHashes) -ne $savedHashes) { throw 'Restore saved changed saved files' }
-            # Restore deliberately returned to detection off. Re-enable it via
+            # Re-enable detection via
             # the real control before exercising all thirteen tag editors.
             $script:testStage = 're-enable DevOps tags'
             Click-TagBounds ($roster.settings.controls | Where-Object id -eq 'extension.automexia.devops.context_status.enabled').bounds

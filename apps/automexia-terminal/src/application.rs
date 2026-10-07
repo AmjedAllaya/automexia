@@ -256,9 +256,9 @@ pub struct Application<'a> {
     base_config: rio_backend::config::Config,
     config: rio_backend::config::Config,
     user_preferences: UserPreferences,
-    /// Original in-memory choices while Reset default is only previewed.
-    /// No preference writer receives this preview state.
-    temporary_customizations: Option<UserPreferences>,
+    /// Choices before the latest confirmed reset, for optional session-local undo.
+    /// This snapshot never gates saving the current preferences.
+    customization_restore_point: Option<UserPreferences>,
     preference_writer: PreferenceWriter,
     package_customizations:
         crate::automexia::package_customizations::PackageCustomizationService,
@@ -378,7 +378,7 @@ impl Application<'_> {
             base_config,
             config,
             user_preferences,
-            temporary_customizations: None,
+            customization_restore_point: None,
             preference_writer: {
                 let mut writer = runtime_preferences::writer();
                 let proxy = event_proxy.clone();
@@ -453,7 +453,7 @@ impl Application<'_> {
         &mut self,
         event_loop: &ActiveEventLoop,
         has_font_updates: bool,
-    ) -> Option<u64> {
+    ) -> u64 {
         self.apply_live_user_preferences(event_loop, has_font_updates);
         self.queue_preference_write(settings::PreferenceWriteKind::Settings)
     }
@@ -507,16 +507,12 @@ impl Application<'_> {
             self.queue_preference_write(settings::PreferenceWriteKind::Settings);
         if let Some(route) = self.router.routes.get_mut(&window_id) {
             let palette = &mut route.window.screen.renderer.command_palette;
-            if revision.is_none() {
-                palette.shortcut_save_failed(
-                    "Temporary preview: shortcut changes stay in this session. Restore saved in Customizations to return.",
-                );
-            } else if revision == Some(0) {
+            if revision == 0 {
                 palette.shortcut_save_failed(
                     "Active this session only; settings could not be queued",
                 );
             } else {
-                palette.shortcut_save_started(revision.unwrap_or_default());
+                palette.shortcut_save_started(revision);
             }
         }
     }

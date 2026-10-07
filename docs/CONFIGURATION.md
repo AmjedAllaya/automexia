@@ -409,7 +409,7 @@ Size, spacing and palette edits reuse loaded fonts; adaptive palette overrides a
 to both loaded appearances. These changes never reload background images or rewrite
 configuration. The existing asynchronous writer persists the overrides.
 
-Reset default previews the configured Fonts values after confirmation; Restore saved
+Reset default saves the configured Fonts values after confirmation; Restore saved
 returns to the earlier choices. Individual value resets clear only that override.
 Per-face named styles, symbol maps and additional font directories remain in
 `config.toml`. No fonts are installed or downloaded by this page.
@@ -443,9 +443,11 @@ The command palette's **Customizations → Workflow & Output** opens a feature
 list; each feature has a separate page for its supported switch and appearance
 controls. The existing Settings shortcut opens this same list for compatibility.
 Changes apply across windows, panes and tabs. **Reset all** or a feature's
-**Reset default** previews defaults for the current session without changing
-saved preference files; **Restore saved** returns to the choices from before
-the first reset. Appearance resets restore configured colors and styles, or
+**Reset default** saves defaults in the selected scope. New themes and all other
+customizations can be applied immediately. **Restore saved** optionally saves the
+choices from before the most recent reset, replacing changes since then; this
+undo point lasts until used or the application exits. Restart loads the latest
+saved choices. Appearance resets restore configured colors and styles, or
 built-in defaults where none are configured, and enable affected core switches.
 Reset inside an individual value editor still clears that
 value's UI override and inherits the current configuration.

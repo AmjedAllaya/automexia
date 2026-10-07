@@ -898,7 +898,7 @@ fn customization_reset_targets_current_category_and_restore_is_a_separate_action
         view.take_edit().is_none(),
         "category reset must not reset only a focused row"
     );
-    view.set_temporary_customizations(true);
+    view.set_restore_available(true);
     view.focus = Focus::Restore;
     named(&mut view, NamedKey::Enter);
     confirm_requested_settings_action(&mut view);
@@ -912,7 +912,7 @@ fn customization_reset_targets_current_category_and_restore_is_a_separate_action
         view.take_customization_intent(),
         Some(CustomizationIntent::RestoreSaved)
     );
-    view.set_temporary_customizations(false);
+    view.set_restore_available(false);
     assert_eq!(view.focus, Focus::Reset);
     named(&mut view, NamedKey::Tab);
     assert_eq!(view.focus, Focus::Close);
@@ -929,7 +929,7 @@ fn reset_restore_and_close_have_separate_mouse_targets_in_narrow_and_wide_sheets
             crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
             None,
         );
-        view.set_temporary_customizations(true);
+        view.set_restore_available(true);
         view.paint(&mut Raster::new(1.0), theme());
         let g = view.geometry;
         assert!(g.reset.x + g.reset.width <= g.restore.x);
@@ -945,7 +945,7 @@ fn reset_restore_and_close_have_separate_mouse_targets_in_narrow_and_wide_sheets
                 Some(target),
             );
         }
-        view.set_temporary_customizations(false);
+        view.set_restore_available(false);
         assert_eq!(
             view.target_at(
                 g.restore.x + g.restore.width * 0.5,
@@ -1074,46 +1074,104 @@ fn save_status_ignores_old_receipts_and_reports_session_only_failures() {
 }
 
 #[test]
-fn earlier_save_receipts_never_label_a_temporary_preview_as_saved() {
+fn reset_all_save_feedback_preserves_failures_retry_and_stale_receipt_protection() {
     let mut view = opened();
     view.save_started(8);
-    view.set_temporary_customizations(true);
-    view.set_status("Temporary preview only. Restore saved to return.");
-    view.save_completed(8, true);
-    assert!(view.saving.is_none());
-    assert!(!view.accessibility_summary().contains(". Saved"));
-    assert!(view.accessibility_summary().contains("Temporary preview"));
+    view.set_restore_available(true);
     view.save_started(9);
-    view.save_completed(9, false);
-    assert!(view.accessibility_summary().contains("Temporary preview"));
-    view.save_failed();
-    assert!(view.accessibility_summary().contains("Temporary preview"));
-    view.set_temporary_customizations(false);
-    view.set_status("Previous choices restored. Saved files were unchanged.");
     view.save_completed(8, true);
-    assert!(view
-        .accessibility_summary()
-        .contains("Previous choices restored"));
-    assert_ne!(view.status, "Saved");
-    view.set_temporary_customizations(true);
+    assert_eq!(view.saving, Some(9));
+    assert_eq!(view.status, "Saving settings...");
+    view.save_completed(9, false);
+    assert!(view.status.contains("could not be saved"));
+    view.restore_save_status(
+        crate::automexia::preferences::PreferenceSaveStatus::Pending(10),
+    );
+    assert_eq!(view.saving, Some(10));
+    view.save_completed(10, true);
+    assert_eq!(view.status, "Saved");
+    view.save_started(11);
+    view.set_restore_available(false);
+    view.save_completed(10, true);
+    assert_eq!(view.saving, Some(11));
+    view.save_completed(11, false);
+    assert!(view.status.contains("could not be saved"));
+    view.set_restore_available(true);
     view.layout_dirty = false;
-    view.set_temporary_customizations(true);
+    view.set_restore_available(true);
     assert!(
         !view.layout_dirty,
-        "unchanged preview state must not trigger layout work"
+        "unchanged undo state must not trigger layout work"
     );
-
     let mut delayed = opened();
-    delayed.save_started(10);
-    delayed.set_temporary_customizations(true);
-    assert!(
-        delayed.saving.is_none(),
-        "only the view receipt token is retired"
-    );
-    delayed.set_temporary_customizations(false);
-    delayed.set_status("Previous choices restored. Saved files were unchanged.");
-    delayed.save_completed(10, true);
-    assert_ne!(delayed.status, "Saved");
+    delayed.set_restore_available(true);
+    delayed
+        .restore_save_status(crate::automexia::preferences::PreferenceSaveStatus::Failed);
+    assert!(delayed.status.contains("could not be saved"));
+}
+
+#[test]
+fn reset_all_keeps_every_customization_category_keyboard_editable() {
+    let base = rio_backend::config::Config::default();
+    let saved = crate::automexia::preferences::UserPreferences {
+        font_size: Some(22.0),
+        ..Default::default()
+    };
+    let reset = crate::settings_catalog::reset_customizations(
+        &saved,
+        &CustomizationResetScope::All,
+        None,
+    )
+    .unwrap();
+    let catalog = crate::settings_catalog::catalog(1, &base, &reset, &[]).unwrap();
+    let mut checked = 0;
+    for group in crate::settings_catalog::customization_groups(&catalog) {
+        if matches!(
+            group.key.as_str(),
+            automexia_ui_model::settings::APPEARANCE_THEME | "profiles.open"
+        ) {
+            // Gallery has separate Apply/copy/cancel coverage; Profiles opens a
+            // separate store, not a UserPreferences customization control.
+            continue;
+        }
+        let mut view = dependent_settings_view(&base, &reset, group.key.as_str());
+        view.set_restore_available(true);
+        let id = view
+            .catalog
+            .as_ref()
+            .unwrap()
+            .entries()
+            .iter()
+            .find(|entry| {
+                entry.availability.reason().is_none()
+                    && matches!(
+                        entry.kind,
+                        SettingKind::Boolean
+                            | SettingKind::Choice { .. }
+                            | SettingKind::Number { .. }
+                            | SettingKind::ContinuousNumber { .. }
+                    )
+            })
+            .unwrap_or_else(|| panic!("no editable control in {}", group.key.as_str()))
+            .id
+            .clone();
+        assert!(view.view.as_mut().unwrap().focus(&id));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::ArrowRight);
+        let edit = view
+            .take_edit()
+            .unwrap_or_else(|| panic!("{} blocked after reset", group.key.as_str()));
+        assert_eq!(edit.id, id);
+        let changed =
+            crate::settings_catalog::apply_edit(1, &base, &reset, &[], &edit).unwrap();
+        assert_ne!(changed, reset, "{} must apply immediately", id.as_str());
+        assert!(
+            crate::settings_catalog::apply_edit(2, &base, &reset, &[], &edit).is_err(),
+            "reset must not weaken stale-edit rejection"
+        );
+        checked += 1;
+    }
+    assert!(checked >= 11, "only {checked} categories exercised");
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -4105,7 +4163,7 @@ fn timestamp_menu_edits_refresh_preview_keep_focus_and_confirm_resets() {
                 )
             })
         );
-        view.set_temporary_customizations(true);
+        view.set_restore_available(true);
         view.activate_target(Target::Restore);
         confirm_requested_settings_action(&mut view);
         assert_eq!(
@@ -7267,8 +7325,7 @@ fn workflow_same_number_click_preserves_draft_and_clipboard_cut_is_explicit() {
 }
 
 #[test]
-fn workflow_reopened_sheet_restores_writer_feedback_without_overriding_temporary_defaults(
-) {
+fn workflow_reopened_sheet_restores_writer_feedback_even_with_reset_undo_available() {
     use crate::automexia::preferences::{
         PreferenceSaveStatus, PreferenceWriter, UserPreferences,
     };
@@ -7296,10 +7353,9 @@ fn workflow_reopened_sheet_restores_writer_feedback_without_overriding_temporary
     assert_eq!(view.saving, Some(7));
     view.save_completed(7, true);
     assert_eq!(view.status, "Saved");
-    view.set_temporary_customizations(true);
-    let temporary = view.status.clone();
+    view.set_restore_available(true);
     view.restore_save_status(PreferenceSaveStatus::Failed);
-    assert_eq!(view.status, temporary);
+    assert_eq!(view.status, failure);
     assert!(view.saving.is_none());
 }
 
@@ -7403,7 +7459,7 @@ fn workflow_save_failure_does_not_recommend_resetting_user_choices() {
     assert!(view.status.contains("could not be saved"));
     assert!(
         !view.status.contains("Reset"),
-        "temporary defaults are not a retry-saving action"
+        "resetting choices is not required to retry saving"
     );
 }
 
@@ -7714,7 +7770,7 @@ fn fonts_menu_navigation_edit_refresh_reset_restore_and_scaled_preview() {
                 )
             })
         );
-        view.set_temporary_customizations(true);
+        view.set_restore_available(true);
         view.activate_target(Target::Restore);
         confirm_requested_settings_action(&mut view);
         assert_eq!(
@@ -8116,7 +8172,7 @@ fn package_notice_loading_and_projection_failure_clear_after_recovery_or_close()
 }
 
 #[test]
-fn package_notice_preserves_save_failure_pending_receipts_and_temporary_defaults() {
+fn package_notice_preserves_save_failure_pending_receipts_and_reset_undo() {
     let mut view = package_notice_view();
     view.save_failed();
     let failure = view.status.clone();
@@ -8140,8 +8196,8 @@ fn package_notice_preserves_save_failure_pending_receipts_and_temporary_defaults
         &mut view,
         "Package settings unavailable. Reopen to retry.",
     );
-    view.set_temporary_customizations(true);
-    view.set_status("Temporary preview only. Restore saved to return.");
+    view.set_restore_available(true);
+    view.set_status("Saved");
     for state in [
         PackageInventoryStatus::Loading,
         PackageInventoryStatus::Unavailable,
@@ -8149,16 +8205,14 @@ fn package_notice_preserves_save_failure_pending_receipts_and_temporary_defaults
     ] {
         view.set_package_inventory_status(state, false);
         let expected = match state {
-            PackageInventoryStatus::Loading => {
-                "Preview only. Loading package settings..."
-            }
+            PackageInventoryStatus::Loading => "Loading package settings...",
             PackageInventoryStatus::Unavailable => {
-                "Preview only. Packages unavailable; reopen to retry."
+                "Package settings unavailable. Reopen to retry."
             }
-            _ => "Temporary preview only. Restore saved to return.",
+            _ => "Saved",
         };
         assert_package_notice_footer(&mut view, expected);
-        assert!(view.temporary_customizations);
+        assert!(view.can_restore_customizations);
     }
 }
 
@@ -8388,7 +8442,7 @@ fn preview_shortcuts_do_not_replace_save_or_loading_feedback() {
         for message in [
             "Cannot save settings.",
             "Saving...",
-            "Temporary preview only. Restore saved to return.",
+            "Restore saved can undo the last reset.",
         ] {
             view.set_status(message);
             assert_package_notice_footer(&mut view, message);
@@ -8401,7 +8455,7 @@ fn customization_reset_and_restore_wait_for_confirmation_and_escape_cancels() {
     let mut view = workflow_tag_view();
     view.back_to_categories();
     for target in [Target::Reset, Target::Restore] {
-        view.set_temporary_customizations(true);
+        view.set_restore_available(true);
         view.activate_target(target.clone());
         assert!(
             view.take_customization_intent().is_none(),
@@ -8490,7 +8544,7 @@ fn settings_button_shortcuts_respect_text_modifiers_repeat_and_cancel_focus() {
     assert!(view.take_customization_intent().is_none());
     assert_eq!(view.focus, Focus::Preview);
     assert_eq!(view.preview_selected, selection);
-    view.set_temporary_customizations(true);
+    view.set_restore_available(true);
     settings_letter(&mut view, "s");
     assert_eq!(view.confirmation.as_ref().unwrap().accept_label, "Restore");
     settings_letter(&mut view, "n");

@@ -1811,6 +1811,9 @@ struct WriterState {
     maximum_pending_depth: usize,
     last_error: Option<PreferenceErrorCode>,
     write_failed: bool,
+    // A later core-only edit must also retry a failed package reset/write.
+    // This is consumed by the worker, so already-queued edits are covered too.
+    retry_package_write: bool,
     // A rejected submission has no queued revision. An older worker receipt
     // must not report that this newer, rejected choice was saved.
     submission_rejected: bool,
@@ -2040,7 +2043,13 @@ fn writer_loop(
                 return;
             }
             state.writing = true;
-            state.pending.take().expect("pending preference exists")
+            let (revision, preferences, include_package) =
+                state.pending.take().expect("pending preference exists");
+            (
+                revision,
+                preferences,
+                include_package || state.retry_package_write,
+            )
         };
 
         let result = if include_package {
@@ -2052,6 +2061,9 @@ fn writer_loop(
         let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
         state.writing = false;
         let result = result.map_err(PreferenceError::code);
+        if include_package {
+            state.retry_package_write = result.is_err();
+        }
         if !state.submission_rejected {
             state.last_error = result.err();
         }
@@ -2281,6 +2293,42 @@ mod tests {
             Some(rio_backend::config::theme::AppearanceTheme::Light)
         );
         assert!(!effective.confirm_before_quit);
+    }
+
+    #[test]
+    fn failed_package_reset_is_retried_by_the_next_core_customization() {
+        let root = tempfile::tempdir().unwrap();
+        let mut saved = UserPreferences::default();
+        saved.package_overrides.push(PackageOverride {
+            publisher_id: "example.publisher".into(),
+            extension_id: "example.inspect".into(),
+            feature_id: "summary".into(),
+            option_id: None,
+            value: crate::automexia::package_customizations::PackageValue::Boolean(false),
+        });
+        write_package_to_root(root.path(), &saved).unwrap();
+        let held =
+            crate::automexia::private_fs::open_private_lock(&lock_path(root.path()))
+                .unwrap();
+        held.try_lock().unwrap();
+        let mut writer = PreferenceWriter::new(root.path().into());
+        writer.submit_package(UserPreferences::default());
+        assert!(!writer.flush(Duration::from_secs(5)));
+        assert_eq!(writer.save_status(), PreferenceSaveStatus::Failed);
+        assert_eq!(load_from_root(root.path()).preferences, saved);
+        drop(held);
+        let fresh = UserPreferences {
+            font_size: Some(18.0),
+            ..Default::default()
+        };
+        writer.submit(fresh.clone());
+        assert!(writer.flush(Duration::from_secs(5)));
+        assert_eq!(
+            load_from_root(root.path()).preferences,
+            fresh,
+            "retry must save both the new font and the package reset"
+        );
+        assert!(writer.shutdown(Duration::from_secs(5)));
     }
 
     #[test]

@@ -283,7 +283,7 @@ impl SettingsView {
                 "Restore saved",
                 Focus::Restore,
                 self.geometry.restore,
-                self.temporary_customizations,
+                self.can_restore_customizations,
             ),
             (33, "Close", Focus::Close, self.geometry.close, true),
         ] {

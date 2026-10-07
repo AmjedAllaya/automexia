@@ -70,7 +70,7 @@ Changes preview on the live terminal behind the settings panel and save through
 the existing preference store. Color fields share Suggested/Favorites and custom
 color entry. Use Tab and arrows to focus controls, Enter to edit, and Esc,
 Backspace or Alt+Left to go back. Resetting an individual control inherits its
-configured value; section reset previews inherited values for that section only.
+configured value; section reset saves inherited values for that section only.
 No appearance control changes shell commands, authentication or terminal history.
 
 ## Understand what controls the appearance
@@ -206,7 +206,7 @@ Each style remembers its own size, spacing, icon size and weight, colors,
 background and border opacity, hover tint and inactive intensity. Soft, Glass and
 Outline also offer corner roundness. Colors follow
 the theme until edited, with readable icon contrast on custom fills. Reset default
-temporarily resets all four profiles; Restore saved returns to your saved choices.
+resets and saves all four profiles; Restore saved can undo the last reset.
 These options apply to Automexia's own title bar, not platform-native decorations.
 
 **Command timestamps** offers separate date and time formats, 12/24-hour clocks,
@@ -285,17 +285,20 @@ their existing session ownership; favorites are shared preferences.
 
 Shift+Arrow/Home/End selects field text; Ctrl+C/X/V (Cmd+C/X/V on macOS) copies,
 cuts, or pastes it. A clipboard failure keeps the draft and selection available
-to retry. **Reset all** on the feature list previews
-defaults across Customizations, enabling the core feature switches; installed
+to retry. **Reset all** on a feature list saves
+defaults for that section, enabling its core feature switches; installed
 extension features use their declared defaults. **Reset default** on a feature
-page previews that feature's defaults, and **Reset tag** affects only the
+page saves that feature's defaults, and **Reset tag** affects only the
 selected tag.
 Appearance resets restore your configured colors and styles, or built-in defaults
 where none are configured. Core feature switches are enabled in the affected scope.
-These previews do not change saved preference files. Further changes made
-while a reset preview is active stay in memory. **Restore saved** returns to
-the choices from before the first reset, even after closing and reopening
-the sheet; restarting also reloads the saved choices. A Reset inside an
+You can immediately select a theme or edit any customization after resetting;
+the reset and subsequent changes use the normal save path. **Restore saved** is
+optional: it saves the choices from before the most recent reset, replacing any
+changes since that reset. This undo point survives closing and reopening the sheet
+until it is used or Automexia exits. Restarting loads your latest saved choices,
+not the undo point. A failed save is reported as active for this session only;
+change a value to retry. A Reset inside an
 individual value or color editor still clears that value's override.
 
 Buttons show their shortcuts: **R** resets, **S** restores saved customizations,
@@ -303,14 +306,14 @@ Buttons show their shortcuts: **R** resets, **S** restores saved customizations,
 dialog naming the affected scope. **Cancel** is selected first; **Esc** or **N**
 cancels, **Y** confirms, and **Tab** then **Enter** selects and activates the other
 button. Cancel keeps the current draft and choices. Restore is disabled when no
-temporary defaults are active. Letters stay text in search and value fields;
+reset undo point is available. Letters stay text in search and value fields;
 outside the color field, **A** applies and **R** requests a reset. If the window
 is too small to show the confirmation, enlarge it or press **Esc** to cancel.
 
 Turning Information tags off hides their prompt badges while retaining
 context detection and the saved tag colors. The **Layout** control
 offers twelve layouts; changing the format updates open terminal
-panes and, outside a temporary reset preview, is saved for the next launch.
+panes and is saved for the next launch.
 The Information tags page also controls the overall shape, arrangement, and
 **Space between tags**
 from 0% to 300% of the selected format's normal gap (100% is unchanged).
@@ -376,9 +379,9 @@ inventory cannot be read, Customizations
 keeps its built-in controls available and does not treat the read failure as an
 uninstall. The sheet reports the failure; reopen Customizations to retry.
 An uninitialized package store also preserves saved choices. A confirmed uninstall
-during a temporary reset removes that package's choices from the restore snapshot
-without writing your files. Reinstalling during that preview uses its declared
-defaults; restarting still loads saved files.
+after a reset removes that package's choices from both saved preferences and the
+undo snapshot. Reinstalling uses its declared defaults; Restore saved cannot
+revive removed package choices.
 Editing a new option at the saved-choice limit frees retired options from that
 package only. Feature and package resets also clear their retired choices.
 
@@ -488,7 +491,7 @@ the current configured family remains selectable.
 This page does not download or install fonts. Install fonts using your OS's font
 manager, then Refresh the list.
 
-Reset default previews configured values after confirmation; Restore saved
+Reset default saves configured values after confirmation; Restore saved
 returns to your earlier choices. Individual resets remove just that override.
 Explicit application colors and separate output/Kubernetes highlight colors remain
 in control. [The font reference](../CONFIGURATION.md#runtime-font-and-appearance)
@@ -565,8 +568,8 @@ The header, tab titles, pane footers, menus and their categories, settings and
 dialogs follow the previewed or applied theme. Tab labels remain readable even
 with a custom tab color. Escape restores these surfaces along with the terminal.
 Your explicit **Fonts** colors and separate output/Kubernetes/table choices remain
-in effect. During a temporary Reset preview, restore saved customizations before
-applying a theme.
+in effect. After Reset all you can apply a new theme immediately; restoring old
+customizations is never required. Theme browsing still stays temporary until Apply.
 
 ## 8. Themes: fixed, adaptive, or forced
 
@@ -589,12 +592,13 @@ override, restoring the configured theme or adaptive pair. The appearance shortc
 can switch between Light and Dark when both adaptive palettes are loaded; a saved
 gallery palette takes precedence until you choose **Use configuration**.
 
-The appearance shortcut also saves the selected light/dark choice. To try defaults
-without changing saved files, use **Reset all** in Terminal Appearance; **Restore saved**
-returns to your previous choices. Resetting an individual value instead clears
-that value's saved override when no temporary preview is active.
+The appearance shortcut also saves the selected light/dark choice. To start fresh,
+use **Reset all** in Terminal Appearance; **Restore saved** can undo your last
+reset during the same app session. Resetting an individual value clears that
+value's saved override. To try a theme without saving, browse Theme Gallery and
+press Escape instead of Apply.
 
-For a deliberate persistent reset, first close every Automexia instance. Back up
+For manual recovery when the UI is unavailable, first close every Automexia instance. Back up
 and move only these snapshots out of the configuration root's `state/` directory:
 
 - `user-preferences-v14.toml` and `user-preferences-v14.previous.toml`;

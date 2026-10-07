@@ -109,14 +109,6 @@ impl Application<'_> {
         window: WindowId,
         selection: Option<ThemeSelection>,
     ) {
-        if self.temporary_customizations.is_some() {
-            self.theme_notice(
-                window,
-                "Restore saved customizations before applying a theme.",
-                false,
-            );
-            return;
-        }
         if selection.as_ref().is_some_and(|s| !s.is_valid()) {
             self.theme_notice(window, "This theme could not be applied.", false);
             return;
