@@ -628,49 +628,58 @@ mod tests {
 
     #[test]
     fn ui_conflicts_cover_default_actions_typed_prefixes_unbinds_and_advanced_chains() {
-        let mut config = Config::default();
-        let keys = super::super::default_key_bindings(&config);
-        assert!(conflict(
-            PaletteAction::CloneSplitRight,
-            &trigger("ctrl+shift+p"),
-            &keys,
-            None
-        )
-        .is_some());
-        assert!(conflict(
-            PaletteAction::CloneSplitRight,
-            &trigger("ctrl+shift+f9"),
-            &keys,
-            None
-        )
-        .is_none());
-        for line in [
-            "ctrl+shift+f9>r=quit",
-            "ctrl+shift+f9=unbind",
-            "ctrl+shift+f9=quit",
+        for platform in [
+            automexia_keybindings::PlatformFamily::Windows,
+            automexia_keybindings::PlatformFamily::LinuxBsd,
+            automexia_keybindings::PlatformFamily::Macos,
         ] {
-            config.bindings.keybinds = vec![line.into()];
+            let mut config = Config::default();
+            let keys = super::super::test_platform_defaults(&config, platform);
+            assert!(conflict(
+                PaletteAction::CloneSplitRight,
+                &trigger(match platform {
+                    automexia_keybindings::PlatformFamily::Macos => "super+shift+p",
+                    _ => "ctrl+shift+p",
+                }),
+                &keys,
+                None
+            )
+            .is_some());
+            assert!(conflict(
+                PaletteAction::CloneSplitRight,
+                &trigger("ctrl+shift+f9"),
+                &keys,
+                None
+            )
+            .is_none());
+            for line in [
+                "ctrl+shift+f9>r=quit",
+                "ctrl+shift+f9=unbind",
+                "ctrl+shift+f9=quit",
+            ] {
+                config.bindings.keybinds = vec![line.into()];
+                let registry = super::super::registry::build(&config).unwrap();
+                assert!(
+                    conflict(
+                        PaletteAction::CloneSplitRight,
+                        &trigger("ctrl+shift+f9"),
+                        &keys,
+                        registry.as_ref()
+                    )
+                    .is_some(),
+                    "{line}"
+                );
+            }
+            config.bindings.keybinds = vec!["ctrl+shift+f8>r=new_split:right".into()];
             let registry = super::super::registry::build(&config).unwrap();
-            assert!(
-                conflict(
-                    PaletteAction::CloneSplitRight,
-                    &trigger("ctrl+shift+f9"),
-                    &keys,
-                    registry.as_ref()
-                )
-                .is_some(),
-                "{line}"
-            );
+            assert!(conflict(
+                PaletteAction::SplitRight,
+                &trigger("ctrl+shift+f9"),
+                &keys,
+                registry.as_ref()
+            )
+            .is_some());
         }
-        config.bindings.keybinds = vec!["ctrl+shift+f8>r=new_split:right".into()];
-        let registry = super::super::registry::build(&config).unwrap();
-        assert!(conflict(
-            PaletteAction::SplitRight,
-            &trigger("ctrl+shift+f9"),
-            &keys,
-            registry.as_ref()
-        )
-        .is_some());
     }
 
     #[test]

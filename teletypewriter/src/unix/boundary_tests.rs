@@ -248,6 +248,14 @@ fn failed_launches_release_pty_descriptors() {
     assert_eq!(count(), before, "failed PTY launches leaked descriptors");
 }
 
+fn aliased_test_directory(root: &std::path::Path) -> std::path::PathBuf {
+    let physical = root.join("physical directory");
+    let requested = root.join("requested alias");
+    std::fs::create_dir(&physical).unwrap();
+    std::os::unix::fs::symlink(&physical, &requested).unwrap();
+    requested
+}
+
 fn isolated_case(name: &str, test: impl FnOnce()) {
     const CASE: &str = "AUTOMEXIA_UNIX_BOUNDARY_CASE";
     if std::env::var(CASE).as_deref() == Ok(name) {
@@ -255,12 +263,15 @@ fn isolated_case(name: &str, test: impl FnOnce()) {
         return;
     }
     let directory = tempfile::tempdir().unwrap();
+    // macOS commonly spells one directory through /var and /private/var.
+    // Exercise the same aliasing on every Unix host.
+    let requested = aliased_test_directory(directory.path());
     let mut child = Command::new(std::env::current_exe().unwrap())
         .args(["--exact", &format!("unix::boundary_tests::{name}")])
         .env(CASE, name)
         .env("AUTOMEXIA_BOUNDARY_VALUE", "fixture-value")
-        .env("AUTOMEXIA_BOUNDARY_CWD", directory.path())
-        .current_dir(directory.path())
+        .env("AUTOMEXIA_BOUNDARY_CWD", &requested)
+        .current_dir(&requested)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -348,7 +359,7 @@ fn fork_launch_preserves_path_arguments_environment_and_cwd() {
     isolated_case(
         "fork_launch_preserves_path_arguments_environment_and_cwd",
         || {
-            let script = "printf '%s|%s|' \"$AUTOMEXIA_BOUNDARY_VALUE\" \"$1\"; test \"$PWD\" = \"$AUTOMEXIA_BOUNDARY_CWD\" && printf cwd-ok";
+            let script = "printf '%s|%s|' \"$AUTOMEXIA_BOUNDARY_VALUE\" \"$1\"; test \"$PWD\" -ef \"$AUTOMEXIA_BOUNDARY_CWD\" && printf cwd-ok";
             let args = [
                 "-c".into(),
                 script.into(),
@@ -489,14 +500,19 @@ fn fork_launch_delivers_explicit_environment_and_cwd_without_changing_policy() {
         "fork_launch_delivers_explicit_environment_and_cwd_without_changing_policy",
         || {
             let directory = tempfile::tempdir().unwrap();
-            let cwd = Some(directory.path().to_str().unwrap().to_owned());
+            let cwd = Some(
+                aliased_test_directory(directory.path())
+                    .to_str()
+                    .unwrap()
+                    .to_owned(),
+            );
             let environment: Option<Vec<(String, String)>> = Some(vec![
                 ("AUTOMEXIA_BOUNDARY_VALUE".into(), "configured-value".into()),
                 ("AUTOMEXIA_BOUNDARY_CWD".into(), cwd.clone().unwrap()),
             ]);
             let args = [
                 "-c".into(),
-                "printf '%s|' \"$AUTOMEXIA_BOUNDARY_VALUE\"; test \"$PWD\" = \"$AUTOMEXIA_BOUNDARY_CWD\" && printf cwd-ok".into(),
+                "printf '%s|' \"$AUTOMEXIA_BOUNDARY_VALUE\"; test \"$PWD\" -ef \"$AUTOMEXIA_BOUNDARY_CWD\" && printf cwd-ok".into(),
             ];
             let pty = create_pty_with_fork_environment(
                 Some("/bin/sh"),

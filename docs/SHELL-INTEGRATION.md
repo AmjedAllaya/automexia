@@ -164,6 +164,10 @@ controlled raster tests separately cover synthetic scales and pixels. The native
 workflow runs on both Intel and Apple Silicon. Missing native permissions fail
 the scenario and never count as successful validation.
 
+The native matrix also repeats isolated Metal/default-shell startup and teardown.
+Filesystem failures report errno and fixed source-owner line numbers; reports
+never include exception paths, terminal text or raw process logs.
+
 The driver's bounded startup/command timing samples are diagnostics with 50 ms
 polling resolution, not performance baselines. The native workflow also retains
 Criterion responsive-layout samples; hosted machines do not establish controlled

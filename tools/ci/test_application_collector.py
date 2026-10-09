@@ -18,16 +18,21 @@ import workload
 from benchmark_model import BenchmarkError, METRICS
 
 
+def unix_ui_probe():
+    import importlib.util
+    source = Path(__file__).resolve().parents[2] / 'tests/integration/unix-session-ui.py'
+    spec = importlib.util.spec_from_file_location('unix_ui_fixture', source)
+    probe = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(probe)
+    return probe
+
+
 class CollectorTests(unittest.TestCase):
     @unittest.skipIf(os.name == 'nt', 'Unix native fixture')
     def test_unix_ui_fixture_uses_the_canonical_launch_directory(self):
-        import importlib.util
         from contextlib import nullcontext
 
-        source = Path(__file__).resolve().parents[2] / 'tests/integration/unix-session-ui.py'
-        spec = importlib.util.spec_from_file_location('unix_ui_fixture', source)
-        probe = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(probe)
+        probe = unix_ui_probe()
         class LaunchReached(Exception):
             pass
         captured = {}
@@ -47,6 +52,31 @@ class CollectorTests(unittest.TestCase):
             self.assertEqual(captured['cwd'], home)
             self.assertEqual(captured['home'], str(home))
             self.assertTrue((home / 'config/config.toml').is_file())
+
+    def test_native_failure_diagnostics_keep_errno_but_never_paths_or_output(self):
+        import errno
+        import json
+
+        probe = unix_ui_probe()
+        error = OSError(errno.ENOTEMPTY, 'private terminal content', '/private/example')
+        details = probe.failure_details(error)
+        self.assertEqual(details, {'failure': 'OSError', 'errno': errno.ENOTEMPTY, 'operations': []})
+        self.assertNotIn('private', json.dumps(details))
+        # An actual fixture launch error includes a fixed source owner/line,
+        # while foreign frames, messages and the executable path stay private.
+        with TemporaryDirectory() as temporary:
+            with patch.object(probe.subprocess, 'Popen', side_effect=error):
+                try:
+                    probe.run_case(Path(temporary) / 'private-binary', Path(temporary) / 'captures',
+                                   'cpu', 'default', 1.0, 'default')
+                except OSError as failure:
+                    details = probe.failure_details(failure)
+                else:
+                    self.fail('the native launch error was swallowed')
+        self.assertTrue(details['operations'])
+        self.assertTrue(all(item.startswith('native-ui:') for item in details['operations']))
+        self.assertNotIn('private', json.dumps(details))
+        self.assertNotIn(temporary, json.dumps(details))
 
     def test_macos_shortcuts_use_native_modifier_flags_and_reject_ambiguous_keys(self):
         self.assertEqual(MacDriver.key_spec('meta+shift+p'), (35, (1 << 20) | (1 << 17), 'p'))

@@ -133,6 +133,11 @@ jobs:
           set -euo pipefail
           cargo build -p automexia-terminal --bin automexia --all-features --locked
           python tests/integration/unix-session-ui.py --binary target/debug/automexia --captures artifacts/visual-quality/native-macos --timeout 480
+          # Repeated isolated homes exercise the first Metal/default-shell
+          # launch and teardown; failures remain fatal and retain redacted errno.
+          for attempt in {1..12}; do
+            python tests/integration/unix-session-ui.py --binary target/debug/automexia --backend webgpu --shell default --launch-mode default --captures "artifacts/visual-quality/native-macos/repeated-metal-$attempt" --timeout 120
+          done
       - name: Native macOS renderer microbenchmarks
         if: always() && !cancelled() && runner.os == 'macOS' && steps.visual.outcome != 'skipped'
         shell: bash

@@ -280,6 +280,27 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                       "owned shell survived application shutdown")
 
 
+def failure_details(error: BaseException) -> dict:
+    # Never publish exception messages, filesystem paths, command text or
+    # arbitrary traceback frames. Fixed owners, line numbers and errno identify
+    # a failing operation without exposing the isolated session's contents.
+    message = str(error)[:240] if isinstance(error, (Failure, BenchmarkError)) else type(error).__name__
+    result = {"failure": message}
+    if isinstance(error, OSError):
+        result["errno"] = error.errno
+    owners = {"unix-session-ui.py": "native-ui", "macos_driver.py": "native-input",
+              "tempfile.py": "fixture-cleanup", "shutil.py": "filesystem-cleanup"}
+    operations = []
+    frame = error.__traceback__
+    while frame is not None:
+        owner = owners.get(Path(frame.tb_frame.f_code.co_filename).name)
+        if owner:
+            operations.append(f"{owner}:{frame.tb_lineno}")
+        frame = frame.tb_next
+    result["operations"] = operations[-8:]
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
@@ -308,10 +329,8 @@ def main() -> int:
                     try:
                         result = run_case(args.binary.resolve(), captures, backend, shell, scale, launch_mode)
                     except (Failure, subprocess.SubprocessError, OSError, ValueError) as error:
-                        # Emit scenario and bounded class, never private command/log data.
-                        # These owners emit fixed diagnostics, never paths or terminal content.
-                        message = str(error)[:240] if isinstance(error, (Failure, BenchmarkError)) else type(error).__name__
-                        result = {"scenario": f"{backend}-{shell}-{scale if scale is not None else 'native'}-{launch_mode}", "failure": message}
+                        result = {"scenario": f"{backend}-{shell}-{scale if scale is not None else 'native'}-{launch_mode}",
+                                  **failure_details(error)}
                     results.append(result)
                     print(json.dumps(result), flush=True)
                     (captures / "summary.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
