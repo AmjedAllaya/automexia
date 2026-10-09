@@ -37,6 +37,12 @@ tables, output colors and status presentation. Each shell's native input editor
 retains ownership of editing and native syntax colors.
 
 Temporary startup files do not alter remote profiles or the user's umask.
+Zsh restores the native startup directory before global and user rc files run,
+then loads integration once at the first prompt. Native history, key maps and
+completion caches keep their normal locations; explicit user history settings
+remain authoritative. Cleanup removes only Automexia's own startup files and
+preserves other user-created files. Native shell options and prompt callbacks
+remain intact.
 Remote CWD and user labels are bounded display facts; neither becomes local
 filesystem or provider authority. Local Git/Kubernetes/cloud discovery is
 suspended during a remote scope. Without the optional helper, remote context

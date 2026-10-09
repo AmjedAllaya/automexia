@@ -172,8 +172,8 @@ class OrchestrationTests(unittest.TestCase):
         self.assertTrue(command[command.index('--helper') + 1].endswith('automexia-ssh-helper.exe'))
         self.assertFalse(any(value.startswith('@upload-') for value in command))
     def test_posix_producers_reject_missing_or_skipped_helper_evidence(self):
-        for summary in (b'Ran 12 tests in 1s\nOK (skipped=1)\n',
-                        b'Ran 11 tests in 1s\nOK\n'):
+        for summary in (b'Ran 13 tests in 1s\nOK (skipped=1)\n',
+                        b'Ran 12 tests in 1s\nOK\n'):
             with self.subTest(summary=summary), self.assertRaises(ValueError):
                 self.invoke(require_posix_shells=True, producer_output=summary)
     def test_shell_scope_never_invokes_ready(self):

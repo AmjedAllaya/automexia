@@ -279,9 +279,6 @@ impl StartupFiles {
             files.names.push(name);
             file.write_all(source.as_bytes())?;
         }
-        if shell == RemoteShell::Zsh {
-            files.names.extend([".zcompdump", ".zcompdump.zwc"]);
-        }
         Ok(files)
     }
 
@@ -342,6 +339,44 @@ impl Drop for StartupFiles {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn startup_files_remove_only_bundled_names_after_retirement() {
+        for shell in [RemoteShell::Bash, RemoteShell::Zsh, RemoteShell::Pwsh] {
+            let files =
+                StartupFiles::create(shell, GenerationKey::new(3, 7).unwrap()).unwrap();
+            let directory = files.directory.clone();
+            assert!(files
+                .names
+                .iter()
+                .all(|name| directory.join(name).is_file()));
+            drop(files);
+            assert!(!directory.exists());
+        }
+    }
+
+    #[test]
+    fn startup_files_preserve_user_history_and_completion_data() {
+        let files =
+            StartupFiles::create(RemoteShell::Zsh, GenerationKey::new(3, 7).unwrap())
+                .unwrap();
+        let directory = files.directory.clone();
+        let user_files = [".zsh_history", ".zcompdump", ".zcompdump.zwc", "user-note"];
+        for name in user_files {
+            std::fs::write(directory.join(name), b"user-owned fixture").unwrap();
+        }
+        drop(files);
+        assert!(!directory.join(".zshenv").exists());
+        assert!(!directory.join(".zshrc").exists());
+        for name in user_files {
+            assert_eq!(
+                std::fs::read(directory.join(name)).unwrap(),
+                b"user-owned fixture"
+            );
+            std::fs::remove_file(directory.join(name)).unwrap();
+        }
+        std::fs::remove_dir(directory).unwrap();
+    }
+
     #[test]
     fn request_framing_recovers_after_fragmentation_oversize_and_partial_records() {
         let key = GenerationKey::new(1, 2).unwrap();

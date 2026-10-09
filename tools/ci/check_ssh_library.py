@@ -237,7 +237,7 @@ def verify(root: Path, report_dir: Path, *, baseline=False, ready=False,
                 steps.append(('posix-helper-producers-local', [sys.executable,
                     str(root / 'tools/ci/test_ssh_helper_adapters.py'),
                     '--fixtures', str(report_dir / 'helper-adapters'),
-                    '--helper', '@upload-helper@'], 'python', 12))
+                    '--helper', '@upload-helper@'], 'python', 13))
                 steps.extend([
                     ('build-upload-exporter', [cargo, 'build', '--quiet', '--locked', '-p',
                      'automexia-ssh-integration', '--example', 'export_helper_fixture', '--message-format=json'], None, 0),

@@ -29,7 +29,7 @@ FIELDS = ('cwd HOME KUBECONFIG HOMEDRIVE HOMEPATH USERPROFILE DOCKER_CONTEXT '
 REVISION = rb'\x1b\]1337;SetUserVar=automexia_ssh_revision=([^\x07]*)\x07'
 
 LAUNCHER = '''import os, pathlib, shlex, sys
-shell, init, fd, response = sys.argv[1:]
+shell, init, fd, response, startup = sys.argv[1:]
 home = pathlib.Path(os.environ['HOME'])
 os.environ['AMX_SSH_HELPER_FD'] = fd
 os.environ.pop('AMX_SSH_HELPER_RESPONSE_FD', None)
@@ -40,7 +40,20 @@ if shell.endswith('bash'):
     (home / '.bashrc').write_text('PS1="AMX_AUDIT_PROMPT> "\\n')
     argv = [shell, '--noprofile', '--rcfile', str(pathlib.Path(init) / 'rc.bash'), '-i']
 elif shell.endswith('zsh'):
-    (home / '.zshrc').write_text('PROMPT="AMX_AUDIT_PROMPT> "\\n')
+    native = home
+    if startup == 'redirect':
+        native = home / 'native-config'
+        native.mkdir()
+        (home / '.zshenv').write_text('ZDOTDIR=$HOME/native-config\\n')
+    profile = 'PROMPT="AMX_AUDIT_PROMPT> "\\n'
+    profile += 'typeset -gi AMX_NATIVE_RC_COUNT=$(( ${AMX_NATIVE_RC_COUNT:-0} + 1 ))\\n'
+    if startup == 'history-override':
+        profile += 'HISTFILE=$HOME/selected-history\\n'
+    if startup == 'ksh-arrays':
+        profile += 'function amx_fixture_first { typeset -gi AMX_FIRST=$(( ${AMX_FIRST:-0} + 1 )); }\\n'
+        profile += 'function amx_fixture_last { typeset -gi AMX_LAST=$(( ${AMX_LAST:-0} + 1 )); }\\n'
+        profile += 'precmd_functions=(amx_fixture_first "${precmd_functions[@]}" amx_fixture_last)\\nsetopt KSH_ARRAYS\\n'
+    (native / '.zshrc').write_text(profile)
     os.environ['ZDOTDIR'] = init
     argv = [shell, '-d', '-i']
 else:
@@ -76,8 +89,10 @@ def revisions(output: bytes) -> list[str]:
 
 
 class HelperShell(owner.Shell):
-    def __init__(self, shell: str, *, prompt_output: bool = False) -> None:
+    def __init__(self, shell: str, *, prompt_output: bool = False, emulate_global_zsh_rc: bool = False, zsh_startup: str = 'default') -> None:
         import fcntl
+        if zsh_startup not in ('default', 'redirect', 'history-override', 'ksh-arrays'):
+            raise ValueError('unknown native Zsh startup scenario')
         self.files = tempfile.TemporaryDirectory(prefix='automexia-helper-source-')
         self.initialization = Path(self.files.name)
         self.receiver, self.sender = socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)
@@ -101,6 +116,11 @@ class HelperShell(owner.Shell):
         self.shell_name = shell
         try:
             for name, source in generated(shell).items():
+                if name == '.zshenv' and emulate_global_zsh_rc:
+                    # The global interactive rc runs after .zshenv and before
+                    # the user rc. Model Apple's default history assignment
+                    # at that exact boundary without changing /etc on the host.
+                    source += '\nHISTFILE=${ZDOTDIR:-$HOME}/.zsh_history\nHISTSIZE=2000\nSAVEHIST=1000\n'
                 (self.initialization / name).write_text(source, encoding='utf-8')
             launcher = self.initialization / 'launch.py'
             launcher.write_text(LAUNCHER, encoding='utf-8')
@@ -109,7 +129,7 @@ class HelperShell(owner.Shell):
                 raise unittest.SkipTest('native shell unavailable: ' + shell)
             super().__init__(launch_arguments=['/usr/bin/python3', str(launcher), executable,
                                               str(self.initialization), str(self.writer),
-                                              str(self.response_fd) if self.response_fd is not None else 'none'])
+                                              str(self.response_fd) if self.response_fd is not None else 'none', zsh_startup])
         except BaseException:
             self.close_transport()
             raise
@@ -224,6 +244,27 @@ os.execve(helper, [helper, '--session-v1', shell, '3', '7'], os.environ)
                     # actual exit without reaping, and verify the shell status.
                     self.assertEqual(shell.wait_for_exit(timeout=8), 7)
                     self.assertEqual(list(shell.tmp.glob('automexia-ssh*')), [])
+
+    def test_zsh_global_startup_uses_native_history_location(self) -> None:
+        scenarios = [('default', '.zsh_history'), ('redirect', 'native-config/.zsh_history'),
+                     ('history-override', 'selected-history'), ('ksh-arrays', '.zsh_history')]
+        for scenario, history in scenarios:
+            with self.subTest(scenario=scenario), HelperShell(
+                    'zsh', emulate_global_zsh_rc=True, zsh_startup=scenario) as shell:
+                self.assertEqual(shell.initial.count(b'\x1b]133;A;'), 1)
+                output = shell.command(
+                    '[[ $HISTFILE == "$HOME"/' + history + ' && $AMX_NATIVE_RC_COUNT == 1 ]]'
+                    ' && builtin printf "NATIVE_%s_OWNER\\n" HISTORY')
+                self.assertIn(b'NATIVE_HISTORY_OWNER', output)
+                if scenario == 'ksh-arrays':
+                    callbacks = shell.command(
+                        '[[ -o KSH_ARRAYS && $AMX_FIRST == 2 && $AMX_LAST == 2 ]]'
+                        ' && builtin printf "PRESERVED_%s\\n" CALLBACKS')
+                    self.assertIn(b'PRESERVED_CALLBACKS', callbacks)
+                shell.command('builtin fc -AI')
+                self.assertTrue((shell.root / history).is_file())
+                self.assertFalse((shell.initialization / '.zsh_history').exists())
+                self.assertTrue(revisions(output))
 
     def test_prompt_channel_waits_for_whole_frame_and_keeps_command_output_outside_osc(self) -> None:
         for name in ('bash', 'zsh'):
@@ -367,15 +408,22 @@ os.execve(helper, [helper, '--session-v1', shell, '3', '7'], os.environ)
             with self.subTest(shell=name), HelperShell(name) as shell:
                 shell.requests()
                 filled = 0
-                while True:
-                    try:
-                        filled += shell.sender.send(b'x' * 4096)
-                    except OSError as error:
-                        if error.errno not in (errno.EAGAIN, errno.EWOULDBLOCK) and not (
-                                platform.system() == 'Darwin' and error.errno == errno.ENOBUFS):
-                            raise
-                        break
-                    self.assertLess(filled, 2 * 1024 * 1024)
+                # Darwin may reject a large datagram while a smaller shell
+                # request still fits. Fill the remaining capacity too before
+                # asserting revocation, without assuming Linux's packet limit.
+                packets = 0
+                for payload in (b'x' * 4096, b'x'):
+                    while True:
+                        try:
+                            filled += shell.sender.send(payload)
+                            packets += 1
+                        except OSError as error:
+                            if error.errno not in (errno.EAGAIN, errno.EWOULDBLOCK) and not (
+                                    platform.system() == 'Darwin' and error.errno == errno.ENOBUFS):
+                                raise
+                            break
+                        self.assertLess(filled, 2 * 1024 * 1024)
+                        self.assertLess(packets, 65536)
                 output = shell.command('true')
                 self.assertEqual(revisions(output)[-1], '')
                 self.assertIn(owner.PROMPT, shell.command('true'))

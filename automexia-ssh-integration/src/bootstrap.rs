@@ -95,23 +95,35 @@ pub fn core_candidate(shell: RemoteShell, key: GenerationKey) -> Result<String, 
     Ok(render_core(source, key))
 }
 
-const ZSH_ENV: &str = r#"AUTOMEXIA_SSH_TEMP=$ZDOTDIR
+// Restore the native startup location before the global interactive rc. That
+// file may choose history, key maps and completion caches from ZDOTDIR.
+// As with the local session wrapper, defer only our integration until precmd.
+const ZSH_ENV: &str = r#"AUTOMEXIA_SSH_TEMP=${${(%):-%N}:A:h}
 if [[ $AUTOMEXIA_SSH_ZDOTDIR_SET == x ]]; then
     ZDOTDIR=$AUTOMEXIA_SSH_ZDOTDIR
 else
     unset ZDOTDIR
 fi
+unset AUTOMEXIA_SSH_ZDOTDIR AUTOMEXIA_SSH_ZDOTDIR_SET
 [[ -r ${ZDOTDIR-$HOME}/.zshenv ]] && builtin source "${ZDOTDIR-$HOME}/.zshenv"
-AUTOMEXIA_SSH_ZDOTDIR=${ZDOTDIR-$HOME}
-AUTOMEXIA_SSH_ZDOTDIR_SET=${ZDOTDIR+x}
-ZDOTDIR=$AUTOMEXIA_SSH_TEMP"#;
-const ZSH_RC_PREFIX: &str = r#"if [[ $AUTOMEXIA_SSH_ZDOTDIR_SET == x ]]; then
-    ZDOTDIR=$AUTOMEXIA_SSH_ZDOTDIR
-else
-    unset ZDOTDIR
+if [[ ! -o interactive || ! -o rcs || ${(t)precmd_functions} == *readonly* ]] ||
+   (( $+functions[__automexia_ssh_start] || $+aliases[__automexia_ssh_start] )); then
+    unset AUTOMEXIA_SSH_TEMP
+    return 0
 fi
-unset AUTOMEXIA_SSH_ZDOTDIR AUTOMEXIA_SSH_ZDOTDIR_SET AUTOMEXIA_SSH_TEMP
-[[ -r ${ZDOTDIR-$HOME}/.zshrc ]] && builtin source "${ZDOTDIR-$HOME}/.zshrc""#;
+function __automexia_ssh_start {
+    emulate -L zsh
+    local __automexia_startup_file=$AUTOMEXIA_SSH_TEMP/.zshrc
+    local __automexia_existing_hook=$+functions[__amx_ssh_precmd]
+    precmd_functions=("${precmd_functions[@]:#__automexia_ssh_start}")
+    unset AUTOMEXIA_SSH_TEMP
+    [[ -r $__automexia_startup_file ]] && builtin source "$__automexia_startup_file"
+    if (( ! __automexia_existing_hook && $+functions[__amx_ssh_precmd] )); then
+        __amx_ssh_precmd
+    fi
+    unfunction __automexia_ssh_start
+}
+precmd_functions+=(__automexia_ssh_start)"#;
 
 /// Startup data for the effectful helper owner. `hook` is bundled, reviewed
 /// source, never remote/user input. The owner creates private files and launches
@@ -141,10 +153,7 @@ pub fn helper_shell_files(
                 "[[ -r \"$HOME/.bashrc\" ]] && builtin source \"$HOME/.bashrc\"\n{body}"
             ),
         )],
-        RemoteShell::Zsh => vec![
-            (".zshenv", format!("{ZSH_ENV}\n")),
-            (".zshrc", format!("{ZSH_RC_PREFIX}\n{body}")),
-        ],
+        RemoteShell::Zsh => vec![(".zshenv", format!("{ZSH_ENV}\n")), (".zshrc", body)],
         RemoteShell::PowerShell | RemoteShell::Pwsh => vec![("rc.ps1", body)],
         RemoteShell::Fish | RemoteShell::Unknown => return Err(Error::UnsupportedShell),
     })
@@ -194,8 +203,8 @@ pub fn interactive_candidate(
 
 fn zsh_interactive_candidate(key: GenerationKey) -> Result<String, Error> {
     let core = core_candidate(RemoteShell::Zsh, key)?;
-    // ZDOTDIR is scoped to this child. The temporary .zshenv and .zshrc wrappers
-    // restore the original startup location before sourcing native user files.
+    // The temporary .zshenv restores ZDOTDIR before native global/user rc
+    // files. Only the bundled integration is deferred to the first prompt.
     Ok(format!(
         r#"amx_plain() {{ exec zsh -i; }}
 command -v zsh >/dev/null 2>&1 || exit 127
@@ -212,10 +221,8 @@ cat > "$amx_dir/.zshenv" <<'AMX_ENV_V1'
 AMX_ENV_V1
 cat > "$amx_dir/.zshrc" <<'AMX_RC_V1'
 # Anchor cleanup to this actual startup file, not profile-mutable environment.
-# Global compinit may have generated its standard cache inside our private dir.
-command rm -f -- "${{(%):-%N}}" "${{${{(%):-%N}}%/*}}/.zshenv" "${{${{(%):-%N}}%/*}}/.zcompdump" "${{${{(%):-%N}}%/*}}/.zcompdump.zwc"
+command rm -f -- "${{(%):-%N}}" "${{${{(%):-%N}}%/*}}/.zshenv"
 command rmdir -- "${{${{(%):-%N}}%/*}}" 2>/dev/null || :
-{ZSH_RC_PREFIX}
 {core}
 AMX_RC_V1
 )
@@ -226,7 +233,7 @@ then
 fi
 AUTOMEXIA_SSH_ZDOTDIR=${{ZDOTDIR-$HOME}} AUTOMEXIA_SSH_ZDOTDIR_SET=${{ZDOTDIR+x}} ZDOTDIR=$amx_dir command zsh -i
 amx_status=$?
-command rm -f -- "$amx_dir/.zshenv" "$amx_dir/.zshrc" "$amx_dir/.zcompdump" "$amx_dir/.zcompdump.zwc"
+command rm -f -- "$amx_dir/.zshenv" "$amx_dir/.zshrc"
 command rmdir -- "$amx_dir" 2>/dev/null || :
 exit "$amx_status"
 "#
