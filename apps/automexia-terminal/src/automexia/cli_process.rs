@@ -424,7 +424,15 @@ impl OwnedChild {
                 .as_ref()
                 .map(|completion| completion.pin_members())
                 .transpose();
-            self.inner.start_kill().map_err(|_| cleanup_error())?;
+            match self.inner.start_kill() {
+                Ok(()) => {}
+                // Preserve the pinned leader while resolving platform-specific
+                // errors for groups that have already exited.
+                #[cfg(unix)]
+                Err(error)
+                    if retired_after_signal_error(self.inner.as_ref(), &error)? => {}
+                Err(_) => return Err(cleanup_error()),
+            }
             self.killed = true;
             #[cfg(windows)]
             {
@@ -575,6 +583,53 @@ fn drain(
 }
 
 #[cfg(unix)]
+fn retired_after_signal_error(
+    child: &dyn ChildWrapper,
+    error: &io::Error,
+) -> io::Result<bool> {
+    let errno = error.raw_os_error();
+    if errno != Some(libc::ESRCH)
+        && !(cfg!(target_os = "macos") && errno == Some(libc::EPERM))
+    {
+        return Ok(false);
+    }
+    if !leader_exited(child)? {
+        return Ok(false);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // XNU excludes zombies from killpg's group walk and may return EPERM
+        // (UNIX03) or ESRCH for our unreaped zombie. Neither error alone proves
+        // retirement: query the same pinned group and require ONLY its leader.
+        // Two slots detect additional members or truncation without an unbounded
+        // process inventory. Zero/error/unknown replies remain fail-closed.
+        const PROC_PGRP_ONLY: u32 = 2; // Darwin sys/proc_info.h
+        let mut members = [0 as libc::pid_t; 2];
+        // SAFETY: a fixed writable array with its exact byte length; the native
+        // API retains no memory. The unreaped child pins this group identity.
+        let bytes = unsafe {
+            libc::proc_listpids(
+                PROC_PGRP_ONLY,
+                child.id(),
+                members.as_mut_ptr().cast(),
+                std::mem::size_of_val(&members) as libc::c_int,
+            )
+        };
+        Ok(darwin_only_pinned_member(child.id(), bytes, members))
+    }
+    #[cfg(not(target_os = "macos"))]
+    Ok(true)
+}
+
+#[cfg(all(unix, any(target_os = "macos", test)))]
+fn darwin_only_pinned_member(leader: u32, bytes: i32, members: [libc::pid_t; 2]) -> bool {
+    leader > 1
+        && bytes == std::mem::size_of::<libc::pid_t>() as i32
+        && members[0] > 1
+        && members[0] as u32 == leader
+}
+
+#[cfg(unix)]
 fn leader_exited(child: &dyn ChildWrapper) -> io::Result<bool> {
     // WNOWAIT observes, but does not release, the owned leader's PID identity.
     let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
@@ -693,6 +748,164 @@ mod tests {
         assert!(!retry_retirement(&cleanup_error()).unwrap());
     }
 
+    #[cfg(unix)]
+    #[derive(Debug)]
+    struct SignalFailure {
+        inner: Box<dyn ChildWrapper>,
+        errno: std::sync::Arc<std::sync::atomic::AtomicI32>,
+    }
+
+    #[cfg(unix)]
+    impl ChildWrapper for SignalFailure {
+        fn inner(&self) -> &dyn ChildWrapper {
+            self.inner.as_ref()
+        }
+        fn inner_mut(&mut self) -> &mut dyn ChildWrapper {
+            self.inner.as_mut()
+        }
+        fn into_inner(self: Box<Self>) -> Box<dyn ChildWrapper> {
+            self.inner
+        }
+        fn start_kill(&mut self) -> io::Result<()> {
+            let errno = self.errno.load(std::sync::atomic::Ordering::Acquire);
+            if errno == 0 {
+                self.inner.start_kill()
+            } else {
+                Err(io::Error::from_raw_os_error(errno))
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    fn signal_failure_child(
+        mode: &str,
+        errno: i32,
+    ) -> (OwnedChild, std::sync::Arc<std::sync::atomic::AtomicI32>) {
+        let mut command = fixture(mode);
+        command
+            .stdin(if mode == "retirement-lease" {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let mut command = CommandWrap::from(command);
+        command.wrap(process_wrap::std::ProcessGroup::leader());
+        let errno = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(errno));
+        let child = OwnedChild {
+            inner: Box::new(SignalFailure {
+                inner: command.spawn().unwrap(),
+                errno: errno.clone(),
+            }),
+            reaped: false,
+            killed: false,
+        };
+        (child, errno)
+    }
+
+    #[cfg(unix)]
+    fn wait_for_pinned_exit(child: &OwnedChild) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !leader_exited(child.inner.as_ref()).unwrap() {
+            assert!(Instant::now() < deadline, "owned fixture did not exit");
+            std::thread::sleep(POLL_INTERVAL);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn amx_retirement_accepts_absent_group_only_after_pinned_leader_exit() {
+        // Darwin killpg reports ESRCH for a group containing only a zombie.
+        // Inject that kernel result while retaining a real, unreaped child.
+        let (mut child, _) = signal_failure_child("failure", libc::ESRCH);
+        wait_for_pinned_exit(&child);
+        child.cleanup().unwrap();
+        assert!(child.reaped && child.killed);
+        assert_eq!(child.inner.try_wait().unwrap().unwrap().code(), Some(7));
+        child.cleanup().unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn amx_retirement_does_not_accept_absent_group_for_a_live_leader() {
+        let (mut child, errno) = signal_failure_child("retirement-wait", libc::ESRCH);
+        assert!(child.cleanup().is_err());
+        assert!(!child.killed && !child.reaped);
+        errno.store(0, std::sync::atomic::Ordering::Release);
+        child.cleanup().unwrap();
+        assert!(child.reaped);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn amx_retirement_preserves_other_signal_errors_after_leader_exit() {
+        let (mut child, errno) = signal_failure_child("failure", libc::EACCES);
+        wait_for_pinned_exit(&child);
+        assert!(child.cleanup().is_err());
+        assert!(!child.killed && !child.reaped);
+        errno.store(0, std::sync::atomic::Ordering::Release);
+        child.cleanup().unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn amx_retirement_darwin_group_reply_rejects_errors_truncation_and_other_members() {
+        let pid_bytes = std::mem::size_of::<libc::pid_t>() as i32;
+        assert!(darwin_only_pinned_member(42, pid_bytes, [42, 0]));
+        for bytes in [
+            -1,
+            0,
+            1,
+            pid_bytes - 1,
+            pid_bytes + 1,
+            pid_bytes * 2,
+            i32::MAX,
+        ] {
+            assert!(!darwin_only_pinned_member(42, bytes, [42, 43]));
+        }
+        for members in [[0, 0], [-1, 0], [43, 0], [43, 42]] {
+            assert!(!darwin_only_pinned_member(42, pid_bytes, members));
+        }
+        assert!(!darwin_only_pinned_member(0, pid_bytes, [0, 0]));
+        assert!(!darwin_only_pinned_member(1, pid_bytes, [1, 0]));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn amx_retirement_darwin_permission_result_requires_only_the_exited_leader() {
+        let (mut child, _) = signal_failure_child("failure", libc::EPERM);
+        wait_for_pinned_exit(&child);
+        child.cleanup().unwrap();
+        assert!(child.reaped);
+        assert_eq!(child.inner.try_wait().unwrap().unwrap().code(), Some(7));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn amx_retirement_darwin_permission_result_cannot_hide_a_remaining_group_member() {
+        use std::os::unix::process::CommandExt;
+        let (mut child, errno) = signal_failure_child("retirement-lease", libc::EPERM);
+        let mut peer = fixture("retirement-wait")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(child.inner.id() as libc::pid_t)
+            .spawn()
+            .unwrap();
+        drop(child.inner.stdin().take());
+        wait_for_pinned_exit(&child);
+        let rejected = child.cleanup().is_err();
+        let retained = !child.killed && !child.reaped;
+        // Retire the separately owned fixture before checking assertions; the
+        // group owner must not reap this direct child out from under its owner.
+        peer.kill().unwrap();
+        peer.wait().unwrap();
+        errno.store(0, std::sync::atomic::Ordering::Release);
+        child.cleanup().unwrap();
+        assert!(rejected && retained);
+    }
+
     fn fixture(mode: &str) -> Command {
         let mut command = Command::new(std::env::current_exe().unwrap());
         command.args([
@@ -724,6 +937,14 @@ mod tests {
                 |value| value == b"AMX_PAYLOAD_BEGIN\nfixture & output\nAMX_PAYLOAD_END"
             ));
         assert_eq!(result.stderr, b"fixture diagnostic");
+    }
+
+    #[test]
+    fn amx_process_repeated_immediate_exit_preserves_status_and_retires() {
+        for _ in 0..20 {
+            let result = capture(fixture("failure"), limits(), || false).unwrap();
+            assert_eq!(result.status.code(), Some(7));
+        }
     }
 
     #[test]
@@ -1328,6 +1549,12 @@ mod tests {
                     .write_all(&vec![b'x'; 1024 * 1024])
                     .unwrap();
             }
+            Ok("retirement-lease") => {
+                let mut byte = [0; 1];
+                assert_eq!(std::io::stdin().read(&mut byte).unwrap(), 0);
+                std::process::exit(7);
+            }
+            Ok("retirement-wait") => std::thread::park_timeout(Duration::from_secs(30)),
             Ok("wait") => {
                 let ready = std::env::var_os("AMX_PROCESS_READY").unwrap();
                 std::fs::write(ready, std::process::id().to_string()).unwrap();

@@ -232,9 +232,12 @@ def verify(root: Path, report_dir: Path, *, baseline=False, ready=False,
                 for shell in ('bash', 'zsh'):
                     steps.append(('export-helper-files-' + shell, [cargo, 'run', '--quiet', '--locked', '-p',
                         'automexia-ssh-integration', '--example', 'export_helper_fixture', '--', '--files', shell], None, 0))
+                steps.append(('build-upload-helper', [cargo, 'build', '--quiet', '--locked', '-p',
+                    'automexia-terminal', '--bin', 'automexia-ssh-helper', '--message-format=json'], None, 0))
                 steps.append(('posix-helper-producers-local', [sys.executable,
                     str(root / 'tools/ci/test_ssh_helper_adapters.py'),
-                    '--fixtures', str(report_dir / 'helper-adapters')], 'python', 7))
+                    '--fixtures', str(report_dir / 'helper-adapters'),
+                    '--helper', '@upload-helper@'], 'python', 12))
                 steps.extend([
                     ('build-upload-exporter', [cargo, 'build', '--quiet', '--locked', '-p',
                      'automexia-ssh-integration', '--example', 'export_helper_fixture', '--message-format=json'], None, 0),
@@ -254,10 +257,9 @@ def verify(root: Path, report_dir: Path, *, baseline=False, ready=False,
             if not require_posix_shells:
                 steps.append(('build-upload-exporter', [cargo, 'build', '--quiet', '--locked', '-p',
                     'automexia-ssh-integration', '--example', 'export_helper_fixture', '--message-format=json'], None, 0))
-            steps.extend([
-                ('build-upload-helper', [cargo, 'build', '--quiet', '--locked', '-p',
-                 'automexia-terminal', '--bin', 'automexia-ssh-helper', '--message-format=json'], None, 0),
-            ])
+            if not require_posix_shells:
+                steps.append(('build-upload-helper', [cargo, 'build', '--quiet', '--locked', '-p',
+                    'automexia-terminal', '--bin', 'automexia-ssh-helper', '--message-format=json'], None, 0))
         for shell in ('powershell', 'pwsh'):
             executable = windows_shells.get(shell)
             if executable is None:

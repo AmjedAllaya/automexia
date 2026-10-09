@@ -149,8 +149,10 @@ transport or introduce another process supervisor.
 
 Run `python tools/ci/check_ssh_library.py` for focused model, CLI and policy
 checks. On Unix, `--shell-only --require-posix-shells` exercises actual
-Rust-generated Bash, Zsh and Fish startup through controlling PTYs.
-Resource-only tests without an exporter
+Rust-generated Bash, Zsh and Fish startup through controlling PTYs, and builds
+the native helper for the Bash/Zsh discovery, publication and shutdown checks.
+Cargo supplies the exact helper artifact path; missing or skipped helper evidence
+fails this gate. Resource-only tests without an exporter
 are not proof of generated bootstrap behavior. Additional shell and isolated
 SSH runtime suites live beside that runner under `tools/ci`.
 

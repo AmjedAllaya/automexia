@@ -123,7 +123,11 @@ jobs:
         run: |
           set -euo pipefail
           cargo test -p automexia-terminal --lib --all-features --locked automexia::shell::
-          cargo test -p automexia-terminal --lib --all-features --locked automexia::ssh_helper::
+          # Lifecycle failures may intentionally exit the helper process. Emit
+          # their diagnostics immediately so they survive a fail-closed exit.
+          cargo test -p automexia-terminal --lib --all-features --locked automexia::cli_process::tests::amx_retirement_ -- --nocapture
+          cargo test -p automexia-terminal --lib --all-features --locked automexia::cli_process::tests::amx_process_repeated_immediate_exit -- --nocapture
+          cargo test -p automexia-terminal --lib --all-features --locked automexia::ssh_helper:: -- --nocapture
           cargo test -p automexia-terminal --bin automexia --all-features --locked bindings::
           cargo test -p teletypewriter --lib --locked
           cargo build -p automexia-terminal --bin automexia-ssh-helper --all-features --locked

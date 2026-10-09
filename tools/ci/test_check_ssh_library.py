@@ -145,7 +145,7 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual([step['name'] for step in result['steps']], [
             'export-actual-generator', 'bash-core-local', 'export-actual-generator-zsh',
             'export-actual-generator-fish', 'other-shells-local',
-            'export-helper-files-bash', 'export-helper-files-zsh', 'posix-helper-producers-local',
+            'export-helper-files-bash', 'export-helper-files-zsh', 'build-upload-helper', 'posix-helper-producers-local',
             'build-upload-exporter', 'posix-helper-upload-local'])
         self.assertEqual(calls[2][0][-2:], ['--', 'zsh'])
         self.assertEqual(calls[3][0][-2:], ['--', 'fish'])
@@ -154,10 +154,28 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(calls[5][0][-2:], ['--files', 'bash'])
         self.assertEqual(calls[6][0][-2:], ['--files', 'zsh'])
         self.assertFalse(calls[5][1]);self.assertFalse(calls[6][1])
-        self.assertTrue(any(str(value).endswith('test_ssh_helper_adapters.py') for value in calls[7][0]))
-        self.assertIn('--message-format=json', calls[8][0])
-        self.assertTrue(any(str(value).endswith('test_ssh_helper_transfer.py') for value in calls[9][0]))
-        self.assertFalse(any(value.startswith('@upload-') for value in calls[9][0]))
+        self.assertTrue(any(str(value).endswith('test_ssh_helper_adapters.py') for value in calls[8][0]))
+        self.assertIn('--message-format=json', calls[7][0])
+        self.assertIn('--message-format=json', calls[9][0])
+        self.assertTrue(any(str(value).endswith('test_ssh_helper_transfer.py') for value in calls[10][0]))
+        self.assertFalse(any(value.startswith('@upload-') for value in calls[10][0]))
+    def test_posix_producers_receive_the_built_native_helper(self):
+        _, calls = self.invoke(require_posix_shells=True)
+        build_index = next(i for i, (cmd, _) in enumerate(calls)
+                           if 'build' in cmd and 'automexia-ssh-helper' in cmd)
+        test_index = next(i for i, (cmd, _) in enumerate(calls)
+                          if any(str(value).endswith('test_ssh_helper_adapters.py') for value in cmd))
+        command = calls[test_index][0]
+        self.assertLess(build_index, test_index)
+        self.assertIn('--message-format=json', calls[build_index][0])
+        self.assertIn('--helper', command)
+        self.assertTrue(command[command.index('--helper') + 1].endswith('automexia-ssh-helper.exe'))
+        self.assertFalse(any(value.startswith('@upload-') for value in command))
+    def test_posix_producers_reject_missing_or_skipped_helper_evidence(self):
+        for summary in (b'Ran 12 tests in 1s\nOK (skipped=1)\n',
+                        b'Ran 11 tests in 1s\nOK\n'):
+            with self.subTest(summary=summary), self.assertRaises(ValueError):
+                self.invoke(require_posix_shells=True, producer_output=summary)
     def test_shell_scope_never_invokes_ready(self):
         _,calls=self.invoke()
         self.assertFalse(any('ready' in c for c,_ in calls))

@@ -102,7 +102,8 @@ impl Endpoint {
             command.env("AMX_SSH_HELPER_RESPONSE_FD", response.to_string());
         }
         // Keep the unused receiving endpoint as a lifeline. If the helper dies,
-        // Bounded Bash/Zsh builtin writes get EAGAIN without waiting.
+        // Bounded Bash/Zsh builtin writes fail without waiting (EAGAIN on
+        // Linux, ENOBUFS on Darwin) once the retained receiver fills.
         // SAFETY: descriptors remain owned until the interactive child exits.
         // The post-fork closure performs only async-signal-safe native calls;
         // the parent retains CLOEXEC so scanner children do not inherit them.
@@ -228,13 +229,31 @@ mod tests {
         loop {
             match writer.write(&bytes) {
                 Ok(written) => total += written,
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
+                Err(error)
+                    if error.kind() == io::ErrorKind::WouldBlock
+                        || (cfg!(target_os = "macos")
+                            && error.raw_os_error() == Some(libc::ENOBUFS)) =>
+                {
+                    // XNU's datagram sbappendaddr returns ENOBUFS when full.
+                    // This is bounded backpressure, not a stream short write.
+                    break;
+                }
                 other => panic!("unexpected socket result {other:?}"),
             }
             assert!(total <= 16 * 1024 * 1024);
         }
         assert!(total > 0);
-        assert_eq!(endpoint.poll(1, &mut output).unwrap(), 4096);
+        let mut drained = 0;
+        while drained < total {
+            assert_eq!(endpoint.poll(1, &mut output).unwrap(), bytes.len());
+            assert_eq!(&output[..bytes.len()], &bytes);
+            drained += bytes.len();
+        }
+        assert_eq!(drained, total);
+        assert_eq!(endpoint.poll(1, &mut output).unwrap(), 0);
+        // A full queue loses no successful messages and becomes writable again.
+        assert_eq!(writer.write(&bytes).unwrap(), bytes.len());
+        assert_eq!(endpoint.poll(1, &mut output).unwrap(), bytes.len());
         // SAFETY: owned live descriptor; this call only reads its flags.
         assert_ne!(
             unsafe { libc::fcntl(endpoint.writer.as_raw_fd(), libc::F_GETFD) }

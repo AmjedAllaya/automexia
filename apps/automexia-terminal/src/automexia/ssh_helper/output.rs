@@ -636,7 +636,10 @@ mod platform {
             time::{Duration, Instant},
         };
         struct Terminal {
+            // Retain both native endpoints even where only the path is used.
+            #[cfg_attr(target_os = "macos", allow(dead_code))]
             master: File,
+            #[cfg_attr(target_os = "macos", allow(dead_code))]
             slave: OwnedFd,
             path: String,
         }
