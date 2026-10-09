@@ -617,6 +617,57 @@ fn grid_resize(c: &mut Criterion) {
     }
 }
 
+fn unix_prompt_startup_resize(c: &mut Criterion) {
+    use criterion::BatchSize;
+    use rio_vt::crosswords::grid::row::SemanticPrompt;
+
+    let path = "/tmp/example/terminal/project/workspace";
+    let prefix = format!(
+        "\x1b[1m\x1b[7m%\x1b[0m{}\r \r\
+         \x1b]7;file://localhost{path}\x07\x1b]133;A;aid=1\x07 \r\n\
+         \x1b]133;P;k=c;aid=1\x07{path}\r",
+        " ".repeat(COLS - 1)
+    );
+    let tail = "\n\x1b]133;P;k=c;aid=1\x07\r\x1b[Jλ \x1b]133;B\x07";
+    c.bench_function("unix_prompt_startup_resize_snapshot", |b| {
+        b.iter_batched(
+            || {
+                let mut terminal = term();
+                let mut parser = Processor::default();
+                parser.advance(&mut terminal, prefix.as_bytes());
+                (terminal, parser)
+            },
+            |(mut terminal, mut parser)| {
+                terminal.resize(CrosswordsSize::new(32, 18));
+                parser.advance(&mut terminal, tail.as_bytes());
+                let mut rows = Vec::new();
+                let mut styles = Vec::new();
+                let mut extras = rustc_hash::FxHashMap::default();
+                terminal.snapshot_visible(
+                    &TerminalDamage::Full,
+                    32,
+                    &mut rows,
+                    &mut styles,
+                    &mut extras,
+                );
+                assert_eq!(
+                    rows.iter()
+                        .filter(|row| row.semantic_prompt == SemanticPrompt::Prompt)
+                        .count(),
+                    1
+                );
+                let text: String = rows
+                    .iter()
+                    .flat_map(|row| row.inner.iter().map(|cell| cell.c()))
+                    .collect();
+                assert!(text.replace(' ', "").contains(path));
+                std::hint::black_box(rows);
+            },
+            BatchSize::SmallInput,
+        )
+    });
+}
+
 fn table_resize_roundtrip(c: &mut Criterion) {
     use rio_vt::crosswords::grid::Dimensions;
     use std::time::{Duration, Instant};
@@ -875,6 +926,7 @@ criterion_group!(
     fragmented_utf8,
     bench,
     grid_resize,
+    unix_prompt_startup_resize,
     table_resize_roundtrip,
     native_seam_roundtrip,
     extreme_resize_roundtrip,

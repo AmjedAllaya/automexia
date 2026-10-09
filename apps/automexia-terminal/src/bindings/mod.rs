@@ -1289,7 +1289,6 @@ pub fn create_hint_bindings(
 ///
 /// - Ctrl+T adds a window-level tab.
 /// - Ctrl+Shift+T adds an independent tab to the selected pane/session.
-#[cfg(any(test, not(target_os = "macos")))]
 fn scoped_tab_key_bindings() -> Vec<KeyBinding> {
     bindings!(
         KeyBinding;

@@ -658,6 +658,24 @@ impl Grid<Square> {
                     .then_some(self.cursor.pos.col.0);
                 trim_native_row_padding(&mut row, cursor);
             }
+            // A shell can paint its transient prompt across the full width
+            // before replacing it with our blank context spacer. Those old
+            // spaces are layout padding, not input to wrap into scrollback.
+            // Keep this hard boundary to one row, as grow_columns already does.
+            // A row with editable input retains normal whitespace reflow.
+            if reflow
+                && buffered.is_none()
+                && row.semantic_input.is_none()
+                && is_prompt_spacer(&row)
+            {
+                row.truncate_columns(columns);
+                if let Some(last) = row.last_mut() {
+                    last.set_wrapline(false);
+                }
+                if i == self.lines - self.cursor.pos.row.0 as usize - 1 {
+                    self.cursor.pos.col = min(self.cursor.pos.col, Column(columns - 1));
+                }
+            }
             point_remap.begin_row(old_len - 1 - i, buffered.as_ref().map_or(0, Row::len));
             let continuation_mark = match row.semantic_prompt {
                 SemanticPrompt::None => SemanticPrompt::None,

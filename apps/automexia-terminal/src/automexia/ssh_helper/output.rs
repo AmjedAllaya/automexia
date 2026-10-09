@@ -495,8 +495,8 @@ mod platform {
                             &mut master,
                             &mut slave,
                             std::ptr::null_mut(),
-                            std::ptr::null(),
-                            std::ptr::null(),
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
                         )
                     },
                     0

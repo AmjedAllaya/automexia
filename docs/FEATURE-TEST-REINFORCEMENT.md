@@ -889,8 +889,13 @@ The shell owner retains explicit-command/startup opt-outs and repeated Zsh
 preparation tests. The same driver runs CPU/WGPU macOS sessions with owned
 AX/Quartz keyboard input, login startup, panes and real display scaling. System
 Bash 3.2, Zsh and Fish run native PTY contracts on both macOS architectures;
-controlled raster tests and Criterion samples remain separate evidence. Wayland, hardware GPUs and physical DPI remain separate
-native evidence requirements.
+controlled raster tests and Criterion samples remain separate evidence.
+Replay native ZLE startup across every byte split and one-column widths; keep
+the owned spacer, complete path and cursor visible without consuming explicit
+input/output spaces or overriding manual scrollback. The
+`unix_prompt_startup_resize_snapshot` benchmark records that path independently.
+Wayland, hardware GPUs and physical DPI remain separate native evidence
+requirements.
 
 Ctrl+L must use actual keyboard dispatch with integrated shell resources,
 including nested CMD and WSL Bash/Zsh/Fish. Assert one prompt, visible context,

@@ -1067,13 +1067,19 @@ mod linux_session_tests {
                 shell.to_owned()
             };
             let home = tempfile::tempdir().unwrap();
+            // Isolate this startup probe from Debian's automatic system-wide
+            // completion scan. Host FPATH may require an interactive trust
+            // decision; the production bootstrap leaves that decision intact.
             std::fs::write(
                 home.path().join(".bashrc"),
                 "export AMX_TEST_USER_RC=loaded\n",
             )
             .unwrap();
-            std::fs::write(home.path().join(".zshenv"), "export AMX_TEST_ENV=loaded\n")
-                .unwrap();
+            std::fs::write(
+                home.path().join(".zshenv"),
+                "skip_global_compinit=1\nexport AMX_TEST_ENV=loaded\n",
+            )
+            .unwrap();
             std::fs::write(
                 home.path().join(".zshrc"),
                 "export AMX_TEST_USER_RC=loaded\n",
@@ -1100,7 +1106,7 @@ mod linux_session_tests {
                 std::fs::create_dir(&startup).unwrap();
                 std::fs::write(
                     startup.join(".zshenv"),
-                    "export AMX_TEST_ENV=custom_loaded\n",
+                    "skip_global_compinit=1\nexport AMX_TEST_ENV=custom_loaded\n",
                 )
                 .unwrap();
                 std::fs::write(
@@ -1152,7 +1158,7 @@ result = bytearray()
 pending = [
     b"printf 'AMX_RC:%s\\n' \"$AMX_TEST_USER_RC\"\n",
     b"false\n",
-    b"printenv AMX_TEST_ENV AMX_TEST_LOGIN\n",
+    b"printenv AMX_TEST_ENV; printenv AMX_TEST_LOGIN\n",
     b"printf 'AMX_END\\n'\n",
     b"exit 0\n",
 ]
@@ -1190,6 +1196,15 @@ finally:
             _, status = os.waitpid(pid, 0)
     os.close(fd)
 sys.stdout.buffer.write(result)
+# Only fixed phase counters and known prompt conditions may enter CI logs.
+# Raw PTY bytes remain private to the parent assertions.
+if os.waitstatus_to_exitcode(status) != 0:
+    print(
+        'native probe: prompts=%d remaining=%d bytes=%d insecure_completion=%s'
+        % (seen, len(pending), len(result),
+           b'insecure' in result.lower() and b'compinit' in result.lower()),
+        file=sys.stderr,
+    )
 sys.exit(os.waitstatus_to_exitcode(status))
 "#,
                     &program,
@@ -1215,7 +1230,11 @@ sys.exit(os.waitstatus_to_exitcode(status))
                 .unwrap();
             assert!(
                 output.status.success(),
-                "{shell}: native startup failed or timed out"
+                "{shell} (login={login}): native startup failed or timed out: {}",
+                String::from_utf8_lossy(&output.stderr)
+                    .lines()
+                    .find(|line| line.starts_with("native probe:"))
+                    .unwrap_or("no startup phase diagnostic")
             );
             let text = String::from_utf8_lossy(&output.stdout);
             assert!(text.contains("AMX_RC:loaded"), "{shell}: user startup lost");

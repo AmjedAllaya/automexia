@@ -21,6 +21,9 @@ import time
 
 
 MACOS = sys.platform == "darwin"
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools/renderer-benchmarks/application"))
+from macos_driver import MacDriver
+from benchmark_model import BenchmarkError
 
 
 class Failure(RuntimeError):
@@ -66,7 +69,9 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
         config = home / "config"
         config.mkdir()
         (home / ".bashrc").write_text("export AMX_NATIVE_RC=RC_LOADED\n", encoding="utf-8")
-        (home / ".zshenv").write_text("export AMX_NATIVE_ZSHENV=ENV_LOADED\n", encoding="utf-8")
+        # Isolate fixtures from the host's Debian completion trust prompt. This
+        # test-only startup choice never alters the application bootstrap.
+        (home / ".zshenv").write_text("skip_global_compinit=1\nexport AMX_NATIVE_ZSHENV=ENV_LOADED\n", encoding="utf-8")
         (home / ".zshrc").write_text("export AMX_NATIVE_RC=RC_LOADED\n", encoding="utf-8")
         (home / ".bash_profile").write_text("export AMX_NATIVE_RC=RC_LOADED\n", encoding="utf-8")
         fish = home / ".config/fish"
@@ -138,8 +143,6 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
 
                 wait(lambda s: s.get("sequence", 0) > 0, "no presented frame", 30)
                 if MACOS:
-                    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools/renderer-benchmarks/application"))
-                    from macos_driver import MacDriver
                     driver = MacDriver(process)
                     driver.resize(1200, 800)
                 else:
@@ -196,7 +199,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     check(abs(initial.get("scale_factor", 0) - scale) < .01, "scale not applied")
                 check(initial.get("scale_factor", 0) > 0, "invalid native scale")
                 check(active(initial).get("current_directory") == str(home), "launch CWD discarded")
-                result = command("printenv AMX_NATIVE_RC AMX_NATIVE_PROFILE")
+                result = command("printenv AMX_NATIVE_RC; printenv AMX_NATIVE_PROFILE")
                 text = active(result).get("visible_text", "")
                 check("RC_LOADED" in text and "PROFILE_LOADED" in text, "startup/profile environment lost")
                 result = command("false")
@@ -306,7 +309,8 @@ def main() -> int:
                         result = run_case(args.binary.resolve(), captures, backend, shell, scale, launch_mode)
                     except (Failure, subprocess.SubprocessError, OSError, ValueError) as error:
                         # Emit scenario and bounded class, never private command/log data.
-                        message = str(error) if isinstance(error, Failure) else type(error).__name__
+                        # These owners emit fixed diagnostics, never paths or terminal content.
+                        message = str(error)[:240] if isinstance(error, (Failure, BenchmarkError)) else type(error).__name__
                         result = {"scenario": f"{backend}-{shell}-{scale if scale is not None else 'native'}-{launch_mode}", "failure": message}
                     results.append(result)
                     print(json.dumps(result), flush=True)
