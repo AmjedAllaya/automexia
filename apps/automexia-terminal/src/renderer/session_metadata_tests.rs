@@ -1117,7 +1117,13 @@ fn metadata_readiness_clone_caller_uses_owned_launch_while_metadata_is_incomplet
                 ("automexia_shell_user", "fixture"),
                 ("automexia_shell_path", "/bin/bash"),
             ],
-            "wsl.exe",
+            // On Windows the live distro identifies a nested WSL session.
+            // On Unix it is display metadata: retain the native launch owner.
+            if cfg!(target_os = "windows") {
+                "wsl.exe"
+            } else {
+                "fixture-shell"
+            },
         ),
     ] {
         let mut manager = crate::context::ContextManager::start_with_capacity(
@@ -1143,6 +1149,13 @@ fn metadata_readiness_clone_caller_uses_owned_launch_while_metadata_is_incomplet
         }
         let complete = manager.test_create_cloned_context(0).unwrap();
         assert_eq!(complete.launch_descriptor.program(), Some(expected_program));
+        if expected_program == "fixture-shell" {
+            assert_eq!(complete.launch_descriptor.args(), ["--fixture"]);
+            assert_eq!(
+                complete.launch_descriptor.profile_identity(),
+                Some("fixture-profile")
+            );
+        }
         drop(complete);
         {
             let source = manager.current_mut();

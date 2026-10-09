@@ -34,7 +34,7 @@ else
   printf '%s\n' 'EXTERNAL: Fish syntax/runtime validation requires the native CI Fish package.'
 fi
 
-git ls-files -co --exclude-standard -z -- '*.zsh' |
+git ls-files -co --exclude-standard -z -- '*.zsh' '.zshenv' '**/.zshenv' |
   while IFS= read -r -d '' source; do
     sed 's/\r$//' "$source" | zsh -n
   done

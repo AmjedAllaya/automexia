@@ -45,7 +45,18 @@ pub fn default_margin() -> crate::config::layout::Margin {
 
 #[inline]
 pub fn default_shell() -> crate::config::Shell {
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
+    {
+        // The desktop/login environment is already inherited. An ordinary
+        // interactive shell loads its native rc file and session integration;
+        // callers requesting a login shell can still configure exact argv.
+        crate::config::Shell {
+            program: None,
+            args: vec![],
+        }
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {
         crate::config::Shell {
             program: None,
@@ -232,5 +243,15 @@ mod tests {
     fn default_line_spacing_balances_density_and_legibility() {
         assert_eq!(default_line_height(), 1.22);
         assert!((1.15..=1.25).contains(&default_line_height()));
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod linux_shell_defaults {
+    #[test]
+    fn default_linux_shell_uses_native_interactive_startup() {
+        let shell = super::default_shell();
+        assert!(shell.program.is_none());
+        assert!(shell.args.is_empty());
     }
 }

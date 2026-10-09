@@ -17,6 +17,30 @@ prompt, input callback, completion state, and nested CMD helpers must remain
 available after startup returns. Both development and packaged launches use this
 same session bootstrap; execution-policy denial still leaves the native shell.
 
+Linux's unset shell configuration starts an ordinary interactive, non-login
+shell. It inherits the desktop/login environment and reads the shell's normal
+interactive rc file. To retain login startup explicitly, configure
+`args = ["--login"]` in the `[shell]` section and source integration from that
+startup file.
+macOS keeps native login startup, including its default-shell `login(1)` policy.
+Ordinary Bash, Zsh and Fish login sessions load integration after native startup;
+non-login sessions use the same adapters as Linux. Bash login startup uses a
+one-shot prompt hook because Bash ignores `--rcfile` in login mode. A custom
+profile that replaces `PROMPT_COMMAND` entirely should explicitly source the
+shipped Bash integration after configuring its prompt. No profile is rewritten.
+
+On Linux, ordinary Bash, Zsh and Fish sessions also load the packaged integration
+automatically. Bash retains the user's `.bashrc`; Zsh retains `.zshenv`, `.zshrc`
+and `ZDOTDIR`; Fish retains its native configuration and editor. New panes and
+tabs use independent PTYs with the same validated launch descriptor, including
+profile environment overrides and the starting directory.
+
+Explicit commands, scripts, custom startup files and startup opt-out flags retain
+their native arguments. Explicit Linux login flags also remain unchanged. To integrate such a custom launch, source
+the matching shipped integration in the startup file you already own. Setting
+`AUTOMEXIA_SHELL_INTEGRATION=0` disables automatic activation. The shipped
+scripts also respect this switch when sourced from user startup files.
+
 ## Supported behavior
 
 Session-local hooks may publish:
@@ -108,6 +132,37 @@ Test each supported installed shell with integration enabled, disabled, missing,
 repeatedly sourced, and removed; success/failure commands; directory and Git
 changes; Unicode/quoting; pipelines; narrow layouts; restart; and cleanup.
 Native shell behavior is the independent oracle.
+
+The Linux application regression runs the unconfigured default and explicit
+Bash, Zsh and Fish PTYs on CPU and Vulkan at 100% and 150% X11 scaling. It checks real prompt/result metadata, tags,
+tables, keyboard menus, theme cancellation, pane/tab cloning, working directories,
+profile environment, resize and child cleanup:
+
+```sh
+cargo build --locked -p automexia-terminal --bin automexia --features visual-test-hooks
+xvfb-run -a -s "-screen 0 1600x1200x24 -nolisten tcp" \
+  python3 tests/integration/unix-session-ui.py \
+  --binary target/debug/automexia --captures artifacts/native-linux
+```
+
+The driver requires Xvfb, xauth, xdotool, ImageMagick, and all three shells.
+CI uses Mesa lavapipe for Vulkan; it rejects an unexpected CPU fallback.
+Add `--backend webgpu` to a build with the `wgpu` feature to check WGPU separately.
+These scenarios do not certify every Wayland compositor, hardware GPU or physical
+display scale.
+
+On macOS, build with `--all-features` and run the same driver directly without
+Xvfb. It uses the existing AX/Quartz driver, requires preauthorized Accessibility
+access, and stops on focus loss. CPU and WGPU/Metal cases use system Bash, system
+Zsh, Fish and the unset shell configuration. Real display scaling is recorded;
+controlled raster tests separately cover synthetic scales and pixels. The native
+workflow runs on both Intel and Apple Silicon. Missing native permissions fail
+the scenario and never count as successful validation.
+
+The driver's bounded startup/command timing samples are diagnostics with 50 ms
+polling resolution, not performance baselines. The native workflow also retains
+Criterion responsive-layout samples; hosted machines do not establish controlled
+application performance. See [benchmark methodology](../tools/renderer-benchmarks/README.md).
 
 See [Shell productivity](guide/shell-productivity.md) and
 [Commands and shell](user-guide/commands-and-shell.md).

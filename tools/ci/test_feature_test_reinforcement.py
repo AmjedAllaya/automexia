@@ -642,6 +642,22 @@ class FeatureTestReinforcementTests(unittest.TestCase):
                 with self.assertRaises(REINFORCEMENT.ReinforcementError):
                     self.validate(document)
 
+    def test_evidence_owner_capacity_preserves_exact_references_and_bounds(self):
+        paths = list(dict.fromkeys(owner for feature in self.document["features"]
+                                   for owner in feature["evidence_owners"]))[:17]
+        self.assertEqual(len(paths), 17)
+        for count in (13, 16):
+            with self.subTest(accepted=count):
+                document = copy.deepcopy(self.document)
+                document["features"][0]["evidence_owners"] = paths[:count]
+                self.validate(document)
+        for owners in (paths, [], paths[:12] + [paths[0]], paths[:12] + ["tests/absent-evidence-owner.rs"]):
+            with self.subTest(rejected=owners):
+                document = copy.deepcopy(self.document)
+                document["features"][0]["evidence_owners"] = owners
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    self.validate(document)
+
     @classmethod
     def setUpClass(cls) -> None:
         # Keep the canonical ledger immutable; every test mutates a deep copy and

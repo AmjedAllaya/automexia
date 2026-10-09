@@ -468,7 +468,6 @@ pub enum Action {
     Hide,
 
     /// Hide all windows other than Automexia on macOS.
-    #[cfg(target_os = "macos")]
     #[allow(dead_code)]
     HideOtherApplications,
 
@@ -774,8 +773,9 @@ pub fn default_key_bindings(config: &rio_backend::config::Config) -> Vec<KeyBind
     key_bindings_with_platform(config, platform_key_bindings)
 }
 
-#[cfg(test)]
-pub(crate) fn test_platform_defaults(
+/// Project a requested platform using the same definitions as native defaults.
+/// CLI exports must not label the build host's bindings as another platform.
+pub(crate) fn default_key_bindings_for_platform(
     config: &rio_backend::config::Config,
     platform: automexia_keybindings::PlatformFamily,
 ) -> Vec<KeyBinding> {
@@ -787,6 +787,14 @@ pub(crate) fn test_platform_defaults(
             automexia_macos_key_bindings(navigation, splits, keyboard)
         }
     })
+}
+
+#[cfg(test)]
+pub(crate) fn test_platform_defaults(
+    config: &rio_backend::config::Config,
+    platform: automexia_keybindings::PlatformFamily,
+) -> Vec<KeyBinding> {
+    default_key_bindings_for_platform(config, platform)
 }
 
 fn key_bindings_with_platform(
@@ -1291,7 +1299,6 @@ fn scoped_tab_key_bindings() -> Vec<KeyBinding> {
 }
 
 /// Automexia's classic macOS defaults.
-#[cfg(any(test, target_os = "macos"))]
 fn automexia_macos_key_bindings(
     use_navigation_key_bindings: bool,
     use_splits: bool,
@@ -1397,11 +1404,16 @@ fn automexia_macos_key_bindings(
         ));
     }
 
+    key_bindings.extend(bindings!(
+        KeyBinding;
+        "h", ModifiersState::SUPER; Action::Hide;
+        "h", ModifiersState::SUPER | ModifiersState::ALT; Action::HideOtherApplications;
+        "m", ModifiersState::SUPER; Action::Minimize;
+    ));
     key_bindings
 }
 
 /// Automexia's classic Windows defaults.
-#[cfg(any(test, target_os = "windows"))]
 fn automexia_windows_key_bindings(
     use_navigation_key_bindings: bool,
     use_splits: bool,
@@ -1506,7 +1518,6 @@ fn automexia_windows_key_bindings(
 
 /// Automexia's classic Linux/BSD defaults. Pane focus uses F6/Shift+F6 so the
 /// historical Ctrl+Shift+bracket tab shortcuts never have a duplicate owner.
-#[cfg(any(test, not(any(target_os = "macos", target_os = "windows"))))]
 fn automexia_unix_key_bindings(
     use_navigation_key_bindings: bool,
     use_splits: bool,
@@ -1616,18 +1627,7 @@ pub fn platform_key_bindings(
     use_splits: bool,
     config_keyboard: ConfigKeyboard,
 ) -> Vec<KeyBinding> {
-    let mut key_bindings = automexia_macos_key_bindings(
-        use_navigation_key_bindings,
-        use_splits,
-        config_keyboard,
-    );
-    key_bindings.extend(bindings!(
-        KeyBinding;
-        "h", ModifiersState::SUPER; Action::Hide;
-        "h", ModifiersState::SUPER | ModifiersState::ALT; Action::HideOtherApplications;
-        "m", ModifiersState::SUPER; Action::Minimize;
-    ));
-    key_bindings
+    automexia_macos_key_bindings(use_navigation_key_bindings, use_splits, config_keyboard)
 }
 
 #[cfg(test)]
@@ -3304,5 +3304,41 @@ mod tests {
         assert_eq!(new_bindings.len(), 1);
 
         assert_eq!(&new_bindings[0].action, &Action::Scroll(1));
+    }
+}
+
+#[cfg(test)]
+mod platform_export_tests {
+    use super::*;
+    use automexia_keybindings::PlatformFamily;
+
+    #[test]
+    fn classic_export_uses_requested_platform_including_native_macos_actions() {
+        let config = rio_backend::config::Config::default();
+        let windows = default_key_bindings_for_platform(&config, PlatformFamily::Windows);
+        let linux = default_key_bindings_for_platform(&config, PlatformFamily::LinuxBsd);
+        let macos = default_key_bindings_for_platform(&config, PlatformFamily::Macos);
+        let has = |bindings: &[KeyBinding], action: Action, mods: ModifiersState| {
+            bindings
+                .iter()
+                .any(|b| b.action == action && b.mods == mods)
+        };
+        assert!(has(&windows, Action::Paste, ModifiersState::CONTROL));
+        assert!(!has(&linux, Action::Paste, ModifiersState::CONTROL));
+        assert!(has(&macos, Action::Paste, ModifiersState::SUPER));
+        assert!(has(
+            &macos,
+            Action::HideOtherApplications,
+            ModifiersState::SUPER | ModifiersState::ALT
+        ));
+        assert!(!has(
+            &windows,
+            Action::HideOtherApplications,
+            ModifiersState::SUPER | ModifiersState::ALT
+        ));
+        let native = default_key_bindings(&config);
+        let projected =
+            default_key_bindings_for_platform(&config, registry::platform_family());
+        assert_eq!(native, projected);
     }
 }

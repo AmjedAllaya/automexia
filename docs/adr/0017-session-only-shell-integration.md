@@ -32,8 +32,9 @@ Automexia are useful, but that is a separate user decision.
    commands, scripts and encoded forms, positional scripts, noninteractive/server
    modes, unknown options and missing option values never gain a bootstrap
    command. Argument values and order remain intact; existing PowerShell banner
-   suppression may prepend `-NoLogo`. Unix arguments remain unchanged. The shell
-   remains responsible for parsing its arguments.
+   suppression may prepend `-NoLogo`. Linux/macOS ordinary interactive Bash, Zsh
+   and Fish launches use the session adapters below; other Unix launches retain
+   their native arguments. The shell remains responsible for parsing arguments.
 4. Persistent integration is exposed only as
    `automexia shell-integration install|uninstall`. The Windows command honors
    the effective execution policy and never requests `Bypass`.
@@ -45,6 +46,43 @@ Automexia are useful, but that is a separate user decision.
    payload-derived command lines are forbidden.
 7. Static policy and hostile mutation tests pin these boundaries. Installer
    behavior remains covered in isolated homes, but it is not a launch phase.
+
+## Linux and macOS launch delivery
+
+The Linux default uses ordinary interactive startup, inheriting the login
+environment and loading the native rc file. This replaces the generic Unix
+`--login` default on Linux only: Bash ignores an rc-file bootstrap in login
+mode. Explicit login-shell configuration and the macOS default are retained.
+
+The existing application shell owner prepares ordinary Linux/macOS launches before
+constructing `SessionLaunchDescriptor`. The PTY receives that descriptor's
+executable, arguments, directory and environment. The legacy fork compatibility
+entry remains available; its enriched adapter accepts directory/environment
+requirements through the same transactional owner while preserving the selected
+launch policy. On macOS the spawn default retains login(1), while fork mode
+retains its historical bare-shell login argv[0] behavior.
+
+Bash uses a package-owned rc file that first sources the user's normal `.bashrc`.
+Fish uses a fixed initialization expression with a quoted resource environment
+value. Zsh temporarily points `ZDOTDIR` at a package-owned `.zshenv`, restores the
+original location before user startup, and loads integration through a one-shot
+pre-prompt hook after normal startup. It creates no files or global environment
+changes. Repeated preparation preserves the original directory.
+
+Linux admits empty arguments and the native interactive switch. macOS also
+admits native login switches and preserves implicit login intent before adding
+adapter arguments. Explicit commands/scripts, custom rc files and startup
+opt-outs are left alone; explicit Linux login switches remain unchanged. Missing/incomplete resources or an explicit integration opt-out preserve
+the native shell. macOS keeps its native login lifecycle and startup files.
+Bash login uses a one-shot `PROMPT_COMMAND` entry that sources the shipped
+adapter after startup and removes itself; a user replacement of that variable
+remains authoritative. Prompt status is captured before user hooks and emitted
+after them, so a successful hook cannot erase a failed command result. Capturing
+status returns the same exit code to the user's first hook. Zsh restores both
+unset and explicitly empty `ZDOTDIR`, and shadows stale bootstrap markers.
+Linux running inside WSL
+keeps a native Linux launch when cloning; the distro label cannot select
+Windows' `wsl.exe`.
 
 ## Consequences
 

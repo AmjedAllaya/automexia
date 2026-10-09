@@ -4,6 +4,9 @@ set -l automexia_term_program ''
 set -l automexia_shell_integration ''
 set -q TERM_PROGRAM; and set automexia_term_program "$TERM_PROGRAM"
 set -q AUTOMEXIA_SHELL_INTEGRATION; and set automexia_shell_integration "$AUTOMEXIA_SHELL_INTEGRATION"
+if test "$automexia_shell_integration" = 0
+    return 0
+end
 if test "$automexia_term_program" != Automexia; and test "$automexia_shell_integration" != 1
     return 0
 end

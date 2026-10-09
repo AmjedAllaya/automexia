@@ -1,5 +1,6 @@
 # Automexia Zsh/macOS/WSL shell integration. Metadata, prompt styling, and an
 # optional icon-aware directory-listing experience.
+[[ ${AUTOMEXIA_SHELL_INTEGRATION:-} == 0 ]] && return 0
 case "${TERM_PROGRAM:-}|${AUTOMEXIA_SHELL_INTEGRATION:-}|${WSLENV:-}" in
   Automexia*|*'|1|'*|*'AUTOMEXIA_SHELL_INTEGRATION/u'*) ;;
   *) return 0 ;;

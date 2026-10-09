@@ -4,6 +4,7 @@
 # WSLENV itself is inherited into WSL even on systems where an individual
 # variable import is misconfigured. Treat the presence of Automexia's /u entry
 # as a reliable activation hint, but remain inert outside Automexia.
+[[ ${AUTOMEXIA_SHELL_INTEGRATION:-} == 0 ]] && return 0
 case "${TERM_PROGRAM:-}|${AUTOMEXIA_SHELL_INTEGRATION:-}|${WSLENV:-}" in
   Automexia*|*'|1|'*|*'AUTOMEXIA_SHELL_INTEGRATION/u'*) ;;
   *) return 0 ;;
@@ -301,12 +302,17 @@ __automexia_print_colored_path() {
   printf '%s' "$reset_color"
 }
 
+__automexia_capture_status() {
+  __automexia_command_status=$?
+  # The user's first prompt hook still observes the command's exit status.
+  return "$__automexia_command_status"
+}
+
 __automexia_pre_prompt() {
-  # Preserve the status presented to subsequent prompt expansion/hooks. Because
-  # this hook is appended after existing PROMPT_COMMAND entries, those hooks see
-  # the real command status first; returning the captured status avoids turning
-  # it into 0 just because Automexia emitted metadata.
-  local status=$?
+  # User prompt hooks may succeed after a failed command. Retain the command
+  # status captured before those hooks, and consume it once per prompt.
+  local status=${__automexia_command_status:-$?}
+  unset __automexia_command_status
   printf '\e]1337;SetUserVar=automexia_env_pending=MQ==\a'
   printf '%s' "$__automexia_identity_frame"
   __automexia_publish_location_hints
@@ -336,13 +342,16 @@ __automexia_pre_prompt() {
 case "$(declare -p PROMPT_COMMAND 2>/dev/null)" in
   'declare -a'*)
   __automexia_has_pc=0
+  __automexia_has_capture=0
   for __automexia_pc in "${PROMPT_COMMAND[@]}"; do
     [[ $__automexia_pc == __automexia_pre_prompt ]] && __automexia_has_pc=1
+    [[ $__automexia_pc == __automexia_capture_status ]] && __automexia_has_capture=1
   done
-  # Append rather than prepend: existing hooks see the real command `$?`
-  # before Automexia emits metadata.
+  # Capture first without changing the status seen by existing hooks; emit
+  # metadata only after the user hooks have completed.
+  (( __automexia_has_capture )) || PROMPT_COMMAND=(__automexia_capture_status "${PROMPT_COMMAND[@]}")
   (( __automexia_has_pc )) || PROMPT_COMMAND+=(__automexia_pre_prompt)
-  unset __automexia_has_pc __automexia_pc
+  unset __automexia_has_pc __automexia_has_capture __automexia_pc
 ;;
   *)
   case ";${PROMPT_COMMAND:-};" in
@@ -355,6 +364,10 @@ case "$(declare -p PROMPT_COMMAND 2>/dev/null)" in
       PROMPT_COMMAND="${__automexia_pc_string};__automexia_pre_prompt"
       unset __automexia_pc_string
       ;;
+  esac
+  case "${PROMPT_COMMAND[0]}" in
+    __automexia_capture_status\;*) ;;
+    *) PROMPT_COMMAND="__automexia_capture_status;${PROMPT_COMMAND[0]}" ;;
   esac
   ;;
 esac

@@ -5,7 +5,7 @@
 //! default shell, and advertises Automexia's terminal identity through the
 //! inherited environment. User commands and PTY bytes are untouched.
 
-#[cfg(any(target_os = "windows", test))]
+#[cfg(target_os = "windows")]
 const POWERSHELL_SESSION_BOOTSTRAP: &str = concat!(
     "$r=$env:AUTOMEXIA_SHELL_INTEGRATION_ROOT;",
     "$p=$r+'\\powershell\\automexia.ps1';",
@@ -97,12 +97,19 @@ pub fn normalized_program(program: Option<&str>) -> Option<String> {
         Some(program.to_string())
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
+    {
+        program
+            .map(ToOwned::to_owned)
+            .or_else(|| teletypewriter::default_shell().ok())
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {
         program.map(ToOwned::to_owned)
     }
 }
 
+#[cfg(target_os = "windows")]
 pub fn normalized_args(
     program: Option<&str>,
     args: &[String],
@@ -164,15 +171,201 @@ pub fn normalized_args(
         }
         result
     }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (program, integration_available);
-        args.to_vec()
-    }
 }
 
-#[cfg(test)]
+/// Admit only ordinary interactive sessions. Commands, scripts and custom
+/// startup options retain native argv. macOS also admits native login switches.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn interactive_unix_shell<'a>(
+    program: Option<&'a str>,
+    args: &[String],
+    login: bool,
+) -> Option<&'a str> {
+    let name = std::path::Path::new(program?).file_name()?.to_str()?;
+    let supported = matches!(name, "bash" | "zsh" | "fish");
+    (supported
+        && args.iter().all(|arg| {
+            arg == "-i"
+                || (name == "fish" && arg == "--interactive")
+                || (login && matches!(arg.as_str(), "-l" | "--login" | "-il" | "-li"))
+        }))
+    .then_some(name)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+const BASH_LOGIN_BOOTSTRAP: &str =
+    "builtin source \"$AUTOMEXIA_SHELL_INTEGRATION_ROOT/bash/login-session.bash\"";
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn login_requested(args: &[String]) -> bool {
+    args.iter()
+        .any(|arg| matches!(arg.as_str(), "-l" | "--login" | "-il" | "-li"))
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn unix_session_args(
+    program: Option<&str>,
+    args: &[String],
+    root: Option<&std::path::Path>,
+    login: bool,
+) -> Vec<String> {
+    let Some(root) = root.filter(|path| path.is_absolute()) else {
+        return args.to_vec();
+    };
+    let mut result = Vec::new();
+    match interactive_unix_shell(program, args, login) {
+        Some("bash") if !login_requested(args) => {
+            let Some(rc) = root.join("bash/session.bash").to_str().map(str::to_owned)
+            else {
+                return args.to_vec();
+            };
+            result.extend(["--rcfile".to_owned(), rc]);
+        }
+        Some("fish") => {
+            // Fixed expression; the path remains quoted data in the child.
+            result.extend(["--init-command".to_owned(),
+                "if test -r \"$AUTOMEXIA_SHELL_INTEGRATION_ROOT/fish/automexia.fish\"; source \"$AUTOMEXIA_SHELL_INTEGRATION_ROOT/fish/automexia.fish\"; end".to_owned()]);
+        }
+        _ => {}
+    }
+    result.extend_from_slice(args);
+    result
+}
+
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
+fn linux_session_args(
+    program: Option<&str>,
+    args: &[String],
+    root: Option<&std::path::Path>,
+) -> Vec<String> {
+    unix_session_args(program, args, root, false)
+}
+
+#[cfg(any(target_os = "linux", all(test, target_os = "macos")))]
+pub fn prepare_linux_session(
+    program: Option<&str>,
+    args: &[String],
+    environment: &mut Vec<(String, String)>,
+    root: Option<&std::path::Path>,
+) -> Vec<String> {
+    prepare_unix_session(program, args, environment, root, false, false)
+}
+
+#[cfg(any(target_os = "macos", all(test, target_os = "linux")))]
+pub fn prepare_macos_session(
+    program: Option<&str>,
+    args: &[String],
+    environment: &mut Vec<(String, String)>,
+    root: Option<&std::path::Path>,
+    use_fork: bool,
+) -> Vec<String> {
+    // Resolve only for adapter selection. Keep None in the launch descriptor so
+    // the existing PTY owner still applies macOS /usr/bin/login policy.
+    let default_program = program
+        .is_none()
+        .then(teletypewriter::default_shell)
+        .and_then(Result::ok);
+    prepare_unix_session(
+        program.or(default_program.as_deref()),
+        args,
+        environment,
+        root,
+        true,
+        program.is_none() || use_fork,
+    )
+}
+
+/// Add child-only bootstrap variables using the resource root validated once
+/// by application startup. Profile values cannot redirect that resource owner.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn prepare_unix_session(
+    program: Option<&str>,
+    args: &[String],
+    environment: &mut Vec<(String, String)>,
+    root: Option<&std::path::Path>,
+    login: bool,
+    implicit_login: bool,
+) -> Vec<String> {
+    let disabled = environment
+        .iter()
+        .rev()
+        .find(|(key, _)| key == "AUTOMEXIA_SHELL_INTEGRATION")
+        .map(|(_, value)| value == "0")
+        .unwrap_or_else(|| {
+            std::env::var("AUTOMEXIA_SHELL_INTEGRATION").is_ok_and(|value| value == "0")
+        });
+    let Some(root) = root.filter(|root| root.is_absolute() && !disabled) else {
+        return args.to_vec();
+    };
+    let Some(root_text) = root.to_str() else {
+        return args.to_vec();
+    };
+    let Some(shell) = interactive_unix_shell(program, args, login) else {
+        return args.to_vec();
+    };
+    // macOS treats an unspecified shell and bare fork launches as login
+    // sessions. Materialize that flag before adding adapter arguments, which
+    // would otherwise hide the original empty-argv intent from the PTY owner.
+    let login_args = ["--login".to_owned()];
+    let args = if implicit_login && args.is_empty() {
+        &login_args[..]
+    } else {
+        args
+    };
+    let zsh_bootstrap = root.join("zsh/session").to_string_lossy().into_owned();
+    let already_prepared = environment
+        .iter()
+        .any(|(key, value)| key == "ZDOTDIR" && value == &zsh_bootstrap);
+    if shell == "zsh" && !already_prepared {
+        let zdotdir = environment
+            .iter()
+            .rev()
+            .find(|(key, _)| key == "ZDOTDIR")
+            .map(|(_, value)| value.clone())
+            .or_else(|| std::env::var("ZDOTDIR").ok());
+        environment.retain(|(key, _)| {
+            key != "ZDOTDIR"
+                && key != "AUTOMEXIA_ORIGINAL_ZDOTDIR"
+                && key != "AUTOMEXIA_ORIGINAL_ZDOTDIR_SET"
+        });
+        // Always shadow an inherited bootstrap marker, including an unset
+        // original. The wrapper never inherits another session's startup path.
+        environment.push((
+            "AUTOMEXIA_ORIGINAL_ZDOTDIR_SET".into(),
+            if zdotdir.is_some() { "1" } else { "0" }.into(),
+        ));
+        environment.push((
+            "AUTOMEXIA_ORIGINAL_ZDOTDIR".into(),
+            zdotdir.unwrap_or_default(),
+        ));
+        environment.push(("ZDOTDIR".into(), zsh_bootstrap));
+    }
+    if shell == "bash" && login_requested(args) {
+        // --rcfile is ignored by a login Bash. A one-shot prompt entry runs
+        // after native profile processing, without emulating login startup.
+        let previous = environment
+            .iter()
+            .rev()
+            .find(|(key, _)| key == "PROMPT_COMMAND")
+            .map(|(_, value)| value.clone())
+            .or_else(|| std::env::var("PROMPT_COMMAND").ok())
+            .unwrap_or_default();
+        if !previous.contains(BASH_LOGIN_BOOTSTRAP) {
+            let value = if previous.is_empty() {
+                BASH_LOGIN_BOOTSTRAP.to_owned()
+            } else {
+                format!("{previous}\n{BASH_LOGIN_BOOTSTRAP}")
+            };
+            environment.retain(|(key, _)| key != "PROMPT_COMMAND");
+            environment.push(("PROMPT_COMMAND".into(), value));
+        }
+    }
+    environment.retain(|(key, _)| key != super::shell_integration::ROOT_ENV);
+    environment.push((super::shell_integration::ROOT_ENV.into(), root_text.into()));
+    unix_session_args(program, args, Some(root), login)
+}
+
+#[cfg(all(test, target_os = "windows"))]
 mod tests {
     use super::*;
 
@@ -792,6 +985,439 @@ try {
                     "host-specific interactive option: {program}, {option}"
                 );
             }
+        }
+    }
+}
+
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
+mod linux_session_tests {
+    use super::*;
+
+    #[test]
+    fn linux_default_bash_receives_session_integration() {
+        let args = linux_session_args(
+            Some("/bin/bash"),
+            &[],
+            Some(std::path::Path::new("/package/shell-integration")),
+        );
+        assert_eq!(args.first().map(String::as_str), Some("--rcfile"));
+        assert!(args
+            .get(1)
+            .is_some_and(|path| path.ends_with("/bash/session.bash")));
+    }
+
+    #[test]
+    fn linux_default_fish_receives_session_integration() {
+        let args = linux_session_args(
+            Some("/usr/bin/fish"),
+            &[],
+            Some(std::path::Path::new("/package/shell-integration")),
+        );
+        assert_eq!(args.first().map(String::as_str), Some("--init-command"));
+        assert!(args
+            .get(1)
+            .is_some_and(|command| command.contains("automexia.fish")));
+    }
+
+    #[test]
+    fn linux_explicit_commands_and_startup_overrides_remain_native() {
+        for (program, args) in [
+            ("bash", vec!["-c", "printf fixture"]),
+            ("bash", vec!["--norc", "-i"]),
+            ("bash", vec!["--rcfile", "/example/custom.rc", "-i"]),
+            ("bash", vec!["/example/task.sh"]),
+            ("fish", vec!["--command", "printf fixture"]),
+            ("fish", vec!["--no-config", "-i"]),
+            ("zsh", vec!["-f", "-i"]),
+            ("bash", vec!["--login"]),
+            ("zsh", vec!["--login"]),
+            ("fish", vec!["--login"]),
+            ("python3", vec!["-i"]),
+        ] {
+            let args: Vec<String> = args.into_iter().map(str::to_owned).collect();
+            assert_eq!(
+                linux_session_args(
+                    Some(program),
+                    &args,
+                    Some(std::path::Path::new("/package"))
+                ),
+                args
+            );
+            assert_eq!(linux_session_args(Some(program), &args, None), args);
+        }
+        assert!(linux_session_args(Some("bash"), &[], None).is_empty());
+        assert!(linux_session_args(Some("fish"), &[], None).is_empty());
+    }
+    #[test]
+    fn unix_native_shell_startup_preserves_rc_login_and_emits_boundaries() {
+        use std::process::Command;
+        let resources = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../shell-integration");
+        for (shell, login) in [
+            ("bash", false),
+            ("zsh", false),
+            ("fish", false),
+            ("bash", true),
+            ("zsh", true),
+            ("fish", true),
+        ] {
+            let program = if cfg!(target_os = "macos") && shell != "fish" {
+                format!("/bin/{shell}")
+            } else {
+                shell.to_owned()
+            };
+            let home = tempfile::tempdir().unwrap();
+            std::fs::write(
+                home.path().join(".bashrc"),
+                "export AMX_TEST_USER_RC=loaded\n",
+            )
+            .unwrap();
+            std::fs::write(home.path().join(".zshenv"), "export AMX_TEST_ENV=loaded\n")
+                .unwrap();
+            std::fs::write(
+                home.path().join(".zshrc"),
+                "export AMX_TEST_USER_RC=loaded\n",
+            )
+            .unwrap();
+            std::fs::write(home.path().join(".bash_profile"),
+                "export AMX_TEST_USER_RC=loaded\nshopt -q login_shell && export AMX_TEST_LOGIN=login_loaded\nPROMPT_COMMAND=\"${PROMPT_COMMAND}\nprintf 'AMX_USER_PROMPT\\n'\"\n").unwrap();
+            std::fs::write(
+                home.path().join(".zlogin"),
+                "export AMX_TEST_LOGIN=login_loaded\n",
+            )
+            .unwrap();
+            let fish_config = home.path().join(".config/fish");
+            std::fs::create_dir_all(&fish_config).unwrap();
+            std::fs::write(
+                fish_config.join("config.fish"),
+                "set -gx AMX_TEST_USER_RC loaded\nif status is-login; set -gx AMX_TEST_LOGIN login_loaded; end\n",
+            )
+            .unwrap();
+            let mut environment =
+                vec![("AUTOMEXIA_SHELL_INTEGRATION".into(), "1".into())];
+            if shell == "zsh" {
+                let startup = home.path().join("custom startup [literal]");
+                std::fs::create_dir(&startup).unwrap();
+                std::fs::write(
+                    startup.join(".zshenv"),
+                    "export AMX_TEST_ENV=custom_loaded\n",
+                )
+                .unwrap();
+                std::fs::write(
+                    startup.join(".zshrc"),
+                    "export AMX_TEST_USER_RC=loaded\n",
+                )
+                .unwrap();
+                std::fs::write(
+                    startup.join(".zlogin"),
+                    "export AMX_TEST_LOGIN=login_loaded\n",
+                )
+                .unwrap();
+                environment.push(("ZDOTDIR".into(), startup.to_str().unwrap().into()));
+            }
+            let prepare = |program,
+                           args: &[String],
+                           environment: &mut Vec<(String, String)>,
+                           root| {
+                if login {
+                    prepare_macos_session(program, args, environment, root, false)
+                } else {
+                    prepare_linux_session(program, args, environment, root)
+                }
+            };
+            let native_args = if login {
+                vec!["--login".into(), "-i".into()]
+            } else {
+                vec!["-i".into()]
+            };
+            let args = prepare(
+                Some(&program),
+                &native_args,
+                &mut environment,
+                Some(&resources),
+            );
+            // Exercise repeated preparation, as used by cloning tabs/panes.
+            let args = prepare(Some(&program), &args, &mut environment, Some(&resources));
+            // A real PTY is required: Fish suppresses prompt events on pipes,
+            // and Bash's command-start marker belongs to Readline's Enter key.
+            let output = Command::new("python3")
+                .args([
+                    "-c",
+                    r#"
+import errno, os, pty, select, signal, sys, time
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp(sys.argv[1], sys.argv[1:])
+result = bytearray()
+pending = [
+    b"printf 'AMX_RC:%s\\n' \"$AMX_TEST_USER_RC\"\n",
+    b"false\n",
+    b"printenv AMX_TEST_ENV AMX_TEST_LOGIN\n",
+    b"printf 'AMX_END\\n'\n",
+    b"exit 0\n",
+]
+deadline = time.monotonic() + 15
+seen = 0
+status = None
+try:
+    while time.monotonic() < deadline:
+        ready, _, _ = select.select([fd], [], [], .05)
+        if ready:
+            try:
+                chunk = os.read(fd, 4096)
+            except OSError as error:
+                if error.errno != errno.EIO:
+                    raise
+                break
+            if not chunk:
+                break
+            result.extend(chunk)
+            if len(result) > 131072:
+                raise RuntimeError('shell probe output limit')
+            prompts = result.count(b'\x1b]133;B')
+            if prompts > seen and pending:
+                seen = prompts
+                os.write(fd, pending.pop(0))
+        finished, child_status = os.waitpid(pid, os.WNOHANG)
+        if finished:
+            status = child_status
+            break
+finally:
+    if status is None:
+        finished, status = os.waitpid(pid, os.WNOHANG)
+        if not finished:
+            os.kill(pid, signal.SIGKILL)
+            _, status = os.waitpid(pid, 0)
+    os.close(fd)
+sys.stdout.buffer.write(result)
+sys.exit(os.waitstatus_to_exitcode(status))
+"#,
+                    &program,
+                ])
+                .args(args)
+                .env_remove("ZDOTDIR")
+                .env_remove("AUTOMEXIA_ORIGINAL_ZDOTDIR")
+                .env_remove("AUTOMEXIA_ZSH_INTEGRATION_LOADED")
+                .env_remove("AUTOMEXIA_FISH_INTEGRATION_LOADED")
+                .env("HOME", home.path())
+                .env("XDG_CONFIG_HOME", home.path().join(".config"))
+                .env(
+                    "AUTOMEXIA_CONFIG_HOME",
+                    home.path().join(".config/automexia"),
+                )
+                .env("TERM_PROGRAM", "Automexia")
+                .env("TERM", "xterm-256color")
+                .env("HISTFILE", "/dev/null")
+                .env("AUTOMEXIA_ALIASES", "0")
+                .env("AUTOMEXIA_LS", "0")
+                .envs(environment)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{shell}: native startup failed or timed out"
+            );
+            let text = String::from_utf8_lossy(&output.stdout);
+            assert!(text.contains("AMX_RC:loaded"), "{shell}: user startup lost");
+            if shell == "zsh" {
+                assert!(
+                    text.contains("custom_loaded"),
+                    "custom ZDOTDIR startup lost"
+                );
+            }
+            if login {
+                assert!(
+                    text.contains("login_loaded"),
+                    "{shell}: native login startup lost"
+                );
+            }
+            assert!(text.contains("AMX_END"), "{shell}: command input lost");
+            assert!(
+                text.contains("\x1b]133;A;"),
+                "{shell}: prompt boundary absent"
+            );
+            assert!(
+                text.contains("\x1b]133;C"),
+                "{shell}: command boundary absent"
+            );
+            assert!(
+                text.contains("\x1b]133;D;1"),
+                "{shell}: command result absent"
+            );
+        }
+    }
+
+    #[test]
+    fn linux_optout_and_unavailable_resources_preserve_launch() {
+        for shell in ["bash", "zsh", "fish"] {
+            for resource in [None, Some(std::path::Path::new("relative"))] {
+                let mut environment = vec![("ZDOTDIR".into(), "/user/config".into())];
+                let before = environment.clone();
+                assert_eq!(
+                    prepare_linux_session(
+                        Some(shell),
+                        &["-i".into()],
+                        &mut environment,
+                        resource
+                    ),
+                    ["-i"]
+                );
+                assert_eq!(environment, before);
+            }
+            let mut environment =
+                vec![("AUTOMEXIA_SHELL_INTEGRATION".into(), "0".into())];
+            let before = environment.clone();
+            assert!(prepare_linux_session(
+                Some(shell),
+                &[],
+                &mut environment,
+                Some(std::path::Path::new("/package"))
+            )
+            .is_empty());
+            assert_eq!(environment, before);
+        }
+    }
+
+    #[test]
+    fn linux_zsh_bootstrap_retains_original_directory_after_repeated_preparation() {
+        let mut environment = vec![
+            ("ZDOTDIR".into(), "/user/config with spaces".into()),
+            ("AUTOMEXIA_SHELL_INTEGRATION".into(), "1".into()),
+        ];
+        let root = std::path::Path::new("/package");
+        prepare_linux_session(Some("zsh"), &[], &mut environment, Some(root));
+        let before = environment.clone();
+        prepare_linux_session(Some("zsh"), &[], &mut environment, Some(root));
+        assert_eq!(environment, before);
+        assert!(environment.contains(&(
+            "AUTOMEXIA_ORIGINAL_ZDOTDIR".into(),
+            "/user/config with spaces".into()
+        )));
+    }
+
+    #[test]
+    fn linux_explicit_optout_survives_preexisting_profile_integration() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../shell-integration");
+        for (shell, command) in [
+            (
+                "bash",
+                r#". "$AUTOMEXIA_SHELL_INTEGRATION_ROOT/bash/automexia.bash"; printf 'ENABLED:%s' "$AUTOMEXIA_SHELL_INTEGRATION""#,
+            ),
+            (
+                "zsh",
+                r#"source "$AUTOMEXIA_SHELL_INTEGRATION_ROOT/zsh/automexia.zsh"; printf 'ENABLED:%s' "$AUTOMEXIA_SHELL_INTEGRATION""#,
+            ),
+            (
+                "fish",
+                r#"source "$AUTOMEXIA_SHELL_INTEGRATION_ROOT/fish/automexia.fish"; printf 'ENABLED:%s' "$AUTOMEXIA_SHELL_INTEGRATION""#,
+            ),
+        ] {
+            let home = tempfile::tempdir().unwrap();
+            let output = std::process::Command::new(shell)
+                .args(["-c", command])
+                .env("HOME", home.path())
+                .env("XDG_CONFIG_HOME", home.path())
+                .env("ZDOTDIR", home.path())
+                .env("TERM_PROGRAM", "Automexia")
+                .env("AUTOMEXIA_SHELL_INTEGRATION_ROOT", &root)
+                .env("AUTOMEXIA_SHELL_INTEGRATION", "0")
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{shell}: explicit opt-out failed");
+            assert!(
+                output.stdout == b"ENABLED:0",
+                "{shell}: disabled integration activated"
+            );
+        }
+    }
+}
+
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
+mod macos_session_tests {
+    use super::*;
+
+    #[test]
+    fn macos_login_shells_keep_native_login_and_receive_integration() {
+        for shell in ["/bin/bash", "/bin/zsh", "/opt/homebrew/bin/fish"] {
+            let mut environment =
+                vec![("AUTOMEXIA_SHELL_INTEGRATION".into(), "1".into())];
+            let args = prepare_macos_session(
+                Some(shell),
+                &["--login".into()],
+                &mut environment,
+                Some(std::path::Path::new("/package/shell-integration")),
+                false,
+            );
+            assert!(
+                args.iter().any(|arg| arg == "--login"),
+                "login startup lost"
+            );
+            assert!(
+                environment
+                    .iter()
+                    .any(|(key, _)| key == "AUTOMEXIA_SHELL_INTEGRATION_ROOT"),
+                "{shell}: automatic integration absent"
+            );
+            if shell.ends_with("bash") {
+                assert_eq!(args, ["--login"]);
+                assert!(environment
+                    .iter()
+                    .any(|(key, value)| key == "PROMPT_COMMAND"
+                        && value.contains("login-session.bash")));
+            }
+        }
+    }
+
+    #[test]
+    fn macos_explicit_execution_and_optout_remain_native() {
+        for args in [
+            vec!["-c", "printf fixture"],
+            vec!["--noprofile"],
+            vec!["-f"],
+            vec!["--rcfile", "/fixture/rc"],
+            vec!["-lic", "printf fixture"],
+        ] {
+            let args: Vec<_> = args.into_iter().map(str::to_owned).collect();
+            let mut env = vec![("ZDOTDIR".into(), "/fixture/config".into())];
+            let before = env.clone();
+            assert_eq!(
+                prepare_macos_session(
+                    Some("zsh"),
+                    &args,
+                    &mut env,
+                    Some(std::path::Path::new("/package")),
+                    false
+                ),
+                args
+            );
+            assert_eq!(env, before);
+        }
+        let mut env = vec![("AUTOMEXIA_SHELL_INTEGRATION".into(), "0".into())];
+        let before = env.clone();
+        assert_eq!(
+            prepare_macos_session(
+                Some("bash"),
+                &["--login".into()],
+                &mut env,
+                Some(std::path::Path::new("/package")),
+                false
+            ),
+            ["--login"]
+        );
+        assert_eq!(env, before);
+    }
+    #[test]
+    fn macos_empty_fork_arguments_preserve_login_and_repeated_preparation() {
+        for shell in ["bash", "zsh", "fish"] {
+            let root = Some(std::path::Path::new("/package"));
+            let mut env = vec![("AUTOMEXIA_SHELL_INTEGRATION".into(), "1".into())];
+            let args = prepare_macos_session(Some(shell), &[], &mut env, root, true);
+            assert!(args.iter().any(|arg| arg == "--login"));
+            let before = env.clone();
+            let again = prepare_macos_session(Some(shell), &args, &mut env, root, true);
+            assert_eq!(again, args);
+            assert_eq!(env, before);
         }
     }
 }

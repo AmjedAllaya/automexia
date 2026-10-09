@@ -148,3 +148,13 @@ Keep the raw JSON and methodology publicly accessible at immutable revision URLs
 before making any performance claim. GitHub artifact retention alone is not a
 permanent public research archive. FPS may be exposed as a diagnostic counter;
 it is not an acceptance metric or a substitute for these application measurements.
+
+
+The [native Unix session scenarios](../../tests/integration/unix-session-ui.py)
+also record bounded shell-ready and command-roundtrip diagnostic samples on
+Linux and macOS. These samples include 50 ms polling, fixture setup and desktop
+automation; they are not input-to-present measurements or controlled regression
+baselines. The macOS native workflow runs renderer microbenchmarks and retains
+raw Criterion samples separately for each runner architecture. Shared hosted
+hardware numbers must not be compared across machines or used for performance
+claims. Use the pinned application profiles above for regression decisions.

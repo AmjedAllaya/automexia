@@ -157,6 +157,7 @@ jobs:
           glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev
           libwayland-dev libx11-xcb-dev shellcheck zsh fish
           fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core
+          xvfb xauth xdotool imagemagick mesa-vulkan-drivers libxkbcommon-x11-0
 
       - name: Cache Cargo registry and Git sources
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -222,6 +223,16 @@ jobs:
       - name: SSH actual-generator Bash, Zsh and Fish controlling-PTY regression
         run: python3 tools/ci/check_ssh_library.py --shell-only --require-posix-shells
 
+      - name: Native Linux session and UI regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build -p automexia-terminal --bin automexia --all-features --locked
+          driver=$(dpkg -L mesa-vulkan-drivers | awk '/\/lvp_icd[^/]*\.json$/ { print }')
+          test -f "$driver"
+          export VK_DRIVER_FILES="$driver"
+          timeout --signal=TERM --kill-after=20s 240s xvfb-run -a -s '-screen 0 1600x1200x24 -nolisten tcp' python3 tests/integration/unix-session-ui.py --binary target/debug/automexia --captures artifacts/visual-quality/native-linux
+
       - name: Report compiler cache statistics
         if: ${{ always() && steps.sccache.outcome == 'success' }}
         run: sccache --show-stats
@@ -238,6 +249,7 @@ jobs:
           name: visual-regression-reports
           path: |
             artifacts/visual-quality/summary.json
+            artifacts/visual-quality/native-linux
             artifacts/visual-quality/controlled-tests.log
             artifacts/visual-quality/captures/*.json
             artifacts/visual-quality/captures/*--*.png

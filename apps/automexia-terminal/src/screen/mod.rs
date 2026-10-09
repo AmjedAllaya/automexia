@@ -2985,8 +2985,8 @@ impl Screen<'_> {
                     Act::Hide => {
                         self.context_manager.hide();
                     }
-                    #[cfg(target_os = "macos")]
                     Act::HideOtherApplications => {
+                        #[cfg(target_os = "macos")]
                         self.context_manager.hide_other_apps();
                     }
                     Act::SelectNextSplit => {

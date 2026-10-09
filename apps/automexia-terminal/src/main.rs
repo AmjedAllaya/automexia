@@ -389,7 +389,7 @@ fn list_compatibility_keybinds(
 
     if profile == ProfileId::Automexia && config.bindings.keybinds.is_empty() {
         config.keyboard.binding_profile = ProfileId::Automexia;
-        let rows = crate::bindings::default_key_bindings(&config)
+        let rows = crate::bindings::default_key_bindings_for_platform(&config, platform)
             .into_iter()
             .filter_map(|binding| {
                 let trigger = format!("{:?}+{:?}", binding.mods, binding.trigger);

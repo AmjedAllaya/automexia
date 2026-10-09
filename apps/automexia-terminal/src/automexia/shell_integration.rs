@@ -73,6 +73,16 @@ fn usable_root(path: &Path) -> bool {
             {
                 regular_file(&path.join("install-unix.sh"))
                     && regular_file(&path.join("bash").join("automexia.bash"))
+                    && (!cfg!(any(target_os = "linux", target_os = "macos"))
+                        || [
+                            "bash/session.bash",
+                            "bash/login-session.bash",
+                            "zsh/automexia.zsh",
+                            "zsh/session/.zshenv",
+                            "fish/automexia.fish",
+                        ]
+                        .iter()
+                        .all(|file| regular_file(&path.join(file))))
             }
         }
 }
@@ -385,6 +395,18 @@ mod tests {
             fs::create_dir_all(root.join("bash")).unwrap();
             fs::write(root.join("install-unix.sh"), b"#!/bin/sh").unwrap();
             fs::write(root.join("bash").join("automexia.bash"), b"# test").unwrap();
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            for file in [
+                "bash/session.bash",
+                "bash/login-session.bash",
+                "zsh/automexia.zsh",
+                "zsh/session/.zshenv",
+                "fish/automexia.fish",
+            ] {
+                let file = root.join(file);
+                fs::create_dir_all(file.parent().unwrap()).unwrap();
+                fs::write(file, b"# test").unwrap();
+            }
         }
     }
 

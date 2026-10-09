@@ -328,6 +328,15 @@ struct ShellUser {
     shell: String,
 }
 
+/// Resolve the default shell using the same environment/passwd authority as
+/// PTY creation. Explicit executables bypass this lookup.
+pub fn default_shell() -> Result<String, Error> {
+    match std::env::var("SHELL") {
+        Ok(shell) => Ok(shell),
+        Err(_) => get_pw_entry().map(|entry| entry.shell.to_owned()),
+    }
+}
+
 impl ShellUser {
     /// look for shell, username, longname, and home dir in the respective environment variables
     /// before falling back on looking in to `passwd`.
@@ -734,9 +743,11 @@ fn create_pty_with_spawn_inner(
 
     if exact_launch {
         builder.env_clear();
-    } else if launch_mode == LaunchMode::Spawn {
-        builder.env("USER", user.user);
-        builder.env("HOME", user.home);
+    } else {
+        if launch_mode == LaunchMode::Spawn {
+            builder.env("USER", user.user);
+            builder.env("HOME", user.home);
+        }
         if let Some(env) = env {
             builder.envs(env);
         }
@@ -880,13 +891,32 @@ pub fn create_pty_with_fork(
     width: u16,
     height: u16,
 ) -> Result<Pty, Error> {
+    create_pty_with_fork_environment(
+        shell, args, &None, None, columns, rows, width, height,
+    )
+}
+
+/// Deliver an enriched launch descriptor while retaining fork compatibility
+/// policy (including macOS bare-shell login argv[0]). This uses the same
+/// transactional PTY/process owner as the legacy entry and ordinary spawn.
+#[allow(clippy::too_many_arguments)]
+pub fn create_pty_with_fork_environment(
+    shell: Option<&str>,
+    args: &[String],
+    working_directory: &Option<String>,
+    environment: Option<Vec<(String, String)>>,
+    columns: u16,
+    rows: u16,
+    width: u16,
+    height: u16,
+) -> Result<Pty, Error> {
     create_pty_with_spawn_inner(
         LaunchMode::ForkCompatibility,
         None,
         shell,
         args.to_vec(),
-        &None,
-        None,
+        working_directory,
+        environment,
         columns,
         rows,
         width,

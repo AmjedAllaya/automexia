@@ -54,7 +54,7 @@ pub fn next_rich_text_id() -> usize {
 #[cfg(target_os = "windows")]
 use teletypewriter::create_pty;
 #[cfg(not(target_os = "windows"))]
-use teletypewriter::{create_pty_with_fork, create_pty_with_spawn};
+use teletypewriter::{create_pty_with_fork_environment, create_pty_with_spawn};
 
 #[allow(
     dead_code,
@@ -704,10 +704,10 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     ) -> Result<Context<T>, Box<dyn Error>> {
         let route_id = ROUTE_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
 
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
         let launch_program =
             crate::automexia::shell::normalized_program(config.shell.program.as_deref());
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(not(any(target_os = "windows", target_os = "linux")))]
         let launch_program = config.shell.program.clone();
 
         #[cfg(target_os = "windows")]
@@ -716,13 +716,46 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             &config.shell.args,
             crate::automexia::shell_integration::session_available(),
         );
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(not(any(
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "macos"
+        )))]
         let launch_args = config.shell.args.clone();
+
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let mut launch_environment = config.environment.clone();
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        let launch_environment = config.environment.clone();
+        #[cfg(target_os = "linux")]
+        let launch_args = {
+            let root = std::env::var_os(crate::automexia::shell_integration::ROOT_ENV)
+                .map(std::path::PathBuf::from);
+            crate::automexia::shell::prepare_linux_session(
+                launch_program.as_deref(),
+                &config.shell.args,
+                &mut launch_environment,
+                root.as_deref(),
+            )
+        };
+
+        #[cfg(target_os = "macos")]
+        let launch_args = {
+            let root = std::env::var_os(crate::automexia::shell_integration::ROOT_ENV)
+                .map(std::path::PathBuf::from);
+            crate::automexia::shell::prepare_macos_session(
+                launch_program.as_deref(),
+                &config.shell.args,
+                &mut launch_environment,
+                root.as_deref(),
+                config.use_fork,
+            )
+        };
 
         let launch_descriptor = SessionLaunchDescriptor::new(
             launch_program,
             launch_args,
-            config.environment.clone(),
+            launch_environment,
             config.profile_identity.clone(),
             config.working_dir.clone(),
         );
@@ -782,11 +815,18 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         let pty;
         #[cfg(not(target_os = "windows"))]
         {
+            // Both policies use the same transactional owner. Deliver the
+            // complete descriptor without changing macOS native login policy.
             if config.use_fork {
                 tracing::info!("automexia -> teletypewriter: create_pty_with_fork");
-                pty = match create_pty_with_fork(
-                    config.shell.program.as_deref(),
-                    &config.shell.args,
+                pty = match create_pty_with_fork_environment(
+                    launch_descriptor.program(),
+                    launch_descriptor.args(),
+                    &launch_descriptor
+                        .starting_directory()
+                        .map(ToOwned::to_owned),
+                    (!launch_descriptor.environment().is_empty())
+                        .then(|| launch_descriptor.environment().to_vec()),
                     cols,
                     rows,
                     initial_winsize.width,

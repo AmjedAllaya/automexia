@@ -482,3 +482,65 @@ fn launch_policies_establish_a_controlling_terminal() {
         );
     }
 }
+
+#[test]
+fn fork_launch_delivers_explicit_environment_and_cwd_without_changing_policy() {
+    isolated_case(
+        "fork_launch_delivers_explicit_environment_and_cwd_without_changing_policy",
+        || {
+            let directory = tempfile::tempdir().unwrap();
+            let cwd = Some(directory.path().to_str().unwrap().to_owned());
+            let environment: Option<Vec<(String, String)>> = Some(vec![
+                ("AUTOMEXIA_BOUNDARY_VALUE".into(), "configured-value".into()),
+                ("AUTOMEXIA_BOUNDARY_CWD".into(), cwd.clone().unwrap()),
+            ]);
+            let args = [
+                "-c".into(),
+                "printf '%s|' \"$AUTOMEXIA_BOUNDARY_VALUE\"; test \"$PWD\" = \"$AUTOMEXIA_BOUNDARY_CWD\" && printf cwd-ok".into(),
+            ];
+            let pty = create_pty_with_fork_environment(
+                Some("/bin/sh"),
+                &args,
+                &cwd,
+                environment,
+                80,
+                24,
+                0,
+                0,
+            )
+            .unwrap();
+            assert_eq!(collect_child_output(pty), b"configured-value|cwd-ok");
+        },
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn fork_environment_keeps_bare_bash_login_startup() {
+    isolated_case("fork_environment_keeps_bare_bash_login_startup", || {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join(".bash_profile"),
+            "shopt -q login_shell && printf fork-login-ok; exit 0\n",
+        )
+        .unwrap();
+        let pty = create_pty_with_fork_environment(
+            Some("/bin/bash"),
+            &[],
+            &Some(directory.path().to_str().unwrap().into()),
+            Some(vec![(
+                "HOME".into(),
+                directory.path().to_str().unwrap().into(),
+            )]),
+            80,
+            24,
+            0,
+            0,
+        )
+        .unwrap();
+        let output = collect_child_output(pty);
+        assert!(output
+            .windows(b"fork-login-ok".len())
+            .any(|window| window == b"fork-login-ok"));
+    });
+}

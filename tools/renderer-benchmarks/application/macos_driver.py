@@ -121,20 +121,29 @@ class MacDriver:
             if front:
                 self.cf.CFRelease(front)
 
+    @staticmethod
+    def key_spec(key):
+        codes = {'F5': 96, 'F6': 97, 'F8': 100, 'Escape': 53,
+                 's': 1, 'e': 14, 'a': 0, 'r': 15, 'c': 8, 'h': 4,
+                 'n': 45, 'd': 2, 'l': 37, 'x': 7, 'q': 12, 'p': 35}
+        fields = key.split('+')
+        modifiers, base = fields[:-1], fields[-1]
+        masks = {'shift': 1 << 17, 'ctrl': 1 << 18, 'alt': 1 << 19, 'meta': 1 << 20}
+        if base not in codes or len(modifiers) != len(set(modifiers)) or any(m not in masks for m in modifiers):
+            raise BenchmarkError('unsupported fixed probe key')
+        return codes[base], sum(masks[m] for m in modifiers), base
+
     def key(self, key):
         self.check()
-        codes = {'F5': 96, 'F6': 97, 'F8': 100, 'Escape': 53,
-                 's': 1, 'e': 14, 'a': 0, 'r': 15, 'c': 8, 'h': 4, 'n': 45, 'd': 2, 'l': 37, 'x': 7, 'q': 12}
-        if key not in codes:
-            raise BenchmarkError('unsupported fixed probe key')
+        code, flags, base = self.key_spec(key)
         for down in (True, False):
-            event = self.cg.CGEventCreateKeyboardEvent(None, codes[key], down)
+            event = self.cg.CGEventCreateKeyboardEvent(None, code, down)
             if not event:
                 raise BenchmarkError('macOS keyboard probe unavailable')
             try:
-                self.cg.CGEventSetFlags(event, 0)
-                if len(key) == 1:
-                    units = (ct.c_uint16 * 1)(ord(key))
+                self.cg.CGEventSetFlags(event, flags)
+                if len(base) == 1 and not flags:
+                    units = (ct.c_uint16 * 1)(ord(base))
                     self.cg.CGEventKeyboardSetUnicodeString(event, 1, units)
                 self.cg.CGEventPostToPid(self.process.pid, event)
             finally:

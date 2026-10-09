@@ -1368,7 +1368,7 @@ def validate_document(document: Any, root: Path = ROOT) -> dict[str, int]:
                         f"{feature_id}.{field} is missing required scenario detail {detail!r}"
                     )
 
-        owners = _unique_strings(feature["evidence_owners"], f"{feature_id}.evidence_owners", minimum=1, maximum=12)
+        owners = _unique_strings(feature["evidence_owners"], f"{feature_id}.evidence_owners", minimum=1, maximum=16)
         for owner_index, owner in enumerate(owners):
             _repository_path(root, owner, f"{feature_id}.evidence_owners[{owner_index}]")
 

@@ -74,6 +74,9 @@ jobs:
           glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev
           libwayland-dev libx11-xcb-dev fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core
           xvfb xauth xdotool python3-pyatspi dbus-x11 imagemagick libxkbcommon-x11-0
+      - name: Install macOS shell scenario prerequisite
+        if: runner.os == 'macOS'
+        run: brew install fish
       - name: Check evidence contracts and build the strict comparator
         shell: bash
         run: |
@@ -108,6 +111,34 @@ jobs:
           set -euo pipefail
           cargo build -p automexia-terminal --bin automexia --features visual-test-hooks --locked
           GSETTINGS_BACKEND=memory timeout --signal=TERM --kill-after=8s 180s dbus-run-session -- xvfb-run -a -s '-screen 0 1280x800x24 -nolisten tcp' /usr/bin/python3 tests/integration/accessibility-linux.py --binary target/debug/automexia --captures artifacts/visual-quality/native-linux
+      - name: Native macOS shell and PTY owners
+        if: always() && !cancelled() && runner.os == 'macOS' && steps.visual.outcome != 'skipped'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test -p automexia-terminal --lib --all-features --locked automexia::shell::
+          cargo test -p teletypewriter --lib --locked
+      - name: Native macOS application sessions and keyboard UI
+        if: always() && !cancelled() && runner.os == 'macOS' && steps.visual.outcome != 'skipped'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build -p automexia-terminal --bin automexia --all-features --locked
+          python tests/integration/unix-session-ui.py --binary target/debug/automexia --captures artifacts/visual-quality/native-macos --timeout 480
+      - name: Native macOS renderer microbenchmarks
+        if: always() && !cancelled() && runner.os == 'macOS' && steps.visual.outcome != 'skipped'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo bench -p automexia-renderer-benchmarks --bench text_fit --locked -- responsive_fitting --sample-size 10 --measurement-time 1 --warm-up-time 1
+      - name: Retain macOS benchmark raw data
+        if: always() && runner.os == 'macOS'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: macos-microbench-${{ matrix.runner }}
+          path: target/criterion/responsive_fitting
+          if-no-files-found: warn
+          retention-days: 14
       - name: Preserve exact geometry, environment and mutation reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -120,6 +151,7 @@ jobs:
             artifacts/visual-quality/captures/*--*.png
             artifacts/visual-quality/diffs
             artifacts/visual-quality/native-linux
+            artifacts/visual-quality/native-macos
           if-no-files-found: error
           retention-days: 14
       - name: Preserve full candidate images for failed or missing baselines
@@ -134,4 +166,4 @@ jobs:
           retention-days: 3
       - name: State the evidence boundary
         shell: bash
-        run: echo 'Controlled raster and mutation evidence only. Missing reviewed baselines, native compositor, real IME, screen-reader and physical-display evidence are not certified by this job.'
+        run: echo 'Controlled raster and mutation checks run on each platform. macOS additionally runs native shell/PTYs, AX/Quartz application interaction and diagnostic microbenchmarks. Missing reviewed baselines, native compositor pixels, real IME, screen-reader and physical-display evidence are not certified by this job.'

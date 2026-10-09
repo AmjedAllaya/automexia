@@ -238,7 +238,9 @@ impl SessionLaunchDescriptor {
         live: &LiveSessionMetadata,
     ) -> Result<Self, CloneLaunchError> {
         let live_distro = nonempty(live.distro.as_deref());
-        if live_distro.is_some() || self.is_wsl() {
+        // A native Linux process may itself run inside WSL. Its distro is
+        // display metadata, not a request to invoke the Windows WSL launcher.
+        if (cfg!(target_os = "windows") && live_distro.is_some()) || self.is_wsl() {
             return self.fresh_wsl_clone(live);
         }
 
@@ -765,6 +767,7 @@ mod tests {
             .any(|pair| pair == ["--cd", "/home/alice/safe"]));
     }
 
+    #[cfg(target_os = "windows")]
     #[test]
     fn nested_wsl_is_reconstructed_instead_of_falling_back_to_powershell() {
         let source = descriptor("powershell.exe", &["-NoLogo"], r"D:\work");
@@ -795,6 +798,7 @@ mod tests {
         assert!(clone.is_wsl());
     }
 
+    #[cfg(target_os = "windows")]
     #[test]
     fn incomplete_nested_wsl_never_silently_opens_powershell() {
         let source = descriptor("powershell.exe", &["-NoLogo"], r"D:\work");
@@ -956,5 +960,25 @@ mod contract_tests {
         assert!(descriptor
             .launch_contract(OperationId::new(1), SessionId::new(1), 1)
             .is_err());
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_wsl_metadata_does_not_turn_native_pane_into_windows_launcher() {
+        let original = SessionLaunchDescriptor::new(
+            Some("/bin/bash".into()),
+            vec![],
+            vec![],
+            None,
+            None,
+        );
+        let live = LiveSessionMetadata {
+            distro: Some("ExampleDistro".into()),
+            shell_name: Some("bash".into()),
+            shell_path: Some("/bin/bash".into()),
+            ..Default::default()
+        };
+        let clone = original.fresh_clone(&live).expect("native clone");
+        assert_eq!(clone.program(), Some("/bin/bash"));
+        assert!(!clone.is_wsl());
     }
 }

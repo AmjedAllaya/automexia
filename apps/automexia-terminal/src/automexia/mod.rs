@@ -51,7 +51,7 @@ pub mod runtime;
 pub mod semantic_surfaces;
 pub mod session_recovery;
 pub mod settings_extensions;
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 pub mod shell;
 pub mod shell_integration;
 #[doc(hidden)]

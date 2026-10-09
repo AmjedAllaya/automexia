@@ -42,7 +42,8 @@ source "$root/shell-integration/bash/automexia.bash" >/dev/null
 
 count=$(grep -o '__automexia_pre_prompt' <<<"$PROMPT_COMMAND" | wc -l)
 [[ $count -eq 1 ]]
-[[ $PROMPT_COMMAND == printf\ user-hook* ]]
+[[ $PROMPT_COMMAND == __automexia_capture_status\;printf\ user-hook* ]]
+[[ $(grep -o __automexia_capture_status <<<"$PROMPT_COMMAND" | wc -l) -eq 1 ]]
 
 failure_marker="$fixture_bin/bash-failure-marker"
 set +e
@@ -53,6 +54,15 @@ set -e
 [[ $status -eq 1 ]]
 grep -qF $'\e]133;D;1\a' "$failure_marker"
 grep -qF $'\e]133;A;aid=' "$failure_marker"
+# Run the complete prompt chain: a successful user hook must not erase the
+# failed command result. The capture also returns that status to the hook.
+set +e
+false
+eval "$PROMPT_COMMAND" >"$failure_marker"
+status=$?
+set -e
+[[ $status -eq 1 ]]
+grep -qF $'\e]133;D;1\a' "$failure_marker"
 
 grep -qF "AUTOMEXIA_SHELL_INTEGRATION" "$root/shell-integration/bash/automexia.bash"
 grep -qF '\xCE\xBB' "$root/shell-integration/bash/automexia.bash"
@@ -111,7 +121,7 @@ for iteration in {1..25}; do
   (( iteration > 5 )) && alias_samples+="$sample"$'\n'
 done
 bash_alias_reload_p95=$(printf '%s' "$alias_samples" | sort -n | sed -n '19p')
-awk -v p95="$bash_alias_reload_p95" 'BEGIN { exit !(p95 <= 0.050) }'
+awk -v p95="$bash_alias_reload_p95" 'BEGIN { if (p95 !~ /^[0-9]+([.][0-9]+)?$/ || p95 > 0.050) { print "FAIL: Bash alias reload p95 invalid or exceeds 0.050s: " p95 > "/dev/stderr"; exit 1 } }'
 
 second_alias_generation=$(
   python3 "$root/tools/ci/create_cp31_alias_fixture.py" \
@@ -196,7 +206,7 @@ for iteration in {1..25}; do
   (( iteration > 5 )) && adapter_samples+="$sample"$'\n'
 done
 bash_adapter_p95=$(printf '%s' "$adapter_samples" | sort -n | sed -n '19p')
-awk -v p95="$bash_adapter_p95" 'BEGIN { exit !(p95 <= 0.050) }'
+awk -v p95="$bash_adapter_p95" 'BEGIN { if (p95 !~ /^[0-9]+([.][0-9]+)?$/ || p95 > 0.050) { print "FAIL: Bash completion adapter p95 invalid or exceeds 0.050s: " p95 > "/dev/stderr"; exit 1 } }'
 
 unset AUTOMEXIA_COMPLETION_ADAPTER_BASH_LOADED AUTOMEXIA_COMPLETION_DISABLED
 complete -r kubectl 2>/dev/null || true

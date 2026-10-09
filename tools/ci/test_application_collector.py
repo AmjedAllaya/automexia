@@ -13,11 +13,20 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'renderer-benchmarks/application'))
 import collector
 import native
+from macos_driver import MacDriver
 import workload
 from benchmark_model import BenchmarkError, METRICS
 
 
 class CollectorTests(unittest.TestCase):
+    def test_macos_shortcuts_use_native_modifier_flags_and_reject_ambiguous_keys(self):
+        self.assertEqual(MacDriver.key_spec('meta+shift+p'), (35, (1 << 20) | (1 << 17), 'p'))
+        self.assertEqual(MacDriver.key_spec('Escape'), (53, 0, 'Escape'))
+        self.assertEqual(MacDriver.key_spec('x'), (7, 0, 'x'))
+        for key in ('meta+meta+p', 'unknown+p', 'meta+unsupported', '', 'meta+'):
+            with self.subTest(key=key), self.assertRaises(BenchmarkError):
+                MacDriver.key_spec(key)
+
     def test_native_search_query_matches_the_actual_fixture_history(self):
         with TemporaryDirectory() as temporary:
             output = io.BytesIO()
