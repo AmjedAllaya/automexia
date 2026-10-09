@@ -4,6 +4,10 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import errno
+import select
+import platform
+import time
 import os
 from pathlib import Path
 import re
@@ -16,6 +20,8 @@ import unittest
 import test_ssh_bash_core as owner
 
 FIXTURES: Path | None = None
+HELPER: Path | None = None
+TIMINGS: list[dict] = []
 FIELDS = ('cwd HOME KUBECONFIG HOMEDRIVE HOMEPATH USERPROFILE DOCKER_CONTEXT '
           'DOCKER_HOST_PRESENT AWS_PROFILE AWS_DEFAULT_PROFILE AWS_REGION AWS_DEFAULT_REGION '
           'AZURE_CLOUD_NAME CLOUDSDK_ACTIVE_CONFIG_NAME CLOUDSDK_CORE_PROJECT CLOUDSDK_COMPUTE_REGION '
@@ -23,9 +29,12 @@ FIELDS = ('cwd HOME KUBECONFIG HOMEDRIVE HOMEPATH USERPROFILE DOCKER_CONTEXT '
 REVISION = rb'\x1b\]1337;SetUserVar=automexia_ssh_revision=([^\x07]*)\x07'
 
 LAUNCHER = '''import os, pathlib, shlex, sys
-shell, init, fd = sys.argv[1:]
+shell, init, fd, response = sys.argv[1:]
 home = pathlib.Path(os.environ['HOME'])
 os.environ['AMX_SSH_HELPER_FD'] = fd
+os.environ.pop('AMX_SSH_HELPER_RESPONSE_FD', None)
+if response != 'none':
+    os.environ['AMX_SSH_HELPER_RESPONSE_FD'] = response
 os.environ['XDG_CONFIG_HOME'] = str(home / '.config')
 if shell.endswith('bash'):
     (home / '.bashrc').write_text('PS1="AMX_AUDIT_PROMPT> "\\n')
@@ -67,7 +76,7 @@ def revisions(output: bytes) -> list[str]:
 
 
 class HelperShell(owner.Shell):
-    def __init__(self, shell: str) -> None:
+    def __init__(self, shell: str, *, prompt_output: bool = False) -> None:
         import fcntl
         self.files = tempfile.TemporaryDirectory(prefix='automexia-helper-source-')
         self.initialization = Path(self.files.name)
@@ -78,6 +87,16 @@ class HelperShell(owner.Shell):
             endpoint.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
         self.writer = fcntl.fcntl(self.sender.fileno(), fcntl.F_DUPFD, 10)
         os.set_inheritable(self.writer, True)
+        self.response = None
+        self.response_fd = None
+        if prompt_output:
+            send, receive = socket.socketpair()
+            send.setblocking(False)
+            receive.setblocking(False)
+            self.response = send
+            self.response_fd = fcntl.fcntl(receive.fileno(), fcntl.F_DUPFD, 10)
+            os.set_inheritable(self.response_fd, True)
+            receive.close()
         self.helper_closed = False
         self.shell_name = shell
         try:
@@ -89,7 +108,8 @@ class HelperShell(owner.Shell):
             if executable is None:
                 raise unittest.SkipTest('native shell unavailable: ' + shell)
             super().__init__(launch_arguments=['/usr/bin/python3', str(launcher), executable,
-                                              str(self.initialization), str(self.writer)])
+                                              str(self.initialization), str(self.writer),
+                                              str(self.response_fd) if self.response_fd is not None else 'none'])
         except BaseException:
             self.close_transport()
             raise
@@ -99,6 +119,10 @@ class HelperShell(owner.Shell):
             return
         self.helper_closed = True
         os.close(self.writer)
+        if self.response_fd is not None:
+            os.close(self.response_fd)
+        if self.response is not None:
+            self.response.close()
         self.sender.close()
         self.receiver.close()
         self.files.cleanup()
@@ -146,13 +170,146 @@ class PosixHelperContracts(unittest.TestCase):
         if os.name != 'posix' or FIXTURES is None:
             raise unittest.SkipTest('requires native Unix shells and actual generated fixtures')
 
+    def test_actual_helper_discovers_publishes_at_prompt_and_retires_owned_files(self) -> None:
+        if HELPER is None:
+            self.skipTest('requires an explicitly built native helper')
+        launcher_source = """import os, pathlib, sys
+helper, shell = sys.argv[1:]
+home = pathlib.Path(os.environ['HOME'])
+(home / '.bashrc').write_text('PS1="AMX_AUDIT_PROMPT> "\\n')
+(home / '.zshenv').write_text('skip_global_compinit=1\\n')
+(home / '.zshrc').write_text('PROMPT="AMX_AUDIT_PROMPT> "\\n')
+git = pathlib.Path.cwd() / '.git'
+git.mkdir()
+(git / 'HEAD').write_text('ref: refs/heads/channel-fixture\\n')
+os.execve(helper, [helper, '--session-v1', shell, '3', '7'], os.environ)
+"""
+        for name in ('bash', 'zsh'):
+            with self.subTest(shell=name), tempfile.TemporaryDirectory(prefix='automexia-helper-launch-') as temporary:
+                launcher = Path(temporary) / 'launch.py'
+                launcher.write_text(launcher_source, encoding='utf-8')
+                with owner.Shell(launch_arguments=['/usr/bin/python3', str(launcher), str(HELPER), name]) as shell:
+                    deadline = time.monotonic() + 8
+                    values = []
+                    while time.monotonic() < deadline:
+                        shell.command('true')
+                        values = [base64.b64decode(value, validate=True)
+                                  for value in re.findall(
+                                      rb'\x1b\]1337;SetUserVar=automexia_ssh_context_v2=([^\x07]+)\x07',
+                                      bytes(shell.all_output))]
+                        if any(b'git_branch=channel-fixture\n' in value for value in values):
+                            break
+                        time.sleep(.05)
+                    self.assertTrue(any(b'git_branch=channel-fixture\n' in value for value in values))
+                    output = shell.command("builtin printf 'UNTOUCHED_OUTPUT\\n'")
+                    without_osc = re.sub(rb'\x1b\][^\x07]*\x07', b'', output)
+                    self.assertIn(b'UNTOUCHED_OUTPUT', without_osc)
+                    os.write(shell.fd, b'exit 7\n')
+                    deadline = time.monotonic() + 8
+                    # Keep the exact helper unreaped until the fixture owner
+                    # retires it; no process identifier can be recycled here.
+                    while True:
+                        self.assertLess(time.monotonic(), deadline, 'native helper did not exit')
+                        if not select.select([shell.fd], [], [], .1)[0]:
+                            continue
+                        try:
+                            chunk = os.read(shell.fd, 8192)
+                        except OSError as error:
+                            if error.errno != errno.EIO:
+                                raise
+                            break
+                        if not chunk:
+                            break
+                    self.assertEqual(list(shell.tmp.glob('automexia-ssh*')), [])
+
+    def test_prompt_channel_waits_for_whole_frame_and_keeps_command_output_outside_osc(self) -> None:
+        for name in ('bash', 'zsh'):
+            with self.subTest(shell=name), HelperShell(name, prompt_output=True) as shell:
+                shell.requests()
+                prefix = b'\x1b]1337;SetUserVar=automexia_ssh_context_v2='
+                frame = prefix + b'A' * (6144 - len(prefix) - 1) + b'\x07'
+                # A genuinely incomplete response is already in the stream.
+                # No notification exists, so the prompt must not consume it.
+                shell.response.sendall(frame[:3000])
+                first = shell.command("builtin printf 'COMMAND_BEFORE\\n'")
+                self.assertIn(b'COMMAND_BEFORE', first)
+                self.assertNotIn(prefix, first)
+                shell.response.sendall(frame[3000:] + b'\0')
+                shell.receiver.send(b'1')
+                second = shell.command("builtin printf 'COMMAND_AFTER\\n'")
+                self.assertEqual(second.count(frame), 1)
+                self.assertEqual(shell.response.recv(1), b'1')
+                self.assertLess(second.index(b'COMMAND_AFTER'), second.index(frame))
+                self.assertNotIn(prefix, shell.command('true'))
+                result = shell.command('builtin printf "RESPONSE:%s\\n" "${AMX_SSH_HELPER_RESPONSE_FD-unset}"')
+                self.assertIn(b'RESPONSE:unset', result)
+
+    def test_prompt_channel_coalesces_complete_frames_and_rejects_foreign_controls(self) -> None:
+        for name in ('bash', 'zsh'):
+            with self.subTest(shell=name), HelperShell(name, prompt_output=True) as shell:
+                shell.requests()
+                prefix = b'\x1b]1337;SetUserVar=automexia_ssh_context_v2='
+                frames = [prefix + base64.b64encode(f'fixture-{n}'.encode()) + b'\x07'
+                          for n in range(4)]
+                for frame in frames:
+                    shell.response.sendall(frame + b'\0')
+                    shell.receiver.send(b'1')
+                result = shell.command('true')
+                self.assertEqual(result.count(prefix), 1)
+                self.assertIn(frames[-1], result)
+                shell.response.sendall(prefix + b'A\x1b[31m' + b'\x07\0')
+                shell.receiver.send(b'1')
+                result = shell.command('true')
+                self.assertNotIn(b'\x1b[31m', result)
+                self.assertEqual(revisions(result)[-1], '')
+                self.assertIn(owner.PROMPT, shell.command('true'))
+
+    def test_prompt_channel_maximum_frame_roundtrip_samples(self) -> None:
+        prefix = b'\x1b]1337;SetUserVar=automexia_ssh_context_v2='
+        frame = prefix + b'A' * (6144 - len(prefix) - 1) + b'\x07'
+        for name in ('bash', 'zsh'):
+            with self.subTest(shell=name), HelperShell(name, prompt_output=True) as shell:
+                shell.requests()
+                shell.command('export PATH=/fixture/no-programs')
+                shell.requests()
+                samples = []
+                for index in range(13):
+                    shell.response.sendall(frame + b'\0')
+                    shell.receiver.send(b'1')
+                    started = time.monotonic()
+                    output = shell.command('true')
+                    elapsed = (time.monotonic() - started) * 1000
+                    self.assertEqual(output.count(frame), 1)
+                    shell.requests()
+                    if index >= 3:
+                        samples.append(round(elapsed, 3))
+                TIMINGS.append({
+                    'scenario': 'maximum-frame-through-native-prompt',
+                    'shell': name, 'system': platform.system(),
+                    'architecture': platform.machine(), 'frame_bytes': len(frame),
+                    'timing_kind': 'diagnostic-native-pty-roundtrip-not-cross-machine-baseline',
+                    'warmup_samples': 3, 'samples_ms': samples,
+                })
+
+    def test_prompt_channel_missing_and_oversized_acknowledged_frames_disable_without_wait(self) -> None:
+        for name in ('bash', 'zsh'):
+            for payload in (b'', b'x' * 6145 + b'\0'):
+                with self.subTest(shell=name, size=len(payload)), HelperShell(name, prompt_output=True) as shell:
+                    shell.requests()
+                    if payload:
+                        shell.response.sendall(payload)
+                    shell.receiver.send(b'1')
+                    result = shell.command('true')
+                    self.assertEqual(revisions(result)[-1], '')
+                    self.assertIn(owner.PROMPT, shell.command('true'))
+
     def test_complete_snapshot_revision_stability_and_no_endpoint_leak(self) -> None:
         for name in ('bash', 'zsh'):
             with self.subTest(shell=name), HelperShell(name) as shell:
                 initial = shell.requests()
                 self.assertTrue(initial)
                 self.assertEqual(initial[-1][0], 1)
-                self.assertEqual(initial[-1][1]['cwd'], str(shell.cwd))
+                self.assertEqual(Path(initial[-1][1]['cwd']).resolve(), shell.cwd.resolve())
                 self.assertTrue(all(value.endswith('|1') for value in revisions(shell.initial)))
                 shell.command('true')
                 self.assertEqual(shell.requests()[-1][0], 1)
@@ -248,6 +405,13 @@ class PosixHelperContracts(unittest.TestCase):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--fixtures', type=Path, required=True)
+    parser.add_argument('--helper', type=Path)
+    parser.add_argument('--timings', type=Path)
     arguments, remaining = parser.parse_known_args()
     FIXTURES = arguments.fixtures.resolve(strict=True)
-    unittest.main(argv=[__file__, *remaining])
+    HELPER = arguments.helper.resolve(strict=True) if arguments.helper else None
+    result = unittest.main(argv=[__file__, *remaining], exit=False).result
+    if arguments.timings:
+        arguments.timings.parent.mkdir(parents=True, exist_ok=True)
+        arguments.timings.write_text(json.dumps(TIMINGS, indent=2) + '\n', encoding='utf-8')
+    raise SystemExit(not result.wasSuccessful())

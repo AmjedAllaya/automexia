@@ -102,6 +102,12 @@ fn session(
     let mut framing = Framing::default();
     let revoke =
         bootstrap::user_var_frame("automexia_ssh_revision", "").map_err(|_| failure())?;
+    #[cfg(unix)]
+    let mut output = match endpoint.prompt_output()? {
+        Some((file, ready)) => output::Publisher::prompt_channel(file, ready)?,
+        None => output::Publisher::new()?,
+    };
+    #[cfg(windows)]
     let mut output = output::Publisher::new()?;
     let mut disabled = false;
     let mut next_revoke = Instant::now();
@@ -161,7 +167,8 @@ fn session(
         cli_process::retirement_incomplete(error)
             && !matches!(cli_process::retry_retirement(error), Ok(true))
     });
-    drop(endpoint);
+    // Keep the private receiving lifeline through writer retirement, so
+    // closing the shell cannot turn an in-flight channel write into SIGPIPE.
     // StartupFiles removes only exact owned names after shell retirement.
     if shell_unretired {
         // A still-running shell may need these files. Preserve the bounded
@@ -176,6 +183,7 @@ fn session(
         // Shell/scanner retirement and exact-file cleanup precede process exit.
         unretired.terminate_helper();
     }
+    drop(endpoint);
     if shell_unretired || scanner_unretired {
         eprintln!("Automexia SSH helper could not confirm child cleanup; temporary files may remain.");
         // Both errors retain the exact process owners until helper termination.

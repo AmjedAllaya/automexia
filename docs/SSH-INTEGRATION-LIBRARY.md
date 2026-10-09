@@ -60,8 +60,11 @@ The helper reuses Automexia's passive Git, Kubernetes, Docker, Terraform and
 cloud configuration detector. It reads public context, never runs provider
 commands or Kubernetes authentication plugins. Directory and selector changes
 invalidate older results; idle configuration changes refresh every three
-seconds. Discovery has a 1.5-second deadline and does not run in prompt or
-terminal rendering code. A missing, malformed or timed-out result clears the
+seconds. On a **remote macOS** helper, completed discovery results appear at
+the next shell prompt; background discovery never writes into command output.
+Linux and Windows helpers retain idle presentation refresh. Discovery has a
+1.5-second deadline and does not run in prompt or terminal rendering code.
+A missing, malformed or timed-out result clears the
 affected presentation rather than displaying local machine context.
 
 Upload uses two OpenSSH invocations and may authenticate twice. The first has a
@@ -122,7 +125,18 @@ ordering through nested scopes and coalesced renders without depending on the
 SSH execution or connectivity domains. Windows uses a private local named pipe
 and checks the exact child PID. The publisher owns one bounded writer and
 completes accepted metadata frames; a partial OSC must not consume subsequent
-command output. Shutdown retires the shell and scanner before cancelling the
+command output. [Darwin's terminal writer](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/tty.c)
+can interleave writes under backpressure, so
+the macOS helper sends frames through a private nonblocking stream instead.
+A one-byte reverse datagram acknowledges each fully queued frame before the
+foreground prompt can read it. The prompt acknowledges consumption on the
+same private stream: only one unconsumed frame and one replaceable pending
+result are retained, so idle refreshes cannot fill a queue with stale context.
+Each prompt consumes at most four complete frames of at most 6 KiB and emits
+only the latest valid metadata frame. No
+prompt-time subprocess, filesystem access, discovery or blocking read is added.
+The existing revision validator rejects stale results. Shutdown retires the
+shell and scanner before cancelling the
 writer. Unconfirmed child retirement retains its exact process owner, prevents
 replacement, and ends the helper with failure. Startup files remain if shell
 retirement cannot be confirmed.

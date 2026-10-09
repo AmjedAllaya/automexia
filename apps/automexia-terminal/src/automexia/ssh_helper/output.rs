@@ -7,25 +7,49 @@ const MAX_FRAME_BYTES: usize = 6144;
 
 pub(super) struct Publisher {
     inner: platform::Publisher,
+    prompt_channel: bool,
 }
 
 impl Publisher {
     pub(super) fn new() -> io::Result<Self> {
         Ok(Self {
             inner: platform::Publisher::new()?,
+            prompt_channel: false,
+        })
+    }
+
+    #[cfg(unix)]
+    pub(super) fn prompt_channel(
+        file: std::fs::File,
+        ready: std::fs::File,
+    ) -> io::Result<Self> {
+        Ok(Self {
+            inner: platform::Publisher::prompt_channel(file, ready)?,
+            prompt_channel: true,
         })
     }
 
     /// Replace one bounded pending frame without waiting for terminal capacity.
     /// Replacement never drops a frame that has already started writing.
     pub(super) fn publish(&mut self, frame: &str) -> io::Result<bool> {
-        if frame.len() > MAX_FRAME_BYTES {
+        if frame.len() > MAX_FRAME_BYTES
+            || (self.prompt_channel && frame.as_bytes().contains(&0))
+        {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "SSH metadata output bound exceeded",
             ));
         }
-        self.inner.publish(frame.as_bytes())
+        if self.prompt_channel {
+            // NUL is a transport delimiter, never terminal output. The writer
+            // acknowledges only after this entire bounded frame is queued.
+            let mut bytes = Vec::with_capacity(frame.len() + 1);
+            bytes.extend_from_slice(frame.as_bytes());
+            bytes.push(0);
+            self.inner.publish(&bytes)
+        } else {
+            self.inner.publish(frame.as_bytes())
+        }
     }
 
     /// Must follow shell/scanner cleanup and precede signal re-raising. Failure
@@ -66,7 +90,7 @@ impl Drop for Publisher {
 mod writer {
     use std::{
         fs::File,
-        io::{self, Write},
+        io::{self, Read, Write},
         sync::{
             atomic::{AtomicBool, Ordering},
             Arc, Condvar, Mutex,
@@ -92,6 +116,14 @@ mod writer {
     impl Writer {
         pub(super) fn start(
             file: Option<File>,
+            prepare: fn() -> io::Result<()>,
+        ) -> io::Result<Self> {
+            Self::start_notified(file, None, prepare)
+        }
+
+        pub(super) fn start_notified(
+            file: Option<File>,
+            mut ready: Option<File>,
             prepare: fn() -> io::Result<()>,
         ) -> io::Result<Self> {
             let state = Arc::new(State {
@@ -141,7 +173,14 @@ mod writer {
                             if let Some(frame) = frame {
                                 #[cfg(test)]
                                 worker.writing.store(true, Ordering::Release);
-                                let result = write_frame(&mut file, &frame, &worker.stop);
+                                let result = write_frame(&mut file, &frame, &worker.stop)
+                                    .and_then(|()| match ready.as_mut() {
+                                        Some(ready) => {
+                                            write_frame(ready, b"1", &worker.stop)?;
+                                            wait_for_consumption(&mut file, &worker.stop)
+                                        }
+                                        None => Ok(()),
+                                    });
                                 #[cfg(test)]
                                 worker.writing.store(false, Ordering::Release);
                                 if result.is_err() {
@@ -209,6 +248,51 @@ mod writer {
         }
     }
 
+    /// Keep at most one completed frame in the private channel. While the
+    /// shell is idle, publication replaces the pending frame with the newest
+    /// result instead of queueing stale context in the socket buffer.
+    fn wait_for_consumption(file: &mut File, stop: &AtomicBool) -> io::Result<()> {
+        let mut ack = [0; 1];
+        loop {
+            if stop.load(Ordering::Acquire) {
+                return Err(io::ErrorKind::Interrupted.into());
+            }
+            #[cfg(unix)]
+            {
+                use std::os::fd::AsRawFd;
+                let mut descriptor = libc::pollfd {
+                    fd: file.as_raw_fd(),
+                    events: libc::POLLIN,
+                    revents: 0,
+                };
+                // SAFETY: one initialized pollfd, owned live descriptor, and a
+                // bounded timeout. Kernel readiness avoids polling an idle
+                // shell at the retry frequency used for active writes.
+                match unsafe { libc::poll(&mut descriptor, 1, 200) } {
+                    -1 => {
+                        let error = io::Error::last_os_error();
+                        if error.kind() == io::ErrorKind::Interrupted {
+                            continue;
+                        }
+                        return Err(error);
+                    }
+                    0 => continue,
+                    _ => {}
+                }
+            }
+            match file.read(&mut ack) {
+                Ok(1) if ack == *b"1" => return Ok(()),
+                Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
+                Ok(_) => return Err(io::ErrorKind::InvalidData.into()),
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
     fn write_frame(
         file: &mut impl Write,
         mut frame: &[u8],
@@ -224,6 +308,11 @@ mod writer {
                 Ok(0) => return Err(io::ErrorKind::WriteZero.into()),
                 Ok(count) => frame = &frame[count..],
                 Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                    // Only private nonblocking channels use this path. Sleep
+                    // rather than spin, and observe retirement before retrying.
+                    thread::sleep(Duration::from_millis(10));
+                }
                 Err(error) => return Err(error),
             }
         }
@@ -233,6 +322,40 @@ mod writer {
     #[cfg(test)]
     mod tests {
         use super::*;
+        #[cfg(unix)]
+        #[test]
+        fn consumption_acknowledgement_rejects_eof_invalid_and_cancelled_reads() {
+            use std::os::fd::OwnedFd;
+            use std::os::unix::net::UnixStream;
+            let stop = AtomicBool::new(false);
+            for (value, expected) in [
+                (b"1".as_slice(), None),
+                (b"".as_slice(), Some(io::ErrorKind::UnexpectedEof)),
+                (b"x".as_slice(), Some(io::ErrorKind::InvalidData)),
+            ] {
+                let (mut send, receive) = UnixStream::pair().unwrap();
+                receive.set_nonblocking(true).unwrap();
+                send.write_all(value).unwrap();
+                drop(send);
+                let mut file = File::from(OwnedFd::from(receive));
+                assert_eq!(
+                    wait_for_consumption(&mut file, &stop)
+                        .err()
+                        .map(|error| error.kind()),
+                    expected
+                );
+            }
+            let (_send, receive) = UnixStream::pair().unwrap();
+            receive.set_nonblocking(true).unwrap();
+            stop.store(true, Ordering::Release);
+            assert_eq!(
+                wait_for_consumption(&mut File::from(OwnedFd::from(receive)), &stop)
+                    .unwrap_err()
+                    .kind(),
+                io::ErrorKind::Interrupted
+            );
+        }
+
         #[test]
         fn permanent_prepare_and_native_write_failures_are_reported() {
             for prepare in [(|| Ok(())) as fn() -> io::Result<()>, || {
@@ -308,9 +431,17 @@ mod platform {
 
     impl Publisher {
         pub(super) fn new() -> io::Result<Self> {
+            // Darwin releases the terminal lock under backpressure, allowing
+            // other output inside an OSC even during one blocking write.
+            // Its helper must use the prompt-owned channel instead.
+            if cfg!(target_os = "macos") {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "macOS SSH metadata requires the prompt channel",
+                ));
+            }
             // Independent open: never change flags on the shell's shared file.
-            // Blocking terminal writes retain the terminal write lock while
-            // waiting for capacity, instead of abandoning a partial OSC prefix.
+            // Linux retains its terminal write lock while waiting for capacity.
             let file = match OpenOptions::new()
                 .write(true)
                 .custom_flags(libc::O_CLOEXEC | libc::O_NOCTTY)
@@ -338,11 +469,35 @@ mod platform {
             let writer = Writer::start(file, mask_writer_signals)?;
             Ok(Self { writer, signal })
         }
+        pub(super) fn prompt_channel(file: File, ready: File) -> io::Result<Self> {
+            use std::os::fd::AsRawFd;
+            for channel in [&file, &ready] {
+                // SAFETY: both files own live descriptors; flags are read only.
+                let flags = unsafe { libc::fcntl(channel.as_raw_fd(), libc::F_GETFL) };
+                if flags < 0 {
+                    return Err(io::Error::last_os_error());
+                }
+                if flags & libc::O_NONBLOCK == 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "SSH prompt channels must be nonblocking",
+                    ));
+                }
+            }
+            Ok(Self {
+                writer: Writer::start_notified(Some(file), Some(ready), || Ok(()))?,
+                signal: None,
+            })
+        }
         pub(super) fn publish(&mut self, frame: &[u8]) -> io::Result<bool> {
             self.writer.publish(frame)
         }
         pub(super) fn retire(&mut self) -> bool {
+            let needs_interrupt = self.signal.is_some();
             let retired = self.writer.retire(|thread| {
+                if !needs_interrupt {
+                    return;
+                }
                 // SAFETY: JoinHandle pins this thread until join. The reserved
                 // no-restart handler interrupts only its write; pthread_cancel
                 // and foreign unwinding are never used across Rust stack frames.
@@ -569,9 +724,185 @@ mod platform {
             }
             thread::sleep(Duration::from_millis(20));
         }
+        fn prompt_channel_pair() -> (Publisher, File, File) {
+            let (send, receive) = std::os::unix::net::UnixStream::pair().unwrap();
+            let (notify, ready) = std::os::unix::net::UnixDatagram::pair().unwrap();
+            for socket in [&send, &receive] {
+                socket.set_nonblocking(true).unwrap();
+            }
+            for socket in [&notify, &ready] {
+                socket.set_nonblocking(true).unwrap();
+            }
+            (
+                Publisher::prompt_channel(
+                    File::from(OwnedFd::from(send)),
+                    File::from(OwnedFd::from(notify)),
+                )
+                .unwrap(),
+                File::from(OwnedFd::from(receive)),
+                File::from(OwnedFd::from(ready)),
+            )
+        }
+
+        #[test]
+        fn prompt_channel_rejects_a_blocking_endpoint_before_starting_a_worker() {
+            for blocking_data in [false, true] {
+                let (send, _receive) = std::os::unix::net::UnixStream::pair().unwrap();
+                let (notify, _ready) = std::os::unix::net::UnixDatagram::pair().unwrap();
+                send.set_nonblocking(!blocking_data).unwrap();
+                notify.set_nonblocking(blocking_data).unwrap();
+                assert!(matches!(
+                    Publisher::prompt_channel(
+                        File::from(OwnedFd::from(send)),
+                        File::from(OwnedFd::from(notify))
+                    ),
+                    Err(error) if error.kind() == io::ErrorKind::InvalidInput
+                ));
+            }
+        }
+
+        #[test]
+        fn prompt_channel_acknowledges_only_complete_frames_and_retires_without_signals()
+        {
+            let (mut publisher, mut receive, mut ready) = prompt_channel_pair();
+            let frame = [b'A'; super::super::MAX_FRAME_BYTES + 1];
+            assert!(publisher.publish(&frame).unwrap());
+            let deadline = Instant::now() + Duration::from_secs(2);
+            let mut ack = [0; 1];
+            loop {
+                match ready.read(&mut ack) {
+                    Ok(1) => break,
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline);
+                        thread::sleep(Duration::from_millis(1));
+                    }
+                    result => panic!("unexpected readiness result: {result:?}"),
+                }
+            }
+            assert_eq!(ack, *b"1");
+            let mut actual = vec![0; frame.len()];
+            // Ack means a complete frame is present, so a nonblocking read
+            // must not encounter EAGAIN halfway through it.
+            receive.read_exact(&mut actual).unwrap();
+            assert_eq!(actual, frame);
+            assert!(publisher.signal.is_none());
+            assert!(publisher.retire());
+        }
+
+        #[test]
+        fn prompt_channel_waits_for_consumption_and_coalesces_idle_updates() {
+            let (mut publisher, mut receive, mut ready) = prompt_channel_pair();
+            assert!(publisher.publish(b"first\0").unwrap());
+            let mut ack = [0; 1];
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                match ready.read(&mut ack) {
+                    Ok(1) => break,
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline);
+                        thread::sleep(Duration::from_millis(1));
+                    }
+                    result => panic!("unexpected readiness result: {result:?}"),
+                }
+            }
+            let mut first = [0; 6];
+            receive.read_exact(&mut first).unwrap();
+            assert_eq!(first, *b"first\0");
+            // The consumer has not acknowledged completion. Idle refreshes
+            // must replace pending state instead of filling a stale FIFO.
+            for index in 0..256 {
+                assert!(publisher
+                    .publish(format!("latest-{index}\0").as_bytes())
+                    .unwrap());
+                thread::sleep(Duration::from_millis(1));
+            }
+            assert_eq!(
+                ready.read(&mut ack).unwrap_err().kind(),
+                io::ErrorKind::WouldBlock
+            );
+            assert_eq!(
+                receive.read(&mut [0; 1]).unwrap_err().kind(),
+                io::ErrorKind::WouldBlock
+            );
+            receive.write_all(b"1").unwrap();
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                match ready.read(&mut ack) {
+                    Ok(1) => break,
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline);
+                        thread::sleep(Duration::from_millis(1));
+                    }
+                    result => panic!("unexpected readiness result: {result:?}"),
+                }
+            }
+            let mut latest = [0; 11];
+            receive.read_exact(&mut latest).unwrap();
+            assert_eq!(latest, *b"latest-255\0");
+            assert!(publisher.retire());
+        }
+
+        #[test]
+        fn full_prompt_channel_never_acknowledges_partial_output_and_cancels() {
+            let (send, receive) = std::os::unix::net::UnixStream::pair().unwrap();
+            send.set_nonblocking(true).unwrap();
+            receive.set_nonblocking(true).unwrap();
+            let mut file = File::from(OwnedFd::from(send));
+            let mut filled = 0;
+            loop {
+                match file.write(&[b'x'; 4096]) {
+                    Ok(count) => filled += count,
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
+                    other => panic!("unexpected channel fill: {other:?}"),
+                }
+                assert!(filled < 4 * 1024 * 1024);
+            }
+            let (notify, ready) = std::os::unix::net::UnixDatagram::pair().unwrap();
+            notify.set_nonblocking(true).unwrap();
+            ready.set_nonblocking(true).unwrap();
+            let mut ready = File::from(OwnedFd::from(ready));
+            let mut publisher =
+                Publisher::prompt_channel(file, File::from(OwnedFd::from(notify)))
+                    .unwrap();
+            assert!(publisher
+                .publish(&[b'A'; super::super::MAX_FRAME_BYTES + 1])
+                .unwrap());
+            wait_for_write(&publisher);
+            assert_eq!(
+                ready.read(&mut [0; 1]).unwrap_err().kind(),
+                io::ErrorKind::WouldBlock
+            );
+            for index in 0..256 {
+                assert!(publisher
+                    .publish(format!("latest-{index}").as_bytes())
+                    .unwrap());
+            }
+            assert_eq!(
+                publisher.writer.state.pending.lock().unwrap().as_deref(),
+                Some(b"latest-255".as_slice())
+            );
+            let started = Instant::now();
+            assert!(publisher.retire());
+            assert!(started.elapsed() < Duration::from_secs(2));
+            assert!(publisher.writer.thread.is_none());
+            assert!(publisher.signal.is_none());
+            drop(receive);
+        }
+
+        #[cfg(target_os = "macos")]
+        #[test]
+        fn darwin_rejects_competing_background_terminal_metadata_writer() {
+            assert!(
+                matches!(Publisher::new(), Err(error) if error.kind() == io::ErrorKind::Unsupported)
+            );
+        }
+
+        #[cfg(not(target_os = "macos"))]
         #[test]
         fn full_terminal_finishes_osc_before_following_command_output() {
-            let _serial = TEST_SIGNAL_OWNER.lock().unwrap();
+            let _serial = TEST_SIGNAL_OWNER
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
             let mut terminal = Terminal::new();
             let filled = terminal.fill();
             let before =
@@ -614,7 +945,9 @@ mod platform {
         }
         #[test]
         fn full_terminal_writer_cancels_and_joins_without_a_reader() {
-            let _serial = TEST_SIGNAL_OWNER.lock().unwrap();
+            let _serial = TEST_SIGNAL_OWNER
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
             let terminal = Terminal::new();
             terminal.fill();
             let mut publisher = Publisher::start(Some(terminal.writer(false))).unwrap();
@@ -642,7 +975,9 @@ mod platform {
         }
         #[test]
         fn writer_restores_signal_ownership_and_repeated_idle_shutdown() {
-            let _serial = TEST_SIGNAL_OWNER.lock().unwrap();
+            let _serial = TEST_SIGNAL_OWNER
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
             let terminal = Terminal::new();
             let mut before: libc::sigaction = unsafe { std::mem::zeroed() };
             assert_eq!(
@@ -665,7 +1000,9 @@ mod platform {
 
         #[test]
         fn existing_signal_handler_is_preserved_and_declines_writer_setup() {
-            let _serial = TEST_SIGNAL_OWNER.lock().unwrap();
+            let _serial = TEST_SIGNAL_OWNER
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
             let mut original: libc::sigaction = unsafe { std::mem::zeroed() };
             let mut occupied: libc::sigaction = unsafe { std::mem::zeroed() };
             occupied.sa_sigaction = libc::SIG_IGN;
@@ -897,13 +1234,29 @@ mod tests {
     #[test]
     fn oversized_frame_is_rejected_before_native_output() {
         #[cfg(unix)]
-        let _serial = platform::TEST_SIGNAL_OWNER.lock().unwrap();
+        let mut publisher = {
+            let (send, _receive) = std::os::unix::net::UnixStream::pair().unwrap();
+            let (notify, _ready) = std::os::unix::net::UnixDatagram::pair().unwrap();
+            send.set_nonblocking(true).unwrap();
+            notify.set_nonblocking(true).unwrap();
+            Publisher::prompt_channel(
+                std::fs::File::from(std::os::fd::OwnedFd::from(send)),
+                std::fs::File::from(std::os::fd::OwnedFd::from(notify)),
+            )
+            .unwrap()
+        };
+        #[cfg(windows)]
         let mut publisher = Publisher::new().unwrap();
         assert_eq!(
             publisher
                 .publish(&"x".repeat(MAX_FRAME_BYTES + 1))
                 .unwrap_err()
                 .kind(),
+            io::ErrorKind::InvalidInput
+        );
+        #[cfg(unix)]
+        assert_eq!(
+            publisher.publish("frame\0injected").unwrap_err().kind(),
             io::ErrorKind::InvalidInput
         );
         assert!(publisher.finish().is_ok());

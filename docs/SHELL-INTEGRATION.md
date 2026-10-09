@@ -167,6 +167,12 @@ the scenario and never count as successful validation.
 The native matrix also repeats isolated Metal/default-shell startup and teardown.
 Filesystem failures report errno and fixed source-owner line numbers; reports
 never include exception paths, terminal text or raw process logs.
+Temporary fixture cleanup records bounded retries for native directory-enumeration
+races after process retirement; other I/O errors and surviving processes still fail.
+Native macOS jobs also run the actual temporary SSH helper, inherited-channel
+backpressure and cleanup tests with Zsh and supported modern Bash. The local
+system-Bash startup scenarios still use Apple's system shell. Raw maximum-frame
+prompt roundtrip samples are retained as diagnostics, without cross-machine thresholds.
 
 The driver's bounded startup/command timing samples are diagnostics with 50 ms
 polling resolution, not performance baselines. The native workflow also retains

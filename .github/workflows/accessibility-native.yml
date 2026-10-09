@@ -77,7 +77,7 @@ jobs:
       - name: Install macOS shell scenario prerequisite
         if: runner.os == 'macOS'
         run: |
-          brew install fish
+          brew install fish bash
           # GitHub's default shell can be a newer Homebrew Bash. Parse the
           # shipped adapters with the same system Bash used by native sessions.
           /bin/bash -n shell-integration/bash/automexia.bash
@@ -123,9 +123,18 @@ jobs:
         run: |
           set -euo pipefail
           cargo test -p automexia-terminal --lib --all-features --locked automexia::shell::
-          cargo test -p automexia-terminal --lib --all-features --locked automexia::ssh_helper::output::
+          cargo test -p automexia-terminal --lib --all-features --locked automexia::ssh_helper::
           cargo test -p automexia-terminal --bin automexia --all-features --locked bindings::
           cargo test -p teletypewriter --lib --locked
+          cargo build -p automexia-terminal --bin automexia-ssh-helper --all-features --locked
+          cargo build -p automexia-ssh-integration --example export_helper_fixture --locked
+          mkdir -p "$RUNNER_TEMP/helper-fixtures"
+          for shell in bash zsh; do
+            target/debug/examples/export_helper_fixture --files "$shell" > "$RUNNER_TEMP/helper-fixtures/$shell.fixture"
+          done
+          # The remote Bash adapter intentionally requires >=5.1. Local native
+          # startup above continues to test /bin/bash (Apple's Bash 3.2).
+          PATH="$(brew --prefix bash)/bin:$PATH" python tools/ci/test_ssh_helper_adapters.py --fixtures "$RUNNER_TEMP/helper-fixtures" --helper target/debug/automexia-ssh-helper --timings artifacts/native-helper-prompt-timings.json -v
       - name: Native macOS application sessions and keyboard UI
         if: always() && !cancelled() && runner.os == 'macOS' && steps.visual.outcome != 'skipped'
         shell: bash
@@ -138,6 +147,16 @@ jobs:
           for attempt in {1..12}; do
             python tests/integration/unix-session-ui.py --binary target/debug/automexia --backend webgpu --shell default --launch-mode default --captures "artifacts/visual-quality/native-macos/repeated-metal-$attempt" --timeout 120
           done
+      - name: Retain native macOS session diagnostics
+        if: always() && runner.os == 'macOS'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-macos-session-${{ matrix.runner }}
+          path: |
+            artifacts/visual-quality/native-macos
+            artifacts/native-helper-prompt-timings.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Native macOS renderer microbenchmarks
         if: always() && !cancelled() && runner.os == 'macOS' && steps.visual.outcome != 'skipped'
         shell: bash
@@ -167,7 +186,6 @@ jobs:
             artifacts/visual-quality/captures/*--*.png
             artifacts/visual-quality/diffs
             artifacts/visual-quality/native-linux
-            artifacts/visual-quality/native-macos
           if-no-files-found: error
           retention-days: 14
       - name: Preserve full candidate images for failed or missing baselines

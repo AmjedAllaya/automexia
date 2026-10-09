@@ -45,13 +45,77 @@ class CollectorTests(unittest.TestCase):
             home.mkdir()
             alias = root / 'alias'
             alias.symlink_to(home, target_is_directory=True)
-            with patch.object(probe.tempfile, 'TemporaryDirectory', return_value=nullcontext(str(alias))), \
+            with patch.object(probe, 'fixture_workspace', return_value=nullcontext((str(alias), {}))), \
                  patch.object(probe.subprocess, 'Popen', side_effect=launch), \
                  self.assertRaises(LaunchReached):
                 probe.run_case(root / 'unused-binary', root / 'captures', 'cpu', 'default', 1.0, 'default')
             self.assertEqual(captured['cwd'], home)
             self.assertEqual(captured['home'], str(home))
             self.assertTrue((home / 'config/config.toml').is_file())
+
+    @unittest.skipIf(os.name == 'nt', 'Unix native fixture')
+    def test_native_cleanup_retries_actual_directory_enumeration_race(self):
+        probe = unix_ui_probe()
+        original = os.rmdir
+        injected = False
+        home = None
+
+        def late_native_cache(path, *args, **kwargs):
+            nonlocal injected
+            if home is not None and Path(path) == home and not injected:
+                injected = True
+                (home / 'late-cache').write_text('synthetic cache')
+            return original(path, *args, **kwargs)
+
+        with patch.object(os, 'rmdir', side_effect=late_native_cache):
+            with probe.fixture_workspace() as (temporary, diagnostics):
+                home = Path(temporary)
+                (home / 'initial').write_text('synthetic fixture')
+        self.assertTrue(injected)
+        self.assertEqual(diagnostics, {'retries': 1})
+        self.assertFalse(home.exists())
+
+    def test_native_cleanup_is_bounded_and_never_hides_other_failures(self):
+        import errno
+        probe = unix_ui_probe()
+        for code, attempts in ((errno.ENOTEMPTY, 5), (errno.EACCES, 1)):
+            with self.subTest(errno=code), TemporaryDirectory() as parent:
+                temporary = probe.tempfile.TemporaryDirectory(dir=parent)
+                try:
+                    with patch.object(probe.tempfile, 'TemporaryDirectory', return_value=temporary), \
+                         patch.object(temporary, 'cleanup', side_effect=OSError(code, 'synthetic')) as cleanup, \
+                         patch.object(probe.time, 'sleep'):
+                        with self.assertRaises(OSError) as raised:
+                            with probe.fixture_workspace():
+                                pass
+                        self.assertEqual(raised.exception.errno, code)
+                        self.assertEqual(cleanup.call_count, attempts)
+                finally:
+                    temporary.cleanup()
+        with TemporaryDirectory() as parent:
+            temporary = probe.tempfile.TemporaryDirectory(dir=parent)
+            try:
+                with patch.object(probe.tempfile, 'TemporaryDirectory', return_value=temporary), \
+                     patch.object(temporary, 'cleanup', side_effect=[OSError(errno.ENOTEMPTY, 'synthetic'), None]), \
+                     patch.object(probe.time, 'sleep'):
+                    with self.assertRaisesRegex(probe.Failure, 'owned shell survived'):
+                        with probe.fixture_workspace():
+                            raise probe.Failure('owned shell survived')
+            finally:
+                temporary.cleanup()
+
+    def test_native_startup_waits_for_fragmented_cwd_before_asserting_its_value(self):
+        probe = unix_ui_probe()
+        panel = {'active': True, 'shell_integration': True, 'current_directory': None}
+        state = {'panels': [panel], 'prompt_active': True}
+        self.assertFalse(probe.integrated_ready(state))
+        panel['current_directory'] = '/fixture/actual'
+        self.assertTrue(probe.integrated_ready(state))
+        # Readiness never substitutes the expected directory. The caller must
+        # still reject a real clone launched somewhere else.
+        self.assertNotEqual(panel['current_directory'], '/fixture/expected')
+        state['prompt_active'] = False
+        self.assertFalse(probe.integrated_ready(state))
 
     def test_native_failure_diagnostics_keep_errno_but_never_paths_or_output(self):
         import errno

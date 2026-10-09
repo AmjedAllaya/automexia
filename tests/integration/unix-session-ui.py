@@ -9,6 +9,8 @@ Only synthetic commands run in temporary homes. Reports exclude terminal text.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
+import errno
 import json
 import os
 from pathlib import Path
@@ -47,6 +49,14 @@ def active(state: dict) -> dict:
     return next((panel for panel in state.get("panels", []) if panel.get("active")), {})
 
 
+def integrated_ready(state: dict) -> bool:
+    # OSC boundaries and CWD may arrive in separate PTY reads. An integration
+    # marker alone does not mean startup metadata has reached the live grid.
+    panel = active(state)
+    return bool(panel.get("shell_integration") and state.get("prompt_active")
+                and panel.get("current_directory") is not None)
+
+
 def check(condition: bool, message: str) -> None:
     if not condition:
         raise Failure(message)
@@ -60,11 +70,33 @@ def pid_exists(pid: int) -> bool:
         return False
 
 
+@contextmanager
+def fixture_workspace():
+    temporary = tempfile.TemporaryDirectory(prefix="automexia-unix-native-")
+    diagnostics = {"retries": 0}
+    try:
+        yield temporary.name, diagnostics
+    finally:
+        # An entry can arrive after native directory enumeration, even after
+        # the application and every observed shell have exited.
+        # Retry only that filesystem race, using the same owned temp directory;
+        # process failures and all other I/O errors remain fatal.
+        for attempt in range(5):
+            try:
+                temporary.cleanup()
+                break
+            except OSError as error:
+                if error.errno != errno.ENOTEMPTY or attempt == 4:
+                    raise
+                diagnostics["retries"] += 1
+                time.sleep(.05 * (attempt + 1))
+
+
 def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: float | None, launch_mode: str) -> dict:
     label = f"{backend}-{shell}-{scale if scale is not None else 'native'}-{launch_mode}"
     output = captures / label
     output.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="automexia-unix-native-") as temporary:
+    with fixture_workspace() as (temporary, cleanup_diagnostics):
         home = Path(temporary).resolve()
         config = home / "config"
         config.mkdir()
@@ -190,7 +222,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     command_samples.append(round((time.monotonic() - command_start) * 1000, 3))
                     return value
 
-                initial = wait(lambda s: active(s).get("shell_integration") and
+                initial = wait(lambda s: integrated_ready(s) and
                                s.get("latest_prompt_start_count") == 1, "session integration absent")
                 ready_ms = round((time.monotonic() - started) * 1000, 3)
                 expected = "wgpu" if backend == "webgpu" else backend
@@ -232,14 +264,14 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     wait(lambda s: not s.get("settings", {}).get("open"), "gallery parent did not close")
 
                 send("clone-right")
-                split = wait(lambda s: s.get("panel_count") == 2 and active(s).get("shell_integration"),
+                split = wait(lambda s: s.get("panel_count") == 2 and integrated_ready(s),
                              "native pane clone failed")
                 check(active(split).get("launch_program") == (None if MACOS and shell == "default" else program), "clone changed native shell")
                 check(active(split).get("current_directory") == str(home), "clone lost CWD")
                 command("printenv AMX_NATIVE_RC")
                 send("local-tab")
                 tabbed = wait(lambda s: active(s).get("local_tab_count") == 2 and
-                              active(s).get("shell_integration"), "native local tab failed")
+                              integrated_ready(s), "native local tab failed")
                 check(active(tabbed).get("launch_program") == (None if MACOS and shell == "default" else program), "tab changed native shell")
                 capture("panes")
                 # Shrink and expand after integrated output and UI use. The
@@ -260,6 +292,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                         "timing_kind": "diagnostic-polling-50ms-not-performance-baseline",
                         "startup_shell_ready_ms": ready_ms, "command_roundtrip_ms": command_samples,
                         "native_pixel_capture": not MACOS,
+                        "fixture_cleanup": cleanup_diagnostics,
                         "shell_integration": True, "table": True, "tags": True,
                         "palette": True, "settings": True, "themes": True,
                         "split": True, "local_tab": True, "resize": True}

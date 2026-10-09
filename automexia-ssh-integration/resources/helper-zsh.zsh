@@ -9,6 +9,13 @@ __amx_ssh_helper_revision=0
 __amx_ssh_helper_disabled=0
 __amx_ssh_helper_body=''
 
+__amx_ssh_helper_response_fd=''
+if [[ ${AMX_SSH_HELPER_RESPONSE_FD:-} =~ ^[1-9][0-9]{1,8}$ ]] &&
+   builtin : 2>/dev/null <&"$AMX_SSH_HELPER_RESPONSE_FD"; then
+    __amx_ssh_helper_response_fd=$AMX_SSH_HELPER_RESPONSE_FD
+fi
+builtin unset AMX_SSH_HELPER_RESPONSE_FD
+
 # Only the short ASCII revision envelope is encoded here; no external encoder,
 # filesystem access or provider process runs inside this prompt callback.
 function __amx_ssh_helper_encode {
@@ -38,6 +45,53 @@ function __amx_ssh_helper_encode {
 function __amx_ssh_helper_retire {
     __amx_ssh_helper_disabled=1
     builtin printf '\e]1337;SetUserVar=automexia_ssh_revision=\a' >&2
+}
+
+# Darwin's terminal writes may interleave under backpressure. Only this
+# foreground prompt publishes helper metadata there. The inherited nonblocking
+# response stream is read only after its complete-frame datagram notification;
+# no subprocess, filesystem operation or wait runs in this callback.
+function __amx_ssh_helper_response {
+    emulate -L zsh
+    local LC_ALL=C ack frame payload latest='' attempt
+    [[ -n $__amx_ssh_helper_response_fd ]] || return 0
+    for attempt in 1 2 3 4; do
+        ack=''
+        if ! builtin read -r -k 1 -u "$__amx_ssh_helper_fd" ack 2>/dev/null; then
+            break
+        fi
+        frame=''
+        if [[ $ack != 1 ]] ||
+           ! builtin read -r -d "" -u "$__amx_ssh_helper_response_fd" frame 2>/dev/null ||
+           (( ${#frame} > 6144 )); then
+            __amx_ssh_helper_retire
+            return 0
+        fi
+        case $frame in
+            $'\e]1337;SetUserVar=automexia_ssh_context_v2='*$'\a')
+                payload=${frame#$'\e]1337;SetUserVar=automexia_ssh_context_v2='}
+                payload=${payload%$'\a'}
+                if [[ -z $payload || $payload == *[^a-zA-Z0-9+/=]* ]]; then
+                    __amx_ssh_helper_retire
+                    return 0
+                fi
+                ;;
+            $'\e]1337;SetUserVar=automexia_ssh_revision=\a') ;;
+            *)
+                __amx_ssh_helper_retire
+                return 0
+                ;;
+        esac
+        # Release one producer slot only after consuming the entire frame.
+        # The writer coalesces idle refreshes while this acknowledgement waits.
+        if ! builtin printf '1' 2>/dev/null 1>&"$__amx_ssh_helper_response_fd"; then
+            __amx_ssh_helper_retire
+            return 0
+        fi
+        latest=$frame
+    done
+    [[ -z $latest ]] || builtin printf '%s' "$latest" >&2
+    return 0
 }
 
 function __amx_ssh_helper_prompt {
@@ -81,6 +135,9 @@ function __amx_ssh_helper_prompt {
     builtin printf '\e]1337;SetUserVar=automexia_ssh_revision=%s\a' "$__amx_ssh_helper_encoded" >&2
     if ! builtin printf '\0%s%s\0' "$header" "$body" 2>/dev/null 1>&"$__amx_ssh_helper_fd"; then
         __amx_ssh_helper_retire
+    fi
+    if [[ $__amx_ssh_helper_disabled == 0 ]]; then
+        __amx_ssh_helper_response
     fi
     return 0
 }
