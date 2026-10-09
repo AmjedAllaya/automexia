@@ -122,6 +122,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python tools/ci/test_qa_process.py PinnedGroupTests -v
           cargo test -p automexia-terminal --lib --all-features --locked automexia::shell::
           # Lifecycle failures may intentionally exit the helper process. Emit
           # their diagnostics immediately so they survive a fail-closed exit.

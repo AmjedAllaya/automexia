@@ -7,6 +7,8 @@ even when the command exits before descendants release their inherited pipes.
 
 from __future__ import annotations
 
+import errno
+from functools import lru_cache
 import math
 import os
 import pathlib
@@ -27,6 +29,71 @@ MAX_COMMAND_BYTES = 65536
 _launch_lock = threading.Lock()
 # An unreaped native failure retains its owner and forbids further launches.
 _quarantine: object | None = None
+
+
+@lru_cache(maxsize=1)
+def _darwin_process_api():
+    # Python exposes waitid on macOS only from 3.13 onward. Keep the same
+    # WNOWAIT observation on supported 3.12 hosts through the system ABI.
+    import ctypes
+    class SigInfo(ctypes.Structure):
+        _fields_ = [('si_signo', ctypes.c_int), ('si_errno', ctypes.c_int),
+                    ('si_code', ctypes.c_int), ('si_pid', ctypes.c_int),
+                    ('si_uid', ctypes.c_uint), ('si_status', ctypes.c_int),
+                    ('si_addr', ctypes.c_void_p), ('si_value', ctypes.c_void_p),
+                    ('si_band', ctypes.c_long), ('pad', ctypes.c_ulong * 7)]
+    api = ctypes.CDLL('/usr/lib/libSystem.B.dylib', use_errno=True)
+    api.waitid.argtypes = [ctypes.c_int, ctypes.c_uint, ctypes.POINTER(SigInfo), ctypes.c_int]
+    api.waitid.restype = ctypes.c_int
+    api.proc_listpids.argtypes = [ctypes.c_uint, ctypes.c_uint, ctypes.c_void_p, ctypes.c_int]
+    api.proc_listpids.restype = ctypes.c_int
+    return api, SigInfo
+
+
+def pinned_exit_status(pid: int) -> int | None:
+    """Observe an exact, still-owned child without releasing its PID identity."""
+    if not isinstance(pid, int) or not 1 < pid <= 0x7fffffff:
+        raise ValueError('invalid owned process identity')
+    if callable(getattr(os, 'waitid', None)):
+        status = os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    elif sys.platform == 'darwin':
+        import ctypes
+        api, info = _darwin_process_api()
+        status = info()
+        # Darwin sys/wait.h: P_PID=1, WEXITED=4, WNOHANG=1, WNOWAIT=32.
+        if api.waitid(1, pid, ctypes.byref(status), 0x25) != 0:
+            raise OSError(ctypes.get_errno(), 'owned child observation failed')
+    else:
+        raise OSError('nonreaping process observation unavailable')
+    if status is None or status.si_pid == 0:
+        return None
+    if status.si_pid != pid or status.si_code not in (1, 2, 3):
+        raise OSError('invalid owned child exit observation')
+    return status.si_status if status.si_code == 1 else -status.si_status
+
+
+def _darwin_only_pinned_member(pid: int) -> bool:
+    import ctypes
+    api, _ = _darwin_process_api()
+    members = (ctypes.c_int * 2)()
+    size = api.proc_listpids(2, pid, members, ctypes.sizeof(members))
+    # Two entries detect additional members or truncation. Missing/error data
+    # never proves retirement; no host-wide names or commands are collected.
+    return size == ctypes.sizeof(ctypes.c_int) and members[0] == pid
+
+
+def terminate_pinned_group(pid: int) -> None:
+    """Signal only a group whose unreaped leader remains owned by the caller."""
+    if not isinstance(pid, int) or not 1 < pid <= 0x7fffffff:
+        raise ValueError('invalid owned process identity')
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except OSError as error:
+        accepted = error.errno == errno.ESRCH or (sys.platform == 'darwin' and error.errno == errno.EPERM)
+        if not accepted or pinned_exit_status(pid) is None:
+            raise
+        if sys.platform == 'darwin' and not _darwin_only_pinned_member(pid):
+            raise
 
 
 @dataclass(frozen=True)
@@ -237,7 +304,7 @@ success while an owned process or reader remains unretired.
                 elif os.name != 'nt':
                     # Never poll/reap the supervisor before this operation: its
                     # owned, unreaped PID keeps the process-group identity valid.
-                    os.killpg(process.pid, signal.SIGKILL)
+                    terminate_pinned_group(process.pid)
                 else:
                     process.kill()  # Admission failed; the helper spawned nothing.
                 process.wait(timeout=max(0.001, cleanup_deadline - time.monotonic()))

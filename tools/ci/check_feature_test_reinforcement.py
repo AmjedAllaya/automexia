@@ -555,7 +555,15 @@ def _validate_qa_process_sources(sources: dict[str, str]) -> None:
     helper = sources['qa_process']
     _require_order(helper, ('job.assign(process)', "process.stdin.write(b'G')"), 'QA native admission')
     _require_order(helper, ('job.terminate()', 'process.wait(timeout=', 'reader.join(timeout=', 'stream.close()', '_launch_lock.release()'), 'QA native cleanup')
-    _require_fragments(helper, ('CLEANUP_SECONDS = 5.0', 'CONTROL_BYTES = 32', 'CHUNK_BYTES = 8192', 'MAX_ARGUMENTS = 512', 'MAX_COMMAND_BYTES = 65536', '0x2000', 'os.killpg(process.pid, signal.SIGKILL)', '_quarantine = (process, job, readers)', 'sys.stdin.buffer.read(1)', 'state[\'code\'] = code'), 'QA bounded ownership')
+    _require_fragments(helper, ('CLEANUP_SECONDS = 5.0', 'CONTROL_BYTES = 32', 'CHUNK_BYTES = 8192', 'MAX_ARGUMENTS = 512', 'MAX_COMMAND_BYTES = 65536', '0x2000', 'terminate_pinned_group(process.pid)', 'os.killpg(pid, signal.SIGKILL)', '_quarantine = (process, job, readers)', 'sys.stdin.buffer.read(1)', 'state[\'code\'] = code'), 'QA bounded ownership')
+    _require_fragments(helper, (
+        'os.WEXITED | os.WNOHANG | os.WNOWAIT',
+        'api.waitid(1, pid, ctypes.byref(status), 0x25)',
+        'if not accepted or pinned_exit_status(pid) is None:',
+        "if sys.platform == 'darwin' and not _darwin_only_pinned_member(pid):",
+        'members = (ctypes.c_int * 2)()',
+        'size == ctypes.sizeof(ctypes.c_int) and members[0] == pid',
+    ), 'QA nonreaping process-group retirement')
     if sources['qa'].count('qa_process.run(') != 3:
         raise ReinforcementError('QA steps, version and source status must use one lifecycle owner')
     if sources['compiler_probe'].count('qa_process.run(') != 1:

@@ -220,6 +220,9 @@ os.execve(helper, [helper, '--session-v1', shell, '3', '7'], os.environ)
                             break
                         if not chunk:
                             break
+                    # PTY EOF may precede helper cleanup on macOS. Observe
+                    # actual exit without reaping, and verify the shell status.
+                    self.assertEqual(shell.wait_for_exit(timeout=8), 7)
                     self.assertEqual(list(shell.tmp.glob('automexia-ssh*')), [])
 
     def test_prompt_channel_waits_for_whole_frame_and_keeps_command_output_outside_osc(self) -> None:
@@ -367,7 +370,10 @@ os.execve(helper, [helper, '--session-v1', shell, '3', '7'], os.environ)
                 while True:
                     try:
                         filled += shell.sender.send(b'x' * 4096)
-                    except BlockingIOError:
+                    except OSError as error:
+                        if error.errno not in (errno.EAGAIN, errno.EWOULDBLOCK) and not (
+                                platform.system() == 'Darwin' and error.errno == errno.ENOBUFS):
+                            raise
                         break
                     self.assertLess(filled, 2 * 1024 * 1024)
                 output = shell.command('true')

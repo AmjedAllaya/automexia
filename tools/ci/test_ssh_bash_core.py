@@ -22,6 +22,8 @@ import tempfile
 import time
 import unittest
 
+import qa_process
+
 ROOT = Path(__file__).resolve().parents[2]
 CORE = ''
 BOOTSTRAP = ''
@@ -189,27 +191,31 @@ class Shell:
             data = data[count:]
         return self.until(marker)
 
+    def wait_for_exit(self, timeout: float = TIMEOUT) -> int:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            status = qa_process.pinned_exit_status(self.pid)
+            if status is not None:
+                return status
+            time.sleep(.005)
+        raise TimeoutError('Fixture child did not exit')
+
     def close(self) -> None:
         if self.closed:
             return
-        self.closed = True
         # Keep our child unreaped until its fixture process group is retired.
-        try:
-            os.killpg(self.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        qa_process.terminate_pinned_group(self.pid)
         deadline = time.monotonic() + TIMEOUT
-        try:
-            while True:
-                child, _ = os.waitpid(self.pid, os.WNOHANG)
-                if child:
-                    break
-                if time.monotonic() >= deadline:
-                    raise TimeoutError('Fixture child did not retire')
-                time.sleep(0.005)
-        finally:
-            os.close(self.fd)
-            self.temporary.cleanup()
+        while True:
+            child, _ = os.waitpid(self.pid, os.WNOHANG)
+            if child:
+                break
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Fixture child did not retire')
+            time.sleep(0.005)
+        self.closed = True
+        os.close(self.fd)
+        self.temporary.cleanup()
 
     def __enter__(self) -> 'Shell':
         return self
