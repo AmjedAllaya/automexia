@@ -84,6 +84,25 @@ Linux running inside WSL
 keeps a native Linux launch when cloning; the distro label cannot select
 Windows' `wsl.exe`.
 
+
+System Bash on macOS predates PS0. Bash before 4.4 uses one bounded in-process
+DEBUG hook for the same OSC command boundary; newer Bash retains PS0. The
+legacy hook is installed after startup returns, with a traced installer so Bash
+does not restore an earlier DEBUG trap over it. Login bootstrap finishes this
+installation outside the sourced adapter before the first input prompt. PS1
+arms the command latch after user prompt hooks; blank Enter never starts a
+command. Existing DEBUG actions stay in their native trap context and preserve
+exit status, tracing options, pipelines/functions and repeated sourcing.
+
+The installer decodes only the shell-quoted declaration returned by builtin
+trap -p DEBUG, once per installation. A dedicated capture descriptor excludes
+user DEBUG diagnostics; a canonical single-quote round trip rejects malformed
+declarations without shell evaluation. No command history, BASH_COMMAND content,
+terminal metadata or external file is evaluated. There are no external
+processes per command and no Readline bindings or history settings are changed.
+Native PTY tests cover ordinary and login startup, user DEBUG hooks, functrace,
+extdebug, blank input and repeated sourcing on both system and current Bash.
+
 ## Consequences
 
 - Ordinary launch cannot create persistence or trigger WSL provisioning.

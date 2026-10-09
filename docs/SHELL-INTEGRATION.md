@@ -29,6 +29,11 @@ one-shot prompt hook because Bash ignores `--rcfile` in login mode. A custom
 profile that replaces `PROMPT_COMMAND` entirely should explicitly source the
 shipped Bash integration after configuring its prompt. No profile is rewritten.
 
+The macOS system Bash is supported without requiring a Homebrew replacement.
+Bash before 4.4 uses a session-local command-boundary hook that preserves an
+existing DEBUG hook and command exit status; newer Bash uses its native PS0.
+Neither path changes history settings or Readline bindings.
+
 On Linux, ordinary Bash, Zsh and Fish sessions also load the packaged integration
 automatically. Bash retains the user's `.bashrc`; Zsh retains `.zshenv`, `.zshrc`
 and `ZDOTDIR`; Fish retains its native configuration and editor. New panes and

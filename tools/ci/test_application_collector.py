@@ -19,6 +19,35 @@ from benchmark_model import BenchmarkError, METRICS
 
 
 class CollectorTests(unittest.TestCase):
+    @unittest.skipIf(os.name == 'nt', 'Unix native fixture')
+    def test_unix_ui_fixture_uses_the_canonical_launch_directory(self):
+        import importlib.util
+        from contextlib import nullcontext
+
+        source = Path(__file__).resolve().parents[2] / 'tests/integration/unix-session-ui.py'
+        spec = importlib.util.spec_from_file_location('unix_ui_fixture', source)
+        probe = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(probe)
+        class LaunchReached(Exception):
+            pass
+        captured = {}
+        def launch(*args, **kwargs):
+            captured.update(cwd=kwargs['cwd'], home=kwargs['env']['HOME'])
+            raise LaunchReached()
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            home = root / 'real'
+            home.mkdir()
+            alias = root / 'alias'
+            alias.symlink_to(home, target_is_directory=True)
+            with patch.object(probe.tempfile, 'TemporaryDirectory', return_value=nullcontext(str(alias))), \
+                 patch.object(probe.subprocess, 'Popen', side_effect=launch), \
+                 self.assertRaises(LaunchReached):
+                probe.run_case(root / 'unused-binary', root / 'captures', 'cpu', 'default', 1.0, 'default')
+            self.assertEqual(captured['cwd'], home)
+            self.assertEqual(captured['home'], str(home))
+            self.assertTrue((home / 'config/config.toml').is_file())
+
     def test_macos_shortcuts_use_native_modifier_flags_and_reject_ambiguous_keys(self):
         self.assertEqual(MacDriver.key_spec('meta+shift+p'), (35, (1 << 20) | (1 << 17), 'p'))
         self.assertEqual(MacDriver.key_spec('Escape'), (53, 0, 'Escape'))

@@ -76,7 +76,13 @@ jobs:
           xvfb xauth xdotool python3-pyatspi dbus-x11 imagemagick libxkbcommon-x11-0
       - name: Install macOS shell scenario prerequisite
         if: runner.os == 'macOS'
-        run: brew install fish
+        run: |
+          brew install fish
+          # GitHub's default shell can be a newer Homebrew Bash. Parse the
+          # shipped adapters with the same system Bash used by native sessions.
+          /bin/bash -n shell-integration/bash/automexia.bash
+          /bin/bash -n shell-integration/bash/session.bash
+          /bin/bash -n shell-integration/bash/login-session.bash
       - name: Check evidence contracts and build the strict comparator
         shell: bash
         run: |

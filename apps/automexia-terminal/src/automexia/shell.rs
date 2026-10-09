@@ -194,7 +194,7 @@ fn interactive_unix_shell<'a>(
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 const BASH_LOGIN_BOOTSTRAP: &str =
-    "builtin source \"$AUTOMEXIA_SHELL_INTEGRATION_ROOT/bash/login-session.bash\"";
+    "builtin source \"$AUTOMEXIA_SHELL_INTEGRATION_ROOT/bash/login-session.bash\"; if declare -F __automexia_legacy_install >/dev/null; then __automexia_legacy_install; fi";
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn login_requested(args: &[String]) -> bool {
@@ -1053,13 +1053,21 @@ mod linux_session_tests {
         use std::process::Command;
         let resources = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../shell-integration");
-        for (shell, login) in [
-            ("bash", false),
-            ("zsh", false),
-            ("fish", false),
-            ("bash", true),
-            ("zsh", true),
-            ("fish", true),
+        for (shell, login, debug_mode) in [
+            ("bash", false, "plain"),
+            ("zsh", false, "plain"),
+            ("fish", false, "plain"),
+            ("bash", true, "plain"),
+            ("zsh", true, "plain"),
+            ("fish", true, "plain"),
+            ("bash", false, "debug"),
+            ("bash", true, "debug"),
+            ("bash", false, "functrace"),
+            ("bash", true, "functrace"),
+            ("bash", false, "extdebug"),
+            ("bash", true, "extdebug"),
+            ("bash", false, "verbose-debug"),
+            ("bash", true, "verbose-debug"),
         ] {
             let program = if cfg!(target_os = "macos") && shell != "fish" {
                 format!("/bin/{shell}")
@@ -1070,11 +1078,27 @@ mod linux_session_tests {
             // Isolate this startup probe from Debian's automatic system-wide
             // completion scan. Host FPATH may require an interactive trust
             // decision; the production bootstrap leaves that decision intact.
-            std::fs::write(
-                home.path().join(".bashrc"),
-                "export AMX_TEST_USER_RC=loaded\n",
-            )
-            .unwrap();
+            let mut bash_rc = "export AMX_TEST_USER_RC=loaded\n".to_owned();
+            match debug_mode {
+                "functrace" | "verbose-debug" => bash_rc.push_str("set -T\n"),
+                "extdebug" => bash_rc.push_str("shopt -s extdebug\n"),
+                _ => {}
+            }
+            if debug_mode == "verbose-debug" {
+                // DEBUG diagnostics may contain arbitrary command-looking text.
+                // Preserve quoted actions, never evaluate their printed output.
+                bash_rc.push_str(
+                    r#"trap 'case $BASH_COMMAND in false) AMX_DEBUG_COUNT=$(( ${AMX_DEBUG_COUNT:-0} + 1 ));; *"trap -p DEBUG"*) printf '\''%s\n'\'' '\''NOISE; AMX_CAPTURE_INJECTED=1;#'\'';; esac' DEBUG
+"#,
+                );
+            } else if debug_mode != "plain" {
+                // The integration must chain the existing native trap without
+                // changing BASH_COMMAND, status or tracing options.
+                bash_rc.push_str(
+                    "trap 'case $BASH_COMMAND in false) AMX_DEBUG_COUNT=$(( ${AMX_DEBUG_COUNT:-0} + 1 ));; esac' DEBUG\n",
+                );
+            }
+            std::fs::write(home.path().join(".bashrc"), bash_rc).unwrap();
             std::fs::write(
                 home.path().join(".zshenv"),
                 "skip_global_compinit=1\nexport AMX_TEST_ENV=loaded\n",
@@ -1086,7 +1110,7 @@ mod linux_session_tests {
             )
             .unwrap();
             std::fs::write(home.path().join(".bash_profile"),
-                "export AMX_TEST_USER_RC=loaded\nshopt -q login_shell && export AMX_TEST_LOGIN=login_loaded\nPROMPT_COMMAND=\"${PROMPT_COMMAND}\nprintf 'AMX_USER_PROMPT\\n'\"\n").unwrap();
+                ". \"$HOME/.bashrc\"\nshopt -q login_shell && export AMX_TEST_LOGIN=login_loaded\nPROMPT_COMMAND=\"${PROMPT_COMMAND}\nprintf 'AMX_USER_PROMPT\\n'\"\n").unwrap();
             std::fs::write(
                 home.path().join(".zlogin"),
                 "export AMX_TEST_LOGIN=login_loaded\n",
@@ -1145,7 +1169,7 @@ mod linux_session_tests {
             // Exercise repeated preparation, as used by cloning tabs/panes.
             let args = prepare(Some(&program), &args, &mut environment, Some(&resources));
             // A real PTY is required: Fish suppresses prompt events on pipes,
-            // and Bash's command-start marker belongs to Readline's Enter key.
+            // and command boundaries must describe actual accepted input.
             let output = Command::new("python3")
                 .args([
                     "-c",
@@ -1162,6 +1186,20 @@ pending = [
     b"printf 'AMX_END\\n'\n",
     b"exit 0\n",
 ]
+if os.environ['AMX_PROBE_SHELL'] == 'bash':
+    # Blank Enter must not become a command. Pipelines/functions/reloading must
+    # each produce one boundary, with no history lookup or command replay.
+    pending = [
+        b"printf 'AMX_RC:%s\\nAMX_LOGIN:%s\\n' \"$AMX_TEST_USER_RC\" \"$AMX_TEST_LOGIN\"\n",
+        b"\n",
+        b"false\n",
+        b"printf 'AMX_STATUS:%s\\n' \"$?\"\n",
+        b"printf 'AMX_PIPE\\n' | cat\n",
+        b"amx_fixture() { printf 'AMX_END\\n'; }; amx_fixture\n",
+        b'. "$AUTOMEXIA_SHELL_INTEGRATION_ROOT/bash/automexia.bash"\n',
+        b"printf 'AMX_DEBUG:%s\\nAMX_SAFE:%s\\n' \"${AMX_DEBUG_COUNT:-0}\" \"${AMX_CAPTURE_INJECTED:-0}\"\n",
+        b"exit 0\n",
+    ]
 deadline = time.monotonic() + 15
 seen = 0
 status = None
@@ -1184,10 +1222,12 @@ try:
             if prompts > seen and pending:
                 seen = prompts
                 os.write(fd, pending.pop(0))
-        finished, child_status = os.waitpid(pid, os.WNOHANG)
-        if finished:
-            status = child_status
-            break
+        if status is None:
+            finished, child_status = os.waitpid(pid, os.WNOHANG)
+            if finished:
+                status = child_status
+                # Continue draining the owned PTY until EOF/EIO, including
+                # the final exit boundary; never reap the child twice.
 finally:
     if status is None:
         finished, status = os.waitpid(pid, os.WNOHANG)
@@ -1222,6 +1262,9 @@ sys.exit(os.waitstatus_to_exitcode(status))
                 )
                 .env("TERM_PROGRAM", "Automexia")
                 .env("TERM", "xterm-256color")
+                .env("AMX_PROBE_SHELL", shell)
+                .env_remove("AMX_DEBUG_COUNT")
+                .env_remove("AMX_CAPTURE_INJECTED")
                 .env("HISTFILE", "/dev/null")
                 .env("AUTOMEXIA_ALIASES", "0")
                 .env("AUTOMEXIA_LS", "0")
@@ -1238,6 +1281,26 @@ sys.exit(os.waitstatus_to_exitcode(status))
             );
             let text = String::from_utf8_lossy(&output.stdout);
             assert!(text.contains("AMX_RC:loaded"), "{shell}: user startup lost");
+            if shell == "bash" {
+                assert!(
+                    text.contains("AMX_STATUS:1\r\n"),
+                    "Bash ({debug_mode}, login={login}): command status lost"
+                );
+                assert!(
+                    text.contains("AMX_SAFE:0\r\n"),
+                    "Bash ({debug_mode}, login={login}): DEBUG diagnostics were executed"
+                );
+                let count = if debug_mode == "plain" { 0 } else { 1 };
+                assert!(
+                    text.contains(&format!("AMX_DEBUG:{count}\r\n")),
+                    "Bash ({debug_mode}, login={login}): user DEBUG hook lost"
+                );
+                assert_eq!(
+                    text.matches("\x1b]133;C").count(),
+                    8,
+                    "Bash ({debug_mode}, login={login}): missing or duplicate command boundaries"
+                );
+            }
             if shell == "zsh" {
                 assert!(
                     text.contains("custom_loaded"),

@@ -117,7 +117,8 @@ __automexia_publish_location_hints() {
 __automexia_selector_exported() {
   local name=$1 attributes
   if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )); then
-    [[ -v $name ]] || return 1
+    # Bash 3.2 parses both branches; keep the newer test behind runtime dispatch.
+    builtin test -v "$name" || return 1
     case $name in
       DOCKER_CONTEXT) [[ ${DOCKER_CONTEXT@a} == *x* ]] ;;
       DOCKER_HOST) [[ ${DOCKER_HOST@a} == *x* ]] ;;
@@ -304,6 +305,9 @@ __automexia_print_colored_path() {
 
 __automexia_capture_status() {
   __automexia_command_status=$?
+  # An empty Enter starts another prompt, not a command. Close the legacy
+  # preexec latch before any user PROMPT_COMMAND hooks run.
+  __automexia_prompt_is_active=0
   # The user's first prompt hook still observes the command's exit status.
   return "$__automexia_command_status"
 }
@@ -804,4 +808,55 @@ F|$target|$digest"
       __automexia_alias_reason=source
     }
   fi
+fi
+
+# Bash before 4.4 has no PS0. Emit the same command boundary from DEBUG once
+# per accepted command line, without changing Readline bindings or executing
+# BASH_COMMAND. Keep an existing user DEBUG action in its native trap context.
+# shellcheck disable=SC2178 # Legacy Bash executes PROMPT_COMMAND as a string.
+if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) )); then
+  # Arm only when Readline displays PS1, after every user prompt hook.
+  # The zero-valued arithmetic preserves the reset SGR and stays in-process.
+  PS1='\[\e[0;$((__automexia_prompt_is_active=1,0))m\]'"$PS1"
+  __automexia_legacy_preexec() {
+    local status=$?
+    if [[ ${__automexia_prompt_is_active:-0} == 1 &&
+          ${BASH_SUBSHELL:-0} == 0 && ${#FUNCNAME[@]} == 1 &&
+          $BASH_COMMAND != __automexia_capture_status ]]; then
+      __automexia_prompt_is_active=0
+      printf '\e[0m\e]1337;SetUserVar=automexia_prompt_active=MA==\a\e]133;C\a'
+    fi
+    return "$status"
+  }
+  __automexia_legacy_install() {
+    local status=$? declaration action='' canonical
+    local prefix="trap -- '" suffix="' DEBUG" escaped_quote="'\\''"
+    PROMPT_COMMAND=${PROMPT_COMMAND#__automexia_legacy_install;}
+    __automexia_prompt_is_active=0
+    # A traced user hook can print before trap -p. Route only the builtin's
+    # declaration through the capture FD; restore all descriptors on return.
+    declaration=$( { builtin trap -p DEBUG >&3; } 3>&1 1>/dev/null )
+    if [[ -n $declaration ]]; then
+      [[ $declaration == "$prefix"*"$suffix" ]] || return "$status"
+      action=${declaration#"$prefix"}
+      action=${action%"$suffix"}
+      action=${action//"$escaped_quote"/"'"}
+      # Require canonical single-quote serialization. Never evaluate captured
+      # text: even a DEBUG hook's diagnostic output can contain command input.
+      canonical=${action//"'"/"$escaped_quote"}
+      [[ $declaration == "$prefix$canonical$suffix" ]] || return "$status"
+    fi
+    case $action in
+      '__automexia_legacy_preexec;'*) ;; # Re-sourcing never wraps the hook twice.
+      *) builtin trap -- "__automexia_legacy_preexec;${action:-:}" DEBUG ;;
+    esac
+    return "$status"
+  }
+  # Install after startup has returned. The trace attribute preserves the
+  # caller's DEBUG trap across this function without changing shell options.
+  builtin declare -ft __automexia_legacy_install
+  case ${PROMPT_COMMAND[0]} in
+    '__automexia_legacy_install;'*) ;;
+    *) PROMPT_COMMAND="__automexia_legacy_install;${PROMPT_COMMAND[0]}" ;;
+  esac
 fi

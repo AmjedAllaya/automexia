@@ -273,6 +273,29 @@ class VisualQualityTests(unittest.TestCase):
         owner = (visual.ROOT / 'apps/automexia-terminal/src/automexia/preferences.rs').read_text(encoding='utf8')
         self.assertRegex(owner, r'const PRIMARY_FILE: &str = "user-preferences-v[1-9][0-9]*\.toml";')
 
+    def test_native_captures_cannot_precreate_the_visual_comparator_output(self):
+        import shlex
+
+        predecessors = 0
+        for name in ('ci.yml', 'accessibility-native.yml'):
+            source = (visual.ROOT / '.github/workflows' / name).read_text(encoding='utf8')
+            lines = source.splitlines()
+            comparator = next(index for index, line in enumerate(lines)
+                              if line.strip().startswith('python tools/ci/visual_quality.py '))
+            args = shlex.split(lines[comparator].strip())
+            output = self.root / name / args[args.index('--output') + 1]
+            for line in lines[:comparator]:
+                if 'tests/integration/unix-session-ui.py ' not in line:
+                    continue
+                args = shlex.split(line.strip())
+                capture = self.root / name / args[args.index('--captures') + 1]
+                capture.mkdir(parents=True, exist_ok=False)
+                predecessors += 1
+            # Reproduce the real comparator's exclusive creation after earlier
+            # native captures. Neither owner may remove or reuse stale output.
+            output.mkdir(parents=True, exist_ok=False)
+        self.assertGreater(predecessors, 0)
+
     def test_hosted_visual_runs_cannot_silently_become_capture_only(self):
         for name in ('ci.yml', 'accessibility-native.yml'):
             source = (visual.ROOT / '.github/workflows' / name).read_text(encoding='utf8')

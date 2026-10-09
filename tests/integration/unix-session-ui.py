@@ -65,7 +65,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
     output = captures / label
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="automexia-unix-native-") as temporary:
-        home = Path(temporary)
+        home = Path(temporary).resolve()
         config = home / "config"
         config.mkdir()
         (home / ".bashrc").write_text("export AMX_NATIVE_RC=RC_LOADED\n", encoding="utf-8")
@@ -78,7 +78,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
         fish.mkdir(parents=True)
         (fish / "config.fish").write_text("set -gx AMX_NATIVE_RC RC_LOADED\n", encoding="utf-8")
         renderer = "use-cpu = true" if backend == "cpu" else f"backend = {json.dumps(backend)}"
-        program = ("/bin/zsh" if MACOS else "/bin/bash") if shell == "default" else (shutil.which("fish") if MACOS and shell == "fish" else "/bin/" + shell)
+        program = ("/bin/zsh" if MACOS else "/bin/bash") if shell == "default" else ("/bin/" + shell if MACOS and shell != "fish" else shutil.which(shell))
         check(program is not None, "required shell missing")
         shell_config = "" if shell == "default" else f"[shell]\nprogram = {json.dumps(program)}\nargs = {json.dumps(['--login'] if MACOS else [])}\n"
         # Exercise the platform default and, on macOS, optional fork mode.

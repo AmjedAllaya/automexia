@@ -231,7 +231,7 @@ jobs:
           driver=$(dpkg -L mesa-vulkan-drivers | awk '/\/lvp_icd[^/]*\.json$/ { print }')
           test -f "$driver"
           export VK_DRIVER_FILES="$driver"
-          timeout --signal=TERM --kill-after=20s 240s xvfb-run -a -s '-screen 0 1600x1200x24 -nolisten tcp' python3 tests/integration/unix-session-ui.py --binary target/debug/automexia --captures artifacts/visual-quality/native-linux
+          timeout --signal=TERM --kill-after=20s 240s xvfb-run -a -s '-screen 0 1600x1200x24 -nolisten tcp' python3 tests/integration/unix-session-ui.py --binary target/debug/automexia --captures artifacts/native-linux-sessions
 
       - name: Report compiler cache statistics
         if: ${{ always() && steps.sccache.outcome == 'success' }}
@@ -249,7 +249,7 @@ jobs:
           name: visual-regression-reports
           path: |
             artifacts/visual-quality/summary.json
-            artifacts/visual-quality/native-linux
+            artifacts/native-linux-sessions
             artifacts/visual-quality/controlled-tests.log
             artifacts/visual-quality/captures/*.json
             artifacts/visual-quality/captures/*--*.png
