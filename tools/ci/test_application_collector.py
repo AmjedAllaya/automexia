@@ -96,6 +96,91 @@ class CollectorTests(unittest.TestCase):
                 self.assertIs(released[-1], records)
         self.assertEqual(len(released), 5)
 
+    def test_macos_pointer_hit_test_rejects_foreign_points_and_releases_handles(self):
+        from macos_driver import Point
+        driver = object.__new__(MacDriver)
+        driver.process = SimpleNamespace(pid=42)
+        driver.check = lambda: None
+        released = []
+        driver.cf = SimpleNamespace(CFRelease=released.append)
+        def hit(system, x, y, output):
+            output._obj.value = 2
+            return 0
+        for pid in (42, 43):
+            def owner(element, output):
+                output._obj.value = pid
+                return 0
+            driver.ax = SimpleNamespace(AXUIElementCreateSystemWide=lambda: 1,
+                AXUIElementSetMessagingTimeout=lambda element, seconds: 0,
+                AXUIElementCopyElementAtPosition=hit, AXUIElementGetPid=owner)
+            if pid == 42:
+                driver.check_pointer_owner(Point(20, 30))
+            else:
+                with self.assertRaises(BenchmarkError):
+                    driver.check_pointer_owner(Point(20, 30))
+            self.assertEqual(released[-2:], [2, 1])
+        with self.assertRaises(BenchmarkError):
+            driver.check_pointer_owner(Point(float('nan'), 30))
+        self.assertEqual(len(released), 4)
+
+    def test_macos_native_click_pairs_release_and_stops_before_foreign_press(self):
+        driver = object.__new__(MacDriver)
+        driver.window = 9
+        driver.check = lambda: None
+        driver.owned_window_number = lambda: 7
+        driver.copy = lambda element, name: name
+        def geometry(value, kind, output):
+            if kind == 1:
+                output._obj.x, output._obj.y = 20, 30
+            else:
+                output._obj.width, output._obj.height = 800, 600
+            return True
+        driver.ax = SimpleNamespace(AXValueGetValue=geometry)
+        for mode in ('normal', 'foreign-before-press', 'dispatch-error'):
+            released, posted, checked = [], [], []
+            driver.cf = SimpleNamespace(CFRelease=released.append)
+            def check(point):
+                checked.append((point.x, point.y))
+                if mode == 'foreign-before-press' and len(checked) == 2:
+                    raise BenchmarkError('foreign point')
+            def post(tap, event):
+                self.assertEqual(tap, 1)
+                posted.append(event)
+                if mode == 'dispatch-error' and event == 1:
+                    raise BenchmarkError('dispatch unavailable')
+            driver.check_pointer_owner = check
+            driver.cg = SimpleNamespace(CGEventCreateMouseEvent=lambda source, kind, point, button: kind,
+                CGEventSetFlags=lambda event, flags: None,
+                CGEventSetIntegerValueField=lambda event, field, value: None, CGEventPost=post)
+            with patch('macos_driver.time.sleep'):
+                if mode == 'normal':
+                    driver.click(40, 50)
+                else:
+                    with self.assertRaises(BenchmarkError):
+                        driver.click(40, 50)
+            self.assertEqual(checked, [(60, 80), (60, 80)])
+            self.assertEqual(posted, [5] if mode == 'foreign-before-press' else [5, 1, 2])
+            self.assertEqual(released, ['AXPosition', 'AXSize', 5, 1, 2])
+
+    def test_native_failure_report_excludes_content_and_nonfinite_geometry(self):
+        probe = unix_ui_probe()
+        report = probe.native_failure_state({'pointer': {'x': 12, 'y': float('nan'), 'text': 'private'},
+            'chrome': {'header_height': 32, 'palette_x': 'private', 'maximized': False},
+            'window_width': 800, 'scale_factor': float('inf'), 'visible_text': 'private',
+            'panels': [{'current_directory': 'private'}]})
+        self.assertEqual(report, {'pointer': {'x': 12},
+            'chrome': {'header_height': 32, 'maximized': False}, 'window_width': 800})
+
+    def test_theme_probe_rejects_placeholder_or_incomplete_inventory(self):
+        probe = unix_ui_probe()
+        for state in [{}, {'settings': {}}, {'settings': {'gallery': None}}]:
+            self.assertFalse(probe.theme_gallery_ready(state))
+        for gallery in [{}, {'count': 1, 'busy': False}, {'count': 5, 'busy': False},
+                        {'count': 6, 'busy': True}, {'count': 6}]:
+            with self.subTest(gallery=gallery):
+                self.assertFalse(probe.theme_gallery_ready({'settings': {'gallery': gallery}}))
+        self.assertTrue(probe.theme_gallery_ready({'settings': {'gallery': {'count': 6, 'busy': False}}}))
+
     def test_native_geometry_waits_for_scale_and_size_in_either_event_order(self):
         probe = unix_ui_probe()
         ready = {'scale_factor': 1.5, 'window_width': 1800, 'window_height': 1200}
@@ -297,6 +382,7 @@ class CollectorTests(unittest.TestCase):
     def test_macos_shortcuts_use_native_modifier_flags_and_reject_ambiguous_keys(self):
         self.assertEqual(MacDriver.key_spec('meta+shift+p'), (35, (1 << 20) | (1 << 17), 'p'))
         self.assertEqual(MacDriver.key_spec('Escape'), (53, 0, 'Escape'))
+        self.assertEqual(MacDriver.key_spec('Down'), (125, 0, 'Down'))
         self.assertEqual(MacDriver.key_spec('x'), (7, 0, 'x'))
         for key in ('meta+meta+p', 'unknown+p', 'meta+unsupported', '', 'meta+'):
             with self.subTest(key=key), self.assertRaises(BenchmarkError):

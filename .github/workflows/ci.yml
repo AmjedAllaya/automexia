@@ -197,6 +197,14 @@ jobs:
       - name: Rust clippy
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
+      - name: Isolated terminal core feature builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Workspace feature unification must not hide missing native backends.
+          cargo check -p rio-vt --no-default-features --locked
+          cargo check -p rio-vt --all-features --locked
+
       - name: Reclaim lint artifacts before the all-feature test build
         run: cargo clean
 

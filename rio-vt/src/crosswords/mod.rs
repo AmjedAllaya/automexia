@@ -4989,7 +4989,22 @@ impl<U: EventListener> Handler for Crosswords<U> {
         }
 
         let row = self.grid.cursor.pos.row;
-        self.grid[row].set_semantic_prompt(mark, prompt_id);
+        // ConPTY can forward a continuation OSC before flushing the cursor
+        // movement for the blank context row. The explicit start still owns
+        // that row while the same prompt is emitting its context. Never carry
+        // this protection across command execution or another generation.
+        let preserves_start = mark
+            == crate::crosswords::grid::row::SemanticPrompt::PromptContinuation
+            && prompt_id.is_some()
+            && self.grid[row].semantic_prompt
+                == crate::crosswords::grid::row::SemanticPrompt::Prompt
+            && self.grid[row].semantic_prompt_id == prompt_id
+            && self.active_semantic_prompt.as_ref().is_some_and(|active| {
+                active.id == prompt_id && active.phase == ActivePromptPhase::Context
+            });
+        if !preserves_start {
+            self.grid[row].set_semantic_prompt(mark, prompt_id);
+        }
         if mark == crate::crosswords::grid::row::SemanticPrompt::Prompt {
             self.release_active_prompt_follow();
             self.shell_clear_deadline = None;
@@ -8626,6 +8641,56 @@ mod tests {
             None,
             "new output must not inherit an old command result"
         );
+    }
+
+    #[test]
+    fn coalesced_prompt_continuations_preserve_the_current_start_at_every_fragment() {
+        use crate::crosswords::grid::row::SemanticPrompt;
+        use crate::performer::handler::Processor;
+
+        // A native console can forward OSC markers before flushing its cursor
+        // repaint. Continuation markers on that same physical row must not
+        // erase the explicit start of the same active prompt generation.
+        let stream = b"\x1b]133;A;aid=61\x07\x1b]133;P;k=c;aid=61\x07\
+                       \x1b[2;1HC:\\fixture\r\n\x1b]133;P;k=c;aid=61\x07\
+                       > \x1b]133;B\x07";
+        for split in 0..=stream.len() {
+            let mut cw = make_prompt_crosswords(80, 8);
+            let mut processor = Processor::default();
+            processor.advance(&mut cw, &stream[..split]);
+            processor.advance(&mut cw, &stream[split..]);
+            assert_eq!(cw.grid[Line(0)].semantic_prompt, SemanticPrompt::Prompt);
+            assert_eq!(cw.grid[Line(0)].semantic_prompt_id, Some(61));
+            assert_eq!(
+                cw.grid[Line(1)].semantic_prompt,
+                SemanticPrompt::PromptContinuation
+            );
+            assert_eq!(
+                cw.grid[Line(2)].semantic_prompt,
+                SemanticPrompt::PromptContinuation
+            );
+            assert_eq!(semantic_row_text(&cw, Line(1)), r"C:\fixture");
+        }
+    }
+
+    #[test]
+    fn coalesced_prompt_continuations_do_not_preserve_a_stale_or_foreign_start() {
+        use crate::crosswords::grid::row::SemanticPrompt;
+        use crate::performer::handler::Processor;
+
+        for next in [
+            b"\x1b]133;C\x07\x1b]133;P;k=c;aid=61\x07".as_slice(),
+            b"\x1b]133;P;k=c;aid=62\x07".as_slice(),
+        ] {
+            let mut cw = make_prompt_crosswords(80, 8);
+            let mut processor = Processor::default();
+            processor.advance(&mut cw, b"\x1b]133;A;aid=61\x07");
+            processor.advance(&mut cw, next);
+            assert_eq!(
+                cw.grid[Line(0)].semantic_prompt,
+                SemanticPrompt::PromptContinuation
+            );
+        }
     }
 
     #[test]

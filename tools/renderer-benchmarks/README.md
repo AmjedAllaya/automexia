@@ -98,7 +98,9 @@ and resize probes in the owned application window. Windows requires an unlocked
 interactive desktop. Linux's input driver requires controlled X11 and `xdotool`;
 Wayland input probes explicitly fail without that adapter. macOS uses AX/Quartz
 and requires previously granted Accessibility access; the collector never changes
-permissions or opens a permission prompt. Windows/Linux/macOS resource adapters
+permissions or opens a permission prompt. Keyboard probes target the owned PID.
+Native pointer probes verify focus, window identity and a system AX hit test before
+posting their paired mouse events through the session event stream. Windows/Linux/macOS resource adapters
 are separate; each platform still needs native validation before admitting its
 baseline. NVML is optional; it is not an implementation of AMD/Intel/Apple GPU
 counters. Noninteractive scenarios can run without a keyboard driver.

@@ -63,13 +63,18 @@ try {
             self.skipTest("PowerShell is required for the native recovery oracle")
         script = r'''
 $ErrorActionPreference = 'Stop'
+# Get-Location can carry a provider-qualified UNC path under WSL. The .NET
+# parser requires a filesystem path, not PowerShell's provider syntax.
+$source = (Get-Item -LiteralPath 'tests/integration/session-recovery-windows.ps1').FullName
+$parseErrors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile(
-    (Join-Path (Get-Location) 'tests/integration/session-recovery-windows.ps1'),
-    [ref]$null, [ref]$null)
+    $source, [ref]$null, [ref]$parseErrors)
+if ($parseErrors.Count -gt 0) { throw 'Recovery fixture could not be parsed' }
 $function = $ast.Find({ param($node)
     $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
     $node.Name -eq 'Get-RecoverySentinelCount'
 }, $true)
+if ($null -eq $function) { throw 'Recovery sentinel oracle is missing' }
 . ([scriptblock]::Create($function.Extent.Text))
 function Row($text, $wrap) {
     $bytes = [Collections.Generic.List[byte]]::new()

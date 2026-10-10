@@ -1,6 +1,8 @@
 """Owned-process AX/Quartz probes; requires preauthorized Accessibility access.
 
 No permission prompts, AppleScript, shell evaluation or system-wide key posting.
+Pointer probes use the session event stream only after a native hit test verifies
+the frontmost point belongs to the owned application.
 Native macOS validation is required before admitting this adapter's cohort.
 """
 import ctypes as ct
@@ -39,6 +41,8 @@ class MacDriver:
             self.ax: {
                 'AXIsProcessTrusted': ([], ct.c_bool),
                 'AXUIElementCreateApplication': ([ct.c_int], pointer),
+                'AXUIElementCreateSystemWide': ([], pointer),
+                'AXUIElementCopyElementAtPosition': ([pointer, ct.c_float, ct.c_float, ct.POINTER(pointer)], ct.c_int),
                 'AXUIElementCopyAttributeValue': ([pointer, pointer, ct.POINTER(pointer)], ct.c_int),
                 'AXUIElementSetAttributeValue': ([pointer, pointer, pointer], ct.c_int),
                 'AXUIElementPerformAction': ([pointer, pointer], ct.c_int),
@@ -55,6 +59,7 @@ class MacDriver:
                 'CGEventKeyboardSetUnicodeString': ([pointer, ct.c_ulong, ct.POINTER(ct.c_uint16)], None),
                 'CGEventSetFlags': ([pointer, ct.c_uint64], None),
                 'CGEventPostToPid': ([ct.c_int, pointer], None),
+                'CGEventPost': ([ct.c_uint32, pointer], None),
             },
         }
         for library, functions in signatures.items():
@@ -139,7 +144,7 @@ class MacDriver:
 
     @staticmethod
     def key_spec(key):
-        codes = {'F5': 96, 'F6': 97, 'F8': 100, 'Escape': 53,
+        codes = {'F5': 96, 'F6': 97, 'F8': 100, 'Escape': 53, 'Down': 125,
                  's': 1, 'e': 14, 'a': 0, 'r': 15, 'c': 8, 'h': 4,
                  'n': 45, 'd': 2, 'l': 37, 'x': 7, 'q': 12, 'p': 35}
         fields = key.split('+')
@@ -199,6 +204,26 @@ class MacDriver:
         finally:
             self.cf.CFRelease(windows)
 
+    def check_pointer_owner(self, point):
+        self.check()
+        if not math.isfinite(point.x) or not math.isfinite(point.y):
+            raise BenchmarkError('macOS pointer point is invalid')
+        system, hit = self.ax.AXUIElementCreateSystemWide(), ct.c_void_p()
+        if not system:
+            raise BenchmarkError('macOS pointer ownership unavailable')
+        try:
+            owner = ct.c_int()
+            if (self.ax.AXUIElementSetMessagingTimeout(system, 2.0) != 0
+                    or self.ax.AXUIElementCopyElementAtPosition(system, point.x, point.y, ct.byref(hit)) != 0
+                    or not hit.value
+                    or self.ax.AXUIElementGetPid(hit.value, ct.byref(owner)) != 0
+                    or owner.value != self.process.pid):
+                raise BenchmarkError('macOS pointer point is not owned; input stopped')
+        finally:
+            if hit.value:
+                self.cf.CFRelease(hit.value)
+            self.cf.CFRelease(system)
+
     def click(self, x, y):
         self.check()
         point, size = Point(), Size()
@@ -213,20 +238,30 @@ class MacDriver:
             raise BenchmarkError('macOS pointer probe outside owned window')
         point.x += x
         point.y += y
-        window_number = self.owned_window_number()
-        for event_type in (5, 1, 2):  # mouse moved, left down, left up
-            self.check()
-            event = self.cg.CGEventCreateMouseEvent(None, event_type, point, 0)
-            if not event:
-                raise BenchmarkError('macOS pointer probe unavailable')
-            try:
-                # Public CGEventField window identifiers keep PID-posted mouse
-                # events attached to the same verified native window.
-                for field in (91, 92):
-                    self.cg.CGEventSetIntegerValueField(event, field, window_number)
+        self.owned_window_number()  # Reject ambiguous or stale owned windows.
+        events = []
+        try:
+            for event_type in (5, 1, 2):  # mouse moved, left down, left up
+                event = self.cg.CGEventCreateMouseEvent(None, event_type, point, 0)
+                if not event:
+                    raise BenchmarkError('macOS pointer probe unavailable')
+                events.append(event)
+                self.cg.CGEventSetFlags(event, 0)
                 self.cg.CGEventSetIntegerValueField(event, 1, 1)  # mouse click state
-                self.cg.CGEventPostToPid(self.process.pid, event)
+            self.check_pointer_owner(point)
+            # Let WindowServer produce native window-relative mouse coordinates.
+            # PID-posted keyboard events remain independent of this mouse path.
+            self.cg.CGEventPost(1, events[0])  # kCGSessionEventTap
+            time.sleep(.02)
+            self.check_pointer_owner(point)
+            try:
+                self.cg.CGEventPost(1, events[1])
             finally:
+                # Queue the release even if dispatch fails. Do not hit-test again
+                # between down/up: maximize can move the window during the click.
+                self.cg.CGEventPost(1, events[2])
+        finally:
+            for event in events:
                 self.cf.CFRelease(event)
 
     def resize(self, width, height):

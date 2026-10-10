@@ -78,8 +78,8 @@ clipboard = ["dep:copypasta", "dep:raw-window-handle"]
 # crate and a font-outline parser. Headless embedders that only parse and
 # snapshot never decode images or glyphs, so this stays off by default.
 graphics = ["dep:image_rs", "rio-graphics/image", "rio-graphics/glyph"]
-x11 = ["clipboard", "copypasta/x11"]
-wayland = ["clipboard", "copypasta/wayland"]
+x11 = ["clipboard", "copypasta/x11", "rio-window?/x11"]
+wayland = ["clipboard", "copypasta/wayland", "rio-window?/wayland"]
 wgpu = ["renderer", "dep:sugarloaf", "sugarloaf/wgpu"]
 
 [dev-dependencies]

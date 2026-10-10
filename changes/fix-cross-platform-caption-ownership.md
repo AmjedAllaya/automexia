@@ -16,3 +16,13 @@ Native screenshot fixtures use synthetic prompts and account labels, with a
 capture check that rejects identifying shell output.
 
 Custom caption buttons now expose bounded native accessibility actions with current-frame validation and ordinary close confirmation.
+
+Coalesced continuation markers retain the current prompt start without claiming
+stale or foreign generations. Native regression probes now wait for complete
+theme/tag presentation, exercise keyboard theme preview, and retain only bounded
+numeric diagnostics. The prompt benchmark asserts that fragmented native-console
+markers produce exactly one start row.
+
+The optional terminal-core window bridge now forwards selected Linux display
+backends without activating windowing for headless embedders. CI checks the core
+in isolation so workspace feature unification cannot hide a broken backend.

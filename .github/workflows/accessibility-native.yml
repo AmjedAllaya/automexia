@@ -180,7 +180,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo bench -p automexia-renderer-benchmarks --bench text_fit --locked -- responsive_fitting --sample-size 10 --measurement-time 1 --warm-up-time 1
-          cargo bench -p rio-vt --bench vt_input --locked -- unix_prompt_startup_resize_snapshot --sample-size 10 --measurement-time 1 --warm-up-time 1
+          cargo bench -p rio-vt --bench vt_input --locked -- 'prompt_(startup_resize|passthrough)_snapshot' --sample-size 10 --measurement-time 1 --warm-up-time 1
       - name: Retain macOS benchmark raw data
         if: always() && runner.os == 'macOS'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -189,6 +189,7 @@ jobs:
           path: |
             target/criterion/responsive_fitting
             target/criterion/unix_prompt_startup_resize_snapshot
+            target/criterion/conpty_prompt_passthrough_snapshot
           if-no-files-found: warn
           retention-days: 14
       - name: Preserve exact geometry, environment and mutation reports

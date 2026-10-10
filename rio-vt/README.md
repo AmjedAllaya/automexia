@@ -31,7 +31,7 @@ selection and search all compile with no windowing or renderer stack.
 | _(none)_ | ✓ | Lean core. No renderer, no windowing. |
 | `rio-window` | | `From` conversions between the core's `WindowId` and `rio_window::window::WindowId`, plus the event-loop proxy listener. |
 | `renderer` | | Expose the app-level `RioErrorType::FontsNotFound` variant (pulls a `sugarloaf` font type). Enabled transitively by `rio-backend`'s renderer. |
-| `x11` / `wayland` | | Forward the matching clipboard backend feature. |
+| `x11` / `wayland` | | Select the matching clipboard backend and forward the native backend if `rio-window` is enabled; these flags do not enable the window bridge themselves. |
 
 `WindowId` is **always** the core's own `WindowId(u64)` (with
 `From<u64>`/`Into<u64>`); `rio-vt` never aliases it to the windowing

@@ -59,6 +59,13 @@ def integrated_ready(state: dict) -> bool:
                 and panel.get("current_directory") is not None)
 
 
+def theme_gallery_ready(state: dict) -> bool:
+    # A visible gallery can still contain only its initial configuration row.
+    # Require all five bundled themes before testing keyboard preview/scrolling.
+    gallery = state.get("settings", {}).get("gallery")
+    return bool(gallery and gallery.get("busy") is False and gallery.get("count", 0) >= 6)
+
+
 def native_geometry_ready(state: dict, scale: float | None, logical_size=None) -> bool:
     actual = state.get("scale_factor")
     if not isinstance(actual, (int, float)) or not math.isfinite(actual) or actual <= 0:
@@ -233,7 +240,7 @@ class WaylandDisplay:
 
     def key(self, process, chord):
         self.window(process, focused=True)
-        check(chord in ("ctrl+shift+p", "Escape"), "unsupported Wayland fixture key")
+        check(chord in ("ctrl+shift+p", "Escape", "Down"), "unsupported Wayland fixture key")
         modifiers, key = chord.split('+')[:-1], chord.split('+')[-1]
         # Keep the virtual device
         # alive while clients bind wl_keyboard after its capability appears.
@@ -350,12 +357,15 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
 
                 def wait(predicate, message: str, seconds: float = 15) -> dict:
                     end = time.monotonic() + seconds
+                    value = {}
                     while time.monotonic() < end:
                         value = state()
                         if value and predicate(value):
                             return value
                         time.sleep(.05)
-                    raise Failure(message)
+                    error = Failure(message)
+                    error.observed = native_failure_state(value)
+                    raise error
 
                 wait(lambda s: s.get("sequence", 0) > 0, "no presented frame", 30)
                 if MACOS:
@@ -458,7 +468,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 check(any(row.get("result_exit_code") == 1 for row in result.get("semantic_rows", [])), "failed command status lost")
                 result = command("printf 'NAME  STATUS   AGE\\napi   Running  2d\\nweb   Pending  1d\\n'")
                 check(result.get("inline_table_count", 0) >= 1, "inline table not rendered")
-                check(bool(result.get("prompt_context_paints")), "information tags not painted")
+                wait(lambda s: bool(s.get("prompt_context_paints")), "information tags not painted")
                 capture("terminal")
 
                 key("ctrl+shift+p")
@@ -507,7 +517,12 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 key("Escape")
                 wait(lambda s: not s.get("settings", {}).get("open"), "settings did not close")
                 send("open-themes")
-                wait(lambda s: bool(s.get("settings", {}).get("gallery")), "theme gallery missing")
+                wait(theme_gallery_ready, "theme library did not load")
+                key("Down")
+                preview = wait(lambda s: bool((s.get("settings", {}).get("gallery") or {}).get("builtin")),
+                               "keyboard theme preview failed")
+                gallery = preview["settings"]["gallery"]
+                check(gallery["selected"] != gallery["current"], "preview overwrote the applied theme")
                 capture("themes")
                 key("Escape")
                 restored = wait(lambda s: not s.get("settings", {}).get("gallery"), "gallery did not close")
@@ -573,12 +588,29 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                       "owned shell survived application shutdown")
 
 
+def native_failure_state(state: dict) -> dict:
+    # Preserve only geometry and fixed booleans, never terminal text, paths or IDs.
+    result = {}
+    for section, keys in (("pointer", ("x", "y", "raw_y")),
+                          ("chrome", ("header_height", "palette_x", "controls_x", "button_width", "maximized"))):
+        values = state.get(section) or {}
+        result[section] = {key: values[key] for key in keys
+                           if isinstance(values.get(key), (int, float)) and math.isfinite(values[key])}
+    for key in ("scale_factor", "window_width", "window_height", "palette_enabled", "prompt_active"):
+        value = state.get(key)
+        if isinstance(value, (int, float)) and math.isfinite(value):
+            result[key] = value
+    return result
+
+
 def failure_details(error: BaseException) -> dict:
     # Never publish exception messages, filesystem paths, command text or
     # arbitrary traceback frames. Fixed owners, line numbers and errno identify
     # a failing operation without exposing the isolated session's contents.
     message = str(error)[:240] if isinstance(error, (Failure, BenchmarkError)) else type(error).__name__
     result = {"failure": message}
+    if isinstance(error, Failure) and hasattr(error, "observed"):
+        result["observed"] = error.observed
     if isinstance(error, OSError):
         result["errno"] = error.errno
     owners = {"unix-session-ui.py": "native-ui", "macos_driver.py": "native-input",
