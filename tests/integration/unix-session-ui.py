@@ -74,9 +74,12 @@ def caption_transition(state: dict) -> tuple[str, bool, int]:
     return ("Restore window" if maximized else "Maximize window", not maximized, sequence)
 
 
-def caption_transition_presented(state: dict, maximized: bool, sequence: int) -> bool:
+def caption_transition_presented(state: dict, maximized: bool, sequence: int, native_size) -> bool:
+    # isZoomed can change before the renderer receives Resized. A new frame
+    # with the opposite label alone may still expose the old button positions.
     return (state.get("sequence", 0) > sequence
-            and (state.get("chrome") or {}).get("maximized") is maximized)
+            and (state.get("chrome") or {}).get("maximized") is maximized
+            and native_geometry_ready(state, None, native_size))
 
 
 def native_geometry_ready(state: dict, scale: float | None, logical_size=None) -> bool:
@@ -497,11 +500,12 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 wait(lambda s: not s.get("palette_enabled"), "pointer-opened palette did not close")
                 if MACOS:
                     for _ in range(2):
-                        before = state()
+                        before = wait(lambda s: native_geometry_ready(s, None, driver.window_size()),
+                                      "native caption geometry did not settle")
                         _, maximized, presented_sequence = caption_transition(before)
                         chrome = before["chrome"]
                         click(chrome["controls_x"] + 1.5 * chrome["button_width"], chrome["header_height"] / 2)
-                        wait(lambda s: caption_transition_presented(s, maximized, presented_sequence),
+                        wait(lambda s: caption_transition_presented(s, maximized, presented_sequence, driver.window_size()),
                              "native maximize/restore caption failed")
                 if MACOS:
                     # Reading children activates the native adapter lazily. Wait
@@ -517,11 +521,13 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     for caption_label in ("Minimize window", "Close window"):
                         await_caption(caption_label)
                     for _ in range(2):
-                        caption_label, maximized, presented_sequence = caption_transition(state())
+                        before = wait(lambda s: native_geometry_ready(s, None, driver.window_size()),
+                                      "native AX caption geometry did not settle")
+                        caption_label, maximized, presented_sequence = caption_transition(before)
                         # Find and press one retained native element in the same
                         # traversal; a separate presence query can become stale.
                         await_caption(caption_label, press=True)
-                        wait(lambda s: caption_transition_presented(s, maximized, presented_sequence),
+                        wait(lambda s: caption_transition_presented(s, maximized, presented_sequence, driver.window_size()),
                              "native AX maximize/restore failed")
                 send("open-customizations")
                 wait(lambda s: s.get("settings", {}).get("ready"), "settings not ready")

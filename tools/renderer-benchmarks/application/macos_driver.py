@@ -264,6 +264,18 @@ class MacDriver:
             for event in events:
                 self.cf.CFRelease(event)
 
+    def window_size(self):
+        """Read logical native bounds independently of the renderer's snapshot."""
+        self.check()
+        value, size = self.copy(self.window, 'AXSize'), Size()
+        try:
+            if (not self.ax.AXValueGetValue(value, 2, ct.byref(size))
+                    or not all(math.isfinite(v) and v > 0 for v in (size.width, size.height))):
+                raise BenchmarkError('macOS owned window size unavailable')
+            return size.width, size.height
+        finally:
+            self.cf.CFRelease(value)
+
     def resize(self, width, height):
         self.check()
         size = Size(width, height)

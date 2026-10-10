@@ -173,20 +173,66 @@ class CollectorTests(unittest.TestCase):
 
     def test_caption_probe_handles_initially_maximized_windows_and_rejects_old_frames(self):
         probe = unix_ui_probe()
+        geometry = {'scale_factor': 1, 'window_width': 1200, 'window_height': 800}
         for initial in (False, True):
-            before = {'sequence': 20, 'chrome': {'maximized': initial}}
+            before = dict(geometry, sequence=20, chrome={'maximized': initial})
             label, expected, sequence = probe.caption_transition(before)
             self.assertEqual(label, 'Restore window' if initial else 'Maximize window')
             self.assertIs(expected, not initial)
-            self.assertFalse(probe.caption_transition_presented(before, expected, sequence))
+            self.assertFalse(probe.caption_transition_presented(before, expected, sequence, (1200, 800)))
             self.assertFalse(probe.caption_transition_presented(
-                {'sequence': 20, 'chrome': {'maximized': expected}}, expected, sequence))
+                dict(before, chrome={'maximized': expected}), expected, sequence, (1200, 800)))
             self.assertTrue(probe.caption_transition_presented(
-                {'sequence': 21, 'chrome': {'maximized': expected}}, expected, sequence))
+                dict(before, sequence=21, chrome={'maximized': expected}), expected, sequence, (1200, 800)))
         for state in ({}, {'sequence': 1, 'chrome': {'maximized': 1}},
                       {'sequence': True, 'chrome': {'maximized': False}}):
             with self.assertRaises(probe.Failure):
                 probe.caption_transition(state)
+
+    def test_caption_probe_rejects_early_zoom_flag_until_native_geometry_is_presented(self):
+        probe = unix_ui_probe()
+        # Captured Intel sequence: the zoom flag advanced, but the old 1200px
+        # layout still placed the next click at x=1137 instead of x=1857.
+        for scale in (1, 2):
+            for maximized, old_size, native_size in (
+                    (True, (1200, 800), (1920, 959)),
+                    (False, (1920, 959), (1200, 800))):
+                state = {'sequence': 21, 'chrome': {'maximized': maximized},
+                         'scale_factor': scale, 'window_width': old_size[0] * scale,
+                         'window_height': old_size[1] * scale}
+                self.assertFalse(probe.caption_transition_presented(state, maximized, 20, native_size))
+                state['window_width'] = native_size[0] * scale
+                self.assertFalse(probe.caption_transition_presented(state, maximized, 20, native_size))
+                state['window_height'] = native_size[1] * scale
+                self.assertTrue(probe.caption_transition_presented(state, maximized, 20, native_size))
+
+    def test_macos_native_size_is_owned_validated_and_releases_its_reference(self):
+        driver = object.__new__(MacDriver)
+        driver.window = 9
+        checked, released = [], []
+        driver.check = lambda: checked.append(True)
+        driver.copy = lambda element, name: name
+        driver.cf = SimpleNamespace(CFRelease=released.append)
+        for width, height, available in ((1920, 959, True), (0, 800, True),
+                                        (1200, -1, True), (float('nan'), 800, True),
+                                        (1200, float('inf'), True), (1200, 800, False)):
+            def read(value, kind, output):
+                self.assertEqual(value, 'AXSize')
+                self.assertEqual(kind, 2)
+                output._obj.width, output._obj.height = width, height
+                return available
+            driver.ax = SimpleNamespace(AXValueGetValue=read)
+            if available and width == 1920:
+                self.assertEqual(driver.window_size(), (1920, 959))
+            else:
+                with self.assertRaises(BenchmarkError):
+                    driver.window_size()
+        self.assertEqual(len(checked), 6)
+        self.assertEqual(released, ['AXSize'] * 6)
+        driver.check = lambda: (_ for _ in ()).throw(BenchmarkError('foreign window'))
+        with self.assertRaises(BenchmarkError):
+            driver.window_size()
+        self.assertEqual(len(released), 6)
 
     def test_theme_probe_rejects_placeholder_or_incomplete_inventory(self):
         probe = unix_ui_probe()

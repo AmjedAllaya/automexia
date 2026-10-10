@@ -164,6 +164,11 @@ jobs:
           for attempt in {1..12}; do
             python tests/integration/unix-session-ui.py --binary target/debug/automexia --backend webgpu --shell default --launch-mode default --captures "artifacts/visual-quality/native-macos/repeated-metal-$attempt" --timeout 120
           done
+          # CPU presentation may observe isZoomed before the resize frame.
+          # Repeat both shells from the captured native coordinate race.
+          for attempt in {1..4}; do
+            python tests/integration/unix-session-ui.py --binary target/debug/automexia --backend cpu --shell bash --shell fish --launch-mode default --captures "artifacts/visual-quality/native-macos/repeated-cpu-$attempt" --timeout 120
+          done
       - name: Retain native macOS session diagnostics
         if: always() && runner.os == 'macOS'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
