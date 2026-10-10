@@ -719,6 +719,8 @@ os-release files, non-execution of assignments, cached shell publishers and both
 installed/source layouts. Preserve separate WSL launch identity, optional framed
 metadata, nested-shell clearing, remote isolation and accessible full names.
 Native UI scenarios must assert the OS label, not merely any painted tag.
+Measure the settings roster label against its actual column at 100–200% scale
+and larger interface fonts; use a single column when two would clip the text.
 
 Joint context/completion packing measures real fonts and preserves supplied label
 bytes across wrapping, including timestamps and combining graphemes. Context and

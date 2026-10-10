@@ -4971,7 +4971,33 @@ impl SettingsView {
             }
         }
         let row_height = (self.font.max(10.0) * 1.5).max(16.0);
-        let columns = if area.width >= 340.0 { 2 } else { 1 };
+        let font_size = (self.font * 0.76).clamp(10.0, 16.0);
+        let options = DrawOpts {
+            font_size,
+            ..DrawOpts::default()
+        };
+        let widest_label = tags
+            .iter()
+            .map(|entry| {
+                canvas.text().measure(
+                    entry
+                        .label
+                        .strip_prefix("Tag slot: ")
+                        .unwrap_or(&entry.label),
+                    &options,
+                )
+            })
+            .fold(0.0_f32, f32::max);
+        let column_width = (area.width * 0.5 - 3.0).max(0.0);
+        let state_width = (self.font * 3.5).min(column_width * 0.26);
+        // Preserve the chosen font size: use one column when two would clip
+        // a label at larger interface font sizes.
+        let columns =
+            if area.width >= 340.0 && widest_label <= column_width - state_width - 6.0 {
+                2
+            } else {
+                1
+            };
         let page_rows = (area.height / row_height).floor().max(1.0) as usize;
         let capacity = page_rows * columns;
         self.preview_tag_list_visible_rows = capacity;
@@ -5042,7 +5068,7 @@ impl SettingsView {
                 } else {
                     "Off"
                 },
-                (self.font * 0.76).clamp(10.0, 16.0),
+                font_size,
                 if is_add || enabled {
                     theme.text
                 } else {
@@ -5062,7 +5088,7 @@ impl SettingsView {
                     .label
                     .strip_prefix("Tag slot: ")
                     .unwrap_or(&entry.label),
-                (self.font * 0.76).clamp(10.0, 16.0),
+                font_size,
                 if enabled || is_add {
                     theme.text
                 } else {

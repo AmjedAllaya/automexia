@@ -14969,9 +14969,9 @@
         "theme": "arctic-day",
         "width": 960
       },
-      "image_sha256": "0269f28b8f04f762cb611ed90e13674e66aceb83b91ed6947306fe8c706fdf18",
+      "image_sha256": "d0d29e658c326219bf77aeb8ef209636a0a883e37102313da916939aef7bb83d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-arctic-day-125": {
@@ -15023,9 +15023,9 @@
         "theme": "arctic-day",
         "width": 1200
       },
-      "image_sha256": "a6a1c1f5b2980622b59ab7d0633e951e88598b1bdcb8e8fcaac2c55ede3b764b",
+      "image_sha256": "ab581fec2546a49c62c29f326cbaec7d9d75fc7438bc0e6381a8706d6b5282d2",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-arctic-day-150": {
@@ -15077,9 +15077,9 @@
         "theme": "arctic-day",
         "width": 1440
       },
-      "image_sha256": "6e1ef3980b59b5062972c482358435ff0b7c51a0fd545ebd32e5c7d01f37ed6c",
+      "image_sha256": "9afe88ccaeeddf607060593c75131393b3c4b2f193b3f6b310ce23a6da5eae8d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-arctic-day-175": {
@@ -15131,9 +15131,9 @@
         "theme": "arctic-day",
         "width": 840
       },
-      "image_sha256": "c729cb8bb1a0663c618e064da718f335c44de1477e609ecbfed49820f6245527",
+      "image_sha256": "47b73becfdff8e6772828ff8875e816ec7e9db298d83e23b8c7e545e54f96045",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-arctic-day-200": {
@@ -15185,9 +15185,9 @@
         "theme": "arctic-day",
         "width": 1920
       },
-      "image_sha256": "6166b8d4b990b649787e8070bf14c5af819a17c4d092d37d46a9e5bb2be36314",
+      "image_sha256": "8cfc755a181154e2f8b942a4498299629ab0e0e5a5efe1127056e7f33ac91cc3",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-arctic-glass-100": {
@@ -15239,9 +15239,9 @@
         "theme": "arctic-glass",
         "width": 960
       },
-      "image_sha256": "8ee6ada252bbe6108b87b8c6f3a6bf11a4addbcf84c26b72f4d5a1920876ba94",
+      "image_sha256": "7e05d5e4c9f859e64e69173294e3586aba31cd64066a0e34e847ddaa4a9b3983",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-arctic-glass-125": {
@@ -15293,9 +15293,9 @@
         "theme": "arctic-glass",
         "width": 1200
       },
-      "image_sha256": "348d5aca6b54948fed78d1275007b53566d9ce57b4d014cb313c2923bb2cc8ba",
+      "image_sha256": "a44ca95d4e2814ae308b07c59fc3e4af1afa8907d5f3a740f28b7b15b951ae29",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-arctic-glass-150": {
@@ -15347,9 +15347,9 @@
         "theme": "arctic-glass",
         "width": 1440
       },
-      "image_sha256": "56640f4cca3797cd2e45e9e66e65faa0e08d8aeb277ab7febd3091b44deeb6c0",
+      "image_sha256": "694f28f2dd700071c05faae43135830cf553bfdcde6aee2126ba188d0b7804ac",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-arctic-glass-175": {
@@ -15401,9 +15401,9 @@
         "theme": "arctic-glass",
         "width": 840
       },
-      "image_sha256": "a22ec395f02576fccb7c1b02f9dc5f0361cff3bae937d41a471528525677bda0",
+      "image_sha256": "8596d71babefbd7e2141f4c0a1f07d1462bb5def1c1134fc8267f5c5a9c79dd3",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-arctic-glass-200": {
@@ -15455,9 +15455,9 @@
         "theme": "arctic-glass",
         "width": 1920
       },
-      "image_sha256": "5927f51630c50e0f2a2da1b322e8e60a059e518b080e6954c0302c5b188374a2",
+      "image_sha256": "8105deee93a1d5e051f7a4273b473ad4700773f86d837c882a804e6fac903eb3",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-aurora-night-100": {
@@ -15509,9 +15509,9 @@
         "theme": "aurora-night",
         "width": 960
       },
-      "image_sha256": "a906697dc68d847eb8af14dd420f9cb08f114f6e40c4466748eb8a6775edda63",
+      "image_sha256": "5a2042ef7f1079b65579b7f89cc67607263d8df7eb7193e85163a67bb63b14c2",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-aurora-night-125": {
@@ -15563,9 +15563,9 @@
         "theme": "aurora-night",
         "width": 1200
       },
-      "image_sha256": "da4a47ec7202878e4c5d04b1c765cef71e01ee18c4df7b880df1cb644d00c37d",
+      "image_sha256": "005be2467d78354fc82dbdbebbc29e0f99f25a25f34b823800d6443574bc1988",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-aurora-night-150": {
@@ -15617,9 +15617,9 @@
         "theme": "aurora-night",
         "width": 1440
       },
-      "image_sha256": "653e55d38fac675524105bec5fb67ce216f17d9d30d967cd8ff369c6ce586b8e",
+      "image_sha256": "3200095380d3b5ed7c72ddb914525ff3094c4026db0724bf1d17b48df3d1f068",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-aurora-night-175": {
@@ -15671,9 +15671,9 @@
         "theme": "aurora-night",
         "width": 840
       },
-      "image_sha256": "ecca26af3cb2c7222e41c7a29757681c40031a23f4e9340ca10fcfcb4cfd8ecb",
+      "image_sha256": "98c1a761416ddec8b2d88ca942b5c73501d84cc3fcf2e63b543f31020fa46600",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-aurora-night-200": {
@@ -15725,9 +15725,9 @@
         "theme": "aurora-night",
         "width": 1920
       },
-      "image_sha256": "0ac4d72c1b9b6c947c6ea1882a53542baf1cb4ec52090597560a406f5e14f6fb",
+      "image_sha256": "865e7276993f0dfc49f52c9a55796544c934cb12eea8564f2a62b249134e3c45",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-forest-operator-100": {
@@ -15779,9 +15779,9 @@
         "theme": "forest-operator",
         "width": 960
       },
-      "image_sha256": "9f3a8fbf46eecd1b7f9e74e4bb7b2a99a0eff85fa98b09deef545b069f58567e",
+      "image_sha256": "6ec3c33165b636228266daf609065e2a0e25518ff65082897a77b76d84b426c2",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-forest-operator-125": {
@@ -15833,9 +15833,9 @@
         "theme": "forest-operator",
         "width": 1200
       },
-      "image_sha256": "e130d9754deb2a832f0319ea8ae8d470d7dddf075370a08a3f79739cb328ba86",
+      "image_sha256": "0bc741486e26157dd74eba7b06cff6b417c9f0554a1ab30b9ade73446c599f8d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-forest-operator-150": {
@@ -15887,9 +15887,9 @@
         "theme": "forest-operator",
         "width": 1440
       },
-      "image_sha256": "b2fe6881765a716799fdf2cda68ff69be3fa6b109079440dce7e95e567f6829c",
+      "image_sha256": "2f72b3ad51e1c719b5a71d1e764a30bb80de572fe01cdfe9c82694d3bf4056f3",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-forest-operator-175": {
@@ -15941,9 +15941,9 @@
         "theme": "forest-operator",
         "width": 840
       },
-      "image_sha256": "b7865f7c2aed514d39b4351b62dae7c34e020cf3c1e1a99f4e42be9b061d4b31",
+      "image_sha256": "9704580eed4e96053290f6a3ff520a327b72140b906d183574ec926fbe07da7b",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-forest-operator-200": {
@@ -15995,9 +15995,9 @@
         "theme": "forest-operator",
         "width": 1920
       },
-      "image_sha256": "29cf0efb9d5daeab29f3949392895ccfe56e7c4a56284c76403095ba9fdc0ec4",
+      "image_sha256": "13594231ada38edd6e603a00e8accf8f17614fc5557c4051982005fbea25e155",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-solar-dusk-100": {
@@ -16049,9 +16049,9 @@
         "theme": "solar-dusk",
         "width": 960
       },
-      "image_sha256": "a0b6bdfecdb5f4ca473f8f8c4f8e49604ea039a7f959c5aca9d1e69507625dbb",
+      "image_sha256": "9ed84ed20248d9640a626b6c2dabd5c6849436cdfdf05c8b5e7b6089f37551e7",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-solar-dusk-125": {
@@ -16103,9 +16103,9 @@
         "theme": "solar-dusk",
         "width": 1200
       },
-      "image_sha256": "35674366cc558f57ad4c3bd17fa35ef0badb833e9619b7d7ef4fed11112a44fa",
+      "image_sha256": "cdb4f8d6c64715f015c48afc20fd379fecda6bbe4f0da5f854726e2fe773c40f",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-solar-dusk-150": {
@@ -16157,9 +16157,9 @@
         "theme": "solar-dusk",
         "width": 1440
       },
-      "image_sha256": "3c87073898294783cac55781d1ce38411ebe682aa31dcd30549a2bc9391f7488",
+      "image_sha256": "a04860d5ddd2beebc1e8adf1d877a96d38b2461995b2fa6d4cc403cad671e532",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-solar-dusk-175": {
@@ -16211,9 +16211,9 @@
         "theme": "solar-dusk",
         "width": 840
       },
-      "image_sha256": "853efd22047d8fe88d21abe788ea2146f7e9e9a2cb3b5493e6e77555c4376ed8",
+      "image_sha256": "613de0b409fc8297b06837e95179858f6534c0950b9f59bed55b772e8a5acb77",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-tags-solar-dusk-200": {
@@ -16265,9 +16265,9 @@
         "theme": "solar-dusk",
         "width": 1920
       },
-      "image_sha256": "a49ab06250b4d01134d05e16b2c8e16ea7d327754a6a38a9f09bf8169accf9e9",
+      "image_sha256": "9d44b0004ca7977e7a26f29aa856bcbd164cd3ba6f7c45d82ebd929e8ea44966",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
       "source_dirty": false
     },
     "settings-terminal-interface-arctic-day-100": {

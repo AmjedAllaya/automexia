@@ -3902,9 +3902,17 @@ fn inherited_color_graphic_uses_role_labels_for_canonical_setting_ids() {
 
 #[test]
 fn operating_system_roster_label_fits_its_preview_column() {
-    for scale in [1.0, 1.25, 1.5, 1.75, 2.0] {
+    for (scale, width, height, font) in [
+        (1.0, 960.0, 740.0, 16.0),
+        (1.25, 960.0, 740.0, 16.0),
+        (1.5, 960.0, 740.0, 16.0),
+        (1.75, 960.0, 740.0, 16.0),
+        (2.0, 960.0, 740.0, 16.0),
+        (1.0, 960.0, 900.0, 24.0),
+        (1.5, 1280.0, 900.0, 28.0),
+    ] {
         let mut view = workflow_tag_view();
-        view.fit(960.0, 740.0, 16.0);
+        view.fit(width, height, font);
         let mut raster = Raster::new(scale);
         view.paint(&mut raster, theme());
         let (_, row) = view

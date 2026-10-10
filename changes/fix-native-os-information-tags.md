@@ -14,3 +14,7 @@ projection and native Unix UI checks.
 
 The OS setting uses a compact, platform-neutral label; measured preview-column
 coverage prevents truncation at fractional display scales.
+
+The tag preview measures labels before choosing its column count, preserving
+readability at larger interface fonts. Reviewed references retain exact pixel
+comparisons across themes and scales.
