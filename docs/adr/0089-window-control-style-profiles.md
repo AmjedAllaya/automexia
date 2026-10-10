@@ -10,7 +10,19 @@ The existing application caption painter owns Soft, Glass, Outline and Circles.
 Settings previews adapt their canvas to that painter; samples do not register
 window-action targets. The existing island layout and screen press/release owner
 retain native minimize, maximize/restore, close confirmation and drag-away behavior.
-Native system decorations remain owned by the platform.
+Native system decorations remain owned by the platform. The default uses shared application
+controls on Windows/Linux (`Disabled`) and macOS (`Buttonless`). The latter keeps
+AppKit's native titled, resizable frame and hides native traffic lights. Explicit
+`Enabled`/`Transparent` choices keep native controls. One `Decorations` policy
+selects caption ownership; the created window and renderer retain it across live
+configuration reloads. Appearance remains runtime-overridable.
+
+Tab layout reserves caption slots only when those controls are drawn. The macOS
+traffic-light inset exists only with native controls. Painting and hit-testing
+consume the same layout, including at fractional scales. Invalid pointer
+coordinates cannot activate a caption action. macOS retains AppKit edge resizing;
+Windows/Linux use the existing manual resize adapter and consume the press only
+when that adapter accepts it.
 
 Backend `Presentation` owns a bounded, copyable `WindowControlsAppearance` with
 four explicit profile slots. Each profile admits only enumerated size, spacing,
@@ -45,4 +57,8 @@ strict migration/recovery, all catalogue editors and resets, retained RGB during
 opacity changes, stale revisions, nonexecuting previews, keyboard navigation,
 small geometry, state feedback, contrast and maximize/restore symbols. Native
 Windows CPU/WGPU scenarios must verify the real settings and caption surfaces;
-other native desktops and assistive-technology delivery remain separate evidence.
+the Unix native scenarios additionally assert shared caption geometry and exercise
+real session/menu/pane/resize workflows on X11, isolated Wayland, and
+AppKit. Driver tests reject foreign or ambiguous windows, lost focus, unsupported
+input and failed compositor startup. Physical-display edge dragging, input methods
+and assistive-technology delivery remain separate evidence.

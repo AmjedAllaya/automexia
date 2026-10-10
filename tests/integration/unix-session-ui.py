@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Native Linux/macOS launch, PTY, features and UI regression scenarios.
 
-Linux runs under isolated Xvfb (CI pins lavapipe). macOS reuses the owned AX/Quartz
+Linux runs under isolated Xvfb or isolated Sway (CI pins lavapipe). macOS reuses the owned AX/Quartz
 driver and requires preauthorized Accessibility access. macOS pixels are checked
 by the separate controlled-raster suite; real display scaling is recorded, not forced.
 Only synthetic commands run in temporary homes. Reports exclude terminal text.
@@ -9,12 +9,14 @@ Only synthetic commands run in temporary homes. Reports exclude terminal text.
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 import errno
 import json
+import math
 import os
 from pathlib import Path
 import signal
+import socket
 import shutil
 import sys
 import subprocess
@@ -57,6 +59,21 @@ def integrated_ready(state: dict) -> bool:
                 and panel.get("current_directory") is not None)
 
 
+def native_geometry_ready(state: dict, scale: float | None, logical_size=None) -> bool:
+    actual = state.get("scale_factor")
+    if not isinstance(actual, (int, float)) or not math.isfinite(actual) or actual <= 0:
+        return False
+    if scale is not None and abs(actual - scale) >= .01:
+        return False
+    if logical_size is None:
+        return True
+    for key, required in zip(("window_width", "window_height"), logical_size):
+        extent = state.get(key)
+        if not isinstance(extent, (int, float)) or not math.isfinite(extent) or abs(extent / actual - required) >= 1:
+            return False
+    return True
+
+
 def check(condition: bool, message: str) -> None:
     if not condition:
         raise Failure(message)
@@ -92,23 +109,184 @@ def fixture_workspace():
                 time.sleep(.05 * (attempt + 1))
 
 
-def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: float | None, launch_mode: str) -> dict:
+class WaylandDisplay:
+    """Private compositor and PID-scoped input; never uses the user's display."""
+
+    def __init__(self, scale: float):
+        check(scale in (1.0, 1.5, 2.0), "unsupported controlled Wayland scale")
+        self.scale = scale
+        self.process = self.temporary = self.log = None
+        self.socket = None
+        self.tools = {}
+        for name in ("sway", "swaymsg", "wtype", "grim", "xvfb-run"):
+            executable = shutil.which(name)
+            check(executable is not None, "required isolated Wayland tool missing")
+            self.tools[name] = executable
+
+    def __enter__(self):
+        try:
+            self.temporary = tempfile.TemporaryDirectory(prefix="amx-wayland-")
+            root = Path(self.temporary.name)
+            root.chmod(0o700)
+            config = root / "config"
+            config.write_text(
+                "xwayland disable\n"
+                f"output X11-1 mode {int(1600 * self.scale)}x{int(1200 * self.scale)} scale {self.scale}\n"
+                "default_border none\ndefault_floating_border none\nfor_window [app_id=\".\"] floating enable\nfocus_follows_mouse no\n", encoding="utf-8")
+            self.env = dict(os.environ)
+            for key in ("DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET", "SWAYSOCK"):
+                self.env.pop(key, None)
+            self.log = (root / "compositor.log").open("wb")
+            # Xvfb supplies persistent keyboard/pointer devices to Sway's
+            # X11 backend. Automexia connects to its private Wayland socket;
+            # Xwayland is disabled. xvfb-run owns authentication and cleanup.
+            self.env.update(XDG_RUNTIME_DIR=str(root), WLR_BACKENDS="x11",
+                            WLR_RENDERER="pixman", WLR_LIBINPUT_NO_DEVICES="1", WLR_X11_OUTPUTS="1")
+            self.process = subprocess.Popen(
+                [self.tools["xvfb-run"], "-a", "-s",
+                 f"-screen 0 {int(1600 * self.scale)}x{int(1200 * self.scale)}x24 -nolisten tcp",
+                 self.tools["sway"], "--config", str(config)],
+                env=self.env, stdout=self.log, stderr=self.log, start_new_session=True)
+            end = time.monotonic() + 12
+            while time.monotonic() < end:
+                check(self.process.poll() is None, "isolated Wayland compositor exited")
+                sockets = list(root.glob("sway-ipc.*.sock"))
+                displays = [p for p in root.glob("wayland-*") if p.is_socket()]
+                if len(sockets) == len(displays) == 1:
+                    self.socket = str(sockets[0])
+                    self.env["WAYLAND_DISPLAY"] = displays[0].name
+                    self.client_env = {"XDG_RUNTIME_DIR": str(root), "WAYLAND_DISPLAY": displays[0].name,
+                                       "WINIT_UNIX_BACKEND": "wayland"}
+                    self.ipc("--type", "get_outputs")
+                    return self
+                time.sleep(.05)
+            raise Failure("isolated Wayland display unavailable")
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
+
+    def __exit__(self, *unused):
+        try:
+            if self.process is not None and self.process.poll() is None:
+                os.killpg(self.process.pid, signal.SIGTERM)
+                try:
+                    self.process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(self.process.pid, signal.SIGKILL)
+                    self.process.wait(timeout=5)
+        finally:
+            if self.log is not None:
+                self.log.close()
+            if self.temporary is not None:
+                self.temporary.cleanup()
+
+    def ipc(self, *arguments):
+        check(self.process is not None and self.process.poll() is None and self.socket is not None,
+              "isolated Wayland compositor unavailable")
+        result = subprocess.run([self.tools["swaymsg"], "--socket", self.socket, "--raw", *arguments],
+                                env=self.env, capture_output=True, text=True, check=True, timeout=5)
+        value = json.loads(result.stdout)
+        if isinstance(value, list):
+            check(all(item.get("success", True) for item in value), "owned Wayland operation failed")
+        return value
+
+    @staticmethod
+    def owned_window(tree: dict, pid: int, focused: bool = False):
+        pending, found, visited = [tree], [], 0
+        while pending:
+            node = pending.pop()
+            visited += 1
+            check(visited <= 512, "Wayland tree exceeded fixture bound")
+            if node.get("pid") == pid and node.get("type") in ("con", "floating_con"):
+                found.append(node)
+            pending.extend(node.get("nodes", []))
+            pending.extend(node.get("floating_nodes", []))
+        check(len(found) == 1, "no unique owned Wayland window")
+        check(not focused or found[0].get("focused"), "owned Wayland window lost focus")
+        check(isinstance(found[0].get("id"), int) and found[0]["id"] > 0,
+              "invalid owned Wayland window identity")
+        return found[0]
+
+    def window(self, process, focused=False):
+        check(process.poll() is None, "owned Wayland application exited")
+        return self.owned_window(self.ipc("--type", "get_tree"), process.pid, focused)
+
+    def prepare(self, process):
+        end = time.monotonic() + 10
+        while time.monotonic() < end:
+            try:
+                window = self.window(process)
+                break
+            except Failure:
+                check(process.poll() is None, "owned Wayland application exited")
+                time.sleep(.05)
+        else:
+            raise Failure("no unique owned Wayland window")
+        self.ipc(f"[con_id={window['id']}]", "floating enable, border none, focus")
+        self.resize(process, 1200, 800)
+
+    def resize(self, process, width, height):
+        check(isinstance(width, int) and isinstance(height, int) and
+              320 <= width <= 1600 and 240 <= height <= 1200, "invalid Wayland fixture size")
+        window = self.window(process, focused=True)
+        self.ipc(f"[con_id={window['id']}]", f"resize set width {width} px height {height} px")
+
+    def key(self, process, chord):
+        self.window(process, focused=True)
+        check(chord in ("ctrl+shift+p", "Escape"), "unsupported Wayland fixture key")
+        modifiers, key = chord.split('+')[:-1], chord.split('+')[-1]
+        # Keep the virtual device
+        # alive while clients bind wl_keyboard after its capability appears.
+        arguments = [self.tools["wtype"], "-s", "150"]
+        for modifier in modifiers:
+            arguments.extend(["-M", modifier])
+        arguments.extend(["-k", key])
+        for modifier in reversed(modifiers):
+            arguments.extend(["-m", modifier])
+        arguments.extend(["-s", "100"])
+        subprocess.run(arguments, env=self.env, check=True, capture_output=True, timeout=5)
+
+    def click(self, process, x, y):
+        window = self.window(process, focused=True)
+        rect = window["rect"]
+        check(all(math.isfinite(value) for value in (x, y)) and
+              0 <= x < rect["width"] and 0 <= y < rect["height"], "pointer outside owned Wayland window")
+        self.ipc("seat", "seat0", "cursor", "set", str(round(rect["x"] + x)), str(round(rect["y"] + y)))
+        self.window(process, focused=True)
+        self.ipc("seat", "seat0", "cursor", "press", "button1")
+        self.ipc("seat", "seat0", "cursor", "release", "button1")
+
+    def capture(self, process, destination):
+        window = self.window(process, focused=True)
+        rect = window["rect"]
+        geometry = f"{rect['x']},{rect['y']} {rect['width']}x{rect['height']}"
+        subprocess.run([self.tools["grim"], "-g", geometry, str(destination)], env=self.env,
+                       check=True, capture_output=True, timeout=5)
+
+
+def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: float | None, launch_mode: str,
+             display_server: str = "x11") -> dict:
     label = f"{backend}-{shell}-{scale if scale is not None else 'native'}-{launch_mode}"
+    if display_server == "wayland":
+        label = "wayland-" + label
     output = captures / label
     output.mkdir(parents=True, exist_ok=True)
-    with fixture_workspace() as (temporary, cleanup_diagnostics):
+    with fixture_workspace() as (temporary, cleanup_diagnostics), ExitStack() as stack:
         home = Path(temporary).resolve()
         config = home / "config"
         config.mkdir()
-        (home / ".bashrc").write_text("export AMX_NATIVE_RC=RC_LOADED\n", encoding="utf-8")
+        public_rc = "export AMX_NATIVE_RC=RC_LOADED USER=fixture LOGNAME=fixture USERNAME=fixture\nPS1='fixture> '\n"
+        (home / ".bashrc").write_text(public_rc, encoding="utf-8")
         # Isolate fixtures from the host's Debian completion trust prompt. This
         # test-only startup choice never alters the application bootstrap.
         (home / ".zshenv").write_text("skip_global_compinit=1\nexport AMX_NATIVE_ZSHENV=ENV_LOADED\n", encoding="utf-8")
-        (home / ".zshrc").write_text("export AMX_NATIVE_RC=RC_LOADED\n", encoding="utf-8")
-        (home / ".bash_profile").write_text("export AMX_NATIVE_RC=RC_LOADED\n", encoding="utf-8")
+        (home / ".zshrc").write_text(public_rc, encoding="utf-8")
+        (home / ".bash_profile").write_text(public_rc, encoding="utf-8")
         fish = home / ".config/fish"
         fish.mkdir(parents=True)
-        (fish / "config.fish").write_text("set -gx AMX_NATIVE_RC RC_LOADED\n", encoding="utf-8")
+        (fish / "config.fish").write_text(
+            "set -gx AMX_NATIVE_RC RC_LOADED\nset -gx USER fixture\nset -gx LOGNAME fixture\n"
+            "set -gx USERNAME fixture\nfunction fish_prompt; printf 'fixture> '; end\n", encoding="utf-8")
         renderer = "use-cpu = true" if backend == "cpu" else f"backend = {json.dumps(backend)}"
         program = ("/bin/zsh" if MACOS else "/bin/bash") if shell == "default" else ("/bin/" + shell if MACOS and shell != "fish" else shutil.which(shell))
         check(program is not None, "required shell missing")
@@ -130,7 +308,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                    AUTOMEXIA_RESIZE_SNAPSHOT=str(snapshot), WINIT_UNIX_BACKEND="x11",
                    WINIT_X11_SCALE_FACTOR=str(scale or 1), SHELL=program, HISTFILE="/dev/null", RUST_LOG="error",
                    AUTOMEXIA_SHELL_INTEGRATION="1", AUTOMEXIA_CONTEXT_PATH_HINTS="0",
-                   PATH="/usr/local/bin:/usr/bin:/bin")
+                   PATH="/usr/local/bin:/usr/bin:/bin", USERNAME="fixture", LOGNAME="fixture")
         for key in ("WAYLAND_DISPLAY", "ZDOTDIR", "AUTOMEXIA_ORIGINAL_ZDOTDIR", "AUTOMEXIA_ORIGINAL_ZDOTDIR_SET",
                     "AUTOMEXIA_VISUAL_TEST_FIXTURE"):
             env.pop(key, None)
@@ -141,6 +319,12 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
             env["ZDOTDIR"] = str(home)
         else:
             env["USER"] = "fixture"
+        wayland = None
+        if display_server == "wayland":
+            wayland = stack.enter_context(WaylandDisplay(scale or 1.0))
+            env.update(wayland.client_env)
+            for key in ("DISPLAY", "WINIT_X11_SCALE_FACTOR", "WAYLAND_SOCKET", "SWAYSOCK"):
+                env.pop(key, None)
         # No unredacted native logs or snapshots are published.
         with (home / "stderr.log").open("wb") as log:
             started = time.monotonic()
@@ -177,6 +361,8 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 if MACOS:
                     driver = MacDriver(process)
                     driver.resize(1200, 800)
+                elif wayland:
+                    wayland.prepare(process)
                 else:
                     end = time.monotonic() + 10
                     while time.monotonic() < end and handle is None:
@@ -193,9 +379,22 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 def key(chord: str) -> None:
                     if driver:
                         driver.key(chord.replace("ctrl+", "meta+"))
+                    elif wayland:
+                        wayland.key(process, chord)
                     else:
                         check(call("xdotool", "getwindowfocus") == handle, "owned window lost focus")
                         call("xdotool", "key", "--clearmodifiers", chord)
+
+                def click(x: float, y: float) -> None:
+                    if driver:
+                        driver.click(x, y)
+                    elif wayland:
+                        wayland.click(process, x, y)
+                    else:
+                        check(call("xdotool", "getwindowfocus") == handle, "owned window lost focus")
+                        current_scale = state()["scale_factor"]
+                        call("xdotool", "mousemove", "--window", handle, str(round(x * current_scale)), str(round(y * current_scale)))
+                        call("xdotool", "click", "1")
 
                 def send(action: str) -> dict:
                     nonlocal sequence
@@ -208,8 +407,15 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     return wait(lambda s: s.get("last_control") == command, "control not presented")
 
                 def capture(name: str) -> None:
+                    # Reject identifying shell output before publishing pixels.
+                    visible = active(state()).get("visible_text", "")
+                    for marker in (socket.gethostname(), os.environ.get("USER", ""), os.environ.get("USERNAME", "")):
+                        check(not marker or marker == "fixture" or marker not in visible,
+                              "fixture exposed host identity before capture")
                     # Native pixels, separate from the semantic assertions.
-                    if not MACOS:
+                    if wayland:
+                        wayland.capture(process, output / f"{name}.png")
+                    elif not MACOS:
                         call("import", "-window", handle, str(output / f"{name}.png"))
 
                 def command(text: str) -> dict:
@@ -224,12 +430,26 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
 
                 initial = wait(lambda s: integrated_ready(s) and
                                s.get("latest_prompt_start_count") == 1, "session integration absent")
+                if scale is not None:
+                    # Wayland sends preferred fractional scale asynchronously;
+                    # the first shell frame can precede that configure event.
+                    initial = wait(lambda s: integrated_ready(s) and native_geometry_ready(s, scale),
+                                   "native scale did not settle")
+                if wayland:
+                    initial = wait(lambda s: native_geometry_ready(s, scale, (1200, 800)),
+                                   "initial Wayland size did not settle")
                 ready_ms = round((time.monotonic() - started) * 1000, 3)
                 expected = "wgpu" if backend == "webgpu" else backend
                 check(initial.get("renderer_backend") == expected, "unexpected renderer fallback")
                 if scale is not None:
                     check(abs(initial.get("scale_factor", 0) - scale) < .01, "scale not applied")
                 check(initial.get("scale_factor", 0) > 0, "invalid native scale")
+                chrome = initial.get("chrome", {})
+                check(chrome.get("custom_controls") is True, "platform default bypasses application caption controls")
+                logical_width = initial["window_width"] / initial["scale_factor"]
+                check(abs(chrome.get("controls_x", 0) + 3 * chrome.get("button_width", 0) - logical_width) < .01,
+                      "caption controls do not occupy their visible window edge")
+                check(chrome.get("left_margin", 1000) <= 52, "unused native traffic-light inset retained")
                 check(active(initial).get("current_directory") == str(home), "launch CWD discarded")
                 result = command("printenv AMX_NATIVE_RC; printenv AMX_NATIVE_PROFILE")
                 text = active(result).get("visible_text", "")
@@ -246,9 +466,41 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 capture("palette")
                 key("Escape")
                 wait(lambda s: not s.get("palette_enabled"), "palette did not close")
+                chrome = state()["chrome"]
+                check(chrome.get("palette_x") is not None, "header palette affordance absent")
+                click(chrome["palette_x"], chrome["header_height"] / 2)
+                wait(lambda s: s.get("palette_enabled"), "native header pointer action failed")
+                key("Escape")
+                wait(lambda s: not s.get("palette_enabled"), "pointer-opened palette did not close")
+                if MACOS:
+                    for maximized in (True, False):
+                        chrome = state()["chrome"]
+                        click(chrome["controls_x"] + 1.5 * chrome["button_width"], chrome["header_height"] / 2)
+                        wait(lambda s: s.get("chrome", {}).get("maximized") is maximized,
+                             "native maximize/restore caption failed")
+                if MACOS:
+                    # Reading children activates the native adapter lazily. Wait
+                    # for its real frame; snapshots cannot satisfy this oracle.
+                    def await_caption(label, present=True):
+                        end = time.monotonic() + 8
+                        while time.monotonic() < end:
+                            if driver.caption(label) is present:
+                                return
+                            time.sleep(.05)
+                        raise Failure("native AX caption state did not settle")
+
+                    for label in ("Minimize window", "Close window"):
+                        await_caption(label)
+                    for label, maximized in (("Maximize window", True), ("Restore window", False)):
+                        await_caption(label)
+                        check(driver.caption(label, press=True), "native AX caption action missing")
+                        wait(lambda s: s.get("chrome", {}).get("maximized") is maximized,
+                             "native AX maximize/restore failed")
                 send("open-customizations")
                 wait(lambda s: s.get("settings", {}).get("ready"), "settings not ready")
                 capture("customizations")
+                if MACOS:
+                    await_caption("Close window", False)
                 key("ctrl+shift+p")
                 check(not (state().get("palette_enabled") and state().get("settings", {}).get("open")),
                       "two overlapping root menus")
@@ -281,6 +533,10 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     driver.resize(720, 520)
                     resized = wait(lambda s: 0 < s.get("window_width", 0) < previous_width,
                                    "native resize not presented")
+                elif wayland:
+                    wayland.resize(process, 720, 520)
+                    resized = wait(lambda s: native_geometry_ready(s, scale, (720, 520)),
+                                   "Wayland resize not presented")
                 else:
                     call("xdotool", "windowsize", handle, "720", "520")
                     resized = wait(lambda s: s.get("window_width") == 720 and s.get("window_height") == 520,
@@ -290,12 +546,16 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 capture("resized")
                 return {"scenario": label, "renderer": expected, "scale": initial["scale_factor"],
                         "timing_kind": "diagnostic-polling-50ms-not-performance-baseline",
+                        "control_transport": "file-consumed-on-render-may-wait-for-idle-refresh",
                         "startup_shell_ready_ms": ready_ms, "command_roundtrip_ms": command_samples,
                         "native_pixel_capture": not MACOS,
+                        "display_server": "AppKit" if MACOS else display_server,
                         "fixture_cleanup": cleanup_diagnostics,
                         "shell_integration": True, "table": True, "tags": True,
                         "palette": True, "settings": True, "themes": True,
-                        "split": True, "local_tab": True, "resize": True}
+                        "split": True, "local_tab": True, "resize": True, "shared_caption_controls": True,
+                        "header_pointer": True, "native_maximize_restore": True if MACOS else None,
+                        "native_ax_caption": True if MACOS else None}
             finally:
                 if driver:
                     driver.dispose()
@@ -342,6 +602,7 @@ def main() -> int:
     parser.add_argument("--shell", choices=("default", "bash", "zsh", "fish"), action="append")
     parser.add_argument("--scale", type=float, action="append")
     parser.add_argument("--launch-mode", choices=("default", "fork"), action="append")
+    parser.add_argument("--display-server", choices=("x11", "wayland"), default="x11")
     parser.add_argument("--timeout", type=int, default=480)
     args = parser.parse_args()
     if not 1 <= args.timeout <= 1800:
@@ -353,6 +614,8 @@ def main() -> int:
     captures = args.captures.resolve()
     captures.mkdir(parents=True, exist_ok=True)
     results = []
+    if MACOS and args.display_server != "x11":
+        parser.error("Wayland scenarios require Linux")
     if MACOS and args.scale:
         parser.error("macOS records its real display scale; controlled raster tests cover synthetic scales")
     for backend in args.backend or (["cpu", "webgpu"] if MACOS else ["cpu", "vulkan"]):
@@ -360,9 +623,9 @@ def main() -> int:
             for scale in args.scale or ([None] if MACOS else [1.0, 1.5]):
                 for launch_mode in args.launch_mode or (["default", "fork"] if MACOS else ["default"]):
                     try:
-                        result = run_case(args.binary.resolve(), captures, backend, shell, scale, launch_mode)
+                        result = run_case(args.binary.resolve(), captures, backend, shell, scale, launch_mode, args.display_server)
                     except (Failure, subprocess.SubprocessError, OSError, ValueError) as error:
-                        result = {"scenario": f"{backend}-{shell}-{scale if scale is not None else 'native'}-{launch_mode}",
+                        result = {"scenario": ("wayland-" if args.display_server == "wayland" else "") + f"{backend}-{shell}-{scale if scale is not None else 'native'}-{launch_mode}",
                                   **failure_details(error)}
                     results.append(result)
                     print(json.dumps(result), flush=True)

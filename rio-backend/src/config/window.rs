@@ -49,29 +49,22 @@ pub enum Decorations {
     Buttonless,
 }
 
-#[cfg(target_os = "macos")]
-#[allow(clippy::derivable_impls)]
-impl Default for Decorations {
-    fn default() -> Decorations {
-        Decorations::Transparent
+impl Decorations {
+    /// Application caption controls share the tab strip on every platform.
+    /// Buttonless retains the native resizable AppKit frame on macOS.
+    pub fn uses_custom_controls(self) -> bool {
+        matches!(self, Self::Disabled | Self::Buttonless)
     }
 }
 
-#[cfg(target_os = "windows")]
 #[allow(clippy::derivable_impls)]
 impl Default for Decorations {
     fn default() -> Decorations {
-        // Automexia renders its liquid-hacker tabs and window controls in one
-        // coherent title surface on Windows.
-        Decorations::Disabled
-    }
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-#[allow(clippy::derivable_impls)]
-impl Default for Decorations {
-    fn default() -> Decorations {
-        Decorations::Enabled
+        if cfg!(target_os = "macos") {
+            Decorations::Buttonless
+        } else {
+            Decorations::Disabled
+        }
     }
 }
 
@@ -320,5 +313,18 @@ impl Colorspace {
 impl Window {
     pub fn is_fullscreen(&self) -> bool {
         self.mode == WindowMode::Fullscreen
+    }
+}
+
+#[cfg(test)]
+mod chrome_default_tests {
+    use super::*;
+
+    #[test]
+    fn default_window_uses_customizable_application_controls() {
+        assert!(matches!(
+            Window::default().decorations,
+            Decorations::Disabled | Decorations::Buttonless
+        ));
     }
 }

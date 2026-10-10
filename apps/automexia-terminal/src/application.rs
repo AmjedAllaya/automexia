@@ -2245,6 +2245,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 if state == ElementState::Pressed
                     && button == MouseButton::Left
                     && route.window.screen.custom_chrome
+                    && !cfg!(target_os = "macos")
                     && !route.window.winit_window.is_maximized()
                 {
                     let size = route.window.screen.sugarloaf.window_size();
@@ -2254,10 +2255,16 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         size.width as f64,
                         size.height as f64,
                     ) {
-                        route.window.screen.mouse.left_button_state =
-                            ElementState::Released;
-                        let _ = route.window.winit_window.drag_resize_window(direction);
-                        return;
+                        if route
+                            .window
+                            .winit_window
+                            .drag_resize_window(direction)
+                            .is_ok()
+                        {
+                            route.window.screen.mouse.left_button_state =
+                                ElementState::Released;
+                            return;
+                        }
                     }
                 }
 
@@ -2756,6 +2763,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
 
                 if route.window.screen.custom_chrome
+                    && !cfg!(target_os = "macos")
                     && !route.window.winit_window.is_maximized()
                 {
                     if let Some(direction) = custom_resize_direction(
@@ -2846,8 +2854,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 // should stay during top-edge drags.
                 let island_height_px = route.window.screen.chrome_header_height_px();
                 let num_tabs = route.window.screen.ctx().len();
-                let nav = &route.window.screen.renderer.navigation;
-                if nav.island_visible(num_tabs) && y <= island_height_px {
+                if route.window.screen.renderer.island_visible(num_tabs)
+                    && y <= island_height_px
+                {
                     route.window.winit_window.set_cursor(CursorIcon::Default);
                     return;
                 }
@@ -3561,7 +3570,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
 
                 if let Some(adapter) = &mut route.window.accessibility {
-                    adapter.publish(
+                    let caption = adapter.publish(
                         &route.window.winit_window,
                         route.window.is_focused,
                         || {
@@ -3571,6 +3580,12 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                             ))
                         },
                     );
+                    if let Some(action) = caption {
+                        route
+                            .window
+                            .screen
+                            .activate_window_control(action, &route.window.winit_window);
+                    }
                 }
 
                 #[cfg(target_os = "windows")]

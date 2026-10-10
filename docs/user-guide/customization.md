@@ -207,7 +207,11 @@ background and border opacity, hover tint and inactive intensity. Soft, Glass an
 Outline also offer corner roundness. Colors follow
 the theme until edited, with readable icon contrast on custom fills. Reset default
 resets and saves all four profiles; Restore saved can undo the last reset.
-These options apply to Automexia's own title bar, not platform-native decorations.
+These options apply to Automexia's title bar, which is the default on Windows,
+Linux and macOS. A configuration that explicitly selects native decorations
+(`Enabled` or `Transparent`) leaves system buttons under operating-system
+control. Changing decoration mode requires opening a new window; colors, heights
+and other appearance edits still update live.
 
 **Command timestamps** offers separate date and time formats, 12/24-hour clocks,
 precision, weekday and time-zone labels. Choose where the date, time and result

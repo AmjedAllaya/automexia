@@ -22,8 +22,10 @@ function Read-OwnedAccessibility {
             $value = $pattern.Current.Value
             if ($value.Length -gt 8192) { throw 'UIA value exceeded the application bound' }
         }
+        $invoke = $null
+        [void]$node.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$invoke)
         $nodes.Add([pscustomobject]@{ Name = $current.Name; Type = $current.ControlType.ProgrammaticName;
-            Focused = $current.HasKeyboardFocus; Bounds = $current.BoundingRectangle; Text = $text; Value = $value })
+            Focused = $current.HasKeyboardFocus; Bounds = $current.BoundingRectangle; Text = $text; Value = $value; Invoke = $invoke })
         $child = $walker.GetFirstChild($node)
         while ($null -ne $child) {
             if ($nodes.Count + $pending.Count -ge 1024) { throw 'UIA tree exceeded the test bound' }
@@ -50,6 +52,22 @@ function Wait-OwnedAccessibility {
 
 $script:testStage = 'native UIA activation'
 $null = Wait-OwnedAccessibility { param($nodes) @($nodes | Where-Object { $_.Name -eq 'Terminal output' }).Count -eq 1 } 'Native UIA terminal was not activated'
+
+$script:testStage = 'native UIA caption controls'
+$captions = Wait-OwnedAccessibility { param($nodes)
+    @($nodes | Where-Object { $_.Name -in @('Minimize window', 'Maximize window', 'Close window') -and
+        $_.Type -eq 'ControlType.Button' -and $null -ne $_.Invoke }).Count -eq 3
+} 'Native UIA caption buttons lack their activation pattern'
+foreach ($transition in @(@('Maximize window', 'Restore window'), @('Restore window', 'Maximize window'))) {
+    $before = Wait-OwnedAccessibility { param($nodes)
+        @($nodes | Where-Object { $_.Name -eq $transition[0] -and $null -ne $_.Invoke }).Count -eq 1
+    } 'Native UIA caption action unavailable'
+    @($before | Where-Object { $_.Name -eq $transition[0] })[0].Invoke.Invoke()
+    $null = Wait-OwnedAccessibility { param($nodes)
+        @($nodes | Where-Object { $_.Name -eq $transition[1] -and $null -ne $_.Invoke }).Count -eq 1 -and
+        @($nodes | Where-Object { $_.Name -eq $transition[0] }).Count -eq 0
+    } 'Native UIA maximize/restore did not change the native window'
+}
 
 # Fixed fixture text only; execute in the harness-owned disposable shell.
 $fixture = '"AX_FIXTURE \u4e2d\u6587 e\u0301 \u0645\u0631\u062d\u0628\u0627 \u05e9\u05dc\u05d5\u05dd \ud83d\udc69\u200d\ud83d\udcbb"' | ConvertFrom-Json
@@ -85,6 +103,9 @@ foreach ($size in @(@(1280, 800), @(960, 700))) {
         @($nodes | Where-Object { $_.Name -eq 'Search commands' }).Count -eq 1 -and
         @($nodes | Where-Object { $_.Name -eq 'Terminal output' }).Count -eq 0
     } 'Native UIA palette missing, or covered terminal remained exposed'
+    if (@($palette | Where-Object { $_.Name -eq 'Close window' }).Count -ne 0) {
+        throw 'Native UIA modal exposes covered caption actions'
+    }
     $options = @($palette | Where-Object { $_.Type -eq 'ControlType.ListItem' })
     if (@($palette | Where-Object { $_.Type -eq 'ControlType.List' }).Count -ne 1) {
         throw 'Native UIA palette options have no unique selection container'

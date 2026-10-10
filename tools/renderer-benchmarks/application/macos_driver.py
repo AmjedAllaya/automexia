@@ -4,9 +4,18 @@ No permission prompts, AppleScript, shell evaluation or system-wide key posting.
 Native macOS validation is required before admitting this adapter's cohort.
 """
 import ctypes as ct
+import math
 import time
 
 from benchmark_model import BenchmarkError
+
+
+class Point(ct.Structure):
+    _fields_ = [('x', ct.c_double), ('y', ct.c_double)]
+
+
+class Size(ct.Structure):
+    _fields_ = [('width', ct.c_double), ('height', ct.c_double)]
 
 
 class MacDriver:
@@ -23,6 +32,9 @@ class MacDriver:
                 'CFArrayGetCount': ([pointer], ct.c_long),
                 'CFArrayGetValueAtIndex': ([pointer, ct.c_long], pointer),
                 'CFBooleanGetValue': ([pointer], ct.c_bool),
+                'CFEqual': ([pointer, pointer], ct.c_bool),
+                'CFDictionaryGetValue': ([pointer, pointer], pointer),
+                'CFNumberGetValue': ([pointer, ct.c_int, pointer], ct.c_bool),
             },
             self.ax: {
                 'AXIsProcessTrusted': ([], ct.c_bool),
@@ -33,9 +45,13 @@ class MacDriver:
                 'AXUIElementGetPid': ([pointer, ct.POINTER(ct.c_int)], ct.c_int),
                 'AXUIElementSetMessagingTimeout': ([pointer, ct.c_float], ct.c_int),
                 'AXValueCreate': ([ct.c_int, pointer], pointer),
+                'AXValueGetValue': ([pointer, ct.c_int, pointer], ct.c_bool),
             },
             self.cg: {
                 'CGEventCreateKeyboardEvent': ([pointer, ct.c_uint16, ct.c_bool], pointer),
+                'CGEventCreateMouseEvent': ([pointer, ct.c_uint32, Point, ct.c_uint32], pointer),
+                'CGEventSetIntegerValueField': ([pointer, ct.c_uint32, ct.c_int64], None),
+                'CGWindowListCopyWindowInfo': ([ct.c_uint32, ct.c_uint32], pointer),
                 'CGEventKeyboardSetUnicodeString': ([pointer, ct.c_ulong, ct.POINTER(ct.c_uint16)], None),
                 'CGEventSetFlags': ([pointer, ct.c_uint64], None),
                 'CGEventPostToPid': ([ct.c_int, pointer], None),
@@ -149,10 +165,72 @@ class MacDriver:
             finally:
                 self.cf.CFRelease(event)
 
+    @staticmethod
+    def point_in_window(x, y, width, height):
+        return (all(math.isfinite(value) for value in (x, y, width, height))
+                and 0 <= x < width and 0 <= y < height)
+
+    def owned_window_number(self):
+        self.check()
+        windows = self.cg.CGWindowListCopyWindowInfo(1, 0)  # on-screen windows
+        if not windows:
+            raise BenchmarkError('macOS window identifiers unavailable')
+        try:
+            count = self.cf.CFArrayGetCount(windows)
+            if not 0 <= count <= 512:
+                raise BenchmarkError('macOS window inventory exceeded fixture bound')
+            matches = []
+            keys = [ct.c_void_p.in_dll(self.cg, name).value
+                    for name in ('kCGWindowOwnerPID', 'kCGWindowLayer', 'kCGWindowNumber')]
+            for index in range(count):
+                window = self.cf.CFArrayGetValueAtIndex(windows, index)
+                values = []
+                for key in keys:
+                    number = ct.c_int64()
+                    value = self.cf.CFDictionaryGetValue(window, key)
+                    if not value or not self.cf.CFNumberGetValue(value, 4, ct.byref(number)):
+                        break
+                    values.append(number.value)
+                if len(values) == 3 and values[0] == self.process.pid and values[1] == 0:
+                    matches.append(values[2])
+            if len(matches) != 1 or matches[0] <= 0:
+                raise BenchmarkError('no unique owned macOS pointer window')
+            return matches[0]
+        finally:
+            self.cf.CFRelease(windows)
+
+    def click(self, x, y):
+        self.check()
+        point, size = Point(), Size()
+        for name, kind, result in [('AXPosition', 1, point), ('AXSize', 2, size)]:
+            value = self.copy(self.window, name)
+            try:
+                if not self.ax.AXValueGetValue(value, kind, ct.byref(result)):
+                    raise BenchmarkError('macOS owned window geometry unavailable')
+            finally:
+                self.cf.CFRelease(value)
+        if not self.point_in_window(x, y, size.width, size.height):
+            raise BenchmarkError('macOS pointer probe outside owned window')
+        point.x += x
+        point.y += y
+        window_number = self.owned_window_number()
+        for event_type in (5, 1, 2):  # mouse moved, left down, left up
+            self.check()
+            event = self.cg.CGEventCreateMouseEvent(None, event_type, point, 0)
+            if not event:
+                raise BenchmarkError('macOS pointer probe unavailable')
+            try:
+                # Public CGEventField window identifiers keep PID-posted mouse
+                # events attached to the same verified native window.
+                for field in (91, 92):
+                    self.cg.CGEventSetIntegerValueField(event, field, window_number)
+                self.cg.CGEventSetIntegerValueField(event, 1, 1)  # mouse click state
+                self.cg.CGEventPostToPid(self.process.pid, event)
+            finally:
+                self.cf.CFRelease(event)
+
     def resize(self, width, height):
         self.check()
-        class Size(ct.Structure):
-            _fields_ = [('width', ct.c_double), ('height', ct.c_double)]
         size = Size(width, height)
         value = self.ax.AXValueCreate(2, ct.byref(size))  # kAXValueCGSizeType
         if not value:
@@ -161,6 +239,56 @@ class MacDriver:
             self.set(self.window, 'AXSize', value)
         finally:
             self.cf.CFRelease(value)
+
+    def caption(self, label, press=False):
+        """Find a fixed caption in the owned AX tree, optionally activate it."""
+        if label not in ('Minimize window', 'Maximize window', 'Restore window', 'Close window'):
+            raise BenchmarkError('unsupported fixed caption probe')
+        self.check()
+        pending, retained, matches = [self.window], [], []
+        expected, role = self.string(label), self.string('AXButton')
+        visited = 0
+        try:
+            while pending:
+                element = pending.pop()
+                visited += 1
+                if visited + len(pending) > 1024:
+                    raise BenchmarkError('macOS caption tree exceeded fixture bound')
+                owner = ct.c_int()
+                if self.ax.AXUIElementGetPid(element, ct.byref(owner)) != 0 or owner.value != self.process.pid:
+                    raise BenchmarkError('macOS caption tree ownership changed')
+                title = self.copy(element, 'AXTitle', optional=True)
+                kind = self.copy(element, 'AXRole', optional=True)
+                try:
+                    if title and kind and self.cf.CFEqual(title, expected) and self.cf.CFEqual(kind, role):
+                        matches.append(element)
+                finally:
+                    for value in (title, kind):
+                        if value:
+                            self.cf.CFRelease(value)
+                children = self.copy(element, 'AXChildren', optional=True)
+                if children:
+                    try:
+                        count = self.cf.CFArrayGetCount(children)
+                        if not 0 <= count <= 1024 - visited - len(pending):
+                            raise BenchmarkError('macOS caption children exceeded fixture bound')
+                        for index in range(count):
+                            child = self.cf.CFRetain(self.cf.CFArrayGetValueAtIndex(children, index))
+                            if not child:
+                                raise BenchmarkError('macOS caption child unavailable')
+                            retained.append(child)
+                            pending.append(child)
+                    finally:
+                        self.cf.CFRelease(children)
+            if len(matches) > 1:
+                raise BenchmarkError('macOS caption identity is ambiguous')
+            if matches and press:
+                self.check()
+                self.action(matches[0], 'AXPress')
+            return bool(matches)
+        finally:
+            for value in retained + [expected, role]:
+                self.cf.CFRelease(value)
 
     def close(self):
         self.check()

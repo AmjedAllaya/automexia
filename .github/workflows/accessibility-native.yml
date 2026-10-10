@@ -117,6 +117,13 @@ jobs:
           set -euo pipefail
           cargo build -p automexia-terminal --bin automexia --features visual-test-hooks --locked
           GSETTINGS_BACKEND=memory timeout --signal=TERM --kill-after=8s 180s dbus-run-session -- xvfb-run -a -s '-screen 0 1280x800x24 -nolisten tcp' /usr/bin/python3 tests/integration/accessibility-linux.py --binary target/debug/automexia --captures artifacts/visual-quality/native-linux
+      - name: Native Windows UIA caption and terminal projection
+        if: always() && !cancelled() && runner.os == 'Windows' && steps.visual.outcome != 'skipped'
+        shell: powershell
+        run: |
+          cargo build -p automexia-terminal --bin automexia --features visual-test-hooks --locked
+          if ($LASTEXITCODE -ne 0) { throw 'Native UIA fixture build failed' }
+          & tests/integration/resize-stress-windows.ps1 -Binary target/debug/automexia.exe -UseCpuRenderer -AccessibilityOnly
       - name: Native Windows metadata output and cancellation
         if: always() && !cancelled() && runner.os == 'Windows' && steps.visual.outcome != 'skipped'
         shell: bash

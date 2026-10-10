@@ -579,7 +579,13 @@ pub fn tab_strip_layout_for_viewport(
 ) -> TabStripLayout {
     let viewport = Viewport::from_physical(window_width, window_height, scale_factor);
     let metrics = ChromeMetrics::for_viewport(viewport);
-    tab_strip_layout_with_metrics(viewport, metrics, num_tabs, max_tab_width)
+    tab_strip_layout_with_metrics(
+        viewport,
+        metrics,
+        num_tabs,
+        max_tab_width,
+        rio_backend::config::window::Decorations::default().uses_custom_controls(),
+    )
 }
 
 fn tab_strip_layout_with_metrics(
@@ -587,13 +593,22 @@ fn tab_strip_layout_with_metrics(
     metrics: ChromeMetrics,
     num_tabs: usize,
     max_tab_width: f32,
+    custom_chrome: bool,
 ) -> TabStripLayout {
     #[cfg(target_os = "macos")]
-    let left_margin = ISLAND_MARGIN_LEFT_MACOS;
+    let left_margin = if custom_chrome {
+        metrics.leading_width
+    } else {
+        ISLAND_MARGIN_LEFT_MACOS
+    };
     #[cfg(not(target_os = "macos"))]
     let left_margin = metrics.leading_width;
 
-    let controls_width = metrics.window_controls_width().min(viewport.width);
+    let controls_width = if custom_chrome {
+        metrics.window_controls_width().min(viewport.width)
+    } else {
+        0.0
+    };
     let controls_x = (viewport.width - controls_width).max(0.0);
     let available_width = viewport.width
         - ISLAND_MARGIN_RIGHT
@@ -611,7 +626,8 @@ fn tab_strip_layout_with_metrics(
         actions_x: left_margin + tabs_width + metrics.tab_gap,
         controls_x,
         window_button_width: metrics.window_button_width,
-        show_app_button: metrics.show_app_button,
+        show_app_button: metrics.show_app_button
+            && (custom_chrome || !cfg!(target_os = "macos")),
         show_new_tab: metrics.show_new_tab,
         show_palette: metrics.show_palette,
         tab_gap: metrics.tab_gap,
@@ -894,6 +910,10 @@ impl Island {
         }
     }
 
+    pub fn is_visible(&self, num_tabs: usize) -> bool {
+        !(self.hide_if_single && num_tabs == 1 && !self.custom_chrome)
+    }
+
     pub fn tab_strip_layout(
         &self,
         width: f32,
@@ -908,6 +928,7 @@ impl Island {
             metrics,
             count,
             max_width,
+            self.custom_chrome,
         );
         if let Some(gap) = self.appearance.tab_gap {
             layout.tab_gap = gap.get().min(layout.tab_width * 0.25);
@@ -941,9 +962,16 @@ impl Island {
         x: f32,
         y: f32,
     ) -> Option<ChromeAction> {
+        if !self.is_visible(num_tabs) {
+            return None;
+        }
         let metrics =
             chrome_metrics(window_width, window_height, scale_factor, self.appearance);
-        if !(0.0..=metrics.header_height).contains(&y) {
+        let viewport = Viewport::from_physical(window_width, window_height, scale_factor);
+        if !x.is_finite()
+            || !(0.0..viewport.width).contains(&x)
+            || !(0.0..=metrics.header_height).contains(&y)
+        {
             return None;
         }
         let layout = self.tab_strip_layout(
@@ -978,6 +1006,62 @@ impl Island {
             2 => Some(ChromeAction::CloseWindow),
             _ => None,
         }
+    }
+
+    /// Native semantics use the same caption slots and visibility as input.
+    /// No tree is built unless an assistive client has activated the adapter.
+    pub(crate) fn accessibility_controls(
+        &self,
+        width: f32,
+        height: f32,
+        scale: f32,
+        count: usize,
+    ) -> Vec<automexia_ui_model::accessibility::Element> {
+        use accesskit::{Action, Node, Rect, Role};
+        use automexia_ui_model::accessibility::{physical_bounds, Element, ROOT};
+        if !self.custom_chrome || !self.is_visible(count) {
+            return Vec::new();
+        }
+        let layout =
+            self.tab_strip_layout(width, height, scale, count, self.max_tab_width);
+        let viewport = Rect::new(0.0, 0.0, width.into(), height.into());
+        [
+            (ChromeAction::Minimize, "Minimize window"),
+            (
+                ChromeAction::Maximize,
+                if self.window_maximized {
+                    "Restore window"
+                } else {
+                    "Maximize window"
+                },
+            ),
+            (ChromeAction::CloseWindow, "Close window"),
+        ]
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, (action, label))| {
+            let bounds = physical_bounds(
+                [
+                    layout.controls_x + index as f32 * layout.window_button_width,
+                    0.0,
+                    layout.window_button_width,
+                    chrome_metrics(width, height, scale, self.appearance).header_height,
+                ],
+                scale,
+                viewport,
+            )?;
+            let key = crate::accessibility::caption_key(action, self.window_maximized)?;
+            let mut node = Node::new(Role::Button);
+            node.set_label(label);
+            node.set_bounds(bounds);
+            node.add_action(Action::Click);
+            Some(Element {
+                key,
+                parent: Some(ROOT),
+                node,
+            })
+        })
+        .collect()
     }
 
     pub fn local_tab_action_at(
@@ -1474,6 +1558,14 @@ impl Island {
         let metrics =
             chrome_metrics(window_width, window_height, scale_factor, self.appearance);
 
+        let layout = self.tab_strip_layout(
+            window_width,
+            window_height,
+            scale_factor,
+            num_tabs,
+            self.max_tab_width,
+        );
+
         // Liquid-hacker top chrome: a quiet, opaque-enough navigation shelf
         // with a one-pixel lower keyline. It is intentionally static so idle
         // terminals do not spend GPU time animating decoration.
@@ -1508,8 +1600,7 @@ impl Island {
             theme,
             appearance,
         );
-        #[cfg(not(target_os = "macos"))]
-        if metrics.show_app_button {
+        if layout.show_app_button {
             let app_size = metrics.app_button_size;
             let app_x = metrics.app_button_x;
             let app_y = (metrics.header_height - app_size) / 2.0;
@@ -1531,7 +1622,7 @@ impl Island {
 
         // Immediate-mode: no cached ids to hide. If we early-return
         // without drawing, the tabs just don't appear this frame.
-        if self.hide_if_single && num_tabs == 1 && !self.custom_chrome {
+        if !self.is_visible(num_tabs) {
             // No tab strip — drop any leftover drag/slide state so
             // `needs_redraw` doesn't keep frames alive for invisible
             // tabs.
@@ -1578,13 +1669,6 @@ impl Island {
         self.slide_springs
             .retain(|_, s| s.update(dt, DRAG_ANIMATION_LENGTH));
 
-        let layout = self.tab_strip_layout(
-            window_width,
-            window_height,
-            scale_factor,
-            num_tabs,
-            self.max_tab_width,
-        );
         let TabStripLayout {
             left_margin,
             tab_width,
@@ -2406,6 +2490,28 @@ impl Island {
     }
 
     #[cfg(feature = "native-gui-test-hooks")]
+    pub(crate) fn native_test_chrome(
+        &self,
+        width: f32,
+        height: f32,
+        scale: f32,
+        count: usize,
+    ) -> serde_json::Value {
+        let layout =
+            self.tab_strip_layout(width, height, scale, count, self.max_tab_width);
+        let metrics = chrome_metrics(width, height, scale, self.appearance);
+        serde_json::json!({
+            "custom_controls": self.custom_chrome,
+            "left_margin": layout.left_margin,
+            "controls_x": layout.controls_x,
+            "button_width": layout.window_button_width,
+            "header_height": metrics.header_height,
+            "palette_x": layout.show_palette.then_some(layout.actions_x + 1.5 * metrics.action_button_size),
+            "maximized": self.window_maximized,
+        })
+    }
+
+    #[cfg(feature = "native-gui-test-hooks")]
     pub(crate) fn native_test_tab_titles(
         &self,
         context_manager: &ContextManager<EventProxy>,
@@ -2498,7 +2604,6 @@ fn tab_title_color(
     super::ui_theme::readable_on(foreground, opaque_over(background, fill))
 }
 
-#[cfg(not(target_os = "macos"))]
 fn draw_terminal_mark(sugarloaf: &mut Sugarloaf, x: f32, y: f32, theme: &UiTheme) {
     let line = theme.text;
     let inner = theme.surface;
@@ -3443,6 +3548,60 @@ mod tests {
     }
 
     #[test]
+    fn caption_accessibility_matches_visible_hit_targets_and_window_state() {
+        use accesskit::{Action, Role};
+        for custom in [false, true] {
+            for scale in [1.0, 1.25, 1.5, 2.0, 3.0] {
+                let mut island = Island::new([1.0; 4], [1.0; 4], true, 240.0, custom);
+                for maximized in [false, true] {
+                    island.window_maximized = maximized;
+                    let nodes = island.accessibility_controls(
+                        900.0 * scale,
+                        600.0 * scale,
+                        scale,
+                        1,
+                    );
+                    assert_eq!(nodes.len(), if custom { 3 } else { 0 });
+                    for (element, action) in nodes.iter().zip([
+                        ChromeAction::Minimize,
+                        ChromeAction::Maximize,
+                        ChromeAction::CloseWindow,
+                    ]) {
+                        assert_eq!(element.node.role(), Role::Button);
+                        assert!(element.node.supports_action(Action::Click));
+                        assert_eq!(
+                            Some(element.key),
+                            crate::accessibility::caption_key(action, maximized)
+                        );
+                        let bounds = element.node.bounds().unwrap();
+                        assert_eq!(
+                            island.chrome_action_at(
+                                900.0 * scale,
+                                600.0 * scale,
+                                scale,
+                                1,
+                                (bounds.x0 + bounds.x1) as f32 / (2.0 * scale),
+                                (bounds.y0 + bounds.y1) as f32 / (2.0 * scale)
+                            ),
+                            Some(action)
+                        );
+                    }
+                    if custom {
+                        assert_eq!(
+                            nodes[1].node.label(),
+                            Some(if maximized {
+                                "Restore window"
+                            } else {
+                                "Maximize window"
+                            })
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn custom_chrome_actions_have_disjoint_hit_targets() {
         let island = Island::new([1.0; 4], [1.0; 4], false, 240.0, true);
         let layout = tab_strip_layout(1_280.0, 1.0, 2, 240.0);
@@ -3998,6 +4157,115 @@ mod tests {
     }
 
     #[test]
+    fn hide_single_tab_retains_application_caption_input_and_paint() {
+        for custom in [false, true] {
+            let island = Island::new([1.0; 4], [1.0; 4], true, 240.0, custom);
+            assert_eq!(island.is_visible(1), custom);
+            assert!(island.is_visible(2));
+            let layout = island.tab_strip_layout(900.0, 600.0, 1.0, 1, 240.0);
+            assert_eq!(
+                island.chrome_action_at(
+                    900.0,
+                    600.0,
+                    1.0,
+                    1,
+                    layout.actions_x + 5.0,
+                    20.0
+                ),
+                custom.then_some(ChromeAction::NewTab)
+            );
+        }
+    }
+
+    #[test]
+    fn native_chrome_does_not_reserve_custom_control_slots() {
+        let island = test_island();
+        for scale in [1.0, 1.25, 2.0] {
+            let layout =
+                island.tab_strip_layout(900.0 * scale, 600.0 * scale, scale, 8, 240.0);
+            assert_eq!(layout.controls_x, 900.0);
+            // Reclaimed space can contain the palette action, never a hidden
+            // minimize/maximize/close control.
+            assert!(!matches!(
+                island.chrome_action_at(
+                    900.0 * scale,
+                    600.0 * scale,
+                    scale,
+                    8,
+                    890.0,
+                    20.0
+                ),
+                Some(
+                    ChromeAction::Minimize
+                        | ChromeAction::Maximize
+                        | ChromeAction::CloseWindow
+                )
+            ));
+        }
+    }
+
+    #[test]
+    fn caption_controls_reject_nonfinite_pointer_coordinates() {
+        let island = Island::new([1.0; 4], [1.0; 4], false, 240.0, true);
+        for x in [
+            f32::NAN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            -1.0,
+            900.0,
+            901.0,
+        ] {
+            assert_eq!(island.chrome_action_at(900.0, 600.0, 1.0, 1, x, 20.0), None);
+        }
+    }
+
+    #[test]
+    fn application_controls_keep_the_same_geometry_across_native_scales() {
+        let island = Island::new([1.0; 4], [1.0; 4], false, 240.0, true);
+        for scale in [1.0, 1.25, 1.5, 2.0, 3.0] {
+            for width in [320.0, 500.0, 900.0, 1600.0] {
+                let layout = island.tab_strip_layout(
+                    width * scale,
+                    600.0 * scale,
+                    scale,
+                    4,
+                    240.0,
+                );
+                let expected_leading = chrome_metrics(
+                    width * scale,
+                    600.0 * scale,
+                    scale,
+                    island.appearance,
+                )
+                .leading_width;
+                assert_eq!(layout.left_margin, expected_leading);
+                for (index, action) in [
+                    ChromeAction::Minimize,
+                    ChromeAction::Maximize,
+                    ChromeAction::CloseWindow,
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let x = layout.controls_x
+                        + (index as f32 + 0.5) * layout.window_button_width;
+                    assert_eq!(
+                        island.chrome_action_at(
+                            width * scale,
+                            600.0 * scale,
+                            scale,
+                            4,
+                            x,
+                            20.0
+                        ),
+                        Some(action)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn tab_appearance_picker_targets_and_surface_are_bounded() {
         const {
             assert!(PICKER_SWATCH_SIZE >= 24.0);
@@ -4381,14 +4649,7 @@ mod tests {
     fn tab_strip_layout_geometry() {
         // 1000 physical px @ 2x scale → 500 logical px compact window.
         let layout = tab_strip_layout(1000.0, 2.0, 4, 240.0);
-        #[cfg(target_os = "macos")]
-        {
-            assert_eq!(layout.left_margin, ISLAND_MARGIN_LEFT_MACOS);
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            assert_eq!(layout.left_margin, 8.0);
-        }
+        assert_eq!(layout.left_margin, 8.0);
         assert!(layout.tab_width > 0.0);
         assert_eq!(layout.tabs_width, layout.tab_width * 4.0);
         assert!(layout.left_margin + layout.tabs_width <= layout.controls_x);

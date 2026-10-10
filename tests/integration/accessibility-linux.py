@@ -87,6 +87,8 @@ def read_owned(app) -> list[dict]:
         require(text_bytes <= 262144, "AT-SPI aggregate text exceeded the fixture bound")
         require(HIDDEN not in entry["text"] and HIDDEN not in entry["name"],
                 "Concealed terminal text reached the native accessibility tree")
+        if "Action" in interfaces:
+            entry["action"] = node.queryAction()
         nodes.append(entry)
         count = node.childCount
         if count == -1 and node.getState().contains(pyatspi.STATE_DEFUNCT):
@@ -314,6 +316,12 @@ def run(binary: Path, diagnostics: Path | None, captures: Path | None = None,
 
             wait_for(process, lambda nodes: any(FIXTURE in node["text"] for node in nodes),
                      "Native AT-SPI text ranges lost Unicode output", repaint)
+            captions = wait_for(process, lambda nodes: all(len(named(nodes, label)) == 1 for label in
+                                ("Minimize window", "Maximize window", "Close window")),
+                                "Native AT-SPI window controls are missing", repaint)
+            require(all(named(captions, label)[0]["role"] == pyatspi.ROLE_PUSH_BUTTON for label in
+                        ("Minimize window", "Maximize window", "Close window")),
+                    "Native AT-SPI window controls lack button semantics")
             capture('unicode')
             send("ime-preedit-hex:composition:" + PREEDIT.encode().hex())
             wait_for(process, lambda nodes: any(node["text"] == PREEDIT for node in
@@ -348,6 +356,15 @@ def run(binary: Path, diagnostics: Path | None, captures: Path | None = None,
             require(len(restore) == 1 and not restore[0]["enabled"] and not restore[0]["sensitive"],
                     "Native AT-SPI reports an unavailable action as enabled")
             capture('settings')
+            require(not named(settings, "Close window"), "Covered caption controls remained actionable")
+            command(["xdotool", "key", "--window", handle, "Escape"])
+            repaint()
+            restored = wait_for(process, lambda nodes: len(named(nodes, "Close window")) == 1,
+                                "Caption controls did not return after modal close", repaint)
+            close = named(restored, "Close window")[0].get("action")
+            require(close is not None and close.nActions == 1 and close.doAction(0),
+                    "Native AT-SPI caption activation failed")
+            require(process.wait(timeout=5) == 0, "Native caption close did not use normal teardown")
         finally:
             # Only this test's new process group can be signalled. Reap it before
             # removing its private config; never enumerate or kill user sessions.

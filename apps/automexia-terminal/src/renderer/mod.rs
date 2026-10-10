@@ -1022,6 +1022,9 @@ pub struct Renderer {
     pub navigation: Navigation,
     pub margin: rio_backend::config::layout::Margin,
     pub island: Option<island::Island>,
+    // Native decoration mode is fixed when the OS window is created. Keep
+    // its drawing policy even across reloads and tab-strip removal/recreation.
+    custom_chrome: bool,
     pub command_palette: command_palette::CommandPalette,
     pub compatibility_inspector: compatibility_inspector::CompatibilityInspector,
     pub connection_hub: connection_hub::ConnectionHub,
@@ -1088,6 +1091,14 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    /// Effective visibility belongs to the painter, including its exception
+    /// for application caption controls when a single tab is hidden.
+    pub fn island_visible(&self, num_tabs: usize) -> bool {
+        self.island
+            .as_ref()
+            .is_some_and(|island| island.is_visible(num_tabs))
+    }
+
     /// Final modal producer for both terminal and Welcome frames. Covered UI
     /// keeps its state, while its queued modal pixels are replaced by Quit.
     pub(crate) fn render_close_confirmation(&self, sugarloaf: &mut Sugarloaf) {
@@ -1120,16 +1131,14 @@ impl Renderer {
         let target_bg_alpha = window_bg_alpha(config);
         let dynamic_background = dynamic_background_for(config, &named_colors);
 
+        let custom_chrome = config.window.decorations.uses_custom_controls();
         let mut island = if config.navigation.is_enabled() {
             Some(island::Island::new(
                 named_colors.tabs,
                 named_colors.tabs_active,
                 config.navigation.hide_if_single,
                 config.navigation.max_tab_width,
-                matches!(
-                    config.window.decorations,
-                    rio_backend::config::window::Decorations::Disabled
-                ),
+                custom_chrome,
             ))
         } else {
             None
@@ -1156,6 +1165,7 @@ impl Renderer {
             navigation: config.navigation.clone(),
             margin: config.margin,
             island,
+            custom_chrome,
             command_palette: {
                 let mut palette = command_palette::CommandPalette::new();
                 palette.has_adaptive_theme = config.adaptive_colors.is_some();
@@ -1208,10 +1218,7 @@ impl Renderer {
     pub fn update_config(&mut self, config: &Config) {
         let named_colors = config.colors;
         let colors = List::from(&named_colors);
-        let custom_chrome = matches!(
-            config.window.decorations,
-            rio_backend::config::window::Decorations::Disabled
-        );
+        let custom_chrome = self.custom_chrome;
 
         if config.navigation.is_enabled() {
             match self.island.as_mut() {
@@ -2856,6 +2863,66 @@ mod prompt_visual_anchor_tests {
             ),
             rgb.to_arr()
         );
+    }
+
+    #[test]
+    fn live_reload_keeps_controls_owned_by_the_existing_native_frame() {
+        use rio_backend::config::window::Decorations;
+        for initial in [
+            Decorations::Disabled,
+            Decorations::Buttonless,
+            Decorations::Enabled,
+            Decorations::Transparent,
+        ] {
+            let mut config = Config::default();
+            config.window.decorations = initial;
+            let mut renderer = Renderer::new(&config);
+            let original_action = renderer
+                .island
+                .as_ref()
+                .unwrap()
+                .chrome_action_at(900.0, 600.0, 1.0, 4, 790.0, 20.0);
+            let original = renderer
+                .island
+                .as_ref()
+                .unwrap()
+                .tab_strip_layout(900.0, 600.0, 1.0, 4, 240.0);
+            config.window.decorations =
+                if matches!(initial, Decorations::Enabled | Decorations::Transparent) {
+                    Decorations::Disabled
+                } else {
+                    Decorations::Enabled
+                };
+            renderer.update_config(&config);
+            let updated = renderer
+                .island
+                .as_ref()
+                .unwrap()
+                .tab_strip_layout(900.0, 600.0, 1.0, 4, 240.0);
+            assert_eq!(
+                renderer
+                    .island
+                    .as_ref()
+                    .unwrap()
+                    .chrome_action_at(900.0, 600.0, 1.0, 4, 790.0, 20.0),
+                original_action
+            );
+            assert_eq!(updated.controls_x, original.controls_x);
+            assert_eq!(updated.left_margin, original.left_margin);
+            config.navigation.mode =
+                rio_backend::config::navigation::NavigationMode::Plain;
+            renderer.update_config(&config);
+            assert!(renderer.island.is_none());
+            config.navigation.mode = rio_backend::config::navigation::NavigationMode::Tab;
+            renderer.update_config(&config);
+            let reopened = renderer
+                .island
+                .as_ref()
+                .unwrap()
+                .tab_strip_layout(900.0, 600.0, 1.0, 4, 240.0);
+            assert_eq!(reopened.controls_x, original.controls_x);
+            assert_eq!(reopened.left_margin, original.left_margin);
+        }
     }
 
     #[test]

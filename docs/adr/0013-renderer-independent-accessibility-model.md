@@ -24,15 +24,18 @@ This is partial implementation, not a certified native accessibility tree.
 `automexia-ui-model::accessibility` projects bounded nodes into AccessKit.
 The frontend wraps AccessKit's UIA, AX and AT-SPI platform adapters because
 the repository's windowing fork cannot use its upstream winit adapter directly.
-Callbacks request a frame or queue bounded focus requests; they never read a
+Callbacks request a frame or queue bounded focus and window-caption requests; they never read a
 PTY, execute input, or obtain provider credentials. The native adapter is owned
 by the window and is dropped before that window.
 
 The active terminal supplies its current visible snapshot. Covered and inactive
 terminals are omitted. Settings and palette controls use their existing painted
 rectangles and focus; Connection Hub adopts its existing semantic projections.
-Some secondary surfaces still expose descriptive summaries; header/tab-rail/
-footer controls and native editing/activation remain incomplete. Native UIA and
+Visible custom caption buttons project their painted geometry and parameterless
+minimize, maximize/restore and close actions. Actions resolve against the current
+frame; modal and retired IDs are rejected. Close uses the ordinary confirmation
+and recovery path. Some secondary surfaces still expose descriptive summaries;
+tab-rail/footer controls and native editing/activation remain incomplete. Native UIA and
 AT-SPI fixtures exercise the application; the manual macOS workflow exercises
 AppKit adapter APIs. These API checks are distinct from screen-reader usability,
 real OS input methods and physical display scaling, which remain unverified.

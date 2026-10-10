@@ -65,6 +65,10 @@ pub fn create_window_builder(
                 use rio_window::platform::macos::WindowAttributesExtMacOS;
                 window_builder = window_builder.with_titlebar_buttons_hidden(true)
             }
+            #[cfg(not(target_os = "macos"))]
+            {
+                window_builder = window_builder.with_decorations(false);
+            }
         }
         _ => {}
     };
@@ -331,6 +335,25 @@ pub fn configure_window(winit_window: &Window, config: &Config) {
 #[cfg(test)]
 mod transparency_tests {
     use super::*;
+    #[test]
+    fn decoration_defaults_and_explicit_modes_match_caption_ownership() {
+        let mut config = Config::default();
+        assert!(config.window.decorations.uses_custom_controls());
+        for mode in [
+            Decorations::Disabled,
+            Decorations::Buttonless,
+            Decorations::Enabled,
+            Decorations::Transparent,
+        ] {
+            config.window.decorations = mode;
+            let attributes = create_window_builder("Fixture", &config, None, None, false);
+            let native_frame = !mode.uses_custom_controls()
+                || (cfg!(target_os = "macos") && mode == Decorations::Buttonless);
+            assert_eq!(attributes.decorations, native_frame);
+            assert!(attributes.resizable);
+        }
+    }
+
     #[test]
     fn native_startup_and_live_composition_use_one_backend_policy() {
         let mut config = Config::default();

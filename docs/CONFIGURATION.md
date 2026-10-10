@@ -168,7 +168,7 @@ background-image = { path = "D:/wallpaper.png", opacity = 0.25 }
 | `opacity-cells` | bool / `false` | Apply opacity to explicitly colored cells too; off preserves TUI status/syntax contrast. |
 | `blur` | bool or `macos-glass-regular`, `macos-glass-clear` / `false` | Unsupported glass styles degrade to system blur with a warning. |
 | `background-image` | `{ path, opacity }` / unset | Local background image; opacity is clamped to 0…1. This is separate from terminal image preview. |
-| `decorations` | `Enabled`, `Disabled`, `Transparent`, `Buttonless` | Default: disabled Windows, transparent macOS, enabled elsewhere. |
+| `decorations` | `Enabled`, `Disabled`, `Transparent`, `Buttonless` | Default: `Disabled` on Windows/Linux and `Buttonless` on macOS; all use Automexia caption controls. Native decoration changes apply to new windows. |
 | `colorspace` | `Srgb`, `DisplayP3`, `Rec2020` / `Srgb` | Interpretation of configured colors; Windows fullscreen remains SDR sRGB. |
 | `initial-title` | string / unset | Initial title before terminal title metadata. |
 | `macos-use-unified-titlebar` | bool / `false` | macOS titlebar style. |
@@ -433,7 +433,12 @@ such as `[presentation.window-controls.glass]`:
 | `minimize`, `maximize`, `close` | Theme colors | Six-digit RGB icon colors. `maximize` also colors the restore icon. |
 | `background`, `border` | Style and theme | RGB or RGBA hex colors; the alpha channel controls opacity. |
 
-These settings do not change platform-native decorations. The UI saves edits per
+Automexia caption controls are the default on Windows, Linux and macOS. On macOS,
+`Buttonless` keeps the native resizable frame with its traffic lights hidden.
+Explicit `Enabled` or `Transparent` decorations use system controls instead.
+Decoration mode is chosen when a window is created; reloading the configuration
+or previewing a theme keeps that window’s control ownership. Appearance settings
+remain live and do not change platform-native decorations. The UI saves edits per
 style, uses the same painter for previews, and never activates window actions from
 a preview. Background and border opacity controls edit their RGBA alpha bytes.
 

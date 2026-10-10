@@ -157,7 +157,7 @@ jobs:
           glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev
           libwayland-dev libx11-xcb-dev shellcheck zsh fish
           fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core
-          xvfb xauth xdotool imagemagick mesa-vulkan-drivers libxkbcommon-x11-0
+          xvfb xauth xdotool imagemagick mesa-vulkan-drivers libxkbcommon-x11-0 sway wtype grim
 
       - name: Cache Cargo registry and Git sources
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -232,6 +232,7 @@ jobs:
           test -f "$driver"
           export VK_DRIVER_FILES="$driver"
           timeout --signal=TERM --kill-after=20s 240s xvfb-run -a -s '-screen 0 1600x1200x24 -nolisten tcp' python3 tests/integration/unix-session-ui.py --binary target/debug/automexia --captures artifacts/native-linux-sessions
+          timeout --signal=TERM --kill-after=20s 300s python3 tests/integration/unix-session-ui.py --binary target/debug/automexia --display-server wayland --captures artifacts/native-wayland-sessions --timeout 280
 
       - name: Report compiler cache statistics
         if: ${{ always() && steps.sccache.outcome == 'success' }}
@@ -250,6 +251,7 @@ jobs:
           path: |
             artifacts/visual-quality/summary.json
             artifacts/native-linux-sessions
+            artifacts/native-wayland-sessions
             artifacts/visual-quality/controlled-tests.log
             artifacts/visual-quality/captures/*.json
             artifacts/visual-quality/captures/*--*.png

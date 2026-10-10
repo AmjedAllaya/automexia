@@ -107,6 +107,15 @@ impl Screen<'_> {
             return (elements, key);
         }
 
+        if let Some(island) = &self.renderer.island {
+            elements.extend(island.accessibility_controls(
+                size.width,
+                size.height,
+                self.sugarloaf.scale_factor(),
+                self.context_manager.len(),
+            ));
+        }
+
         let grid = self.context_manager.current_grid();
         let Some(item) = grid.current_item() else {
             return (elements, ROOT);

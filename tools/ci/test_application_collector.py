@@ -28,6 +28,151 @@ def unix_ui_probe():
 
 
 class CollectorTests(unittest.TestCase):
+    def test_macos_caption_probe_is_owned_bounded_and_releases_references(self):
+        driver = object.__new__(MacDriver)
+        driver.process = SimpleNamespace(pid=42)
+        driver.window = 'window'
+        driver.check = lambda: None
+        driver.string = lambda value: value
+        released, pressed = [], []
+        tree = {'window': {'AXChildren': ['button']},
+                'button': {'AXTitle': 'Close window', 'AXRole': 'AXButton'}}
+        driver.copy = lambda element, name, optional=False: tree[element].get(name)
+        driver.cf = SimpleNamespace(CFArrayGetCount=len,
+            CFArrayGetValueAtIndex=lambda values, index: values[index],
+            CFRetain=lambda value: value, CFRelease=released.append, CFEqual=lambda a, b: a == b)
+        def owner(element, output):
+            output._obj.value = tree[element].get('pid', 42)
+            return 0
+        driver.ax = SimpleNamespace(AXUIElementGetPid=owner)
+        driver.action = lambda element, name: pressed.append((element, name))
+        self.assertTrue(driver.caption('Close window', press=True))
+        self.assertEqual(pressed, [('button', 'AXPress')])
+        self.assertIn('button', released)
+        pressed.clear()
+        for mutation in ('foreign', 'ambiguous', 'oversized'):
+            if mutation == 'foreign':
+                tree['button']['pid'] = 43
+            else:
+                tree['button']['pid'] = 42
+                tree['window']['AXChildren'] = ['button'] * (2 if mutation == 'ambiguous' else 1025)
+            with self.assertRaises(BenchmarkError):
+                driver.caption('Close window', press=True)
+            self.assertEqual(pressed, [])
+        with self.assertRaises(BenchmarkError):
+            driver.caption('Run command', press=True)
+
+    def test_macos_pointer_window_lookup_rejects_foreign_or_ambiguous_owners(self):
+        import ctypes
+        import macos_driver
+
+        driver = object.__new__(MacDriver)
+        driver.process = SimpleNamespace(pid=42)
+        driver.check = lambda: None
+        released = []
+        def number(pointer, kind, output):
+            self.assertEqual(kind, 4)
+            output._obj.value = pointer[0]
+            return True
+        driver.cf = SimpleNamespace(CFArrayGetCount=len,
+            CFArrayGetValueAtIndex=lambda values, index: values[index],
+            CFDictionaryGetValue=lambda record, key: (record[key],),
+            CFNumberGetValue=number, CFRelease=released.append)
+        fake_ct = SimpleNamespace(c_void_p=SimpleNamespace(in_dll=lambda library, name: SimpleNamespace(value=name)),
+                                  c_int64=ctypes.c_int64, byref=ctypes.byref)
+        def record(pid, layer, number):
+            return dict(kCGWindowOwnerPID=pid, kCGWindowLayer=layer, kCGWindowNumber=number)
+        own, foreign, overlay = record(42, 0, 7), record(43, 0, 8), record(42, 1, 9)
+        with patch.object(macos_driver, 'ct', fake_ct):
+            for records, expected in [([own, foreign, overlay], 7), ([foreign], None),
+                                      ([own, dict(own)], None), ([record(42, 0, 0)], None),
+                                      ([foreign] * 513, None)]:
+                driver.cg = SimpleNamespace(CGWindowListCopyWindowInfo=lambda options, relative: records)
+                if expected is None:
+                    with self.assertRaises(BenchmarkError):
+                        driver.owned_window_number()
+                else:
+                    self.assertEqual(driver.owned_window_number(), expected)
+                self.assertIs(released[-1], records)
+        self.assertEqual(len(released), 5)
+
+    def test_native_geometry_waits_for_scale_and_size_in_either_event_order(self):
+        probe = unix_ui_probe()
+        ready = {'scale_factor': 1.5, 'window_width': 1800, 'window_height': 1200}
+        self.assertTrue(probe.native_geometry_ready(ready, 1.5, (1200, 800)))
+        self.assertTrue(probe.native_geometry_ready(ready, None))
+        for key, value in [('scale_factor', 1), ('scale_factor', 0), ('scale_factor', float('nan')),
+                           ('scale_factor', None), ('window_width', 1200), ('window_height', 800),
+                           ('window_width', float('inf')), ('window_height', None)]:
+            with self.subTest(key=key, value=value):
+                self.assertFalse(probe.native_geometry_ready(dict(ready, **{key: value}), 1.5, (1200, 800)))
+        self.assertFalse(probe.native_geometry_ready({}, 1.5))
+
+    def test_macos_pointer_probe_is_bounded_to_the_owned_window(self):
+        self.assertTrue(MacDriver.point_in_window(0, 0, 800, 600))
+        self.assertTrue(MacDriver.point_in_window(799.5, 599.5, 800, 600))
+        for point in [(800, 0), (0, 600), (-1, 0), (0, -1), (float('nan'), 0), (0, float('inf'))]:
+            self.assertFalse(MacDriver.point_in_window(*point, 800, 600))
+        self.assertFalse(MacDriver.point_in_window(1, 1, float('nan'), 600))
+        self.assertFalse(MacDriver.point_in_window(1, 1, 800, 0))
+
+    def test_wayland_input_requires_unique_owned_focused_window(self):
+        probe = unix_ui_probe()
+        own = {"type": "con", "pid": 42, "id": 7, "focused": True}
+        other = {"type": "con", "pid": 43, "id": 8, "focused": False}
+        tree = {"nodes": [{"floating_nodes": [own, other]}]}
+        self.assertEqual(probe.WaylandDisplay.owned_window(tree, 42, True), own)
+        floating = dict(own, type="floating_con")
+        self.assertEqual(probe.WaylandDisplay.owned_window({"floating_nodes": [floating]}, 42, True), floating)
+        for invalid in [
+            {"nodes": [other]}, {"nodes": [own, dict(own)]},
+            {"nodes": [dict(own, focused=False)]}, {"nodes": [dict(own, id="7; exec unwanted")]},
+            {"nodes": [own] * 513},
+        ]:
+            with self.subTest(tree=invalid if len(invalid["nodes"]) < 4 else "oversized"):
+                with self.assertRaises(probe.Failure):
+                    probe.WaylandDisplay.owned_window(invalid, 42, True)
+
+    def test_wayland_unsupported_inputs_never_post_keys(self):
+        probe = unix_ui_probe()
+        display = object.__new__(probe.WaylandDisplay)
+        process = SimpleNamespace(pid=42, poll=lambda: None)
+        with patch.object(display, "window", return_value={"id": 7}), \
+             patch.object(probe.subprocess, "run") as run:
+            for chord in ["ctrl+q", "ctrl+shift+p; bad", "", "Escape+ctrl"]:
+                with self.assertRaises(probe.Failure):
+                    display.key(process, chord)
+            for size in [(0, 520), (720, float("nan")), (1601, 520), (720, 1201)]:
+                with self.assertRaises(probe.Failure):
+                    display.resize(process, *size)
+            run.assert_not_called()
+
+    def test_wayland_compositor_environment_never_reuses_the_user_display(self):
+        probe = unix_ui_probe()
+        with patch.object(probe.shutil, "which", side_effect=lambda name: "/fixture/bin/" + name):
+            for scale in [0, -1, float("nan"), 4]:
+                with self.assertRaises(probe.Failure):
+                    probe.WaylandDisplay(scale)
+            display = probe.WaylandDisplay(1.5)
+        def inspect_launch(*args, **kwargs):
+            self.assertEqual(args[0][0], "/fixture/bin/xvfb-run")
+            self.assertIn("-a", args[0])
+            self.assertTrue(any("-nolisten tcp" in arg for arg in args[0]))
+            self.assertTrue(kwargs["start_new_session"])
+            self.assertNotIn("DISPLAY", display.env)
+            self.assertNotIn("WAYLAND_DISPLAY", display.env)
+            self.assertNotIn("WAYLAND_SOCKET", display.env)
+            self.assertNotIn("SWAYSOCK", display.env)
+            raise OSError("fixture launch failure")
+        with patch.dict(probe.os.environ, {"DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-0", "WAYLAND_SOCKET": "4",
+                                         "SWAYSOCK": "/fixture/user-socket", "XDG_RUNTIME_DIR": "/fixture/user-runtime"}), \
+             patch.object(probe.subprocess, "Popen", side_effect=inspect_launch):
+            with self.assertRaises(OSError):
+                with display:
+                    self.fail("failed compositor was admitted")
+        self.assertFalse(Path(display.temporary.name).exists())
+        self.assertTrue(display.log.closed)
+
     @unittest.skipIf(os.name == 'nt', 'Unix native fixture')
     def test_unix_ui_fixture_uses_the_canonical_launch_directory(self):
         from contextlib import nullcontext
@@ -52,6 +197,13 @@ class CollectorTests(unittest.TestCase):
             self.assertEqual(captured['cwd'], home)
             self.assertEqual(captured['home'], str(home))
             self.assertTrue((home / 'config/config.toml').is_file())
+            for rc in ('.bashrc', '.bash_profile', '.zshrc'):
+                text = (home / rc).read_text()
+                self.assertIn("USER=fixture", text)
+                self.assertIn("PS1='fixture> '", text)
+            fish = (home / '.config/fish/config.fish').read_text()
+            self.assertIn('set -gx USER fixture', fish)
+            self.assertIn("function fish_prompt; printf 'fixture> '; end", fish)
 
     @unittest.skipIf(os.name == 'nt', 'Unix native fixture')
     def test_native_cleanup_retries_actual_directory_enumeration_race(self):

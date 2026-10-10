@@ -499,6 +499,7 @@ fn claim_native_test_control(control: &str) -> bool {
 
 #[cfg(feature = "native-gui-test-hooks")]
 struct NativeWindowSnapshot {
+    chrome: serde_json::Value,
     window_width: f32,
     window_height: f32,
     scale_factor: f32,
@@ -734,6 +735,7 @@ fn write_native_resize_snapshot(
         "panel_count": panels.len(),
         "panels": panels,
     });
+    snapshot["chrome"] = window.chrome;
     snapshot["font_primary"] = serde_json::json!(window.font_primary);
     snapshot["recovery_active"] = serde_json::json!(window.recovery_active);
     snapshot["recovery_ready"] = serde_json::json!(window.recovery_ready);
@@ -1251,10 +1253,7 @@ impl Screen<'_> {
             resize_state: None,
             #[cfg(target_os = "macos")]
             allow_manual_dragging: config.navigation.is_enabled(),
-            custom_chrome: matches!(
-                config.window.decorations,
-                rio_backend::config::window::Decorations::Disabled
-            ),
+            custom_chrome: config.window.decorations.uses_custom_controls(),
             last_chrome_press: None,
             last_close_press: None,
             grids: rustc_hash::FxHashMap::default(),
@@ -1828,6 +1827,10 @@ impl Screen<'_> {
         // quit confirmation, scrollbar animation, VI mode, etc.) whenever the
         // filesystem watcher reloaded configuration.
         self.renderer.update_config(config);
+        #[cfg(target_os = "macos")]
+        {
+            self.allow_manual_dragging = config.navigation.is_enabled();
+        }
 
         let scale = self.sugarloaf.scale_factor();
         self.context_manager.config.panel = config.panel;
@@ -4793,7 +4796,7 @@ impl Screen<'_> {
         let scale_factor = self.sugarloaf.scale_factor();
 
         let hovering = num_tabs > 1
-            && self.renderer.navigation.island_visible(num_tabs)
+            && self.renderer.island_visible(num_tabs)
             && mouse_y <= self.chrome_header_height_px()
             && island::close_button_hit(
                 &self.island_tab_layout(num_tabs),
@@ -4975,7 +4978,7 @@ impl Screen<'_> {
         let window_size = self.sugarloaf.window_size();
         let window_width = window_size.width;
         let num_tabs = self.context_manager.len();
-        let island_visible = self.renderer.navigation.island_visible(num_tabs);
+        let island_visible = self.renderer.island_visible(num_tabs);
         let over_local_rail = self.is_hovering_local_tab_rail(mouse_x, mouse_y);
 
         if !is_right_click {
@@ -5081,7 +5084,8 @@ impl Screen<'_> {
 
         let mouse_x_unscaled = mouse_x as f32 / scale_factor;
 
-        // Island isn't painted (hide_if_single + single tab on macOS).
+        // Native controls can hide the single-tab strip; application
+        // controls retain the same painted and interactive header.
         // Nothing to click on, so let the caller route the event to the
         // grid for selection / double-click maximize at the OS title bar.
         if !island_visible {
@@ -5248,17 +5252,25 @@ impl Screen<'_> {
         });
 
         if island::window_control_release_matches(pressed, released_over) {
-            match pressed {
-                ChromeAction::Minimize => window.set_minimized(true),
-                ChromeAction::Maximize => {
-                    window.set_maximized(!window.is_maximized());
-                }
-                ChromeAction::CloseWindow => self.context_manager.close_window(),
-                ChromeAction::NewTab | ChromeAction::OpenPalette => {}
-            }
+            self.activate_window_control(pressed, window);
         }
         self.mark_dirty();
         true
+    }
+
+    pub(crate) fn activate_window_control(
+        &mut self,
+        action: ChromeAction,
+        window: &rio_window::window::Window,
+    ) {
+        match action {
+            ChromeAction::Minimize => window.set_minimized(true),
+            ChromeAction::Maximize => window.set_maximized(!window.is_maximized()),
+            // The normal event owner preserves confirmation and recovery rules.
+            ChromeAction::CloseWindow => self.context_manager.close_window(),
+            ChromeAction::NewTab | ChromeAction::OpenPalette => return,
+        }
+        self.mark_dirty();
     }
 
     pub fn handle_tab_drag_move(&mut self, x_unscaled: f32) {
@@ -6810,6 +6822,9 @@ impl Screen<'_> {
                 &self.context_manager.current().renderable_content,
                 panels,
                 NativeWindowSnapshot {
+                    chrome: self.renderer.island.as_ref().map_or(serde_json::Value::Null, |island| {
+                        island.native_test_chrome(window_size.width, window_size.height, self.sugarloaf.scale_factor(), self.context_manager.len())
+                    }),
                     window_width: window_size.width,
                     window_height: window_size.height,
                     scale_factor: self.sugarloaf.scale_factor(),

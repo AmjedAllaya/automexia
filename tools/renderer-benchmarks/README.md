@@ -152,8 +152,13 @@ it is not an acceptance metric or a substitute for these application measurement
 
 The [native Unix session scenarios](../../tests/integration/unix-session-ui.py)
 also record bounded shell-ready and command-roundtrip diagnostic samples on
-Linux and macOS. These samples include 50 ms polling, fixture setup and desktop
-automation; they are not input-to-present measurements or controlled regression
+Linux (X11 and isolated Wayland) and macOS. The Linux CI matrix runs
+CPU/Vulkan with the default shell, Bash, Zsh and Fish at 1× and 1.5×. Wayland
+requires `sway`, `wtype`, `grim` and `Xvfb`; its private compositor disables Xwayland,
+uses an owned virtual display for persistent input devices, and
+never sends input to the user’s display. These samples include 50 ms polling, fixture setup and desktop
+automation. Fixture commands are consumed on render and may wait for the passive
+idle refresh; these are not input-to-present measurements or controlled regression
 baselines. The macOS native workflow runs renderer microbenchmarks and retains
 raw Criterion samples separately for each runner architecture. Shared hosted
 hardware numbers must not be compared across machines or used for performance
