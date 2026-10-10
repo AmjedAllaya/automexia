@@ -6021,6 +6021,152 @@ fn opened_color(alpha: bool) -> SettingsView {
 }
 
 #[test]
+fn shared_color_picker_selection_keeps_shortcuts_and_text_input_separate() {
+    for alpha in [false, true] {
+        for favorites in [false, true] {
+            for selection in [Some(NamedKey::Enter), Some(NamedKey::Space), None] {
+                for action in ["apply", "enter", "cancel", "reset", "edit"] {
+                    let mut view = opened_color(alpha);
+                    let favorite = [18, 52, 86, if alpha { 120 } else { 255 }];
+                    view.set_color_favorites(&[favorite]);
+                    view.paint(&mut Raster::new(1.0), theme());
+                    named(
+                        &mut view,
+                        if favorites {
+                            NamedKey::F2
+                        } else {
+                            NamedKey::F1
+                        },
+                    );
+                    named(&mut view, NamedKey::End);
+                    let expected = if favorites {
+                        favorite
+                    } else {
+                        [196, 213, 125, 255]
+                    };
+                    if let Some(selection) = selection {
+                        named(&mut view, selection);
+                        view.key(
+                            &Key::Named(selection),
+                            None,
+                            ModifiersState::empty(),
+                            true,
+                        );
+                    } else {
+                        view.paint(&mut Raster::new(1.5), theme());
+                        let focus = view.color_editor.as_ref().unwrap().focus;
+                        let bounds = view
+                            .color_palette_controls()
+                            .into_iter()
+                            .find(|(candidate, _)| *candidate == focus)
+                            .unwrap()
+                            .1;
+                        pointer_event(&mut view, bounds, 1.5, ElementState::Pressed);
+                        pointer_event(&mut view, bounds, 1.5, ElementState::Released);
+                    }
+                    let editor =
+                        view.color_editor.as_ref().expect("selection only previews");
+                    assert_eq!(editor.focus, ColorFocus::Apply);
+                    assert!(!editor.palette_browsing);
+                    assert!(editor.anchor.is_none());
+                    assert_eq!(editor_value(editor), Some(SettingValue::Color(expected)));
+                    assert!(view.take_edit().is_none());
+                    // Text, clipboard and delayed IME events must not steal ownership.
+                    view.key(
+                        &Key::Character("x".into()),
+                        Some("x"),
+                        ModifiersState::empty(),
+                        false,
+                    );
+                    view.key(
+                        &Key::Character("a".into()),
+                        Some("a"),
+                        ModifiersState::empty(),
+                        true,
+                    );
+                    assert!(!view.paste("#BADBAD"));
+                    for event in [
+                        Ime::Preedit("#BADBAD".into(), None),
+                        Ime::Commit("#BADBAD".into()),
+                    ] {
+                        view.event(
+                            &WindowEvent::Ime(event),
+                            ModifiersState::empty(),
+                            1.0,
+                        );
+                    }
+                    view.set_color_favorites(&[favorite, [9, 8, 7, 255]]);
+                    view.fit(1000., 760., 18.);
+                    view.paint(&mut Raster::new(1.0), theme());
+                    assert_eq!(
+                        view.color_editor.as_ref().unwrap().focus,
+                        ColorFocus::Apply
+                    );
+                    assert_eq!(
+                        editor_value(view.color_editor.as_ref().unwrap()),
+                        Some(SettingValue::Color(expected))
+                    );
+                    assert!(view.preedit.is_empty());
+                    assert!(view.query().is_empty());
+                    assert!(view.take_edit().is_none());
+                    match action {
+                        "cancel" => {
+                            named(&mut view, NamedKey::Escape);
+                            assert!(view.color_editor.is_none());
+                            assert!(view.take_edit().is_none());
+                        }
+                        "reset" => {
+                            view.key(
+                                &Key::Character("r".into()),
+                                Some("r"),
+                                ModifiersState::empty(),
+                                false,
+                            );
+                            assert!(view.confirmation.is_some());
+                            assert!(view.take_edit().is_none());
+                            confirm_requested_settings_action(&mut view);
+                            assert_eq!(view.take_edit().unwrap().change, Change::Reset);
+                        }
+                        "edit" => {
+                            let input = view.color_geometry.input;
+                            pointer_event(&mut view, input, 1.0, ElementState::Pressed);
+                            pointer_event(&mut view, input, 1.0, ElementState::Released);
+                            assert_eq!(
+                                view.color_editor.as_ref().unwrap().focus,
+                                ColorFocus::Hex
+                            );
+                            assert!(replace_color(&mut view, "#ABCDEF"));
+                            named(&mut view, NamedKey::Enter);
+                            assert_eq!(
+                                view.take_edit().unwrap().change,
+                                Change::Set(SettingValue::Color([171, 205, 239, 255]))
+                            );
+                        }
+                        _ => {
+                            if action == "apply" {
+                                view.key(
+                                    &Key::Character("a".into()),
+                                    Some("a"),
+                                    ModifiersState::empty(),
+                                    false,
+                                );
+                            } else {
+                                named(&mut view, NamedKey::Enter);
+                            }
+                            assert_eq!(
+                                view.take_edit().unwrap().change,
+                                Change::Set(SettingValue::Color(expected))
+                            );
+                            assert!(view.color_editor.is_none());
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn shared_color_picker_keyboard_tab_starts_with_palette_actions() {
     let mut view = opened_color(false);
     view.paint(&mut Raster::new(1.0), theme());
@@ -6158,7 +6304,7 @@ fn shared_color_picker_keyboard_shortcuts_grid_bounds_and_explicit_selection() {
             named(&mut view, NamedKey::Escape);
             assert!(view.color_editor.is_some());
         } else {
-            assert_eq!(view.color_editor.as_ref().unwrap().focus, ColorFocus::Hex);
+            assert_eq!(view.color_editor.as_ref().unwrap().focus, ColorFocus::Apply);
             assert!(
                 view.take_edit().is_none(),
                 "choosing is distinct from applying"
@@ -6322,7 +6468,7 @@ fn shared_color_picker_keyboard_offers_swatches_without_implicit_apply() {
         view.take_edit().is_none(),
         "choosing a swatch only updates the draft"
     );
-    assert_eq!(view.color_editor.as_ref().unwrap().focus, ColorFocus::Hex);
+    assert_eq!(view.color_editor.as_ref().unwrap().focus, ColorFocus::Apply);
     named(&mut view, NamedKey::Enter);
     assert!(matches!(
         view.take_edit().map(|edit| edit.change),
@@ -9213,6 +9359,14 @@ fn shared_color_picker_selection_keeps_swatch_pixels_and_small_windows_keep_hex(
     view.fit(320., 360., 18.);
     view.paint(&mut Raster::new(1.), theme());
     assert!(view.color_palette_controls().is_empty());
+    assert_eq!(view.color_editor.as_ref().unwrap().focus, ColorFocus::Apply);
+    view.key(
+        &Key::Named(NamedKey::Tab),
+        None,
+        ModifiersState::SHIFT,
+        false,
+    );
+    assert_eq!(view.color_editor.as_ref().unwrap().focus, ColorFocus::Hex);
     assert!(replace_color(&mut view, "#112233"));
     named(&mut view, NamedKey::ArrowDown);
     assert_eq!(view.color_editor.as_ref().unwrap().focus, ColorFocus::Hex);

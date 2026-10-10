@@ -275,9 +275,11 @@ Click either palette button, or focus it and press Enter, to browse its colors.
 Tab, Shift+Tab and arrows wrap inside the swatches, including at either end;
 Home/End select the first/last swatch. **Escape** returns to the palette button
 without discarding the draft, even when Favorites is empty. Enter, Space or a
-click chooses a swatch and returns to the hex field for review. Down from the
-hex field also enters the visible palette. **Apply** or Enter in the hex field
-commits it; **Escape** outside the swatches cancels the draft.
+click chooses a swatch and focuses **Apply** for review without saving it.
+Press **A** or **Enter** to apply, **Escape** to cancel, or **R** to request Reset.
+Typing, paste and IME input cannot overwrite the chosen color until you explicitly
+focus the hex field with Tab or a click. Down from the hex field enters the visible
+palette; Enter while editing the hex field applies that custom value.
 Typing and applying a valid custom hex color automatically
 adds it to Favorites. **Save favorite** (☆ Save in a narrow window) saves the draft
 without applying it; **Remove favorite** or Delete on a focused favorite removes

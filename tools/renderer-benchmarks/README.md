@@ -156,8 +156,9 @@ The [native Unix session scenarios](../../tests/integration/unix-session-ui.py)
 also record bounded shell-ready and command-roundtrip diagnostic samples on
 Linux (X11 and isolated Wayland) and macOS. The Linux CI matrix runs
 CPU/Vulkan with the default shell, Bash, Zsh and Fish at 1× and 1.5×. Wayland
-requires `sway`, `wtype`, `grim` and `Xvfb`; its private compositor disables Xwayland,
-uses an owned virtual display for persistent input devices, and
+requires `sway`, `xdotool`, `xwininfo`, `grim` and `Xvfb`; its private compositor disables Xwayland,
+uses the owned Xvfb keyboard to deliver native Wayland events without disconnecting
+virtual keyboards between keys (which cancels focused drafts), and
 never sends input to the user’s display. These samples include 50 ms polling, fixture setup and desktop
 automation. Fixture commands are consumed on render and may wait for the passive
 idle refresh; these are not input-to-present measurements or controlled regression

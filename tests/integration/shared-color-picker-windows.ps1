@@ -78,6 +78,18 @@ function Test-AutomexiaSharedColorPicker {
     $old = $state.settings.color_editor.draft_color -join ','
     Color-Key 0x0D
     $state = Wait-Color { param($s) $s.settings.ready -and $null -ne $s.settings.color_editor -and ($s.settings.color_editor.draft_color -join ',') -ne $old }
+    Color-Focus 'Apply'
+    $chosen = $state.settings.color_editor.draft_color -join ','
+    Color-Key 0x58
+    Color-Key 0x41
+    $null = Wait-Color { param($s) $s.settings.ready -and -not $s.settings.save_pending -and $null -eq $s.settings.color_editor }
+    Color-Row 'fonts.colors.foreground'
+    $state = Wait-Color { param($s) $s.settings.ready -and ($s.settings.color_editor.draft_color -join ',') -eq $chosen }
+    $old = $chosen
+    Color-Control 'Suggested'
+    Color-Control 'Swatch(1)'
+    Color-Focus 'Apply'
+    Color-Key 0x58
     Color-Key 0x1B
     $null = Wait-Color { param($s) $s.settings.ready -and $null -eq $s.settings.color_editor }
     Color-Row 'fonts.colors.foreground'
@@ -102,6 +114,15 @@ function Test-AutomexiaSharedColorPicker {
         $null = New-Item -ItemType Directory -Force -Path $ModalCaptureDirectory
         $null = [AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $ModalCaptureDirectory 'favorites.png'))
     }
+    Color-Control 'Swatch(0)'
+    Color-Focus 'Apply'
+    Color-Key 0x58
+    Color-Key 0x41
+    $null = Wait-Color { param($s) $s.settings.ready -and -not $s.settings.save_pending -and $null -eq $s.settings.color_editor }
+    Color-Row 'fonts.colors.foreground'
+    $null = Wait-Color { param($s) ($s.settings.color_editor.draft_color -join ',') -eq '171,205,239,255' }
+    Color-Key 0x71
+    Color-Focus 'Swatch(0)'
     Color-Key 0x72
     $null = Wait-Color { param($s) $s.settings.ready -and -not $s.settings.save_pending -and @($s.settings.color_editor.palette.controls | Where-Object focus -like 'Swatch*').Count -eq 0 }
     Color-Key 0x09

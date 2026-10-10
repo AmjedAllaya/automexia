@@ -101,6 +101,7 @@ jobs:
           # Retain native compiler diagnostics in the job log. The driver then
           # resolves the already-built harness from Cargo's structured receipt.
           cargo test -p automexia-terminal --bin automexia --features visual-test-hooks --locked --no-run
+          cargo test -p automexia-terminal --bin automexia --features visual-test-hooks --locked shared_color_picker
           if [[ "$RUNNER_OS" == macOS ]]; then
             cargo test -p rio-window --lib --locked webkit_cursor_hotspot
             cargo test -p sugarloaf --lib --locked resolve_font_for_char_
@@ -124,6 +125,12 @@ jobs:
           cargo build -p automexia-terminal --bin automexia --features visual-test-hooks --locked
           if ($LASTEXITCODE -ne 0) { throw 'Native UIA fixture build failed' }
           & tests/integration/resize-stress-windows.ps1 -Binary target/debug/automexia.exe -UseCpuRenderer -AccessibilityOnly
+      - name: Native Windows shared color picker keyboard and pointer focus
+        if: always() && !cancelled() && runner.os == 'Windows' && steps.visual.outcome != 'skipped'
+        shell: powershell
+        run: |
+          & tests/integration/resize-stress-windows.ps1 -Binary target/debug/automexia.exe -UseCpuRenderer -SharedColorPickerOnly
+          & tests/integration/resize-stress-windows.ps1 -Binary target/debug/automexia.exe -SharedColorPickerOnly
       - name: Native Windows metadata output and cancellation
         if: always() && !cancelled() && runner.os == 'Windows' && steps.visual.outcome != 'skipped'
         shell: bash

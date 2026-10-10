@@ -263,11 +263,13 @@ impl SettingsView {
                 };
                 editor.draft = hex_color(color, editor.alpha);
                 editor.caret = editor.draft.len();
-                editor.anchor = Some(0);
+                editor.anchor = None;
                 editor.last_valid_color = Some(color);
                 editor.custom_input = false;
                 editor.feedback = None;
-                editor.focus = ColorFocus::Hex;
+                // Choosing a swatch leaves text entry explicit, so the next
+                // Apply/Reset shortcut cannot replace the selected color.
+                editor.focus = ColorFocus::Apply;
                 editor.palette_browsing = false;
             }
             _ => return,
@@ -524,6 +526,12 @@ impl SettingsView {
                 "Tab/Arrows | Enter: pick | Esc: back"
             } else {
                 "Tab / Arrows: colors | Enter: choose | Esc: back"
+            }
+        } else if editor.focus == ColorFocus::Apply {
+            if compact {
+                "Tab: controls | Enter: apply | Esc: exit"
+            } else {
+                "Tab: controls | Enter: apply | Esc: cancel"
             }
         } else if compact {
             "Tab: controls | Enter: open | Esc: exit"

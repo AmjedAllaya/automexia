@@ -13,6 +13,7 @@ from contextlib import contextmanager, ExitStack
 import errno
 import json
 import math
+import re
 import os
 from pathlib import Path
 import signal
@@ -152,7 +153,7 @@ class WaylandDisplay:
         self.process = self.temporary = self.log = None
         self.socket = None
         self.tools = {}
-        for name in ("sway", "swaymsg", "wtype", "grim", "xvfb-run"):
+        for name in ("sway", "swaymsg", "xdotool", "xwininfo", "grim", "xvfb-run"):
             executable = shutil.which(name)
             check(executable is not None, "required isolated Wayland tool missing")
             self.tools[name] = executable
@@ -179,7 +180,11 @@ class WaylandDisplay:
             self.process = subprocess.Popen(
                 [self.tools["xvfb-run"], "-a", "-s",
                  f"-screen 0 {int(1600 * self.scale)}x{int(1200 * self.scale)}x24 -nolisten tcp",
-                 self.tools["sway"], "--config", str(config)],
+                 sys.executable, "-c",
+                 "import json,os,sys; from pathlib import Path; "
+                 "Path(sys.argv[1]).write_text(json.dumps({k:os.environ[k] for k in ('DISPLAY','XAUTHORITY')})); "
+                 "os.execv(sys.argv[2],sys.argv[2:])",
+                 str(root / "input-display.json"), self.tools["sway"], "--config", str(config)],
                 env=self.env, stdout=self.log, stderr=self.log, start_new_session=True)
             end = time.monotonic() + 12
             while time.monotonic() < end:
@@ -192,6 +197,29 @@ class WaylandDisplay:
                     self.client_env = {"XDG_RUNTIME_DIR": str(root), "WAYLAND_DISPLAY": displays[0].name,
                                        "WINIT_UNIX_BACKEND": "wayland"}
                     self.ipc("--type", "get_outputs")
+                    # Inject through the compositor's persistent Xvfb keyboard.
+                    # Creating/removing a wtype keyboard for each key emits
+                    # Wayland focus-leave events that legitimately cancel drafts.
+                    input_display = json.loads((root / "input-display.json").read_text())
+                    check(set(input_display) == {"DISPLAY", "XAUTHORITY"} and
+                          all(isinstance(v, str) and v for v in input_display.values()),
+                          "invalid owned compositor input display")
+                    self.input_env = dict(self.env, **input_display)
+                    root_info = subprocess.run(
+                        [self.tools["xwininfo"], "-root"], env=self.input_env,
+                        check=True, capture_output=True, text=True, timeout=5).stdout
+                    root_id = re.search(r"Window id: (0x[0-9a-fA-F]+)", root_info)
+                    check(root_id is not None, "owned X11 root unavailable")
+                    result = subprocess.run(
+                        [self.tools["xdotool"], "search", "--onlyvisible", "--name", ""],
+                        env=self.input_env, capture_output=True, text=True, timeout=5)
+                    check(result.returncode in (0, 1), "owned compositor input unavailable")
+                    windows = [w for w in result.stdout.split() if w != str(int(root_id.group(1), 16))]
+                    if not windows:
+                        time.sleep(.05)
+                        continue  # IPC becomes ready before the X11 output maps.
+                    check(len(windows) == 1 and windows[0].isdigit(), "no unique owned compositor window")
+                    self.input_window = windows[0]
                     return self
                 time.sleep(.05)
             raise Failure("isolated Wayland display unavailable")
@@ -268,18 +296,11 @@ class WaylandDisplay:
     def key(self, process, chord):
         self.window(process, focused=True)
         check(chord in ("ctrl+shift+p", "Escape", "Down", "ctrl+shift+F1", "ctrl+shift+F3",
-                        "alt+j", "alt+shift+j"), "unsupported Wayland fixture key")
-        modifiers, key = chord.split('+')[:-1], chord.split('+')[-1]
-        # Keep the virtual device
-        # alive while clients bind wl_keyboard after its capability appears.
-        arguments = [self.tools["wtype"], "-s", "150"]
-        for modifier in modifiers:
-            arguments.extend(["-M", modifier])
-        arguments.extend(["-k", key])
-        for modifier in reversed(modifiers):
-            arguments.extend(["-m", modifier])
-        arguments.extend(["-s", "100"])
-        subprocess.run(arguments, env=self.env, check=True, capture_output=True, timeout=5)
+                        "alt+j", "alt+shift+j", "x", "a", "F3", "Return"),
+              "unsupported Wayland fixture key")
+        subprocess.run(
+            [self.tools["xdotool"], "windowfocus", self.input_window, "key", "--clearmodifiers", chord],
+            env=self.input_env, check=True, capture_output=True, timeout=5)
 
     def click(self, process, x, y):
         window = self.window(process, focused=True)
@@ -665,6 +686,83 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     key("Escape")
                     wait(lambda s: not s.get("settings", {}).get("open"), "gallery parent did not close")
 
+                # All hosts use this picker. Native input must leave a chosen
+                # swatch ready for shortcuts rather than silently editing hex.
+                send("open-terminal-appearance")
+
+                def color_editor(s):
+                    return s.get("settings", {}).get("color_editor") or {}
+
+                def color_row():
+                    current = wait(lambda s: s.get("settings", {}).get("ready") and
+                                   not s["settings"].get("save_pending") and any(
+                                       c.get("id") == "interface.header.background"
+                                       for c in s["settings"].get("controls", [])),
+                                   "header color control not reachable")
+                    bounds = next(c["bounds"] for c in current["settings"]["controls"]
+                                  if c["id"] == "interface.header.background")
+                    x, y, w, h = bounds
+                    click(x + w / 2, y + h / 2)
+
+                def palette_control(focus):
+                    current = wait(lambda s: s.get("settings", {}).get("ready") and any(
+                        c["focus"] == focus for c in color_editor(s).get("palette", {}).get("controls", [])),
+                        "color palette control not reachable")
+                    bounds = next(c["bounds"] for c in color_editor(current)["palette"]["controls"]
+                                  if c["focus"] == focus)
+                    x, y, w, h = bounds
+                    click(x + w / 2, y + h / 2)
+
+                def color_focus(focus):
+                    return wait(lambda s: s.get("settings", {}).get("ready") and
+                                color_editor(s).get("palette", {}).get("focus") == focus,
+                                "color picker focus did not settle: " + focus)
+
+                color_row()
+                wait(lambda s: s.get("settings", {}).get("active_category") == "interface.header.background",
+                     "header appearance page did not open")
+                color_row()
+                color_focus("Hex")
+                palette_control("Suggested")
+                suggested = color_focus("Swatch(0)")
+                swatch = color_editor(suggested)["palette"]["controls"][-1]
+                chosen = swatch["value"]
+                palette_control(swatch["focus"])
+                selected = color_focus("Apply")
+                check(color_editor(selected)["draft_color"] == chosen, "pointer selection changed color")
+                check(not color_editor(selected)["palette"]["browsing"], "selection trapped palette focus")
+                capture("color-selected")
+                key("x")  # Must not replace the selected value with a text character.
+                selected = color_focus("Apply")
+                check(color_editor(selected)["draft_color"] == chosen, "stray character replaced selected color")
+                key("a")
+                wait(lambda s: s.get("settings", {}).get("ready") and not color_editor(s) and
+                     not s["settings"].get("save_pending"), "Apply shortcut did not save color")
+                color_row()
+                selected = color_focus("Hex")
+                check(color_editor(selected)["draft_color"] == chosen,
+                      f"Apply shortcut color mismatch: chosen={chosen}, reopened={color_editor(selected)['draft_color']}")
+                key("F3")
+                color_focus("FavoriteToggle")
+                palette_control("Favorites")
+                color_focus("Swatch(0)")
+                key("Return")
+                selected = color_focus("Apply")
+                check(color_editor(selected)["draft_color"] == chosen, "keyboard favorite changed color")
+                key("x")
+                key("Escape")
+                wait(lambda s: not color_editor(s), "Escape did not cancel chosen color")
+                color_row()
+                selected = color_focus("Hex")
+                check(color_editor(selected)["draft_color"] == chosen, "cancellation changed saved color")
+                key("Escape")
+                wait(lambda s: not color_editor(s), "color editor did not close")
+                key("Escape")
+                wait(lambda s: s.get("settings", {}).get("active_category") is None,
+                     "header appearance page did not close")
+                key("Escape")
+                wait(lambda s: not s.get("settings", {}).get("open"), "appearance did not close")
+
                 key("meta+alt+shift+r" if MACOS else "alt+j")
                 split = wait(lambda s: s.get("panel_count") == 2 and integrated_ready(s),
                              "native pane clone failed")
@@ -706,7 +804,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                         "display_server": "AppKit" if MACOS else display_server,
                         "fixture_cleanup": cleanup_diagnostics,
                         "shell_integration": True, "table": True, "numeric_tables": True, "table_live_toggle": True, "tags": True,
-                        "palette": True, "settings": True, "themes": True,
+                        "palette": True, "settings": True, "themes": True, "color_picker_focus": True,
                         "split": True, "local_tab": True, "resize": True, "shared_caption_controls": True,
                         "header_pointer": True, "native_maximize_restore": True if MACOS else None,
                         "native_ax_caption": True if MACOS else None}
