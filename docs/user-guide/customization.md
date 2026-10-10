@@ -314,7 +314,7 @@ reset undo point is available. Letters stay text in search and value fields;
 outside the color field, **A** applies and **R** requests a reset. If the window
 is too small to show the confirmation, enlarge it or press **Esc** to cancel.
 
-The **Operating system / WSL** tag detects native Linux distributions (including
+The **Operating system** tag detects native Linux distributions (including
 Linux Mint and LMDE), macOS and other Unix hosts. Linux uses the distribution's
 `os-release` name, with a generic OS label when that metadata is unavailable.
 Windows keeps its separate tag customization. Detection is cached when each shell

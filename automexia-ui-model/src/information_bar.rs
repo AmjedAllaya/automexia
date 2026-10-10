@@ -663,7 +663,7 @@ pub fn role_from_id(id: &str) -> Option<SegmentRole> {
 pub const fn role_label(role: SegmentRole) -> &'static str {
     match role {
         SegmentRole::Production => "Production",
-        SegmentRole::UbuntuWsl => "Operating system / WSL",
+        SegmentRole::UbuntuWsl => "Operating system",
         SegmentRole::Windows => "Windows",
         SegmentRole::Git => "Git",
         SegmentRole::Kubernetes => "Kubernetes",

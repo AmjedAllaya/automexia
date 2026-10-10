@@ -11,3 +11,6 @@ clears across nested shells, stale provider OS tags cannot duplicate the core ta
 and full OS names remain available to accessibility. Regression coverage includes
 parser fixtures, shell publishers, installation layouts, frame admission, core
 projection and native Unix UI checks.
+
+The OS setting uses a compact, platform-neutral label; measured preview-column
+coverage prevents truncation at fractional display scales.

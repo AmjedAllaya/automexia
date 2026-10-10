@@ -3888,7 +3888,7 @@ fn inherited_color_graphic_uses_role_labels_for_canonical_setting_ids() {
     );
     assert_eq!(
         tag_color_graphic_name("tags.colors.ubuntu_wsl"),
-        "Operating system / WSL"
+        "Operating system"
     );
     assert_eq!(
         tag_color_graphic_name("tags.slot.unknown-cloud.color"),
@@ -3898,6 +3898,35 @@ fn inherited_color_graphic_uses_role_labels_for_canonical_setting_ids() {
         tag_color_graphic_name("tags.slot.custom-1.color"),
         "custom 1"
     );
+}
+
+#[test]
+fn operating_system_roster_label_fits_its_preview_column() {
+    for scale in [1.0, 1.25, 1.5, 1.75, 2.0] {
+        let mut view = workflow_tag_view();
+        view.fit(960.0, 740.0, 16.0);
+        let mut raster = Raster::new(scale);
+        view.paint(&mut raster, theme());
+        let (_, row) = view
+            .preview_targets
+            .iter()
+            .rev()
+            .find(|(id, _)| slot_id_from_page(id) == Some("ubuntu-wsl"))
+            .expect("OS tag has a visible roster target");
+        let label = automexia_ui_model::information_bar::role_label(
+            automexia_extension_api::SegmentRole::UbuntuWsl,
+        );
+        let options = DrawOpts {
+            font_size: (view.font * 0.76).clamp(10.0, 16.0),
+            ..DrawOpts::default()
+        };
+        let text_width = raster.text.measure(label, &options);
+        let state_width = (view.font * 3.5).min(row.width * 0.26);
+        assert!(
+            text_width <= row.width - state_width - 6.0,
+            "OS label clipped at scale {scale}: {text_width} in {row:?}"
+        );
+    }
 }
 
 #[test]

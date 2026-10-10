@@ -745,7 +745,7 @@ pub(crate) fn customization_groups(catalog: &Catalog) -> Vec<CustomizationGroup>
                 || id == "tags.opacity"
         },
         &[
-            "Production Operating system / WSL Windows Git",
+            "Production Operating system Windows Git",
             "Kubernetes Docker Azure AWS Google Cloud",
             "Other cloud Terraform Environment User",
             "gcp unknown cloud",
