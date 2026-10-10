@@ -92,18 +92,20 @@ terminal applications and never write to or execute in the PTY.
 | Close other window-level tabs | `Ctrl+Shift+F4` | `Cmd+Alt+W` |
 | Next / previous window tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
 | Next / previous local tab | `Alt+PageDown` / `Alt+PageUp` | `Cmd+Alt+]` / `Cmd+Alt+[` |
-| Fresh split right / down | `Alt+Shift+R` / `Alt+Shift+D` | `Cmd+D` / `Cmd+Shift+D` |
-| Clone current launch context right / down | `Alt+R` / `Alt+D` | `Cmd+Alt+Shift+R` / `Cmd+Alt+Shift+D` |
+| Fresh split right / down | `Ctrl+Shift+F10` / `Alt+Shift+D` | `Cmd+D` / `Cmd+Shift+D` |
+| Clone current launch context right / down | `Ctrl+Shift+F9` / `Alt+D` | `Cmd+Alt+Shift+R` / `Cmd+Alt+Shift+D` |
 | Geometric pane focus | `Alt+Arrow` | `Cmd+Alt+Arrow` |
 | Cycle next / previous pane | `F6` / `Shift+F6` | `Cmd+]` / `Cmd+[` |
 
 ### A key difference: fresh vs clone
 
-`Alt+R` / `Alt+D` on Windows/Linux/BSD clones an independent session with the active launch profile/directory. Add `Shift` for a **fresh default-shell split**. Remember **R = right, D = down, Shift = fresh**. The same commands live under **Panes & Sessions** in the grouped palette; typing searches globally. Back uses a left arrow in both the fixed header and the list.
+**Ctrl+Shift+F9** clones right; **Ctrl+Shift+F10** creates a fresh default-shell
+right pane on Windows/Linux/BSD. Down panes retain Alt+D (clone) and Alt+Shift+D
+(fresh). The grouped palette shows the effective shortcuts and lets you change
+them with F2. Search, Vi and alternate-screen applications retain these keys.
 
-These Alt-letter defaults replace common shell word-deletion/line-restoration
-bindings in normal terminal mode. Search, Vi and alternate-screen applications
-retain those keys. See [migration and shell-key recovery](../KEYBOARD.md#command-palette).
+Alt+E and the retired Alt+R defaults remain available for shell editing.
+See [direct customization shortcuts and migration](../KEYBOARD.md#command-palette).
 
 Current source leaves `Ctrl+R` and `Ctrl+D` to the shell for history and delete/EOF behavior. The published 0.4.0 package predates this correction. Existing custom bindings remain authoritative; remove an explicit clone binding if you want native shell input. Ctrl+Alt variants are no longer rewritten to bare controls.
 
@@ -131,11 +133,13 @@ command. Existing history-only shortcuts and explicit overrides are unchanged.
 Ctrl+Alt combinations can interact with AltGr layouts; rebind the clear action
 or activate it with Enter in the palette if necessary.
 
-External overlays may intercept shortcuts before Automexia receives them. NVIDIA
-uses Alt+R and Alt+Shift+R for statistics. To preserve the pane keys, change those
-in NVIDIA's Alt+Z > Settings > Shortcuts; the Statistics settings also own the
-external overlay position. See [NVIDIA's official instructions](https://nvidia.custhelp.com/app/answers/detail/a_id/5084).
-Automexia does not change another application's shortcuts or display settings.
+External overlays and custom desktop mappings can intercept shortcuts before
+Automexia receives them. The right-pane defaults avoid Alt+R (NVIDIA statistics),
+Alt+E (Fish command editor) and macOS Option accent-entry keys. Automexia does
+not change another application's shortcuts or display settings.
+
+See the [direct customization and workspace defaults](../KEYBOARD.md#direct-customization-and-workspace-shortcuts)
+for Workflow & Output, Terminal Appearance, Themes, Profiles and Recovery.
 
 ## Resize panes
 

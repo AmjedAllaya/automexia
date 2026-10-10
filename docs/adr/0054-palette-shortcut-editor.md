@@ -25,9 +25,11 @@ disabled-key collisions, typed prefixes, global/physical conflicts and advanced
 chains/scopes. A simple action override removes its normal-mode aliases and adds
 one classic binding, excluding Search, Vi and alternate screen. Existing classic
 and typed aliases outside normal mode are retained as disjoint predicates, so
-combined modes cannot execute duplicate copies. The configured
-base remains authoritative for conflict checks: moving one UI shortcut does not
-implicitly free its configured key for another command. Reset removes one record.
+combined modes cannot execute duplicate copies. Interactive capture checks the complete configured base: moving one UI shortcut
+does not implicitly free its configured key for another command. When loading
+saved records, built-in defaults have lower priority so an upgrade cannot disable
+an existing UI shortcut. Explicit TOML, physical bindings and typed profile
+conflicts still reject an incompatible overlay. Reset removes one record.
 
 Save updates only prepared bindings, not fonts, PTYs or pane geometry. Existing
 key-sequence cancellation and binding publication stay with Screen. A bounded

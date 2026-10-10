@@ -267,7 +267,8 @@ class WaylandDisplay:
 
     def key(self, process, chord):
         self.window(process, focused=True)
-        check(chord in ("ctrl+shift+p", "Escape", "Down"), "unsupported Wayland fixture key")
+        check(chord in ("ctrl+shift+p", "Escape", "Down", "ctrl+shift+F1", "ctrl+shift+F3",
+                        "ctrl+shift+F9", "ctrl+shift+F10"), "unsupported Wayland fixture key")
         modifiers, key = chord.split('+')[:-1], chord.split('+')[-1]
         # Keep the virtual device
         # alive while clients bind wl_keyboard after its capability appears.
@@ -546,7 +547,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                         await_caption(caption_label, press=True)
                         wait(lambda s: caption_transition_presented(s, maximized, presented_sequence, driver.window_size()),
                              "native AX maximize/restore failed")
-                send("open-customizations")
+                key("ctrl+shift+F1")
                 wait(lambda s: s.get("settings", {}).get("ready"), "settings not ready")
                 capture("customizations")
                 if MACOS:
@@ -556,7 +557,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                       "two overlapping root menus")
                 key("Escape")
                 wait(lambda s: not s.get("settings", {}).get("open"), "settings did not close")
-                send("open-themes")
+                key("ctrl+shift+F3")
                 wait(theme_gallery_ready, "theme library did not load")
                 key("Down")
                 preview = wait(lambda s: bool((s.get("settings", {}).get("gallery") or {}).get("builtin")),
@@ -570,7 +571,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     key("Escape")
                     wait(lambda s: not s.get("settings", {}).get("open"), "gallery parent did not close")
 
-                send("clone-right")
+                key("meta+alt+shift+r" if MACOS else "ctrl+shift+F9")
                 split = wait(lambda s: s.get("panel_count") == 2 and integrated_ready(s),
                              "native pane clone failed")
                 check(active(split).get("launch_program") == (None if MACOS and shell == "default" else program), "clone changed native shell")
@@ -580,6 +581,10 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 tabbed = wait(lambda s: active(s).get("local_tab_count") == 2 and
                               integrated_ready(s), "native local tab failed")
                 check(active(tabbed).get("launch_program") == (None if MACOS and shell == "default" else program), "tab changed native shell")
+                # Use the native key path for both distinct right-pane actions.
+                key("meta+d" if MACOS else "ctrl+shift+F10")
+                wait(lambda s: s.get("panel_count") == 3 and integrated_ready(s),
+                     "fresh right-pane keyboard shortcut failed")
                 capture("panes")
                 # Shrink and expand after integrated output and UI use. The
                 # viewport and grid must remain nonzero and within the window.

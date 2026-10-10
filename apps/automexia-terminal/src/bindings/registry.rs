@@ -112,7 +112,11 @@ pub fn build(config: &Config) -> Result<Option<RegistrySnapshot>, RegistryBuildE
         let mut base = config.clone();
         base.bindings.ui_shortcuts.clear();
         let baseline = build(&base)?;
-        let bindings = super::default_key_bindings(&base);
+        // Persisted UI choices outrank built-in defaults, including defaults
+        // introduced by an upgrade. Keep explicit TOML/physical bindings and
+        // typed profile ownership in the conflict check. Interactive capture
+        // still checks the complete effective table before accepting a new key.
+        let bindings = super::config_key_bindings(base.bindings.keys.clone(), Vec::new());
         for record in &config.bindings.ui_shortcuts {
             let action = super::shortcut::action_from_id(&record.action)
                 .ok_or(RegistryBuildError::InvalidUserBinding)?;

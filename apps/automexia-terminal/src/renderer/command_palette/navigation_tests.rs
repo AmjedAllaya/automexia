@@ -11,17 +11,6 @@ fn every_classic_palette_action_has_a_real_shortcut_without_source_badges() {
         let mut palette = CommandPalette::new();
         palette.set_effective_bindings(&bindings, None);
         for command in COMMANDS {
-            if matches!(
-                command.action,
-                PaletteAction::OpenCustomizations
-                    | PaletteAction::OpenTerminalAppearance
-                    | PaletteAction::OpenThemeGallery
-                    | PaletteAction::RestorePreviousSession
-                    | PaletteAction::OpenProfiles
-            ) {
-                assert_eq!(palette.command_shortcut(command), "Enter");
-                continue;
-            }
             // Inspect the actual dispatch table: an Enter fallback must not
             // conceal a missing default or a mode-only shortcut.
             assert!(
@@ -101,8 +90,8 @@ fn shortcut_labels_match_literal_cpu_pixels_at_fractional_scales() {
     let mut palette = CommandPalette::new();
     palette.set_effective_bindings(&bindings, None);
     let cases = [
-        (PaletteAction::CloneSplitRight, "alt+r"),
-        (PaletteAction::SplitRight, "shift+alt+r"),
+        (PaletteAction::CloneSplitRight, "ctrl+shift+f9"),
+        (PaletteAction::SplitRight, "ctrl+shift+f10"),
         (PaletteAction::SearchBackward, "shift+alt+b"),
         (PaletteAction::ClearScreen, "ctrl+alt+k"),
         (PaletteAction::Quit, "ctrl+shift+q"),
@@ -173,8 +162,13 @@ fn all_platform_palette_labels_match_real_defaults_not_platform_guesses() {
             palette.command_shortcut(command)
         };
         let (settings, fresh, clone, copy) = match platform {
-            Windows => ("ctrl+,", "shift+alt+r", "alt+r", "ctrl+shift+c"),
-            LinuxBsd => ("ctrl+shift+,", "shift+alt+r", "alt+r", "ctrl+shift+c"),
+            Windows => ("ctrl+,", "ctrl+shift+f10", "ctrl+shift+f9", "ctrl+shift+c"),
+            LinuxBsd => (
+                "ctrl+shift+,",
+                "ctrl+shift+f10",
+                "ctrl+shift+f9",
+                "ctrl+shift+c",
+            ),
             Macos => ("super+,", "super+d", "shift+alt+super+r", "super+c"),
         };
         for (action, expected) in [
@@ -816,7 +810,7 @@ fn actual_default_clone_labels_follow_unbind_and_profile_replacement() {
     let trigger = if cfg!(target_os = "macos") {
         "super+alt+shift+r"
     } else {
-        "alt+r"
+        "ctrl+shift+f9"
     };
     let mut config = Config::default();
     let snapshot = registry::build(&config).unwrap();
@@ -925,7 +919,7 @@ fn fresh_split_labels_follow_actual_configuration_and_preserve_typed_bindings() 
     config.bindings.keybinds = vec![if cfg!(target_os = "macos") {
         "super+d=unbind".into()
     } else {
-        "alt+shift+r=unbind".into()
+        "ctrl+shift+f10=unbind".into()
     }];
     config.navigation.use_split = true;
     refresh(&mut palette, &config);

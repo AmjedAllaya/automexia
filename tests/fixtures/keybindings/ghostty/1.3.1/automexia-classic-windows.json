@@ -1568,7 +1568,7 @@
       "origin": "built_in_or_legacy_user",
       "platform": "Windows",
       "profile": "automexia",
-      "trigger": "ModifiersState(ALT)+Keycode { key: Character(\"r\"), location: Standard }"
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(F9), location: Standard }"
     },
     {
       "action": "CloneSplitDown",
@@ -1588,7 +1588,7 @@
       "origin": "built_in_or_legacy_user",
       "platform": "Windows",
       "profile": "automexia",
-      "trigger": "ModifiersState(SHIFT | ALT)+Keycode { key: Character(\"r\"), location: Standard }"
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(F10), location: Standard }"
     },
     {
       "action": "SplitDown",
@@ -1699,6 +1699,56 @@
       "platform": "Windows",
       "profile": "automexia",
       "trigger": "ModifiersState(SHIFT | ALT)+Keycode { key: Named(ArrowRight), location: Standard }"
+    },
+    {
+      "action": "OpenCustomizations",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(F1), location: Standard }"
+    },
+    {
+      "action": "OpenTerminalAppearance",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(F2), location: Standard }"
+    },
+    {
+      "action": "OpenThemeGallery",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(F3), location: Standard }"
+    },
+    {
+      "action": "OpenProfiles",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(F5), location: Standard }"
+    },
+    {
+      "action": "RestorePreviousSession",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(F12), location: Standard }"
     },
     {
       "action": "Hint(Hint { regex: Some(\"(?:https?://|mailto:|ftp://|file:|ssh:|git://|ssh://|tel:|magnet:|ipfs://|ipns://|gemini://|gopher://|news:)(?:(?:\\\\[[:0-9a-fA-F]+(?:[:0-9a-fA-F]*)+\\\\](?::[0-9]+)?)|[\\\\w\\\\-.~:/?#@!$&*+,;=%]+(?:[\\\\(\\\\[]\\\\w*[\\\\)\\\\]])?)+(?<![,.])|(?:\\\\.\\\\./|\\\\./|(?<!\\\\w)~/|(?:[\\\\w][\\\\w\\\\-.]*/)*(?<!\\\\w)\\\\$[A-Za-z_]\\\\w*/|\\\\.[\\\\w][\\\\w\\\\-.]*/|(?<![\\\\w~/])/(?!/))(?:(?=[\\\\w\\\\-.~:/?#@!$&*+;=%]*\\\\.)[\\\\w\\\\-.~:/?#@!$&*+;=%]+(?:(?<!:) (?!\\\\w+://)(?!\\\\.{0,2}/)(?!~/)[\\\\w\\\\-.~:/?#@!$&*+;=%]*[/.])*(?<!:)(?: +(?= *$))?|(?![\\\\w\\\\-.~:/?#@!$&*+;=%]*\\\\.)[\\\\w\\\\-.~:/?#@!$&*+;=%]+(?:(?<!:) (?!\\\\w+://)(?!\\\\.{0,2}/)(?!~/)[\\\\w\\\\-.~:/?#@!$&*+;=%]+)*(?<!:)(?: +(?= *$))?)|(?=[\\\\w\\\\-.~:/?#@!$&*+;=%]*\\\\.)(?<!\\\\$\\\\d*)(?<!\\\\w)[\\\\w][\\\\w\\\\-.]*/[\\\\w\\\\-.~:/?#@!$&*+;=%]+(?<!:)(?: +(?= *$))?\"), hyperlinks: true, post_processing: true, persist: false, action: Action { action: Open }, mouse: HintMouse { enabled: true, mods: [\"Alt\"] }, binding: Some(HintBinding { key: \"O\", mods: [\"Control\", \"Alt\"], mode: [] }) })",

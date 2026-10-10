@@ -365,6 +365,22 @@ class CollectorTests(unittest.TestCase):
                     display.resize(process, *size)
             run.assert_not_called()
 
+    def test_wayland_pane_and_customization_keys_use_exact_modifier_order(self):
+        probe = unix_ui_probe()
+        display = object.__new__(probe.WaylandDisplay)
+        display.tools = {"wtype": "/fixture/bin/wtype"}
+        display.env = {"WAYLAND_DISPLAY": "fixture"}
+        process = SimpleNamespace(pid=42, poll=lambda: None)
+        with patch.object(display, "window", return_value={"id": 7}) as window, \
+             patch.object(probe.subprocess, "run") as run:
+            for key in ["F1", "F3", "F9", "F10"]:
+                display.key(process, "ctrl+shift+" + key)
+                window.assert_called_with(process, focused=True)
+                run.assert_called_with(
+                    ["/fixture/bin/wtype", "-s", "150", "-M", "ctrl", "-M", "shift", "-k", key,
+                     "-m", "shift", "-m", "ctrl", "-s", "100"],
+                    env=display.env, check=True, capture_output=True, timeout=5)
+
     def test_wayland_compositor_environment_never_reuses_the_user_display(self):
         probe = unix_ui_probe()
         with patch.object(probe.shutil, "which", side_effect=lambda name: "/fixture/bin/" + name):
@@ -514,6 +530,8 @@ class CollectorTests(unittest.TestCase):
 
     def test_macos_shortcuts_use_native_modifier_flags_and_reject_ambiguous_keys(self):
         self.assertEqual(MacDriver.key_spec('meta+shift+p'), (35, (1 << 20) | (1 << 17), 'p'))
+        self.assertEqual(MacDriver.key_spec('meta+shift+F1'), (122, (1 << 20) | (1 << 17), 'F1'))
+        self.assertEqual(MacDriver.key_spec('meta+shift+F3'), (99, (1 << 20) | (1 << 17), 'F3'))
         self.assertEqual(MacDriver.key_spec('Escape'), (53, 0, 'Escape'))
         self.assertEqual(MacDriver.key_spec('Down'), (125, 0, 'Down'))
         self.assertEqual(MacDriver.key_spec('x'), (7, 0, 'x'))

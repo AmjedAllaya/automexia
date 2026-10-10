@@ -4123,8 +4123,8 @@ $wallpaperConfig
         $historyDone = $seededHistory
     }
 
-    # Deterministic binding tests prove bare Ctrl+R clones while Ctrl+Alt+R
-    # sends shell history search. This feature-gated,
+    # Deterministic binding tests prove Ctrl+Shift+F9 clones while bare Ctrl+R
+    # retains shell history search. This feature-gated,
     # renderer-neutral control invokes the same clone-right action path without
     # relying on focus-sensitive synthetic keyboard input.
     $script:testStage = 'clone split right'

@@ -466,11 +466,11 @@ mod tests {
             let records = [
                 UiShortcut {
                     action: "Paste".into(),
-                    trigger: trigger("ctrl+shift+f9"),
+                    trigger: trigger("ctrl+shift+f14"),
                 },
                 UiShortcut {
                     action: "CloneSplitRight".into(),
-                    trigger: trigger("ctrl+shift+f10"),
+                    trigger: trigger("ctrl+shift+f15"),
                 },
             ];
             let edited = apply_classic(&records, original.clone());
@@ -508,7 +508,7 @@ mod tests {
         let before = super::super::registry::build(&config).unwrap().unwrap();
         config.bindings.ui_shortcuts.push(UiShortcut {
             action: "SplitRight".into(),
-            trigger: trigger("ctrl+shift+f9"),
+            trigger: trigger("ctrl+shift+f14"),
         });
         let after = super::super::registry::build(&config).unwrap().unwrap();
         for raw in 1..8u16 {
@@ -536,7 +536,7 @@ mod tests {
                 .bindings
                 .keys
                 .push(rio_backend::config::bindings::KeyBinding {
-                    key: "F9".into(),
+                    key: "F14".into(),
                     with: "Control|Shift".into(),
                     action: action.into(),
                     esc: esc.into(),
@@ -545,7 +545,7 @@ mod tests {
             let before = config.bindings.keys.clone();
             config.bindings.ui_shortcuts.push(UiShortcut {
                 action: "CloneSplitRight".into(),
-                trigger: trigger("ctrl+shift+f9"),
+                trigger: trigger("ctrl+shift+f14"),
             });
             assert!(super::super::registry::build(&config).is_err());
             assert!(recover_incompatible_overlay(&mut config));
@@ -566,7 +566,7 @@ mod tests {
             let original = super::super::test_platform_defaults(&config, platform);
             config.bindings.ui_shortcuts.push(UiShortcut {
                 action: "CloneSplitRight".into(),
-                trigger: trigger("ctrl+shift+f9"),
+                trigger: trigger("ctrl+shift+f14"),
             });
             let edited = super::super::test_platform_defaults(&config, platform);
             let actual: Vec<_> = edited
@@ -580,7 +580,7 @@ mod tests {
                 super::super::registry::legacy_trigger(actual[0])
                     .unwrap()
                     .to_string(),
-                "ctrl+shift+f9"
+                "ctrl+shift+f14"
             );
             for mode in [
                 BindingMode::ALT_SCREEN,
@@ -647,22 +647,22 @@ mod tests {
             .is_some());
             assert!(conflict(
                 PaletteAction::CloneSplitRight,
-                &trigger("ctrl+shift+f9"),
+                &trigger("ctrl+shift+f14"),
                 &keys,
                 None
             )
             .is_none());
             for line in [
-                "ctrl+shift+f9>r=quit",
-                "ctrl+shift+f9=unbind",
-                "ctrl+shift+f9=quit",
+                "ctrl+shift+f14>r=quit",
+                "ctrl+shift+f14=unbind",
+                "ctrl+shift+f14=quit",
             ] {
                 config.bindings.keybinds = vec![line.into()];
                 let registry = super::super::registry::build(&config).unwrap();
                 assert!(
                     conflict(
                         PaletteAction::CloneSplitRight,
-                        &trigger("ctrl+shift+f9"),
+                        &trigger("ctrl+shift+f14"),
                         &keys,
                         registry.as_ref()
                     )
@@ -674,7 +674,7 @@ mod tests {
             let registry = super::super::registry::build(&config).unwrap();
             assert!(conflict(
                 PaletteAction::SplitRight,
-                &trigger("ctrl+shift+f9"),
+                &trigger("ctrl+shift+f14"),
                 &keys,
                 registry.as_ref()
             )
@@ -687,13 +687,13 @@ mod tests {
         let mut base = Config::default();
         base.bindings.keybinds = vec![
             "ctrl+shift+f8=new_split:right".into(),
-            "ctrl+shift+f10=new_split:down".into(),
+            "ctrl+shift+f15=new_split:down".into(),
         ];
         let original = super::super::registry::build(&base).unwrap().unwrap();
         let mut edited = base.clone();
         edited.bindings.ui_shortcuts.push(UiShortcut {
             action: "SplitRight".into(),
-            trigger: trigger("ctrl+shift+f9"),
+            trigger: trigger("ctrl+shift+f14"),
         });
         let registry = super::super::registry::build(&edited).unwrap().unwrap();
         assert!(!registry
@@ -704,7 +704,7 @@ mod tests {
         assert!(registry
             .registry
             .bindings()
-            .any(|binding| binding.trigger_label() == "ctrl+shift+f10"));
+            .any(|binding| binding.trigger_label() == "ctrl+shift+f15"));
         assert!(original
             .registry
             .bindings()
@@ -721,14 +721,63 @@ mod tests {
     }
 
     #[test]
+    fn saved_ui_shortcuts_survive_new_defaults_without_overriding_explicit_config() {
+        let primary = if cfg!(target_os = "macos") {
+            "super"
+        } else {
+            "ctrl"
+        };
+        for key in ["f1", "f2", "f3", "f5", "f9", "f10", "f12"] {
+            let mut config = Config::default();
+            let chord = format!("{primary}+shift+{key}");
+            let saved = UiShortcut {
+                action: "Paste".into(),
+                trigger: trigger(&chord),
+            };
+            config.bindings.ui_shortcuts.push(saved.clone());
+            assert!(
+                super::super::registry::build(&config).is_ok(),
+                "saved {chord}"
+            );
+            assert!(!recover_incompatible_overlay(&mut config));
+            assert_eq!(config.bindings.ui_shortcuts, vec![saved]);
+            let keys = super::super::default_key_bindings(&config);
+            let candidate = binding(PaletteAction::Paste, &trigger(&chord)).unwrap();
+            let actions: Vec<_> = keys
+                .iter()
+                .filter(|b| {
+                    b.is_triggered_by(
+                        BindingMode::empty(),
+                        candidate.mods,
+                        &candidate.trigger,
+                    )
+                })
+                .map(|b| &b.action)
+                .collect();
+            assert_eq!(actions, vec![&Action::Paste]);
+            // Capture still rejects assigning a new shortcut to an occupied key.
+            let base = super::super::default_key_bindings(&Config::default());
+            if key != "f9" && key != "f10" || !cfg!(target_os = "macos") {
+                assert!(
+                    conflict(PaletteAction::Paste, &trigger(&chord), &base, None)
+                        .is_some()
+                );
+            }
+            // Explicit TOML changes continue to invalidate an incompatible overlay.
+            config.bindings.keybinds.push(format!("{chord}=quit"));
+            assert!(super::super::registry::build(&config).is_err());
+        }
+    }
+
+    #[test]
     fn ui_persisted_conflict_fails_closed_after_underlying_config_changes() {
         let mut config = Config::default();
         config.bindings.ui_shortcuts.push(UiShortcut {
             action: "CloneSplitRight".into(),
-            trigger: trigger("ctrl+shift+f9"),
+            trigger: trigger("ctrl+shift+f14"),
         });
         assert!(super::super::registry::build(&config).is_ok());
-        config.bindings.keybinds.push("ctrl+shift+f9=quit".into());
+        config.bindings.keybinds.push("ctrl+shift+f14=quit".into());
         assert!(super::super::registry::build(&config).is_err());
     }
 }

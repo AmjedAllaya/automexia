@@ -489,8 +489,11 @@ attributes have one scoped owner. The VT worker parses its pending bytes before
 native EOF even when a resize/frame holds the terminal lock; only that worker
 waits, and child-exit verification remains independent of stream closure.
 
-Current Windows/Linux/BSD pane defaults use Alt+R/D for clone and add Shift for
-fresh; these deliberately replace shell Alt editing only in normal mode.
+Current Windows/Linux/BSD right-pane defaults use Ctrl+Shift+F9 (clone) and
+Ctrl+Shift+F10 (fresh), preserving Alt+E/R for shell and desktop ownership. Down
+panes retain Alt+D / Alt+Shift+D in normal mode. Five shared discovery defaults
+open customization, appearance, themes, profiles and recovery through existing
+action owners, excluding Search, Vi and alternate screen.
 Every palette action reconciles its label with effective bindings during
 construction/reload, not input/render. Back shares a dedicated left-arrow vector
 in its fixed header and row. See

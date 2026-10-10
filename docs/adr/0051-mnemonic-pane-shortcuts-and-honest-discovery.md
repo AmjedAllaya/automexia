@@ -4,12 +4,12 @@ Status: Accepted for current source; native desktop evidence remains external
 
 ## Decision and ownership
 
-Windows/Linux/BSD use Alt+R / Alt+D to clone right/down. Adding Shift creates a
-fresh default-shell pane. R means Right, D means Down, Shift means Fresh.
-The previous punctuation defaults are removed, not retained as hidden aliases.
-Normal shell Ctrl+R/D remain untouched. Search, Vi and alternate-screen modes
-retain the four new pane chords. Explicit user bindings win without migration.
-macOS and the pinned Ghostty profile keep their existing platform contracts.
+Windows/Linux/BSD use Ctrl+Shift+F9 to clone right and Ctrl+Shift+F10 for a
+fresh right pane. Alt+D clones down; Alt+Shift+D starts fresh down. The former
+right-pane Alt+R defaults and earlier punctuation defaults are removed.
+Normal shell Ctrl+R/D and Alt+E/R remain untouched. Search, Vi and alternate-screen
+modes retain the pane chords. Explicit user bindings win without migration.
+macOS and the pinned Ghostty profile keep their existing pane contracts.
 
 Back uses an unframed left arrow on the existing vector grid in both the
 persistent header and the navigation row. Its click target, Back label,
@@ -28,17 +28,21 @@ No new extension, dependency, worker, persistence or dispatcher is introduced.
 
 ## Tradeoffs and shortcut-family audit
 
-Alt+D and Alt+R are shell editing shortcuts; the user explicitly approved taking
-them for pane creation after that tradeoff was explained. See
-[PSReadLine's functions](https://learn.microsoft.com/en-us/powershell/module/psreadline/about/about_psreadline_functions).
-Ctrl+Alt alternatives were rejected because of AltGr/layout ambiguity; punctuation
-was rejected for discoverability. On macOS, Option participates in text entry and
-Option-Command-D toggles the Dock, so existing Command-based bindings remain.
-See [Apple's shortcut reference](https://support.apple.com/en-us/102650).
+The user chose preserving shell and OS keys over Alt+E: Fish uses Alt+E for
+its external command editor, and macOS Option+E enters accents. The right-pane
+function keys also release Alt+R for shell editing and external overlays.
+Down-pane Alt+D remains the earlier explicit tradeoff; users can restore it with
+ReceiveChar. No bare Ctrl+F9/F10 (KDE desktop actions), Shift+F10 (context menu),
+Ctrl+Shift+E (input methods), Ctrl+Alt character (AltGr) or bare Option key is added.
+External user/desktop bindings cannot be detected or guaranteed by an application.
+References: [Fish](https://fishshell.com/docs/current/interactive),
+[Apple](https://help.apple.com/pages/mac/4.3/help/English.lproj/pgs/sl151633f0.html),
+[Windows](https://support.microsoft.com/en-us/windows/keyboard-shortcuts-in-windows-dcc61a57-8ff0-cffe-9796-cb9706c75eec),
+[KDE](https://docs.kde.org/stable_kf6/en/khelpcenter/fundamentals/fundamentals.pdf).
 
 | Family reviewed | Result and reason |
 |---|---|
-| Fresh / cloned panes | Change only Windows/Linux/BSD to directional R/D with Shift for fresh; keep independent PTY semantics. |
+| Fresh / cloned panes | Use function keys for right panes and retain down-pane/macOS bindings; keep independent PTY semantics. |
 | Windows, tabs, close and reorder | Retain conventional N/T/W, Tab, Page and digit controls; distinguish window tabs from local tabs. Use deliberate Ctrl+Shift+Q, never bare Escape, for Quit. |
 | Pane focus, cycling and resizing | Retain arrows and F6; Linux's extra resize modifier avoids changing desktop/window-manager policy. |
 | Copy, paste and selection | Retain platform conventions and selection-aware Ctrl+C; preserve shell interrupt and Windows paste. Prefer ordinary chords in labels. |
@@ -59,8 +63,12 @@ on predictable focus and shortcut conflicts; this is not a native accessibility 
 Current source assigns Ctrl+Shift+Q (Quit), Alt+Shift+B (backward pane search),
 Ctrl+Alt+K (clear screen and history) on Windows/Linux/BSD, and F11 for Unix
 fullscreen. macOS adds Cmd+Alt+K for clear screen/history and retains its other
-platform defaults. All catalog commands have direct classic defaults when the
-corresponding navigation/split features are enabled. Quit and ClearScreen added
+platform defaults. F1/F2/F3/F5/F12 with Ctrl+Shift (Cmd+Shift on macOS) open
+Workflow & Output,
+Terminal Appearance, Themes, Profiles and Recovery through existing owners.
+These five launchers exclude Search, Vi and alternate screen. All catalog
+commands have direct classic defaults when the corresponding navigation/split
+features are enabled. Quit and ClearScreen added
 here exclude Search, Vi and alternate-screen modes; existing macOS Quit is kept.
 Escape remains cancellation/back or terminal input, not destructive Quit.
 
@@ -69,8 +77,7 @@ inspector data. An explicitly unbound, shadowed or profile-absent action shows
 Enter for the existing selected-row activation, never a guessed global key.
 No user settings or pinned compatibility tables are migrated. Ctrl+Alt+K avoids
 changing the established history-only binding; layouts with AltGr can use a
-custom mapping or the palette. NVIDIA's statistics shortcuts conflict with the
-approved Alt+R family; configure the external overlay, not a terminal hook.
+custom mapping or the palette. External overlays retain their own controls.
 
 This keeps the existing core dispatcher, registry, shutdown and renderer owners;
 no new authority, worker, dependency, allocation on key dispatch or persistence.
@@ -84,7 +91,8 @@ Native desktop/assistive-technology evidence remains external.
 
 Regression tests first reproduced the old Back icon, old pane actions and
 non-pane override-label failure. Full-table tests cover configured and isolated
-Windows/Linux/BSD/macOS defaults, all four chords, retired punctuation, disabled
+Windows/Linux/BSD/macOS defaults, all four pane chords, exact function-key
+modifiers, preserved Alt+E/R, retired punctuation, disabled
 splits, modes, overrides, typed tombstones, chains and labels across reload.
 The Automexia classic inventory is regenerated with its digest; pinned Ghostty
 bindings are unchanged. Repository mutations reject removal of either platform's

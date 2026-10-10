@@ -1297,6 +1297,18 @@ fn scoped_tab_key_bindings() -> Vec<KeyBinding> {
     )
 }
 
+/// Shared discovery defaults; platform tables supply the conventional modifier.
+fn discovery_key_bindings(primary: ModifiersState) -> Vec<KeyBinding> {
+    bindings!(
+        KeyBinding;
+        Key::Named(F1), primary | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenCustomizations;
+        Key::Named(F2), primary | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenTerminalAppearance;
+        Key::Named(F3), primary | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenThemeGallery;
+        Key::Named(F5), primary | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenProfiles;
+        Key::Named(F12), primary | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::RestorePreviousSession;
+    )
+}
+
 /// Automexia's classic macOS defaults.
 fn automexia_macos_key_bindings(
     use_navigation_key_bindings: bool,
@@ -1409,6 +1421,7 @@ fn automexia_macos_key_bindings(
         "h", ModifiersState::SUPER | ModifiersState::ALT; Action::HideOtherApplications;
         "m", ModifiersState::SUPER; Action::Minimize;
     ));
+    key_bindings.extend(discovery_key_bindings(ModifiersState::SUPER));
     key_bindings
 }
 
@@ -1494,10 +1507,10 @@ fn automexia_windows_key_bindings(
     if use_splits {
         key_bindings.extend(bindings!(
             KeyBinding;
-            // R/D gives direction; Shift starts fresh instead of cloning.
-            "r", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
+            // Right panes leave shell Alt+E/R and desktop overlays untouched.
+            Key::Named(F9), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
             "d", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown;
-            "r", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
+            Key::Named(F10), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
             "d", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
             Key::Named(F6), ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectNextSplit;
             Key::Named(F6), ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectPrevSplit;
@@ -1512,6 +1525,7 @@ fn automexia_windows_key_bindings(
         ));
     }
 
+    key_bindings.extend(discovery_key_bindings(ModifiersState::CONTROL));
     key_bindings
 }
 
@@ -1581,10 +1595,10 @@ fn automexia_unix_key_bindings(
     if use_splits {
         key_bindings.extend(bindings!(
             KeyBinding;
-            // R/D gives direction; Shift starts fresh instead of cloning.
-            "r", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
+            // Right panes leave shell Alt+E/R and desktop overlays untouched.
+            Key::Named(F9), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
             "d", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown;
-            "r", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
+            Key::Named(F10), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
             "d", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
             Key::Named(F6), ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectNextSplit;
             Key::Named(F6), ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectPrevSplit;
@@ -1599,6 +1613,7 @@ fn automexia_unix_key_bindings(
         ));
     }
 
+    key_bindings.extend(discovery_key_bindings(ModifiersState::CONTROL));
     key_bindings
 }
 
@@ -2467,24 +2482,27 @@ mod tests {
         ] {
             for (key, modifiers, action) in [
                 (
-                    "r",
-                    ModifiersState::ALT | ModifiersState::SHIFT,
+                    Key::Named(F10),
+                    ModifiersState::CONTROL | ModifiersState::SHIFT,
                     Action::SplitRight,
                 ),
                 (
-                    "d",
+                    Key::Character("d".into()),
                     ModifiersState::ALT | ModifiersState::SHIFT,
                     Action::SplitDown,
                 ),
-                ("r", ModifiersState::ALT, Action::CloneSplitRight),
-                ("d", ModifiersState::ALT, Action::CloneSplitDown),
+                (
+                    Key::Named(F9),
+                    ModifiersState::CONTROL | ModifiersState::SHIFT,
+                    Action::CloneSplitRight,
+                ),
+                (
+                    Key::Character("d".into()),
+                    ModifiersState::ALT,
+                    Action::CloneSplitDown,
+                ),
             ] {
-                assert_action_binding(
-                    &bindings,
-                    Key::Character(key.into()),
-                    modifiers,
-                    action,
-                );
+                assert_action_binding(&bindings, key, modifiers, action);
             }
         }
         let bindings =
@@ -2547,13 +2565,22 @@ mod tests {
             automexia_unix_key_bindings(true, true),
         ] {
             for (key, modifiers) in [
-                ("r", ModifiersState::ALT),
-                ("d", ModifiersState::ALT),
-                ("r", ModifiersState::ALT | ModifiersState::SHIFT),
-                ("d", ModifiersState::ALT | ModifiersState::SHIFT),
+                (
+                    Key::Named(F9),
+                    ModifiersState::CONTROL | ModifiersState::SHIFT,
+                ),
+                (Key::Character("d".into()), ModifiersState::ALT),
+                (
+                    Key::Named(F10),
+                    ModifiersState::CONTROL | ModifiersState::SHIFT,
+                ),
+                (
+                    Key::Character("d".into()),
+                    ModifiersState::ALT | ModifiersState::SHIFT,
+                ),
             ] {
                 let trigger = BindingKey::Keycode {
-                    key: Key::Character(key.into()),
+                    key: key.clone(),
                     location: KeyLocation::Standard,
                 };
                 assert_eq!(
@@ -2578,7 +2605,7 @@ mod tests {
                         &trigger
                     )));
                 }
-                if matches!(key, "r" | "d") {
+                if matches!(&key, Key::Character(value) if value == "d") {
                     assert!(!defaults.iter().any(|binding| binding.is_triggered_by(
                         BindingMode::empty(),
                         ModifiersState::CONTROL | ModifiersState::SHIFT,
@@ -2588,8 +2615,8 @@ mod tests {
             }
             let rebound = config_key_bindings(
                 vec![ConfigKeyBinding {
-                    key: "r".into(),
-                    with: "alt".into(),
+                    key: "F9".into(),
+                    with: "control | shift".into(),
                     action: "ReceiveChar".into(),
                     esc: String::new(),
                     mode: String::new(),
@@ -2598,8 +2625,8 @@ mod tests {
             );
             assert_action_binding(
                 &rebound,
-                Key::Character("r".into()),
-                ModifiersState::ALT,
+                Key::Named(F9),
+                ModifiersState::CONTROL | ModifiersState::SHIFT,
                 Action::ReceiveChar,
             );
             assert!(!rebound
@@ -2631,13 +2658,22 @@ mod tests {
                     )));
                 }
                 for (key, modifiers) in [
-                    ("r", ModifiersState::ALT),
-                    ("d", ModifiersState::ALT),
-                    ("r", ModifiersState::ALT | ModifiersState::SHIFT),
-                    ("d", ModifiersState::ALT | ModifiersState::SHIFT),
+                    (
+                        Key::Named(F9),
+                        ModifiersState::CONTROL | ModifiersState::SHIFT,
+                    ),
+                    (Key::Character("d".into()), ModifiersState::ALT),
+                    (
+                        Key::Named(F10),
+                        ModifiersState::CONTROL | ModifiersState::SHIFT,
+                    ),
+                    (
+                        Key::Character("d".into()),
+                        ModifiersState::ALT | ModifiersState::SHIFT,
+                    ),
                 ] {
                     let trigger = BindingKey::Keycode {
-                        key: Key::Character(key.into()),
+                        key,
                         location: KeyLocation::Standard,
                     };
                     for mode in [
@@ -2659,6 +2695,165 @@ mod tests {
                         );
                     }
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn right_pane_defaults_preserve_shell_accents_and_require_exact_function_keys() {
+        use automexia_keybindings::PlatformFamily::{LinuxBsd, Macos, Windows};
+        for platform in [Windows, LinuxBsd, Macos] {
+            for enabled in [false, true] {
+                let mut config = rio_backend::config::Config::default();
+                config.navigation.use_split = enabled;
+                let bindings = test_platform_defaults(&config, platform);
+                for key in ["e", "r"] {
+                    let trigger = BindingKey::Keycode {
+                        key: Key::Character(key.into()),
+                        location: KeyLocation::Standard,
+                    };
+                    for mods in [
+                        ModifiersState::ALT,
+                        ModifiersState::ALT | ModifiersState::SHIFT,
+                    ] {
+                        assert!(
+                            !bindings.iter().any(|b| b.is_triggered_by(
+                                BindingMode::empty(),
+                                mods,
+                                &trigger
+                            )),
+                            "{platform:?} consumed shell/OS Alt+{key}"
+                        );
+                    }
+                }
+                for (key, expected) in
+                    [(F9, Action::CloneSplitRight), (F10, Action::SplitRight)]
+                {
+                    let trigger = BindingKey::Keycode {
+                        key: Key::Named(key),
+                        location: KeyLocation::Standard,
+                    };
+                    let required = ModifiersState::CONTROL | ModifiersState::SHIFT;
+                    for mode in [
+                        BindingMode::empty(),
+                        BindingMode::SEARCH,
+                        BindingMode::VI,
+                        BindingMode::ALT_SCREEN,
+                    ] {
+                        for mods in [
+                            required,
+                            ModifiersState::empty(),
+                            ModifiersState::CONTROL,
+                            ModifiersState::SHIFT,
+                            required | ModifiersState::ALT,
+                            required | ModifiersState::SUPER,
+                        ] {
+                            let actions: Vec<_> = bindings
+                                .iter()
+                                .filter(|b| {
+                                    b.is_triggered_by(mode.clone(), mods, &trigger)
+                                })
+                                .map(|b| &b.action)
+                                .collect();
+                            if enabled
+                                && platform != Macos
+                                && mode.is_empty()
+                                && mods == required
+                            {
+                                assert_eq!(
+                                    actions,
+                                    vec![&expected],
+                                    "{platform:?} {key:?}"
+                                );
+                            } else {
+                                assert!(
+                                    actions.iter().all(|a| !matches!(
+                                        a,
+                                        Action::SplitRight | Action::CloneSplitRight
+                                    )),
+                                    "{platform:?} {key:?} {mode:?} {mods:?}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn discovery_defaults_are_complete_mode_guarded_and_resettable() {
+        use automexia_keybindings::PlatformFamily::{LinuxBsd, Macos, Windows};
+        for platform in [Windows, LinuxBsd, Macos] {
+            let config = rio_backend::config::Config::default();
+            let bindings = test_platform_defaults(&config, platform);
+            let modifiers = ModifiersState::SHIFT
+                | if platform == Macos {
+                    ModifiersState::SUPER
+                } else {
+                    ModifiersState::CONTROL
+                };
+            for (key, action) in [
+                (F1, Action::OpenCustomizations),
+                (F2, Action::OpenTerminalAppearance),
+                (F3, Action::OpenThemeGallery),
+                (F5, Action::OpenProfiles),
+                (F12, Action::RestorePreviousSession),
+            ] {
+                let trigger = BindingKey::Keycode {
+                    key: Key::Named(key),
+                    location: KeyLocation::Standard,
+                };
+                for mode in [
+                    BindingMode::empty(),
+                    BindingMode::SEARCH,
+                    BindingMode::VI,
+                    BindingMode::ALT_SCREEN,
+                ] {
+                    for mods in [
+                        modifiers,
+                        modifiers | ModifiersState::ALT,
+                        ModifiersState::empty(),
+                        ModifiersState::SHIFT,
+                    ] {
+                        let matches: Vec<_> = bindings
+                            .iter()
+                            .filter(|b| b.is_triggered_by(mode.clone(), mods, &trigger))
+                            .map(|b| &b.action)
+                            .collect();
+                        if mode.is_empty() && mods == modifiers {
+                            assert_eq!(matches, vec![&action]);
+                        } else {
+                            assert!(!matches.contains(&&action));
+                        }
+                    }
+                }
+                let mut custom = config.clone();
+                custom.bindings.keys.push(ConfigKeyBinding {
+                    key: format!("{key:?}"),
+                    with: if platform == Macos {
+                        "super | shift"
+                    } else {
+                        "control | shift"
+                    }
+                    .into(),
+                    action: "ReceiveChar".into(),
+                    esc: String::new(),
+                    mode: String::new(),
+                });
+                assert_action_binding(
+                    &test_platform_defaults(&custom, platform),
+                    Key::Named(key),
+                    modifiers,
+                    Action::ReceiveChar,
+                );
+                custom.bindings.keys.clear();
+                assert_eq!(test_platform_defaults(&custom, platform), bindings);
+                custom.keyboard.binding_profile =
+                    automexia_keybindings::ProfileId::Ghostty13;
+                assert!(!test_platform_defaults(&custom, platform)
+                    .iter()
+                    .any(|b| b.action == action));
             }
         }
     }
@@ -3009,8 +3204,8 @@ mod tests {
         );
         assert_action_binding(
             &bindings,
-            Key::Character("r".into()),
-            ModifiersState::ALT | ModifiersState::SHIFT,
+            Key::Named(F10),
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
             Action::SplitRight,
         );
         assert_action_binding(
@@ -3106,8 +3301,8 @@ mod tests {
         );
         assert_action_binding(
             &bindings,
-            Key::Character("r".into()),
-            ModifiersState::ALT | ModifiersState::SHIFT,
+            Key::Named(F10),
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
             Action::SplitRight,
         );
         assert_action_binding(

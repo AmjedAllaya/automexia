@@ -4031,15 +4031,19 @@ fn pane_shortcut_defaults_present(bindings: &str) -> bool {
     // Windows and Unix own separate platform tables. Both must retain all four
     // approved chords and all three terminal-mode exclusions.
     [
-        r#""r", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight"#,
+        r#"Key::Named(F9), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight"#,
         r#""d", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown"#,
-        r#""r", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight"#,
+        r#"Key::Named(F10), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight"#,
         r#""d", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown"#,
     ]
     .iter()
     .all(|fragment| bindings.matches(fragment).count() == 2)
         && ["+", "=", "-", "_"].iter().all(|key| {
             !bindings.contains(&format!(r#""{key}", ModifiersState::ALT | ModifiersState::SHIFT,"#))
+        })
+        && ["e", "r"].iter().all(|key| {
+            !bindings.contains(&format!(r#""{key}", ModifiersState::ALT,"#))
+                && !bindings.contains(&format!(r#""{key}", ModifiersState::ALT | ModifiersState::SHIFT,"#))
         })
 }
 
@@ -5462,21 +5466,25 @@ mod tests {
         .unwrap();
         assert!(super::pane_shortcut_defaults_present(&source));
         for (key, modifiers, action) in [
-            ("r", "ModifiersState::ALT", "CloneSplitRight"),
-            ("d", "ModifiersState::ALT", "CloneSplitDown"),
             (
-                "r",
-                "ModifiersState::ALT | ModifiersState::SHIFT",
+                "Key::Named(F9)",
+                "ModifiersState::CONTROL | ModifiersState::SHIFT",
+                "CloneSplitRight",
+            ),
+            (r#""d""#, "ModifiersState::ALT", "CloneSplitDown"),
+            (
+                "Key::Named(F10)",
+                "ModifiersState::CONTROL | ModifiersState::SHIFT",
                 "SplitRight",
             ),
             (
-                "d",
+                r#""d""#,
                 "ModifiersState::ALT | ModifiersState::SHIFT",
                 "SplitDown",
             ),
         ] {
             let fragment = format!(
-                r#""{key}", {modifiers}, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::{action}"#
+                r#"{key}, {modifiers}, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::{action}"#
             );
             for replacement in [
                 String::new(),
@@ -5493,7 +5501,7 @@ mod tests {
                 )));
             }
         }
-        for key in ["+", "=", "-", "_"] {
+        for key in ["+", "=", "-", "_", "e", "r"] {
             let restored = format!(
                 r#"{source}
                 "{key}", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SplitRight;"#

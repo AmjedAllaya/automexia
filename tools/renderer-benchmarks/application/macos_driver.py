@@ -146,7 +146,7 @@ class MacDriver:
 
     @staticmethod
     def key_spec(key):
-        codes = {'F5': 96, 'F6': 97, 'F8': 100, 'Escape': 53, 'Down': 125,
+        codes = {'F1': 122, 'F3': 99, 'F5': 96, 'F6': 97, 'F8': 100, 'Escape': 53, 'Down': 125,
                  's': 1, 'e': 14, 'a': 0, 'r': 15, 'c': 8, 'h': 4,
                  'n': 45, 'd': 2, 'l': 37, 'x': 7, 'q': 12, 'p': 35}
         fields = key.split('+')

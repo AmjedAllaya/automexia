@@ -640,7 +640,7 @@ class FeatureTestReinforcementTests(unittest.TestCase):
                         self.validate(document)
 
     def test_palette_category_and_shortcut_guards_cannot_disappear(self) -> None:
-        for phrase in ["exhaustive category coverage", "held Enter", "shifted punctuation", "strict-profile isolation", "shared palette activation owner", "Alt+R/D clone", "all effective shortcut labels", "left-arrow Back"]:
+        for phrase in ["exhaustive category coverage", "held Enter", "shifted punctuation", "strict-profile isolation", "shared palette activation owner", "Ctrl+Shift+F9/F10 right-pane", "all effective shortcut labels", "left-arrow Back"]:
             with self.subTest(phrase=phrase):
                 document = copy.deepcopy(self.document)
                 feature = next(row for row in document["features"] if row["id"] == "windows-tabs-sessions-input")

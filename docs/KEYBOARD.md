@@ -41,9 +41,9 @@ also available under the command palette's Tools category.
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous window-level tab. |
 | `Alt+PageDown` / `Alt+PageUp` | Next / previous local tab inside the selected pane. |
 | `Ctrl+1` … `Ctrl+8`; `Ctrl+9` | Select window tab 1…8; select the last tab. Windows only. |
-| `Alt+Shift+R` / `Alt+Shift+D` | Fresh default-shell split right / down. Add Shift to start fresh. |
+| `Ctrl+Shift+F10` / `Alt+Shift+D` | Fresh default-shell split right / down. |
 | `Ctrl+R` / `Ctrl+D` | Native shell controls: history search / delete-or-EOF, depending on the shell and editing mode. |
-| `Alt+R` / `Alt+D` | Clone the active shell/profile/directory into an independent session right / down. |
+| `Ctrl+Shift+F9` / `Alt+D` | Clone the active shell/profile/directory into an independent session right / down. |
 | `Alt+Arrow` | Select the nearest pane geometrically. |
 | `F6` / `Shift+F6` | Cycle to next / previous pane. |
 | `Alt+Shift+Arrow` | Resize the selected split on Windows. |
@@ -251,12 +251,12 @@ its arrow-only variant. Font and extension browsing support Back or Alt+Left to
 return to their originating menu query and selection. The return location is
 consumed once; the next Back continues outward instead of reopening the child.
 
-The pane mnemonics are **R = right**, **D = down**, **Shift = fresh** on
-Windows/Linux/BSD. These replace Alt+Shift+Plus/Minus and the previous
-Alt+Shift+R/D clone defaults in current source only. Ctrl+R/D still belong to the
-shell. Alt+R/D now belong to pane creation in normal terminal mode; Search, Vi
-and alternate-screen applications keep those keys. macOS Command defaults and
-opt-in Ghostty profiles are unchanged. Explicit custom mappings remain authoritative.
+On Windows/Linux/BSD, **Ctrl+Shift+F9** clones right and **Ctrl+Shift+F10**
+starts a fresh right pane. The earlier Alt+R / Alt+Shift+R defaults are removed;
+Alt+E and Alt+R remain available to shell editors and external overlays. Down
+panes retain Alt+D (clone) and Alt+Shift+D (fresh). Search, Vi and alternate-screen
+applications keep these keys. macOS Command pane defaults and opt-in Ghostty
+profiles are unchanged. Explicit custom mappings remain authoritative.
 
 All palette commands now use effective bindings after configuration loading.
 Shortcut chips show only the actual keys, without Legacy, Profile or User source
@@ -279,17 +279,33 @@ keys = [
 ]
 ```
 
-Alt+D and Alt+R normally perform word deletion and line restoration in common
-shell editors. This is an intentional, user-approved tradeoff for simpler pane
-shortcuts. To restore shell ownership, add these entries to your existing keys list:
+Alt+D still replaces word deletion in common shell editors. To restore that
+shell key, add this entry to your existing keys list:
 
 ```toml
-{ key = "R", with = "alt", action = "ReceiveChar" },
 { key = "D", with = "alt", action = "ReceiveChar" },
 ```
 
 No settings file is rewritten. See [shortcut audit and decision](adr/0051-mnemonic-pane-shortcuts-and-honest-discovery.md)
 for platform rationale, retained controls and native verification limits.
+
+### Direct customization and workspace shortcuts
+
+| Action | Windows / Linux / BSD | macOS |
+|---|---|---|
+| Workflow & Output | `Ctrl+Shift+F1` | `Cmd+Shift+F1` |
+| Terminal Appearance | `Ctrl+Shift+F2` | `Cmd+Shift+F2` |
+| Theme Gallery | `Ctrl+Shift+F3` | `Cmd+Shift+F3` |
+| Profiles | `Ctrl+Shift+F5` | `Cmd+Shift+F5` |
+| Restore Previous Session | `Ctrl+Shift+F12` | `Cmd+Shift+F12` |
+
+These use the existing menu actions and apply outside Search, Vi and
+alternate-screen applications. Recovery retains its availability and capacity
+checks. Some keyboards require Fn to send function keys. To change a shortcut,
+select its command in the palette and press F2; Reset inherits the configured
+binding. Explicit user mappings and strict compatibility profiles keep priority.
+External applications and custom desktop mappings can intercept keys before
+Automexia receives them; no default can reserve a key globally.
 
 ## Search mode
 
