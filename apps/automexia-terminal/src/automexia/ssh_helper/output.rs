@@ -87,6 +87,21 @@ impl Drop for Publisher {
     }
 }
 
+// Publication deliberately declines mutex contention instead of blocking.
+// Tests requiring an accepted frame must honor that contract, including the
+// initial race with a newly started worker. Errors and sustained refusal fail.
+#[cfg(test)]
+fn publish_until_accepted(mut publish: impl FnMut() -> io::Result<bool>) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while !publish().unwrap() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "writer never accepted frame"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
 mod writer {
     use std::{
         fs::File,
@@ -358,14 +373,21 @@ mod writer {
 
         #[test]
         fn permanent_prepare_and_native_write_failures_are_reported() {
-            for prepare in [(|| Ok(())) as fn() -> io::Result<()>, || {
-                Err(io::ErrorKind::Unsupported.into())
-            }] {
+            for needs_frame in [true, false] {
+                let prepare: fn() -> io::Result<()> = if needs_frame {
+                    || Ok(())
+                } else {
+                    || Err(io::ErrorKind::Unsupported.into())
+                };
                 // Read-only handle makes a real native write fail on both OSes;
                 // the second iteration exercises failure before any I/O starts.
                 let file = File::open(std::env::current_exe().unwrap()).unwrap();
                 let mut writer = Writer::start(Some(file), prepare).unwrap();
-                let _ = writer.publish(b"bounded-frame");
+                if needs_frame {
+                    super::super::publish_until_accepted(|| {
+                        writer.publish(b"bounded-frame")
+                    });
+                }
                 let deadline = Instant::now() + Duration::from_secs(1);
                 while !writer.thread.as_ref().unwrap().is_finished() {
                     assert!(
@@ -765,11 +787,56 @@ mod platform {
         }
 
         #[test]
+        fn prompt_channel_contention_declines_without_blocking_or_mutating_pending() {
+            let (mut publisher, mut receive, mut ready) = prompt_channel_pair();
+            let state = std::sync::Arc::clone(&publisher.writer.state);
+            let pending = state.pending.lock().unwrap();
+            let (sent, received) = std::sync::mpsc::channel();
+            let attempt = thread::spawn(move || {
+                let result = publisher
+                    .publish(b"deferred\0")
+                    .map_err(|error| error.kind());
+                sent.send(result).unwrap();
+                publisher
+            });
+            let declined = received.recv_timeout(Duration::from_secs(1));
+            let unchanged = pending.is_none();
+            // Release before joining/asserting, so a blocking-lock regression
+            // reports failure rather than deadlocking the test runner.
+            drop(pending);
+            let mut publisher = attempt.join().unwrap();
+            assert_eq!(declined, Ok(Ok(false)));
+            assert!(unchanged);
+            super::super::publish_until_accepted(|| publisher.publish(b"complete\0"));
+            let deadline = Instant::now() + Duration::from_secs(2);
+            let mut ack = [0; 1];
+            loop {
+                match ready.read(&mut ack) {
+                    Ok(1) => break,
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline);
+                        thread::sleep(Duration::from_millis(1));
+                    }
+                    result => panic!("unexpected readiness result: {result:?}"),
+                }
+            }
+            assert_eq!(ack, *b"1");
+            let mut frame = [0; 9];
+            receive.read_exact(&mut frame).unwrap();
+            assert_eq!(frame, *b"complete\0");
+            assert_eq!(
+                receive.read(&mut [0; 1]).unwrap_err().kind(),
+                io::ErrorKind::WouldBlock
+            );
+            assert!(publisher.retire());
+        }
+
+        #[test]
         fn prompt_channel_acknowledges_only_complete_frames_and_retires_without_signals()
         {
             let (mut publisher, mut receive, mut ready) = prompt_channel_pair();
             let frame = [b'A'; super::super::MAX_FRAME_BYTES + 1];
-            assert!(publisher.publish(&frame).unwrap());
+            super::super::publish_until_accepted(|| publisher.publish(&frame));
             let deadline = Instant::now() + Duration::from_secs(2);
             let mut ack = [0; 1];
             loop {
@@ -795,7 +862,7 @@ mod platform {
         #[test]
         fn prompt_channel_waits_for_consumption_and_coalesces_idle_updates() {
             let (mut publisher, mut receive, mut ready) = prompt_channel_pair();
-            assert!(publisher.publish(b"first\0").unwrap());
+            super::super::publish_until_accepted(|| publisher.publish(b"first\0"));
             let mut ack = [0; 1];
             let deadline = Instant::now() + Duration::from_secs(2);
             loop {
@@ -814,9 +881,9 @@ mod platform {
             // The consumer has not acknowledged completion. Idle refreshes
             // must replace pending state instead of filling a stale FIFO.
             for index in 0..256 {
-                assert!(publisher
-                    .publish(format!("latest-{index}\0").as_bytes())
-                    .unwrap());
+                super::super::publish_until_accepted(|| {
+                    publisher.publish(format!("latest-{index}\0").as_bytes())
+                });
                 thread::sleep(Duration::from_millis(1));
             }
             assert_eq!(
@@ -867,18 +934,18 @@ mod platform {
             let mut publisher =
                 Publisher::prompt_channel(file, File::from(OwnedFd::from(notify)))
                     .unwrap();
-            assert!(publisher
-                .publish(&[b'A'; super::super::MAX_FRAME_BYTES + 1])
-                .unwrap());
+            super::super::publish_until_accepted(|| {
+                publisher.publish(&[b'A'; super::super::MAX_FRAME_BYTES + 1])
+            });
             wait_for_write(&publisher);
             assert_eq!(
                 ready.read(&mut [0; 1]).unwrap_err().kind(),
                 io::ErrorKind::WouldBlock
             );
             for index in 0..256 {
-                assert!(publisher
-                    .publish(format!("latest-{index}").as_bytes())
-                    .unwrap());
+                super::super::publish_until_accepted(|| {
+                    publisher.publish(format!("latest-{index}").as_bytes())
+                });
             }
             assert_eq!(
                 publisher.writer.state.pending.lock().unwrap().as_deref(),
@@ -912,7 +979,7 @@ mod platform {
                 unsafe { libc::fcntl(terminal.slave.as_raw_fd(), libc::F_GETFL) };
             let mut publisher = Publisher::start(Some(terminal.writer(false))).unwrap();
             let frame = format!("\x1b]1337;SetUserVar=example={}\x07", "A".repeat(6098));
-            assert!(publisher.publish(frame.as_bytes()).unwrap());
+            super::super::publish_until_accepted(|| publisher.publish(frame.as_bytes()));
             wait_for_write(&publisher);
             let mut peer = terminal.writer(false);
             let command =
@@ -954,14 +1021,14 @@ mod platform {
             let terminal = Terminal::new();
             terminal.fill();
             let mut publisher = Publisher::start(Some(terminal.writer(false))).unwrap();
-            assert!(publisher
-                .publish(&[b'x'; super::super::MAX_FRAME_BYTES])
-                .unwrap());
+            super::super::publish_until_accepted(|| {
+                publisher.publish(&[b'x'; super::super::MAX_FRAME_BYTES])
+            });
             wait_for_write(&publisher);
             for index in 0..256 {
-                assert!(publisher
-                    .publish(format!("latest-{index}").as_bytes())
-                    .unwrap());
+                super::super::publish_until_accepted(|| {
+                    publisher.publish(format!("latest-{index}").as_bytes())
+                });
             }
             assert_eq!(
                 publisher.writer.state.pending.lock().unwrap().as_deref(),
@@ -1153,15 +1220,15 @@ mod platform {
         fn full_native_pipe_writer_cancels_and_joins_without_a_reader() {
             let (read, file) = pipe();
             let mut publisher = Publisher::start(Some(file)).unwrap();
-            assert!(publisher
-                .publish(&vec![b'x'; super::super::MAX_FRAME_BYTES])
-                .unwrap());
+            super::super::publish_until_accepted(|| {
+                publisher.publish(&vec![b'x'; super::super::MAX_FRAME_BYTES])
+            });
             wait_for_pipe(&read);
             assert!(publisher.writer.state.writing.load(Ordering::Acquire));
             for index in 0..256 {
-                assert!(publisher
-                    .publish(format!("latest-{index}").as_bytes())
-                    .unwrap());
+                super::super::publish_until_accepted(|| {
+                    publisher.publish(format!("latest-{index}").as_bytes())
+                });
             }
             assert_eq!(
                 publisher.writer.state.pending.lock().unwrap().as_deref(),
@@ -1179,7 +1246,7 @@ mod platform {
             let mut peer = file.try_clone().unwrap();
             let mut publisher = Publisher::start(Some(file)).unwrap();
             let frame = format!("\x1b]1337;SetUserVar=example={}\x07", "A".repeat(6098));
-            assert!(publisher.publish(frame.as_bytes()).unwrap());
+            super::super::publish_until_accepted(|| publisher.publish(frame.as_bytes()));
             wait_for_pipe(&read);
             let command =
                 thread::spawn(move || peer.write_all(b"FOLLOWING_COMMAND_OUTPUT\n"));
