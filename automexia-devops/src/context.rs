@@ -1084,6 +1084,7 @@ mod tests {
             cwd: None,
             title: String::new(),
             distro: None,
+            os_name: None,
             os_version: None,
             shell_name: Some("bash".into()),
             shell_user: Some("example".into()),
@@ -1216,6 +1217,7 @@ mod tests {
             cwd: Some(PathBuf::from("/mnt/d/work tree")),
             title: "misleading native title D:/ignored".to_string(),
             distro: Some("Ubuntu-24.04".to_string()),
+            os_name: None,
             os_version: Some("24.04".to_string()),
             shell_name: Some("bash".to_string()),
             shell_user: Some("alice".to_string()),
@@ -1240,6 +1242,7 @@ mod tests {
             // A nested WSL process may have left these terminal-scoped user
             // variables behind. The native drive title must still win.
             distro: Some("Ubuntu-24.04".to_string()),
+            os_name: None,
             os_version: Some("24.04".to_string()),
             shell_name: Some("PowerShell".to_string()),
             shell_user: Some("alice".to_string()),
@@ -1261,6 +1264,7 @@ mod tests {
             cwd: Some(PathBuf::from(r"D:\projects\automexia")),
             title: "CMD - D:/fixture/automexia".to_string(),
             distro: Some("Ubuntu-24.04".to_string()),
+            os_name: None,
             os_version: Some("24.04".to_string()),
             shell_name: Some("CMD".to_string()),
             shell_user: Some("alice".to_string()),

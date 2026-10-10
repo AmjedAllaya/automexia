@@ -18,6 +18,7 @@ pub(super) fn detect(
         cwd: (!request.cwd().is_empty()).then(|| PathBuf::from(request.cwd())),
         title: String::new(),
         distro: None,
+        os_name: None,
         os_version: None,
         shell_name: Some(
             if shell == "powershell" || shell == "pwsh" {

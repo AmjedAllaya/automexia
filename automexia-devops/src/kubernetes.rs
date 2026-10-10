@@ -578,6 +578,7 @@ fn default_kubeconfig_search_does_not_select_a_linked_home() {
         cwd: None,
         title: "fixture".into(),
         distro: None,
+        os_name: None,
         os_version: None,
         shell_name: None,
         shell_user: None,

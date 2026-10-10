@@ -431,6 +431,7 @@ completion="$cfg/generated/completion"
 for dir in "$cfg" "$fish_cfg" "$cfg/generated" "$completion"; do assert_dir "$dir"; done
 for file in "$cfg/shell-integration.bash" "$cfg/shell-integration.zsh" \
   "$cfg/automexia-completion.bash" "$cfg/automexia-completion.zsh" \
+  "$cfg/automexia-os.sh" "$fish_cfg/automexia-os.sh" \
   "$cfg/automexia-eza-filter.pl" "$fish_cfg/automexia.fish" \
   "$fish_cfg/automexia-completion.fish"; do assert_file "$file"; done
 completion="$cfg/generated/completion"
@@ -448,6 +449,7 @@ validate_aliases
 for f in "$HOME/.bashrc" "$HOME/.zshrc"; do remove_profile "$f"; done
 for file in "$cfg/shell-integration.bash" "$cfg/shell-integration.zsh" \
   "$cfg/automexia-completion.bash" "$cfg/automexia-completion.zsh" \
+  "$cfg/automexia-os.sh" "$fish_cfg/automexia-os.sh" \
   "$cfg/automexia-eza-filter.pl" "$fish_cfg/automexia.fish" \
   "$fish_cfg/automexia-completion.fish"; do remove_file "$file"; done
 for shell in powershell bash zsh fish cmd; do

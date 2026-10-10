@@ -21,7 +21,7 @@ SHELL_ASSETS = (
     "bash/automexia.bash", "cmd/automexia-ls.cmd", "cmd/automexia-ls.ps1", "cmd/automexia.cmd",
     "completion/bash/automexia-completion.bash", "completion/fish/automexia-completion.fish",
     "completion/powershell/automexia-completion.ps1", "completion/zsh/automexia-completion.zsh",
-    "fish/automexia.fish", "install-unix.sh", "install-windows.ps1", "posix/automexia-eza-filter.pl",
+    "fish/automexia.fish", "install-unix.sh", "install-windows.ps1", "posix/automexia-eza-filter.pl", "posix/automexia-os.sh",
     "powershell/automexia.format.ps1xml", "powershell/automexia.ps1", "uninstall-unix.sh",
     "uninstall-windows.ps1", "windows-path-safety.ps1", "windows-wsl.ps1", "zsh/automexia.zsh",
 )

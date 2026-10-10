@@ -89,6 +89,7 @@ fn isolated_provider_fixture_child() {
         cwd: Some(root.join("work")),
         title: String::new(),
         distro: None,
+        os_name: None,
         os_version: None,
         shell_name: Some(if cfg!(windows) { "PowerShell" } else { "bash" }.into()),
         shell_user: Some("fixture-user".into()),

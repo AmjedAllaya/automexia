@@ -496,6 +496,12 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 result = command("printf 'NAME  STATUS   AGE\\napi   Running  2d\\nweb   Pending  1d\\n'")
                 check(result.get("inline_table_count", 0) >= 1, "inline table not rendered")
                 wait(lambda s: bool(s.get("prompt_context_paints")), "information tags not painted")
+                identity = active(state())
+                os_name = identity.get("shell_os_name")
+                check(bool(os_name), "native shell did not publish its OS identity")
+                os_label = "".join(list(os_name)[:13]) + "…" if len(os_name) > 14 else os_name
+                # The OS label must reach the core projection, even without DevOps.
+                check(os_label in identity.get("context_segments", []), "native OS tag missing from information bar")
                 capture("terminal")
 
                 key("ctrl+shift+p")

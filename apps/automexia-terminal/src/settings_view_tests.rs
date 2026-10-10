@@ -3888,7 +3888,7 @@ fn inherited_color_graphic_uses_role_labels_for_canonical_setting_ids() {
     );
     assert_eq!(
         tag_color_graphic_name("tags.colors.ubuntu_wsl"),
-        "Ubuntu / WSL"
+        "Operating system / WSL"
     );
     assert_eq!(
         tag_color_graphic_name("tags.slot.unknown-cloud.color"),

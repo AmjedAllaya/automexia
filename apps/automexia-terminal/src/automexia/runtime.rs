@@ -479,6 +479,7 @@ fn equivalent_shell_context(left: &SessionFacts, right: &SessionFacts) -> bool {
     left.shell_integration == right.shell_integration
         && left.cwd == right.cwd
         && left.distro == right.distro
+        && left.os_name == right.os_name
         && left.os_version == right.os_version
         && left.shell_name == right.shell_name
         && left.shell_user == right.shell_user
@@ -522,6 +523,7 @@ fn source_revision(session: &SessionFacts) -> u64 {
     session.session_id.hash(&mut hasher);
     session.cwd.hash(&mut hasher);
     session.distro.hash(&mut hasher);
+    session.os_name.hash(&mut hasher);
     session.os_version.hash(&mut hasher);
     session.shell_name.hash(&mut hasher);
     session.shell_user.hash(&mut hasher);
@@ -1121,6 +1123,7 @@ mod tests {
             cwd: None,
             title: title.to_owned(),
             distro: None,
+            os_name: None,
             os_version: None,
             shell_name: None,
             shell_user: None,

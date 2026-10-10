@@ -57,12 +57,17 @@ __automexia_set_user_var() {
 }
 
 __automexia_publish_static_metadata() {
-  local os_version=''
-  if [[ -r /etc/os-release ]]; then
-    # shellcheck disable=SC1091
-    . /etc/os-release
-    os_version=${VERSION_ID:-}
+  local os_name='' os_version='' identity='' helper integration_dir
+  integration_dir=${BASH_SOURCE[0]%/*}
+  [[ $integration_dir != "${BASH_SOURCE[0]}" ]] || integration_dir=.
+  helper="$integration_dir/../posix/automexia-os.sh"
+  [[ -r $helper ]] || helper="$integration_dir/automexia-os.sh"
+  if [[ -f $helper && -r $helper ]]; then
+    identity=$(command sh "$helper" 2>/dev/null)
+    os_name=${identity%%$'\n'*}
+    [[ $identity != "$os_name" ]] && os_version=${identity#*$'\n'}
   fi
+  __automexia_set_user_var automexia_os_name "$os_name"
   __automexia_set_user_var automexia_distro "${WSL_DISTRO_NAME:-}"
   __automexia_set_user_var automexia_os_version "$os_version"
   __automexia_set_user_var automexia_shell_user "${USER:-}"

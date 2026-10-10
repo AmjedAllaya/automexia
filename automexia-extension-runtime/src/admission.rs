@@ -95,18 +95,22 @@ pub fn discovery_inputs_bounded(
 }
 
 pub fn session_facts_bounded(session: &SessionFacts) -> bool {
-    discovery_inputs_bounded(
-        &session.title,
-        session.cwd.as_deref(),
-        [
-            session.distro.as_deref(),
-            session.os_version.as_deref(),
-            session.shell_name.as_deref(),
-            session.shell_user.as_deref(),
-            session.shell_path.as_deref(),
-        ],
-        &session.environment,
-    )
+    session
+        .os_name
+        .as_deref()
+        .is_none_or(automexia_extension_api::valid_os_name)
+        && discovery_inputs_bounded(
+            &session.title,
+            session.cwd.as_deref(),
+            [
+                session.distro.as_deref(),
+                session.os_version.as_deref(),
+                session.shell_name.as_deref(),
+                session.shell_user.as_deref(),
+                session.shell_path.as_deref(),
+            ],
+            &session.environment,
+        )
 }
 
 #[cfg(test)]

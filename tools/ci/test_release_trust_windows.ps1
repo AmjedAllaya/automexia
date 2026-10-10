@@ -144,6 +144,7 @@ function Expand-TrustedPortableArchive {
             'shell-integration/install-unix.sh',
             'shell-integration/install-windows.ps1',
             'shell-integration/posix/automexia-eza-filter.pl',
+            'shell-integration/posix/automexia-os.sh',
             'shell-integration/powershell/automexia.format.ps1xml',
             'shell-integration/powershell/automexia.ps1',
             'shell-integration/uninstall-unix.sh',

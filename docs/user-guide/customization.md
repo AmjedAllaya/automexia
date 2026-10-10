@@ -314,6 +314,15 @@ reset undo point is available. Letters stay text in search and value fields;
 outside the color field, **A** applies and **R** requests a reset. If the window
 is too small to show the confirmation, enlarge it or press **Esc** to cancel.
 
+The **Operating system / WSL** tag detects native Linux distributions (including
+Linux Mint and LMDE), macOS and other Unix hosts. Linux uses the distribution's
+`os-release` name, with a generic OS label when that metadata is unavailable.
+Windows keeps its separate tag customization. Detection is cached when each shell
+starts, and is independent of the optional DevOps extension. Existing OS-tag
+colors, visibility and layouts are preserved. Reopen a shell after a distribution
+upgrade to refresh its label; previously displayed prompt tags keep their original
+identity.
+
 Turning Information tags off hides their prompt badges while retaining
 context detection and the saved tag colors. The **Layout** control
 offers twelve layouts; changing the format updates open terminal

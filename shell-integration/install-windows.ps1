@@ -68,6 +68,7 @@ function Get-SourceFingerprint {
         'completion\bash\automexia-completion.bash',
         'completion\zsh\automexia-completion.zsh',
         'completion\fish\automexia-completion.fish',
+        'posix\automexia-os.sh',
         'posix\automexia-eza-filter.pl'
     )
     $parts = New-Object System.Collections.Generic.List[string]
@@ -403,6 +404,7 @@ if (-not $SkipWsl -and $script:DetectedWslExecutable -and $script:DetectedWslDis
     $bashCompletionPath = Join-Path $PackageRoot 'completion\bash\automexia-completion.bash'
     $zshCompletionPath = Join-Path $PackageRoot 'completion\zsh\automexia-completion.zsh'
     $fishCompletionPath = Join-Path $PackageRoot 'completion\fish\automexia-completion.fish'
+    $osIdentity = [IO.File]::ReadAllText((Join-Path $PackageRoot 'posix\automexia-os.sh'), [Text.Encoding]::UTF8).TrimEnd([char[]]"`r`n")
     $ezaFilterPath = Join-Path $PackageRoot 'posix\automexia-eza-filter.pl'
     $bash = [IO.File]::ReadAllText($bashPath, [Text.Encoding]::UTF8).TrimEnd([char[]]"`r`n")
     $zsh = [IO.File]::ReadAllText($zshPath, [Text.Encoding]::UTF8).TrimEnd([char[]]"`r`n")
@@ -484,6 +486,12 @@ AUTOMEXIA_FISH_EOF
 install_blob "`$fish_cfg/automexia-completion.fish" <<'AUTOMEXIA_FISH_COMPLETION_EOF'
 $fishCompletion
 AUTOMEXIA_FISH_COMPLETION_EOF
+install_blob "`$cfg/automexia-os.sh" <<'AUTOMEXIA_OS_EOF'
+$osIdentity
+AUTOMEXIA_OS_EOF
+install_blob "`$fish_cfg/automexia-os.sh" <<'AUTOMEXIA_OS_EOF'
+$osIdentity
+AUTOMEXIA_OS_EOF
 install_blob "`$cfg/automexia-eza-filter.pl" <<'AUTOMEXIA_EZA_FILTER_EOF'
 $ezaFilter
 AUTOMEXIA_EZA_FILTER_EOF

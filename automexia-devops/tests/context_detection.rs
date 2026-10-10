@@ -8,6 +8,7 @@ fn facts(home: &Path, cwd: &Path) -> SessionFacts {
         cwd: Some(cwd.to_owned()),
         title: String::new(),
         distro: None,
+        os_name: None,
         os_version: None,
         shell_name: Some(if cfg!(windows) { "PowerShell" } else { "bash" }.into()),
         shell_user: Some("session-user".into()),

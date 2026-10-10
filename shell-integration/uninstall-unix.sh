@@ -247,6 +247,8 @@ for owned in \
   "$config_root/shell-integration.zsh" \
   "$config_root/automexia-completion.bash" \
   "$config_root/automexia-completion.zsh" \
+  "$config_root/automexia-os.sh" \
+  "$fish_conf_root/automexia-os.sh" \
   "$config_root/automexia-eza-filter.pl" \
   "$config_root/install-state-unix.sha256" \
   "$fish_conf_root/automexia.fish" \
@@ -285,6 +287,8 @@ for owned in \
   "$config_root/shell-integration.zsh" \
   "$config_root/automexia-completion.bash" \
   "$config_root/automexia-completion.zsh" \
+  "$config_root/automexia-os.sh" \
+  "$fish_conf_root/automexia-os.sh" \
   "$config_root/automexia-eza-filter.pl" \
   "$config_root/install-state-unix.sha256" \
   "$fish_conf_root/automexia.fish" \

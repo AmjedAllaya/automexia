@@ -125,16 +125,28 @@ fn project_with_identity(
     mut segments: Vec<Segment>,
     contribution: &ContextContribution,
 ) -> Vec<Segment> {
-    segments.extend(contribution.segments.iter().map(|segment| Segment {
-        value: segment.label.as_str().to_owned(),
-        accessibility_label: segment.accessibility_label.as_str().to_owned(),
-        role: segment.role,
-        icon: segment.icon,
-        priority: segment.priority,
-        freshness: segment.freshness,
-        observed_at_ms: segment.observed_at_ms,
-        details_action: segment.details_action.clone(),
-    }));
+    let core_os = segments
+        .iter()
+        .any(|s| matches!(s.role, SegmentRole::Windows | SegmentRole::UbuntuWsl));
+    segments.extend(
+        contribution
+            .segments
+            .iter()
+            .filter(|s| {
+                !core_os
+                    || !matches!(s.role, SegmentRole::Windows | SegmentRole::UbuntuWsl)
+            })
+            .map(|segment| Segment {
+                value: segment.label.as_str().to_owned(),
+                accessibility_label: segment.accessibility_label.as_str().to_owned(),
+                role: segment.role,
+                icon: segment.icon,
+                priority: segment.priority,
+                freshness: segment.freshness,
+                observed_at_ms: segment.observed_at_ms,
+                details_action: segment.details_action.clone(),
+            }),
+    );
     segments.sort_by_key(|segment| segment.priority);
 
     let mut seen = BTreeSet::new();
@@ -181,19 +193,45 @@ fn immediate_os_segments(session: &SessionFacts) -> Vec<Segment> {
         }];
     }
 
-    if is_native_windows_shell(session) {
-        return vec![Segment {
-            value: "Windows".to_string(),
-            accessibility_label: "Native Windows shell".to_string(),
-            role: SegmentRole::Windows,
-            icon: IconKind::Windows,
-            priority: 10,
-            freshness: Freshness::Current,
-            observed_at_ms: 0,
-            details_action: None,
-        }];
-    }
-    Vec::new()
+    // No discovery or filesystem work belongs in the renderer. Shell adapters
+    // publish their cached display identity; older/disabled adapters retain an
+    // honest platform fallback rather than losing the tag entirely.
+    let name = session
+        .os_name
+        .as_deref()
+        .filter(|value| {
+            session.shell_integration && automexia_extension_api::valid_os_name(value)
+        })
+        .unwrap_or(match std::env::consts::OS {
+            "windows" => "Windows",
+            "macos" => "macOS",
+            "linux" => "Linux",
+            "freebsd" => "FreeBSD",
+            "openbsd" => "OpenBSD",
+            "netbsd" => "NetBSD",
+            other => other,
+        })
+        .trim();
+    let windows = name.eq_ignore_ascii_case("Windows");
+    vec![Segment {
+        value: compact_label(name, MAX_OS_CHARS),
+        accessibility_label: format!("Operating system {name}"),
+        // Retain persisted tag IDs/colors/visibility across this additive fix.
+        role: if windows {
+            SegmentRole::Windows
+        } else {
+            SegmentRole::UbuntuWsl
+        },
+        icon: if windows {
+            IconKind::Windows
+        } else {
+            IconKind::Environment
+        },
+        priority: 10,
+        freshness: Freshness::Current,
+        observed_at_ms: 0,
+        details_action: None,
+    }]
 }
 
 /// Apply the shared responsive policy using terminal-cell estimates.
@@ -480,10 +518,20 @@ pub fn icon_optics(icon: IconKind) -> IconOptics {
 }
 
 fn immediate_wsl_value(session: &SessionFacts) -> Option<String> {
+    // An admitted native Windows identity wins over inherited guest variables
+    // and a title left behind by a nested Unix shell.
+    if session.shell_integration
+        && session
+            .os_name
+            .as_deref()
+            .is_some_and(|name| name.eq_ignore_ascii_case("Windows"))
+    {
+        return None;
+    }
     let distro = session
         .distro
         .as_ref()
-        .filter(|value| !value.trim().is_empty())?;
+        .filter(|value| automexia_extension_api::valid_os_name(value))?;
     let shell_is_unix = session.shell_name.as_deref().is_some_and(|shell| {
         ["bash", "zsh", "fish", "sh", "dash", "ksh"]
             .iter()
@@ -491,39 +539,13 @@ fn immediate_wsl_value(session: &SessionFacts) -> Option<String> {
     });
     let title_has_unix_path =
         parse_shell_title(&session.title).is_some_and(|(_, path)| path.starts_with('/'));
-    (shell_is_unix || title_has_unix_path).then(|| wsl_value(distro))
-}
-
-fn shell_label(session: &SessionFacts) -> &'static str {
-    if let Some(name) = session.shell_name.as_deref() {
-        if name.eq_ignore_ascii_case("powershell") || name.eq_ignore_ascii_case("pwsh") {
-            return "PowerShell";
-        }
-        if name.eq_ignore_ascii_case("cmd") || name.eq_ignore_ascii_case("command prompt")
-        {
-            return "CMD";
-        }
-        if name.eq_ignore_ascii_case("bash") {
-            return "bash";
-        }
-        if name.eq_ignore_ascii_case("zsh") {
-            return "zsh";
-        }
-        if ["fish", "sh", "dash", "ksh"]
-            .iter()
-            .any(|shell| name.eq_ignore_ascii_case(shell))
-        {
-            return "Unix shell";
-        }
-    }
-    #[cfg(target_os = "windows")]
-    return "PowerShell";
-    #[cfg(not(target_os = "windows"))]
-    return "zsh";
-}
-
-fn is_native_windows_shell(session: &SessionFacts) -> bool {
-    matches!(shell_label(session), "PowerShell" | "CMD")
+    let native_unix_metadata = session.shell_integration
+        && session.os_name.as_deref().is_some_and(|name| {
+            automexia_extension_api::valid_os_name(name)
+                && !name.eq_ignore_ascii_case("Windows")
+        });
+    (shell_is_unix || title_has_unix_path || native_unix_metadata)
+        .then(|| wsl_value(distro))
 }
 
 fn parse_shell_title(title: &str) -> Option<(String, String)> {
@@ -867,6 +889,7 @@ mod tests {
             cwd: None,
             title: "PowerShell".to_string(),
             distro: None,
+            os_name: Some("Windows".into()),
             os_version: None,
             shell_name: Some("PowerShell".to_string()),
             shell_user: Some("alice".to_string()),
@@ -874,6 +897,141 @@ mod tests {
             shell_integration: true,
             shell_pid: 42,
             environment: Default::default(),
+        }
+    }
+
+    #[test]
+    fn native_os_identity_is_visible_without_a_wsl_distribution() {
+        for shell in ["bash", "zsh", "fish", "sh", "dash", "ksh"] {
+            let mut facts = session();
+            facts.title.clear();
+            facts.os_name = None;
+            facts.shell_name = Some(shell.to_owned());
+            facts.shell_path = Some(format!("/bin/{shell}"));
+            let os = immediate_session_segments(&facts)
+                .into_iter()
+                .filter(|segment| {
+                    matches!(segment.role, SegmentRole::UbuntuWsl | SegmentRole::Windows)
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                os.len(),
+                1,
+                "native {shell} must have an OS tag without WSL"
+            );
+            assert!(!os[0].value.is_empty());
+            assert!(!os[0].accessibility_label.contains("WSL"));
+        }
+    }
+
+    #[test]
+    fn os_tags_cover_arbitrary_distributions_and_cross_platform_shells() {
+        for name in [
+            "Linux Mint",
+            "LMDE",
+            "Debian GNU/Linux",
+            "Fedora Linux",
+            "Arch Linux",
+            "NixOS",
+            "Alpine Linux",
+            "openSUSE Tumbleweed",
+            "Custom Distribution",
+            "macOS",
+            "FreeBSD",
+            "Windows",
+            "发行版",
+        ] {
+            for shell in ["bash", "zsh", "fish", "PowerShell"] {
+                let mut facts = session();
+                facts.os_name = Some(name.into());
+                facts.shell_name = Some(shell.into());
+                let tags = immediate_os_segments(&facts);
+                assert_eq!(tags.len(), 1);
+                assert_eq!(
+                    tags[0].accessibility_label,
+                    format!("Operating system {name}")
+                );
+                assert_eq!(tags[0].role == SegmentRole::Windows, name == "Windows");
+                assert!(
+                    facts.distro.is_none(),
+                    "display identity must not create WSL authority"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn os_tags_reject_unsafe_names_and_preserve_long_accessible_labels() {
+        let mut facts = session();
+        facts.os_name = None;
+        let fallback = immediate_os_segments(&facts);
+        for invalid in [
+            "".into(),
+            " ".into(),
+            "x\ny".into(),
+            "x\u{202e}y".into(),
+            "x".repeat(257),
+        ] {
+            facts.os_name = Some(invalid);
+            assert_eq!(immediate_os_segments(&facts), fallback);
+        }
+        facts.os_name = Some("A very long distribution name".into());
+        let tags = immediate_os_segments(&facts);
+        assert!(tags[0].value.ends_with('…'));
+        assert_eq!(
+            tags[0].accessibility_label,
+            "Operating system A very long distribution name"
+        );
+        facts.shell_integration = false;
+        assert_eq!(immediate_os_segments(&facts), fallback);
+    }
+
+    #[test]
+    fn native_windows_identity_overrides_leftover_wsl_title_and_distro() {
+        let mut facts = session();
+        facts.title = "example@host:/work".into();
+        facts.distro = Some("Old-Guest".into());
+        for shell in ["PowerShell", "CMD", "bash"] {
+            facts.shell_name = Some(shell.into());
+            let os = immediate_os_segments(&facts);
+            assert_eq!(os.len(), 1);
+            assert_eq!(os[0].value, "Windows");
+            assert_eq!(os[0].role, SegmentRole::Windows);
+        }
+    }
+
+    #[test]
+    fn wsl_powershell_and_provider_removal_keep_one_owned_os_tag() {
+        let mut facts = session();
+        facts.os_name = Some("Linux Mint".into());
+        facts.distro = Some("Mint-Custom".into());
+        assert_eq!(
+            immediate_os_segments(&facts)[0].accessibility_label,
+            "WSL distribution Mint-Custom"
+        );
+        facts.distro = None;
+        let stale = StatusSegment::new(
+            "old-os",
+            "Windows",
+            "Windows",
+            SegmentRole::Windows,
+            IconKind::Windows,
+            1,
+            Freshness::Stale,
+        )
+        .unwrap();
+        for contributions in [vec![stale], vec![]] {
+            let tags = project_status(&facts, &contribution(contributions));
+            assert_eq!(
+                tags.iter()
+                    .filter(|s| matches!(
+                        s.role,
+                        SegmentRole::Windows | SegmentRole::UbuntuWsl
+                    ))
+                    .count(),
+                1
+            );
+            assert_eq!(tags[0].value, "Linux Mint");
         }
     }
 

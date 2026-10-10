@@ -342,6 +342,7 @@ fn sync_session_metadata<T: rio_backend::event::EventListener>(
         content.current_directory = None;
         content.terminal_title.clear();
         content.shell_distro = None;
+        content.shell_os_name = None;
         content.shell_os_version = None;
         content.shell_name = None;
         content.shell_user = None;
@@ -403,6 +404,9 @@ fn sync_session_metadata<T: rio_backend::event::EventListener>(
         .any(|value| value.len() > 256 || value.chars().any(char::is_control));
     content.session_context_rejected = oversized_title
         || oversized_cwd
+        || metadata("automexia_os_name").is_some_and(|name| {
+            !name.is_empty() && !automexia_extension_api::valid_os_name(name)
+        })
         || oversized_shell_metadata
         || invalid_location_hint
         || invalid_selector_hint;
@@ -429,6 +433,12 @@ fn sync_session_metadata<T: rio_backend::event::EventListener>(
     }
     if !retain_seed {
         sync_optional_metadata(&mut content.shell_distro, metadata("automexia_distro"));
+        sync_optional_metadata(
+            &mut content.shell_os_name,
+            metadata("automexia_os_name").filter(|value| {
+                value.is_empty() || automexia_extension_api::valid_os_name(value)
+            }),
+        );
         sync_optional_metadata(
             &mut content.shell_os_version,
             metadata("automexia_os_version"),
@@ -939,6 +949,10 @@ fn semantic_snapshot(
     // Seeds and imported pane state also pass this check before any variable-
     // sized clone. Rejected metadata cannot lend an old context to this route.
     let context_bounded = !rc.session_context_rejected
+        && rc
+            .shell_os_name
+            .as_deref()
+            .is_none_or(automexia_extension_api::valid_os_name)
         && automexia_extension_runtime::discovery_inputs_bounded(
             &rc.terminal_title,
             rc.current_directory.as_deref(),
@@ -957,6 +971,7 @@ fn semantic_snapshot(
             cwd: rc.current_directory.clone(),
             title: rc.terminal_title.clone(),
             distro: rc.shell_distro.clone(),
+            os_name: rc.shell_os_name.clone(),
             os_version: rc.shell_os_version.clone(),
             shell_name: rc.shell_name.clone(),
             shell_user: rc.shell_user.clone(),
@@ -971,6 +986,7 @@ fn semantic_snapshot(
             cwd: None,
             title: String::new(),
             distro: None,
+            os_name: None,
             os_version: None,
             shell_name: rc
                 .shell_name

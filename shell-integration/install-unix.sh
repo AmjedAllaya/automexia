@@ -69,6 +69,7 @@ source_fingerprint=$(
     "$script_dir/completion/bash/automexia-completion.bash" \
     "$script_dir/completion/zsh/automexia-completion.zsh" \
     "$script_dir/completion/fish/automexia-completion.fish" \
+    "$script_dir/posix/automexia-os.sh" \
     "$script_dir/posix/automexia-eza-filter.pl" \
     "$repository_root/packaging/linux/automexia.terminfo"; do
     [ -f "$source" ] || {
@@ -93,6 +94,8 @@ integration_is_current() {
   cmp -s "$script_dir/completion/zsh/automexia-completion.zsh" "$config_root/automexia-completion.zsh" || return 1
   cmp -s "$script_dir/fish/automexia.fish" "$fish_conf_root/automexia.fish" || return 1
   cmp -s "$script_dir/completion/fish/automexia-completion.fish" "$fish_conf_root/automexia-completion.fish" || return 1
+  cmp -s "$script_dir/posix/automexia-os.sh" "$config_root/automexia-os.sh" || return 1
+  cmp -s "$script_dir/posix/automexia-os.sh" "$fish_conf_root/automexia-os.sh" || return 1
   cmp -s "$script_dir/posix/automexia-eza-filter.pl" "$config_root/automexia-eza-filter.pl" || return 1
   grep -Fq "$marker_start" "$HOME/.bashrc" 2>/dev/null || return 1
   grep -Fq "$marker_start" "$HOME/.zshrc" 2>/dev/null || return 1
@@ -235,6 +238,8 @@ install_source "$script_dir/completion/bash/automexia-completion.bash" "$config_
 install_source "$script_dir/completion/zsh/automexia-completion.zsh" "$config_root/automexia-completion.zsh" 0644
 install_source "$script_dir/fish/automexia.fish" "$fish_conf_root/automexia.fish" 0644
 install_source "$script_dir/completion/fish/automexia-completion.fish" "$fish_conf_root/automexia-completion.fish" 0644
+install_source "$script_dir/posix/automexia-os.sh" "$config_root/automexia-os.sh" 0644
+install_source "$script_dir/posix/automexia-os.sh" "$fish_conf_root/automexia-os.sh" 0644
 install_source "$script_dir/posix/automexia-eza-filter.pl" "$config_root/automexia-eza-filter.pl" 0644
 append_block "$HOME/.bashrc" "$bash_source_line"
 append_block "$HOME/.zshrc" "$zsh_source_line"

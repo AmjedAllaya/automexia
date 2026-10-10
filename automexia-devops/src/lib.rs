@@ -299,6 +299,7 @@ mod projection_tests {
             cwd: None,
             title: "PowerShell".into(),
             distro: None,
+            os_name: None,
             os_version: None,
             shell_name: Some("PowerShell".into()),
             shell_user: Some("alice".into()),

@@ -354,6 +354,10 @@ pub struct SessionFacts {
     /// Raw terminal/OSC title, not the configurable application title.
     pub title: String,
     pub distro: Option<String>,
+    /// Bounded local display identity, never WSL launch or extension authority.
+    /// Kept outside the version-1 serialized extension contract.
+    #[serde(skip)]
+    pub os_name: Option<String>,
     pub os_version: Option<String>,
     pub shell_name: Option<String>,
     pub shell_user: Option<String>,
@@ -367,6 +371,16 @@ pub struct SessionFacts {
     pub environment: std::collections::BTreeMap<String, String>,
     pub shell_integration: bool,
     pub shell_pid: u32,
+}
+
+/// Validate display-only OS metadata before cloning or projecting it.
+pub fn valid_os_name(value: &str) -> bool {
+    value.len() <= 256
+        && !value.trim().is_empty()
+        && !value.chars().any(|ch| {
+            ch.is_control()
+                || matches!(ch, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+        })
 }
 
 impl fmt::Debug for SessionFacts {
@@ -1206,6 +1220,7 @@ mod tests {
             cwd: None,
             title: String::new(),
             distro: None,
+            os_name: Some("fixture-local-os-canary".into()),
             os_version: None,
             shell_name: Some("bash".into()),
             shell_user: None,
@@ -1219,6 +1234,9 @@ mod tests {
             .into(),
         };
         let encoded = serde_json::to_string(&session).unwrap();
+        assert!(!encoded.contains("fixture-local-os-canary"));
+        assert!(!encoded.contains("os_name"));
+        assert!(!format!("{session:?}").contains("fixture-local-os-canary"));
         assert!(!encoded.contains("fixture-private-location-canary"));
         assert!(!format!("{session:?}").contains("fixture-private-location-canary"));
         let decoded: SessionFacts = serde_json::from_str(&encoded).unwrap();

@@ -1,6 +1,96 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Exercise the production parser and publishers, including distro-neutral names.
+python3 - "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" <<'PY_OS_IDENTITY'
+import base64
+import os
+from pathlib import Path
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+
+root = Path(sys.argv[1])
+helper = root / "shell-integration/posix/automexia-os.sh"
+with tempfile.TemporaryDirectory(prefix="automexia-os-") as temporary:
+    temp = Path(temporary)
+    release = temp / "os-release"
+    def detect(data, kernel="Linux"):
+        release.write_bytes(data)
+        result = subprocess.run(["sh", str(helper), str(release), kernel],
+                                check=True, capture_output=True, timeout=5)
+        return result.stdout.decode().splitlines()
+    cases = [
+        (b'NAME="Linux Mint"\nID=linuxmint\nVERSION_ID="22.2"\n', ["Linux Mint", "22.2"]),
+        (b'NAME="LMDE"\nID=linuxmint\nVERSION_ID=7\n', ["LMDE", "7"]),
+        (b'NAME="Debian GNU/Linux"\nID=debian\n', ["Debian GNU/Linux", ""]),
+        (b'NAME="Fedora Linux"\n', ["Fedora Linux", ""]),
+        (b'NAME=Arch\n', ["Arch", ""]),
+        (b'NAME="An Unknown Distribution"\n', ["An Unknown Distribution", ""]),
+        (b'PRETTY_NAME="Mint Custom Edition"\n', ["Mint Custom Edition", ""]),
+        (b'ID=custom-distro\n', ["custom-distro", ""]),
+        (b'NAME=""\nID=alpine\n', ["alpine", ""]),
+        (b'NAME=Old\nNAME="New Edition"\n', ["New Edition", ""]),
+        (b'NAME="broken\nID=valid-id\n', ["valid-id", ""]),
+        (b'NAME="a""b"\n', ["Linux", ""]),
+        (b'NAME="bad\x1bname"\n', ["Linux", ""]),
+        (b'NAME="' + b'x' * 257 + b'"\n', ["Linux", ""]),
+        (b'NAME="Mint"\n' + b'#' * 65536, ["Linux", ""]),
+        (b'# empty data\n', ["Linux", ""]),
+        ('NAME="发行版"\n'.encode(), ["发行版", ""]),
+        (b'NAME="Mint \\"Edition\\""\n', ['Mint "Edition"', ""]),
+    ]
+    for data, expected in cases:
+        assert detect(data) == expected, (data[:64], expected, detect(data))
+    for kernel, expected in [("Darwin", "macOS"), ("FreeBSD", "FreeBSD"), ("OpenBSD", "OpenBSD"), ("MINGW64_NT", "Windows")]:
+        assert detect(b'NAME=Linux\n', kernel) == [expected, ""]
+    marker = temp / "must-not-execute"
+    payload = '$(touch ' + shlex.quote(str(marker)) + ')'
+    assert detect(('NAME="' + payload + '"\n').encode())[0] == payload
+    assert not marker.exists(), "os-release data was executed"
+    release.unlink()
+    assert subprocess.check_output(["sh", str(helper), str(release), "Linux"]).decode().splitlines() == ["Linux", ""]
+    os.mkfifo(release)
+    assert subprocess.run(["sh", str(helper), str(release), "Linux"], timeout=2, capture_output=True, check=True).stdout == b'Linux\n\n'
+    release.unlink()
+    release.write_text('NAME="Linux Mint"\nVERSION_ID="22.2"\n')
+    for shell, relative, source in [
+        ("bash", "bash/automexia.bash", '. "$1"; printf "%s%s" "$__automexia_identity_frame" "$__automexia_identity_frame"'),
+        ("zsh", "zsh/automexia.zsh", 'source "$1"; printf "%s%s" "$__automexia_identity_frame" "$__automexia_identity_frame"'),
+        ("fish", "fish/automexia.fish", 'source $argv[1]; __automexia_fish_prompt; __automexia_fish_prompt'),
+    ]:
+        if not shutil.which(shell):
+            print("EXTERNAL: OS publisher test needs", shell)
+            continue
+        for flattened in [False, True]:
+            directory = temp / (shell + ("-flat" if flattened else "-tree"))
+            script = directory / ("integration." + shell if flattened else relative)
+            script.parent.mkdir(parents=True)
+            shutil.copyfile(root / "shell-integration" / relative, script)
+            adapter = directory / ("automexia-os.sh" if flattened else "posix/automexia-os.sh")
+            adapter.parent.mkdir(parents=True, exist_ok=True)
+            calls = directory / "calls"
+            adapter.write_text('printf x >> ' + shlex.quote(str(calls)) + '\nexec sh ' + shlex.quote(str(helper)) + ' ' + shlex.quote(str(release)) + ' Linux\n')
+            env = dict(os.environ, TERM_PROGRAM="Automexia", AUTOMEXIA_SHELL_INTEGRATION="1", AUTOMEXIA_PLAIN_LS="1", AUTOMEXIA_AMX="0")
+            env.pop("WSL_DISTRO_NAME", None)
+            argv = [shell, "--no-config", "-c", source, str(script)] if shell == "fish" else [shell, "-c", source, "os-test", str(script)]
+            # Flattened installs may be sourced by a bare relative filename.
+            if flattened:
+                argv[-1] = script.name
+            result = subprocess.run(argv, cwd=script.parent, env=env, capture_output=True, check=True, timeout=10)
+            values = re.findall(rb'SetUserVar=automexia_os_name=([^\x07]*)\x07', result.stdout)
+            # Bash line 188 and Zsh line 150 deliberately emit a startup frame,
+            # then this probe replays two cached frames. Fish emits only on prompts.
+            expected_publications = 2 if shell == 'fish' else 3
+            assert len(values) == expected_publications and all(base64.b64decode(v) == b'Linux Mint' for v in values), (shell, flattened, result.stderr, values)
+            assert calls.read_text() == 'x', "OS files reread on each prompt"
+            assert b'SetUserVar=automexia_distro=\x07' in result.stdout, "native distro leaked into WSL launch identity"
+    print("PASS: OS parser fixtures and cached Bash/Zsh/Fish publishers")
+PY_OS_IDENTITY
+
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 export TERM_PROGRAM=Automexia
 PROMPT_COMMAND='printf user-hook >/dev/null'

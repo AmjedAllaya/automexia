@@ -65,6 +65,8 @@ cmp -s \
 cmp -s \
   "$root/shell-integration/posix/automexia-eza-filter.pl" \
   "$installer_config/automexia/automexia-eza-filter.pl"
+cmp -s "$root/shell-integration/posix/automexia-os.sh" "$installer_config/automexia/automexia-os.sh"
+cmp -s "$root/shell-integration/posix/automexia-os.sh" "$installer_config/fish/conf.d/automexia-os.sh"
 [[ $(grep -Fc '# >>> AUTOMEXIA SHELL INTEGRATION >>>' "$installer_home/.bashrc") -eq 1 ]]
 [[ $(grep -Fc '# >>> AUTOMEXIA SHELL INTEGRATION >>>' "$installer_home/.zshrc") -eq 1 ]]
 

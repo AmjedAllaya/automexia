@@ -120,7 +120,8 @@ pub struct RenderableContent {
     pub terminal_title: String,
     /// Optional shell-published distro metadata from OSC 1337 SetUserVar.
     pub shell_distro: Option<String>,
-    /// Optional shell-published OS version metadata.
+    /// Optional bounded display name, independent from WSL launch metadata.
+    pub shell_os_name: Option<String>,
     pub shell_os_version: Option<String>,
     pub shell_name: Option<String>,
     /// Explicit shell identity used by independent session cloning.
@@ -170,6 +171,7 @@ pub struct SessionMetadataSeed {
     current_directory: Option<PathBuf>,
     terminal_title: String,
     shell_distro: Option<String>,
+    shell_os_name: Option<String>,
     shell_os_version: Option<String>,
     shell_name: Option<String>,
     shell_user: Option<String>,
@@ -230,6 +232,7 @@ impl RenderableContent {
             current_directory: None,
             terminal_title: String::new(),
             shell_distro: None,
+            shell_os_name: None,
             shell_os_version: None,
             shell_name: None,
             shell_user: None,
@@ -284,6 +287,7 @@ impl RenderableContent {
             current_directory: self.current_directory.clone(),
             terminal_title: self.terminal_title.clone(),
             shell_distro: self.shell_distro.clone(),
+            shell_os_name: self.shell_os_name.clone(),
             shell_os_version: self.shell_os_version.clone(),
             shell_name: self.shell_name.clone(),
             shell_user: self.shell_user.clone(),
@@ -296,6 +300,7 @@ impl RenderableContent {
         self.current_directory = seed.current_directory;
         self.terminal_title = seed.terminal_title;
         self.shell_distro = seed.shell_distro;
+        self.shell_os_name = seed.shell_os_name;
         self.shell_os_version = seed.shell_os_version;
         self.shell_name = seed.shell_name;
         self.shell_user = seed.shell_user;

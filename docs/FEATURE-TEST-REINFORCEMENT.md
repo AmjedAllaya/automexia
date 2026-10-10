@@ -713,6 +713,13 @@ unsupported Ghostty behavior as an explicit compatibility limit.
 
 ### prompt-context-devops-semantics
 
+Native OS tags must not require WSL or an optional extension. Exercise Mint/LMDE,
+unlisted distribution names, macOS/BSD fallbacks, malformed and oversized
+os-release files, non-execution of assignments, cached shell publishers and both
+installed/source layouts. Preserve separate WSL launch identity, optional framed
+metadata, nested-shell clearing, remote isolation and accessible full names.
+Native UI scenarios must assert the OS label, not merely any painted tag.
+
 Joint context/completion packing measures real fonts and preserves supplied label
 bytes across wrapping, including timestamps and combining graphemes. Context and
 completion rectangles must not intersect; disabling context restores the same

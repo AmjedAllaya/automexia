@@ -55,12 +55,17 @@ __automexia_set_user_var() {
   fi
 }
 
+typeset -g __automexia_identity_dir=${${(%):-%N}:A:h}
 __automexia_publish_static_metadata() {
-  local os_version='' shell_path
-  if [[ -r /etc/os-release ]]; then
-    source /etc/os-release
-    os_version=${VERSION_ID:-}
+  local os_name='' os_version='' identity='' shell_path helper
+  helper="$__automexia_identity_dir/../posix/automexia-os.sh"
+  [[ -r $helper ]] || helper="$__automexia_identity_dir/automexia-os.sh"
+  if [[ -f $helper && -r $helper ]]; then
+    identity=$(command sh "$helper" 2>/dev/null)
+    os_name=${identity%%$'\n'*}
+    [[ $identity != "$os_name" ]] && os_version=${identity#*$'\n'}
   fi
+  __automexia_set_user_var automexia_os_name "$os_name"
   __automexia_set_user_var automexia_distro "${WSL_DISTRO_NAME:-}"
   __automexia_set_user_var automexia_os_version "$os_version"
   __automexia_set_user_var automexia_shell_user "${USER:-}"
@@ -71,6 +76,7 @@ __automexia_publish_static_metadata() {
 }
 typeset -g __automexia_identity_frame=$(__automexia_publish_static_metadata)
 unfunction __automexia_publish_static_metadata 2>/dev/null || true
+unset __automexia_identity_dir
 
 # Zsh-native attribute inspection avoids exporting an unexported shell variable
 # as though kubectl could see it. Keep this adapter separate from Bash's older

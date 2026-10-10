@@ -663,7 +663,7 @@ pub fn role_from_id(id: &str) -> Option<SegmentRole> {
 pub const fn role_label(role: SegmentRole) -> &'static str {
     match role {
         SegmentRole::Production => "Production",
-        SegmentRole::UbuntuWsl => "Ubuntu / WSL",
+        SegmentRole::UbuntuWsl => "Operating system / WSL",
         SegmentRole::Windows => "Windows",
         SegmentRole::Git => "Git",
         SegmentRole::Kubernetes => "Kubernetes",
@@ -1345,6 +1345,7 @@ mod tests {
             cwd: None,
             title: "PowerShell".into(),
             distro: None,
+            os_name: Some("Windows".into()),
             os_version: None,
             shell_name: Some("PowerShell".into()),
             shell_user: Some("alice".into()),
@@ -1365,6 +1366,7 @@ mod tests {
         assert_eq!(windows[0].icon, Some(IconKind::Windows));
         assert_eq!(windows[0].source_role, Some(SegmentRole::User));
         session.shell_name = Some("zsh".into());
+        session.os_name = Some("macOS".into());
         let unix =
             resolve_recipe(&configured, &crate::immediate_session_segments(&session))
                 .unwrap();

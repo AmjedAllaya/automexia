@@ -84,8 +84,17 @@ if ($integrationSource -notmatch 'function global:Invoke-AutomexiaCmd' -or
     $integrationSource -match '(?im)^\s*Start-Process\b') {
     throw 'PowerShell does not keep an interactive CMD launch inside the existing Automexia PTY'
 }
-if ($integrationSource -notmatch 'SetUserVar=automexia_distro=\$script:AutomexiaBel') { throw 'PowerShell does not clear stale WSL distro metadata' }
-if ($integrationSource -notmatch 'SetUserVar=automexia_os_version=\$script:AutomexiaBel') { throw 'PowerShell does not clear stale WSL version metadata' }
+if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) {
+    if ($script:AutomexiaOsName -ne 'V2luZG93cw==' -or
+        $script:AutomexiaOsDistro -ne '' -or $script:AutomexiaOsVersion -ne '') {
+        throw 'Native PowerShell must publish Windows and clear guest WSL identity'
+    }
+}
+foreach ($identityField in @('automexia_os_name', 'automexia_distro', 'automexia_os_version')) {
+    if ((Get-Command Publish-AutomexiaPowerShellIdentity).ScriptBlock.ToString() -notmatch [regex]::Escape("SetUserVar=$identityField=")) {
+        throw "PowerShell does not replay cached identity field: $identityField"
+    }
+}
 if ($integrationSource -notmatch 'SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==') { throw 'PowerShell does not publish its real shell name' }
 if ($integrationSource -notmatch 'SetUserVar=automexia_shell_user=') { throw 'PowerShell does not publish its explicit user identity' }
 if ($integrationSource -notmatch 'SetUserVar=automexia_shell_path=') { throw 'PowerShell does not publish its executable path' }

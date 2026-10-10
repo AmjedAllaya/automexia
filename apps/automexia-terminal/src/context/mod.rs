@@ -2236,6 +2236,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                     "starting_directory": context.launch_descriptor.starting_directory(),
                     "current_directory": context.renderable_content.current_directory.as_ref().map(|path| path.to_string_lossy().into_owned()),
                     "shell_distro": context.renderable_content.shell_distro.as_deref(),
+                    "shell_os_name": context.renderable_content.shell_os_name.as_deref(),
                     "shell_os_version": context.renderable_content.shell_os_version.as_deref(),
                     "shell_name": context.renderable_content.shell_name.as_deref(),
                     "shell_user": context.renderable_content.shell_user.as_deref(),

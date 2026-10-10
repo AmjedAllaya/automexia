@@ -146,6 +146,22 @@ end
 
 # Fish owns these existing identity fields too. Cache their encoding once, then
 # restore the parent identity after nested Bash/Zsh/WSL sessions on every prompt.
+set -l automexia_identity_dir (path dirname (status filename))
+set -l automexia_os_helper "$automexia_identity_dir/../posix/automexia-os.sh"
+if not test -f "$automexia_os_helper"
+    set automexia_os_helper "$automexia_identity_dir/automexia-os.sh"
+end
+set -g __automexia_fish_os_name ''
+set -g __automexia_fish_os_version ''
+if test -f "$automexia_os_helper"; and test -r "$automexia_os_helper"
+    set -l identity (command sh "$automexia_os_helper" 2>/dev/null)
+    if test (count $identity) -ge 1
+        set -g __automexia_fish_os_name (__automexia_hint_encode "$identity[1]")
+    end
+    if test (count $identity) -ge 2
+        set -g __automexia_fish_os_version (__automexia_hint_encode "$identity[2]")
+    end
+end
 set -g __automexia_fish_distro (__automexia_hint_encode "$WSL_DISTRO_NAME")
 set -g __automexia_fish_user (__automexia_hint_encode "$USER")
 set -g __automexia_fish_shell (__automexia_hint_encode (status fish-path))
@@ -155,7 +171,8 @@ function __automexia_fish_prompt --on-event fish_prompt
     printf '\e]1337;SetUserVar=automexia_distro=%s\a' "$__automexia_fish_distro"
     printf '\e]1337;SetUserVar=automexia_shell_user=%s\a' "$__automexia_fish_user"
     printf '\e]1337;SetUserVar=automexia_shell_path=%s\a' "$__automexia_fish_shell"
-    printf '\e]1337;SetUserVar=automexia_os_version=\a'
+    printf '\e]1337;SetUserVar=automexia_os_name=%s\a' "$__automexia_fish_os_name"
+    printf '\e]1337;SetUserVar=automexia_os_version=%s\a' "$__automexia_fish_os_version"
     __automexia_publish_location_hints
     __automexia_publish_selector_hints
     printf '\e]1337;SetUserVar=automexia_shell=MQ==\a'

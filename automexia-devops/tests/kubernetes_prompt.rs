@@ -7,6 +7,7 @@ fn session() -> SessionFacts {
         cwd: Some("/fixture".into()),
         title: String::new(),
         distro: Some("Fixture-Distro".into()),
+        os_name: None,
         os_version: None,
         shell_name: Some("bash".into()),
         shell_user: Some("alice".into()),

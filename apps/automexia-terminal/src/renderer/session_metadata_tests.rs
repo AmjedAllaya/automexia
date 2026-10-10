@@ -1400,3 +1400,58 @@ fn metadata_readiness_pending_seed_is_empty_without_rewriting_source_snapshot() 
     assert!(!independent.shell_integration);
     assert!(independent.shell_environment.is_empty());
 }
+
+#[test]
+fn native_os_identity_is_atomic_optional_bounded_and_never_a_wsl_launch_hint() {
+    let mut terminal = new_terminal();
+    let mut processor = Processor::default();
+    let mut content = new_content();
+    let mut values = base().to_vec();
+    values.push(("automexia_os_name", "Linux Mint"));
+    frame(&mut processor, &mut terminal, "bash", &values);
+    sync_session_metadata(&mut content, &terminal);
+    assert_eq!(content.shell_os_name.as_deref(), Some("Linux Mint"));
+    assert!(content.shell_distro.is_none());
+    assert_eq!(
+        content.session_metadata.readiness(),
+        MetadataReadiness::Complete
+    );
+    let seed = content.session_metadata_seed();
+    let mut sibling = new_content();
+    sibling.apply_session_metadata_seed(seed);
+    assert_eq!(sibling.shell_os_name, content.shell_os_name);
+
+    // A partial or late child update cannot replace the committed parent's name.
+    write(
+        &mut processor,
+        &mut terminal,
+        "automexia_os_name",
+        "Child Linux",
+    );
+    sync_session_metadata(&mut content, &terminal);
+    assert_eq!(content.shell_os_name.as_deref(), Some("Linux Mint"));
+    assert_eq!(
+        content.session_metadata.readiness(),
+        MetadataReadiness::Unavailable
+    );
+    // Old integrations remain valid but must not retain a nested child's label.
+    frame(&mut processor, &mut terminal, "zsh", &base());
+    sync_session_metadata(&mut content, &terminal);
+    assert!(content.shell_os_name.is_none());
+    assert_eq!(
+        content.session_metadata.readiness(),
+        MetadataReadiness::Complete
+    );
+    assert_eq!(sibling.shell_os_name.as_deref(), Some("Linux Mint"));
+    for hostile in ["x\ny".to_owned(), "x\u{202e}y".into(), "x".repeat(257)] {
+        let mut invalid = base().to_vec();
+        invalid.push(("automexia_os_name", &hostile));
+        frame(&mut processor, &mut terminal, "fish", &invalid);
+        sync_session_metadata(&mut content, &terminal);
+        assert!(content.shell_os_name.is_none());
+        assert_eq!(
+            content.session_metadata.readiness(),
+            MetadataReadiness::Unavailable
+        );
+    }
+}

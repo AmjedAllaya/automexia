@@ -245,6 +245,23 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         }
         [Console]::Write($script:AutomexiaSelectorFrames)
     }
+    $osName = 'Windows'
+    $osVersion = ''
+    $osDistro = ''
+    if ([Environment]::OSVersion.Platform -eq [PlatformID]::Unix) {
+        $osName = ''
+        $osDistro = [string]$env:WSL_DISTRO_NAME
+        $osHelper = Join-Path $PSScriptRoot '../posix/automexia-os.sh'
+        if (-not [IO.File]::Exists($osHelper)) { $osHelper = Join-Path $PSScriptRoot 'automexia-os.sh' }
+        if ([IO.File]::Exists($osHelper)) {
+            $identity = @(& /bin/sh $osHelper 2>$null)
+            if ($identity.Count -ge 1) { $osName = [string]$identity[0] }
+            if ($identity.Count -ge 2) { $osVersion = [string]$identity[1] }
+        }
+    }
+    $script:AutomexiaOsName = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($osName))
+    $script:AutomexiaOsVersion = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($osVersion))
+    $script:AutomexiaOsDistro = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($osDistro))
     function script:Publish-AutomexiaPowerShellIdentity {
         [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_env_pending=MQ==$script:AutomexiaBel")
         [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==$script:AutomexiaBel")
@@ -253,8 +270,9 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         # Empty payloads deliberately clear WSL-only metadata left by a nested
         # wsl.exe session. The final marker is emitted only after identity is
         # internally consistent, so the renderer never observes a mixed shell.
-        [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_distro=$script:AutomexiaBel")
-        [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_os_version=$script:AutomexiaBel")
+        [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_distro=$script:AutomexiaOsDistro$script:AutomexiaBel")
+        [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_os_version=$script:AutomexiaOsVersion$script:AutomexiaBel")
+        [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_os_name=$script:AutomexiaOsName$script:AutomexiaBel")
         Publish-AutomexiaLocationHints
         Publish-AutomexiaSelectorHints
         [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell=MQ==$script:AutomexiaBel")

@@ -1495,6 +1495,14 @@ mod tests {
             cwd: None,
             title: title.to_string(),
             distro: distro.map(str::to_string),
+            os_name: Some(
+                if distro.is_some() {
+                    "Ubuntu"
+                } else {
+                    "Windows"
+                }
+                .into(),
+            ),
             os_version: None,
             shell_name: Some(
                 if distro.is_some() {
@@ -2330,6 +2338,29 @@ mod tests {
             compact_middle("feature/very-long-branch", 12),
             automexia_ui_model::compact_middle("feature/very-long-branch", 12)
         );
+    }
+
+    #[test]
+    fn native_os_changes_invalidate_only_the_live_projection() {
+        let mut facts = session("bash", None);
+        facts.shell_name = Some("bash".into());
+        facts.os_name = Some("Linux Mint".into());
+        let mut status = DevOpsStatus::default();
+        status.ensure_live_segments(&facts);
+        let revision = status.live_segments_revision;
+        let historical = status.live_segments.clone();
+        for _ in 0..100 {
+            status.ensure_live_segments(&facts);
+            assert_eq!(status.live_segments_revision, revision);
+        }
+        facts.os_name = Some("LMDE".into());
+        status.ensure_live_segments(&facts);
+        assert_eq!(status.live_segments_revision, revision.wrapping_add(1));
+        assert_eq!(status.live_segments[0].value, "LMDE");
+        assert_eq!(historical[0].value, "Linux Mint");
+        status.clear_optional_contribution();
+        status.ensure_live_segments(&facts);
+        assert_eq!(status.live_segments[0].value, "LMDE");
     }
 
     #[test]

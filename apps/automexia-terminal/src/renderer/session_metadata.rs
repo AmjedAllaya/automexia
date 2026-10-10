@@ -193,7 +193,7 @@ impl ShellMetadataState {
         }
         // Known post-commit PowerShell activation is the sole legacy postlude.
         // Other late identity/location writes are a downgrade or incomplete frame.
-        let known_fields = [SHELL_NAME, ACTIVATION]
+        let known_fields = [SHELL_NAME, ACTIVATION, "automexia_os_name"]
             .into_iter()
             .chain(BASE_LOCATIONS)
             .chain(WINDOWS_LOCATIONS)
@@ -211,10 +211,12 @@ impl ShellMetadataState {
             {
                 return self.retain(MetadataReadiness::Unavailable);
             }
-            if admission
-                .value(terminal, name)
-                .is_some_and(|value| !valid_value(value))
-            {
+            if admission.value(terminal, name).is_some_and(|value| {
+                !valid_value(value)
+                    || (name == "automexia_os_name"
+                        && !value.is_empty()
+                        && !automexia_extension_api::valid_os_name(value))
+            }) {
                 return self.retain(MetadataReadiness::Unavailable);
             }
         }

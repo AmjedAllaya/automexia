@@ -41,7 +41,7 @@ macro_rules! tag_binding {
 
 pub const TAG_COLOR_BINDINGS: [TagColorBinding; 13] = [
     tag_binding!(Production, production, "Production"),
-    tag_binding!(UbuntuWsl, ubuntu_wsl, "Ubuntu / WSL"),
+    tag_binding!(UbuntuWsl, ubuntu_wsl, "Operating system / WSL"),
     tag_binding!(Windows, windows, "Windows"),
     tag_binding!(Git, git, "Git"),
     tag_binding!(Kubernetes, kubernetes, "Kubernetes"),
