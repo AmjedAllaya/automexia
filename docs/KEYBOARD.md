@@ -41,9 +41,9 @@ also available under the command palette's Tools category.
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous window-level tab. |
 | `Alt+PageDown` / `Alt+PageUp` | Next / previous local tab inside the selected pane. |
 | `Ctrl+1` … `Ctrl+8`; `Ctrl+9` | Select window tab 1…8; select the last tab. Windows only. |
-| `Ctrl+Shift+F10` / `Alt+Shift+D` | Fresh default-shell split right / down. |
+| `Alt+Shift+J` / `Alt+Shift+D` | Fresh default-shell split right / down. |
 | `Ctrl+R` / `Ctrl+D` | Native shell controls: history search / delete-or-EOF, depending on the shell and editing mode. |
-| `Ctrl+Shift+F9` / `Alt+D` | Clone the active shell/profile/directory into an independent session right / down. |
+| `Alt+J` / `Alt+D` | Clone the active shell/profile/directory into an independent session right / down. |
 | `Alt+Arrow` | Select the nearest pane geometrically. |
 | `F6` / `Shift+F6` | Cycle to next / previous pane. |
 | `Alt+Shift+Arrow` | Resize the selected split on Windows. |
@@ -251,7 +251,7 @@ its arrow-only variant. Font and extension browsing support Back or Alt+Left to
 return to their originating menu query and selection. The return location is
 consumed once; the next Back continues outward instead of reopening the child.
 
-On Windows/Linux/BSD, **Ctrl+Shift+F9** clones right and **Ctrl+Shift+F10**
+On Windows/Linux/BSD, **Alt+J** clones right and **Alt+Shift+J**
 starts a fresh right pane. The earlier Alt+R / Alt+Shift+R defaults are removed;
 Alt+E and Alt+R remain available to shell editors and external overlays. Down
 panes retain Alt+D (clone) and Alt+Shift+D (fresh). Search, Vi and alternate-screen

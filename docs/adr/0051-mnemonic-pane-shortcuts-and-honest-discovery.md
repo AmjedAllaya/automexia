@@ -4,7 +4,7 @@ Status: Accepted for current source; native desktop evidence remains external
 
 ## Decision and ownership
 
-Windows/Linux/BSD use Ctrl+Shift+F9 to clone right and Ctrl+Shift+F10 for a
+Windows/Linux/BSD use Alt+J to clone right and Alt+Shift+J for a
 fresh right pane. Alt+D clones down; Alt+Shift+D starts fresh down. The former
 right-pane Alt+R defaults and earlier punctuation defaults are removed.
 Normal shell Ctrl+R/D and Alt+E/R remain untouched. Search, Vi and alternate-screen
@@ -30,7 +30,8 @@ No new extension, dependency, worker, persistence or dispatcher is introduced.
 
 The user chose preserving shell and OS keys over Alt+E: Fish uses Alt+E for
 its external command editor, and macOS Option+E enters accents. The right-pane
-function keys also release Alt+R for shell editing and external overlays.
+Alt+J pair is unassigned in the reviewed stock Bash, Zsh, Fish and PowerShell
+line editors, while Alt+R remains available for shell editing and external overlays.
 Down-pane Alt+D remains the earlier explicit tradeoff; users can restore it with
 ReceiveChar. No bare Ctrl+F9/F10 (KDE desktop actions), Shift+F10 (context menu),
 Ctrl+Shift+E (input methods), Ctrl+Alt character (AltGr) or bare Option key is added.
@@ -42,7 +43,7 @@ References: [Fish](https://fishshell.com/docs/current/interactive),
 
 | Family reviewed | Result and reason |
 |---|---|
-| Fresh / cloned panes | Use function keys for right panes and retain down-pane/macOS bindings; keep independent PTY semantics. |
+| Fresh / cloned panes | Use the Alt+J pair for right panes and retain down-pane/macOS bindings; keep independent PTY semantics. |
 | Windows, tabs, close and reorder | Retain conventional N/T/W, Tab, Page and digit controls; distinguish window tabs from local tabs. Use deliberate Ctrl+Shift+Q, never bare Escape, for Quit. |
 | Pane focus, cycling and resizing | Retain arrows and F6; Linux's extra resize modifier avoids changing desktop/window-manager policy. |
 | Copy, paste and selection | Retain platform conventions and selection-aware Ctrl+C; preserve shell interrupt and Windows paste. Prefer ordinary chords in labels. |
@@ -91,7 +92,7 @@ Native desktop/assistive-technology evidence remains external.
 
 Regression tests first reproduced the old Back icon, old pane actions and
 non-pane override-label failure. Full-table tests cover configured and isolated
-Windows/Linux/BSD/macOS defaults, all four pane chords, exact function-key
+Windows/Linux/BSD/macOS defaults, all four pane chords, exact letter-key
 modifiers, preserved Alt+E/R, retired punctuation, disabled
 splits, modes, overrides, typed tombstones, chains and labels across reload.
 The Automexia classic inventory is regenerated with its digest; pinned Ghostty

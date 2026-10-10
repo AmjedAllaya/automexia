@@ -373,12 +373,30 @@ class CollectorTests(unittest.TestCase):
         process = SimpleNamespace(pid=42, poll=lambda: None)
         with patch.object(display, "window", return_value={"id": 7}) as window, \
              patch.object(probe.subprocess, "run") as run:
-            for key in ["F1", "F3", "F9", "F10"]:
+            for key in ["F1", "F3"]:
                 display.key(process, "ctrl+shift+" + key)
                 window.assert_called_with(process, focused=True)
                 run.assert_called_with(
                     ["/fixture/bin/wtype", "-s", "150", "-M", "ctrl", "-M", "shift", "-k", key,
                      "-m", "shift", "-m", "ctrl", "-s", "100"],
+                    env=display.env, check=True, capture_output=True, timeout=5)
+
+    def test_wayland_letter_panes_use_exact_alt_and_shift_order(self):
+        probe = unix_ui_probe()
+        display = object.__new__(probe.WaylandDisplay)
+        display.tools = {"wtype": "/fixture/bin/wtype"}
+        display.env = {"WAYLAND_DISPLAY": "fixture"}
+        process = SimpleNamespace(pid=42, poll=lambda: None)
+        with patch.object(display, "window", return_value={"id": 7}) as window, \
+             patch.object(probe.subprocess, "run") as run:
+            for chord, events in [
+                ("alt+j", ["-M", "alt", "-k", "j", "-m", "alt"]),
+                ("alt+shift+j", ["-M", "alt", "-M", "shift", "-k", "j", "-m", "shift", "-m", "alt"]),
+            ]:
+                display.key(process, chord)
+                window.assert_called_with(process, focused=True)
+                run.assert_called_with(
+                    ["/fixture/bin/wtype", "-s", "150", *events, "-s", "100"],
                     env=display.env, check=True, capture_output=True, timeout=5)
 
     def test_wayland_compositor_environment_never_reuses_the_user_display(self):

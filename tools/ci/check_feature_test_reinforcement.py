@@ -272,7 +272,7 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "exhaustive category coverage",
             "held Enter",
             "shifted punctuation",
-            "Ctrl+Shift+F9/F10 right-pane",
+            "Alt+J/Alt+Shift+J right-pane",
             "all effective shortcut labels",
             "Complete classic palette defaults",
             "source-free shortcut chips",

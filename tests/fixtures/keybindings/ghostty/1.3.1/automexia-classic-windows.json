@@ -1568,7 +1568,7 @@
       "origin": "built_in_or_legacy_user",
       "platform": "Windows",
       "profile": "automexia",
-      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(F9), location: Standard }"
+      "trigger": "ModifiersState(ALT)+Keycode { key: Character(\"j\"), location: Standard }"
     },
     {
       "action": "CloneSplitDown",
@@ -1588,7 +1588,7 @@
       "origin": "built_in_or_legacy_user",
       "platform": "Windows",
       "profile": "automexia",
-      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(F10), location: Standard }"
+      "trigger": "ModifiersState(SHIFT | ALT)+Keycode { key: Character(\"j\"), location: Standard }"
     },
     {
       "action": "SplitDown",

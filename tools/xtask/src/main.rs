@@ -4031,9 +4031,9 @@ fn pane_shortcut_defaults_present(bindings: &str) -> bool {
     // Windows and Unix own separate platform tables. Both must retain all four
     // approved chords and all three terminal-mode exclusions.
     [
-        r#"Key::Named(F9), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight"#,
+        r#""j", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight"#,
         r#""d", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown"#,
-        r#"Key::Named(F10), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight"#,
+        r#""j", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight"#,
         r#""d", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown"#,
     ]
     .iter()
@@ -5466,15 +5466,11 @@ mod tests {
         .unwrap();
         assert!(super::pane_shortcut_defaults_present(&source));
         for (key, modifiers, action) in [
-            (
-                "Key::Named(F9)",
-                "ModifiersState::CONTROL | ModifiersState::SHIFT",
-                "CloneSplitRight",
-            ),
+            (r#""j""#, "ModifiersState::ALT", "CloneSplitRight"),
             (r#""d""#, "ModifiersState::ALT", "CloneSplitDown"),
             (
-                "Key::Named(F10)",
-                "ModifiersState::CONTROL | ModifiersState::SHIFT",
+                r#""j""#,
+                "ModifiersState::ALT | ModifiersState::SHIFT",
                 "SplitRight",
             ),
             (

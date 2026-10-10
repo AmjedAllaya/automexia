@@ -727,9 +727,18 @@ mod tests {
         } else {
             "ctrl"
         };
-        for key in ["f1", "f2", "f3", "f5", "f9", "f10", "f12"] {
+        let mut chords: Vec<_> = ["f1", "f2", "f3", "f5", "f12"]
+            .into_iter()
+            .map(|key| (format!("{primary}+shift+{key}"), true))
+            .collect();
+        chords.extend([
+            ("alt+j".into(), !cfg!(target_os = "macos")),
+            ("alt+shift+j".into(), !cfg!(target_os = "macos")),
+            ("ctrl+shift+f9".into(), false),
+            ("ctrl+shift+f10".into(), false),
+        ]);
+        for (chord, occupied) in chords {
             let mut config = Config::default();
-            let chord = format!("{primary}+shift+{key}");
             let saved = UiShortcut {
                 action: "Paste".into(),
                 trigger: trigger(&chord),
@@ -757,7 +766,7 @@ mod tests {
             assert_eq!(actions, vec![&Action::Paste]);
             // Capture still rejects assigning a new shortcut to an occupied key.
             let base = super::super::default_key_bindings(&Config::default());
-            if key != "f9" && key != "f10" || !cfg!(target_os = "macos") {
+            if occupied {
                 assert!(
                     conflict(PaletteAction::Paste, &trigger(&chord), &base, None)
                         .is_some()

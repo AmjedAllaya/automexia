@@ -92,14 +92,14 @@ terminal applications and never write to or execute in the PTY.
 | Close other window-level tabs | `Ctrl+Shift+F4` | `Cmd+Alt+W` |
 | Next / previous window tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
 | Next / previous local tab | `Alt+PageDown` / `Alt+PageUp` | `Cmd+Alt+]` / `Cmd+Alt+[` |
-| Fresh split right / down | `Ctrl+Shift+F10` / `Alt+Shift+D` | `Cmd+D` / `Cmd+Shift+D` |
-| Clone current launch context right / down | `Ctrl+Shift+F9` / `Alt+D` | `Cmd+Alt+Shift+R` / `Cmd+Alt+Shift+D` |
+| Fresh split right / down | `Alt+Shift+J` / `Alt+Shift+D` | `Cmd+D` / `Cmd+Shift+D` |
+| Clone current launch context right / down | `Alt+J` / `Alt+D` | `Cmd+Alt+Shift+R` / `Cmd+Alt+Shift+D` |
 | Geometric pane focus | `Alt+Arrow` | `Cmd+Alt+Arrow` |
 | Cycle next / previous pane | `F6` / `Shift+F6` | `Cmd+]` / `Cmd+[` |
 
 ### A key difference: fresh vs clone
 
-**Ctrl+Shift+F9** clones right; **Ctrl+Shift+F10** creates a fresh default-shell
+**Alt+J** clones right; **Alt+Shift+J** creates a fresh default-shell
 right pane on Windows/Linux/BSD. Down panes retain Alt+D (clone) and Alt+Shift+D
 (fresh). The grouped palette shows the effective shortcuts and lets you change
 them with F2. Search, Vi and alternate-screen applications retain these keys.

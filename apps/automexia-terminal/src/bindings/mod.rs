@@ -1508,9 +1508,9 @@ fn automexia_windows_key_bindings(
         key_bindings.extend(bindings!(
             KeyBinding;
             // Right panes leave shell Alt+E/R and desktop overlays untouched.
-            Key::Named(F9), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
+            "j", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
             "d", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown;
-            Key::Named(F10), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
+            "j", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
             "d", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
             Key::Named(F6), ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectNextSplit;
             Key::Named(F6), ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectPrevSplit;
@@ -1596,9 +1596,9 @@ fn automexia_unix_key_bindings(
         key_bindings.extend(bindings!(
             KeyBinding;
             // Right panes leave shell Alt+E/R and desktop overlays untouched.
-            Key::Named(F9), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
+            "j", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
             "d", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown;
-            Key::Named(F10), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
+            "j", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
             "d", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
             Key::Named(F6), ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectNextSplit;
             Key::Named(F6), ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectPrevSplit;
@@ -2482,8 +2482,8 @@ mod tests {
         ] {
             for (key, modifiers, action) in [
                 (
-                    Key::Named(F10),
-                    ModifiersState::CONTROL | ModifiersState::SHIFT,
+                    Key::Character("j".into()),
+                    ModifiersState::ALT | ModifiersState::SHIFT,
                     Action::SplitRight,
                 ),
                 (
@@ -2492,8 +2492,8 @@ mod tests {
                     Action::SplitDown,
                 ),
                 (
-                    Key::Named(F9),
-                    ModifiersState::CONTROL | ModifiersState::SHIFT,
+                    Key::Character("j".into()),
+                    ModifiersState::ALT,
                     Action::CloneSplitRight,
                 ),
                 (
@@ -2565,14 +2565,11 @@ mod tests {
             automexia_unix_key_bindings(true, true),
         ] {
             for (key, modifiers) in [
-                (
-                    Key::Named(F9),
-                    ModifiersState::CONTROL | ModifiersState::SHIFT,
-                ),
+                (Key::Character("j".into()), ModifiersState::ALT),
                 (Key::Character("d".into()), ModifiersState::ALT),
                 (
-                    Key::Named(F10),
-                    ModifiersState::CONTROL | ModifiersState::SHIFT,
+                    Key::Character("j".into()),
+                    ModifiersState::ALT | ModifiersState::SHIFT,
                 ),
                 (
                     Key::Character("d".into()),
@@ -2615,8 +2612,8 @@ mod tests {
             }
             let rebound = config_key_bindings(
                 vec![ConfigKeyBinding {
-                    key: "F9".into(),
-                    with: "control | shift".into(),
+                    key: "j".into(),
+                    with: "alt".into(),
                     action: "ReceiveChar".into(),
                     esc: String::new(),
                     mode: String::new(),
@@ -2625,8 +2622,8 @@ mod tests {
             );
             assert_action_binding(
                 &rebound,
-                Key::Named(F9),
-                ModifiersState::CONTROL | ModifiersState::SHIFT,
+                Key::Character("j".into()),
+                ModifiersState::ALT,
                 Action::ReceiveChar,
             );
             assert!(!rebound
@@ -2658,14 +2655,11 @@ mod tests {
                     )));
                 }
                 for (key, modifiers) in [
-                    (
-                        Key::Named(F9),
-                        ModifiersState::CONTROL | ModifiersState::SHIFT,
-                    ),
+                    (Key::Character("j".into()), ModifiersState::ALT),
                     (Key::Character("d".into()), ModifiersState::ALT),
                     (
-                        Key::Named(F10),
-                        ModifiersState::CONTROL | ModifiersState::SHIFT,
+                        Key::Character("j".into()),
+                        ModifiersState::ALT | ModifiersState::SHIFT,
                     ),
                     (
                         Key::Character("d".into()),
@@ -2700,7 +2694,7 @@ mod tests {
     }
 
     #[test]
-    fn right_pane_defaults_preserve_shell_accents_and_require_exact_function_keys() {
+    fn right_pane_defaults_preserve_shell_accents_and_require_exact_letter_chords() {
         use automexia_keybindings::PlatformFamily::{LinuxBsd, Macos, Windows};
         for platform in [Windows, LinuxBsd, Macos] {
             for enabled in [false, true] {
@@ -2726,14 +2720,34 @@ mod tests {
                         );
                     }
                 }
-                for (key, expected) in
-                    [(F9, Action::CloneSplitRight), (F10, Action::SplitRight)]
-                {
+                for key in [F9, F10] {
                     let trigger = BindingKey::Keycode {
                         key: Key::Named(key),
                         location: KeyLocation::Standard,
                     };
-                    let required = ModifiersState::CONTROL | ModifiersState::SHIFT;
+                    assert!(!bindings.iter().any(|binding| {
+                        binding.is_triggered_by(
+                            BindingMode::empty(),
+                            ModifiersState::CONTROL | ModifiersState::SHIFT,
+                            &trigger,
+                        ) && matches!(
+                            binding.action,
+                            Action::SplitRight | Action::CloneSplitRight
+                        )
+                    }));
+                }
+                for (required, expected) in [
+                    (ModifiersState::ALT, Action::CloneSplitRight),
+                    (
+                        ModifiersState::ALT | ModifiersState::SHIFT,
+                        Action::SplitRight,
+                    ),
+                ] {
+                    let key = Key::Character("j".into());
+                    let trigger = BindingKey::Keycode {
+                        key: key.clone(),
+                        location: KeyLocation::Standard,
+                    };
                     for mode in [
                         BindingMode::empty(),
                         BindingMode::SEARCH,
@@ -2745,7 +2759,7 @@ mod tests {
                             ModifiersState::empty(),
                             ModifiersState::CONTROL,
                             ModifiersState::SHIFT,
-                            required | ModifiersState::ALT,
+                            required | ModifiersState::CONTROL,
                             required | ModifiersState::SUPER,
                         ] {
                             let actions: Vec<_> = bindings
@@ -3204,8 +3218,8 @@ mod tests {
         );
         assert_action_binding(
             &bindings,
-            Key::Named(F10),
-            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            Key::Character("j".into()),
+            ModifiersState::ALT | ModifiersState::SHIFT,
             Action::SplitRight,
         );
         assert_action_binding(
@@ -3301,8 +3315,8 @@ mod tests {
         );
         assert_action_binding(
             &bindings,
-            Key::Named(F10),
-            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            Key::Character("j".into()),
+            ModifiersState::ALT | ModifiersState::SHIFT,
             Action::SplitRight,
         );
         assert_action_binding(

@@ -108,7 +108,7 @@ const SHORTCUT_CLOSE_SURFACE: &str = "Ctrl+Shift+W";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SPLIT_RIGHT: &str = "Cmd+D";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_SPLIT_RIGHT: &str = "Ctrl+Shift+F10";
+const SHORTCUT_SPLIT_RIGHT: &str = "Alt+Shift+J";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SPLIT_DOWN: &str = "Cmd+Shift+D";
 #[cfg(not(target_os = "macos"))]
@@ -116,7 +116,7 @@ const SHORTCUT_SPLIT_DOWN: &str = "Alt+Shift+D";
 #[cfg(target_os = "macos")]
 const SHORTCUT_CLONE_RIGHT: &str = "Cmd+Alt+Shift+R";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_CLONE_RIGHT: &str = "Ctrl+Shift+F9";
+const SHORTCUT_CLONE_RIGHT: &str = "Alt+J";
 #[cfg(target_os = "macos")]
 const SHORTCUT_CLONE_DOWN: &str = "Cmd+Alt+Shift+D";
 #[cfg(not(target_os = "macos"))]
@@ -4461,7 +4461,7 @@ mod tests {
             for width in [200.0, 280.0, 576.0, 7680.0] {
                 for label in [
                     "Enter",
-                    "Ctrl+Shift+F10",
+                    "Alt+Shift+J",
                     "Ctrl+Shift+PageDown",
                     "Read-only · Example context",
                     "⌘⇧ → e\u{301}",

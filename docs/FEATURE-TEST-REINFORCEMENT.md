@@ -659,7 +659,7 @@ Navigation rows expose no executable action. Keyboard and pointer dispatch must
 share the application activation owner. Check fresh and clone chords independently
 on every platform, retired shifted punctuation, disabled splits, mode suppression,
 typed tombstones, explicit overrides and strict-profile isolation. Verify the
-approved Ctrl+Shift+F9/F10 right-pane and Alt+D/Alt+Shift+D down-pane matrix against actual configured
+approved Alt+J/Alt+Shift+J right-pane and Alt+D/Alt+Shift+D down-pane matrix against actual configured
 defaults as well as isolated platform tables. Cover all effective shortcut labels:
 missing defaults, hardware Copy/Paste fallback, search-only keys, wrong modes,
 typed chains, reload storage bounds and distinct ClearHistory/ClearScreen actions.
