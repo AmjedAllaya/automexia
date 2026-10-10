@@ -623,38 +623,57 @@ fn unix_prompt_startup_resize(c: &mut Criterion) {
 
     let coalesced = b"\x1b]133;A;aid=1\x07\x1b]133;P;k=c;aid=1\x07\
                       \x1b[2;1HC:\\fixture\r\n\x1b]133;P;k=c;aid=1\x07> \x1b]133;B\x07";
-    c.bench_function("conpty_prompt_passthrough_snapshot", |b| {
-        b.iter_batched(
-            || {
-                let mut terminal = term();
-                terminal.set_resize_policy(rio_vt::crosswords::ResizePolicy::Conpty);
-                (terminal, Processor::default())
-            },
-            |(mut terminal, mut parser)| {
-                for fragment in coalesced.chunks(7) {
-                    parser.advance(&mut terminal, fragment);
-                }
-                let mut rows = Vec::new();
-                let mut styles = Vec::new();
-                let mut extras = rustc_hash::FxHashMap::default();
-                terminal.snapshot_visible(
-                    &TerminalDamage::Full,
-                    COLS,
-                    &mut rows,
-                    &mut styles,
-                    &mut extras,
-                );
-                assert_eq!(
-                    rows.iter()
-                        .filter(|row| row.semantic_prompt == SemanticPrompt::Prompt)
-                        .count(),
-                    1
-                );
-                std::hint::black_box(rows);
-            },
-            BatchSize::SmallInput,
-        )
-    });
+    let fish = b"\x1b]1337;SetUserVar=automexia_shell_name=ZmlzaA==\x07\
+                 \x1b]133;A;aid=1\x07 \r\n\x1b]133;P;k=c;aid=1\x07\x1b]133;B\x07\
+                 \x1b]133;A;click_events=1\x1b\\fixture> \x1b]133;B\x1b\\";
+    for (name, stream, conpty) in [
+        (
+            "conpty_prompt_passthrough_snapshot",
+            coalesced.as_slice(),
+            true,
+        ),
+        (
+            "fish_prompt_native_markers_snapshot",
+            fish.as_slice(),
+            false,
+        ),
+    ] {
+        c.bench_function(name, |b| {
+            b.iter_batched(
+                || {
+                    let mut terminal = term();
+                    if conpty {
+                        terminal
+                            .set_resize_policy(rio_vt::crosswords::ResizePolicy::Conpty);
+                    }
+                    (terminal, Processor::default())
+                },
+                |(mut terminal, mut parser)| {
+                    for fragment in stream.chunks(7) {
+                        parser.advance(&mut terminal, fragment);
+                    }
+                    let mut rows = Vec::new();
+                    let mut styles = Vec::new();
+                    let mut extras = rustc_hash::FxHashMap::default();
+                    terminal.snapshot_visible(
+                        &TerminalDamage::Full,
+                        COLS,
+                        &mut rows,
+                        &mut styles,
+                        &mut extras,
+                    );
+                    assert_eq!(
+                        rows.iter()
+                            .filter(|row| row.semantic_prompt == SemanticPrompt::Prompt)
+                            .count(),
+                        1
+                    );
+                    std::hint::black_box(rows);
+                },
+                BatchSize::SmallInput,
+            )
+        });
+    }
     let path = "/tmp/example/terminal/project/workspace";
     let prefix = format!(
         "\x1b[1m\x1b[7m%\x1b[0m{}\r \r\

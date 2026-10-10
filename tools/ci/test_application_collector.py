@@ -171,6 +171,23 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(report, {'pointer': {'x': 12},
             'chrome': {'header_height': 32, 'maximized': False}, 'window_width': 800})
 
+    def test_caption_probe_handles_initially_maximized_windows_and_rejects_old_frames(self):
+        probe = unix_ui_probe()
+        for initial in (False, True):
+            before = {'sequence': 20, 'chrome': {'maximized': initial}}
+            label, expected, sequence = probe.caption_transition(before)
+            self.assertEqual(label, 'Restore window' if initial else 'Maximize window')
+            self.assertIs(expected, not initial)
+            self.assertFalse(probe.caption_transition_presented(before, expected, sequence))
+            self.assertFalse(probe.caption_transition_presented(
+                {'sequence': 20, 'chrome': {'maximized': expected}}, expected, sequence))
+            self.assertTrue(probe.caption_transition_presented(
+                {'sequence': 21, 'chrome': {'maximized': expected}}, expected, sequence))
+        for state in ({}, {'sequence': 1, 'chrome': {'maximized': 1}},
+                      {'sequence': True, 'chrome': {'maximized': False}}):
+            with self.assertRaises(probe.Failure):
+                probe.caption_transition(state)
+
     def test_theme_probe_rejects_placeholder_or_incomplete_inventory(self):
         probe = unix_ui_probe()
         for state in [{}, {'settings': {}}, {'settings': {'gallery': None}}]:

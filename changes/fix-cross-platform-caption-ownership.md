@@ -26,3 +26,7 @@ markers produce exactly one start row.
 The optional terminal-core window bridge now forwards selected Linux display
 backends without activating windowing for headless embedders. CI checks the core
 in isolation so workspace feature unification cannot hide a broken backend.
+
+Fish 4 native prompt markers now coexist with identified context rows without
+replacing their owner or counting command completion twice. Native caption
+probes handle initially maximized desktops and require a fresh transition.

@@ -4950,6 +4950,28 @@ impl<U: EventListener> Handler for Crosswords<U> {
         mark: crate::crosswords::grid::row::SemanticPrompt,
         prompt_id: Option<u64>,
     ) {
+        // Fish 4 also emits unnumbered A/B markers around its native prompt
+        // and redisplays. Our identified spacer already owns this editing
+        // generation; a native A must not replace it with an unowned anchor.
+        // A command start retires the active owner, so nested/unintegrated
+        // prompts and other shells retain the ordinary OSC 133 behavior.
+        let fish_native_prompt = prompt_id.is_none()
+            && mark == crate::crosswords::grid::row::SemanticPrompt::Prompt
+            && self.active_semantic_prompt.as_ref().is_some_and(|active| {
+                active.id.is_some() && active.phase == ActivePromptPhase::Input
+            })
+            && self
+                .integration_scope()
+                .map(|scope| scope.shell.as_str())
+                .or_else(|| {
+                    self.user_vars
+                        .get("automexia_shell_name")
+                        .map(String::as_str)
+                })
+                == Some("fish");
+        if fish_native_prompt {
+            return;
+        }
         let prompt_id = self.scope_prompt_identity(
             prompt_id,
             mark == crate::crosswords::grid::row::SemanticPrompt::Prompt,
@@ -8607,6 +8629,67 @@ mod tests {
             completed.completed_at.is_some(),
             "an accepted real shell completion must receive one terminal-owned wall-clock identity"
         );
+    }
+
+    #[test]
+    fn fish_native_prompt_markers_preserve_identified_context_and_single_completion() {
+        use crate::crosswords::grid::row::SemanticPrompt;
+        use crate::performer::handler::Processor;
+
+        // Fish 4 emits its own unnumbered A/B after the integration's spacer,
+        // then native C/D in addition to the integration event callbacks.
+        let prompt = b"\x1b]1337;SetUserVar=automexia_shell_name=ZmlzaA==\x07\
+                       \x1b]133;A;aid=41\x07 \r\n\x1b]133;P;k=c;aid=41\x07\
+                       \x1b]133;B\x07\x1b]133;A;click_events=1\x1b\\fixture> \x1b]133;B\x1b\\";
+        for split in 0..=prompt.len() {
+            let mut cw = make_prompt_crosswords(80, 8);
+            let mut processor = Processor::default();
+            processor.advance(&mut cw, &prompt[..split]);
+            processor.advance(&mut cw, &prompt[split..]);
+            assert_eq!(cw.active_semantic_prompt.as_ref().unwrap().id, Some(41));
+            let snapshot = cw
+                .active_semantic_prompt
+                .as_ref()
+                .unwrap()
+                .snapshot
+                .as_ref()
+                .unwrap();
+            assert_eq!(snapshot.context_rows, 1);
+            assert!(snapshot.editor_prefix_text.is_empty());
+            assert_eq!(cw.grid[Line(0)].semantic_prompt, SemanticPrompt::Prompt);
+            assert_eq!(
+                cw.grid[Line(1)].semantic_prompt,
+                SemanticPrompt::PromptContinuation
+            );
+            assert_eq!(semantic_row_text(&cw, Line(1)), "fixture>");
+            processor.advance(
+                &mut cw,
+                b"\x1b]133;C;cmdline_url=false\x1b\\\x1b]133;C\x07\r\n\
+                output\r\n\x1b]133;D;1\x1b\\\x1b]133;D;1\x07",
+            );
+            let result = cw.grid[Line(0)].semantic_command_result.unwrap();
+            assert_eq!(result.exit_code, Some(1));
+            assert_eq!(cw.session_activity.completed_commands, 1);
+            assert_eq!(semantic_row_text(&cw, Line(2)), "output");
+        }
+    }
+
+    #[test]
+    fn native_prompt_start_still_owns_nonfish_and_postexecution_prompts() {
+        use crate::performer::handler::Processor;
+
+        for (shell, executed) in [("bash", false), ("fish", true)] {
+            let mut cw = make_prompt_crosswords(80, 8);
+            cw.user_vars
+                .insert("automexia_shell_name".into(), shell.into());
+            let mut processor = Processor::default();
+            processor.advance(&mut cw, b"\x1b]133;A;aid=41\x07> \x1b]133;B\x07");
+            if executed {
+                processor.advance(&mut cw, b"\x1b]133;C\x07");
+            }
+            processor.advance(&mut cw, b"\x1b]133;A\x1b\\");
+            assert_eq!(cw.active_semantic_prompt.as_ref().unwrap().id, None);
+        }
     }
 
     #[test]

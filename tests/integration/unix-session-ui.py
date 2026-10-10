@@ -66,6 +66,19 @@ def theme_gallery_ready(state: dict) -> bool:
     return bool(gallery and gallery.get("busy") is False and gallery.get("count", 0) >= 6)
 
 
+def caption_transition(state: dict) -> tuple[str, bool, int]:
+    maximized = (state.get("chrome") or {}).get("maximized")
+    sequence = state.get("sequence")
+    check(type(maximized) is bool and type(sequence) is int and sequence >= 0,
+          "native caption state unavailable")
+    return ("Restore window" if maximized else "Maximize window", not maximized, sequence)
+
+
+def caption_transition_presented(state: dict, maximized: bool, sequence: int) -> bool:
+    return (state.get("sequence", 0) > sequence
+            and (state.get("chrome") or {}).get("maximized") is maximized)
+
+
 def native_geometry_ready(state: dict, scale: float | None, logical_size=None) -> bool:
     actual = state.get("scale_factor")
     if not isinstance(actual, (int, float)) or not math.isfinite(actual) or actual <= 0:
@@ -483,28 +496,32 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 key("Escape")
                 wait(lambda s: not s.get("palette_enabled"), "pointer-opened palette did not close")
                 if MACOS:
-                    for maximized in (True, False):
-                        chrome = state()["chrome"]
+                    for _ in range(2):
+                        before = state()
+                        _, maximized, presented_sequence = caption_transition(before)
+                        chrome = before["chrome"]
                         click(chrome["controls_x"] + 1.5 * chrome["button_width"], chrome["header_height"] / 2)
-                        wait(lambda s: s.get("chrome", {}).get("maximized") is maximized,
+                        wait(lambda s: caption_transition_presented(s, maximized, presented_sequence),
                              "native maximize/restore caption failed")
                 if MACOS:
                     # Reading children activates the native adapter lazily. Wait
                     # for its real frame; snapshots cannot satisfy this oracle.
-                    def await_caption(label, present=True):
+                    def await_caption(caption_label, present=True, press=False):
                         end = time.monotonic() + 8
                         while time.monotonic() < end:
-                            if driver.caption(label) is present:
+                            if driver.caption(caption_label, press=press) is present:
                                 return
                             time.sleep(.05)
                         raise Failure("native AX caption state did not settle")
 
-                    for label in ("Minimize window", "Close window"):
-                        await_caption(label)
-                    for label, maximized in (("Maximize window", True), ("Restore window", False)):
-                        await_caption(label)
-                        check(driver.caption(label, press=True), "native AX caption action missing")
-                        wait(lambda s: s.get("chrome", {}).get("maximized") is maximized,
+                    for caption_label in ("Minimize window", "Close window"):
+                        await_caption(caption_label)
+                    for _ in range(2):
+                        caption_label, maximized, presented_sequence = caption_transition(state())
+                        # Find and press one retained native element in the same
+                        # traversal; a separate presence query can become stale.
+                        await_caption(caption_label, press=True)
+                        wait(lambda s: caption_transition_presented(s, maximized, presented_sequence),
                              "native AX maximize/restore failed")
                 send("open-customizations")
                 wait(lambda s: s.get("settings", {}).get("ready"), "settings not ready")
