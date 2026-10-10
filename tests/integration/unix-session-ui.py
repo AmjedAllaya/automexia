@@ -82,6 +82,17 @@ def caption_transition_presented(state: dict, maximized: bool, sequence: int, na
             and native_geometry_ready(state, None, native_size))
 
 
+def caption_pointer_ready(state: dict, driver) -> bool:
+    if not native_geometry_ready(state, None, driver.window_size()):
+        return False
+    label, _, _ = caption_transition(state)
+    chrome = state["chrome"]
+    # AXSize can reach its destination while WindowServer is still animating.
+    # Read the actual native hit target before posting any mouse input.
+    return driver.pointer_caption_ready(label, chrome["controls_x"] + 1.5 * chrome["button_width"],
+                                        chrome["header_height"] / 2)
+
+
 def native_geometry_ready(state: dict, scale: float | None, logical_size=None) -> bool:
     actual = state.get("scale_factor")
     if not isinstance(actual, (int, float)) or not math.isfinite(actual) or actual <= 0:
@@ -500,8 +511,8 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 wait(lambda s: not s.get("palette_enabled"), "pointer-opened palette did not close")
                 if MACOS:
                     for _ in range(2):
-                        before = wait(lambda s: native_geometry_ready(s, None, driver.window_size()),
-                                      "native caption geometry did not settle")
+                        before = wait(lambda s: caption_pointer_ready(s, driver),
+                                      "native caption pointer target did not settle")
                         _, maximized, presented_sequence = caption_transition(before)
                         chrome = before["chrome"]
                         click(chrome["controls_x"] + 1.5 * chrome["button_width"], chrome["header_height"] / 2)

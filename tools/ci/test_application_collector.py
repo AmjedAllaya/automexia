@@ -123,6 +123,76 @@ class CollectorTests(unittest.TestCase):
             driver.check_pointer_owner(Point(float('nan'), 30))
         self.assertEqual(len(released), 4)
 
+    def test_macos_caption_pointer_waits_for_exact_owned_hit_without_posting_input(self):
+        from macos_driver import Point
+        driver = object.__new__(MacDriver)
+        driver.process = SimpleNamespace(pid=42)
+        driver.check = lambda: None
+        points, released, attributes = [], [], []
+        def point(x, y):
+            points.append((x, y))
+            return Point(x + 20, y + 30)
+        driver.pointer_point = point
+        driver.string = lambda text: text
+        driver.cf = SimpleNamespace(CFRelease=released.append, CFEqual=lambda a, b: a == b)
+        driver.cg = SimpleNamespace(CGEventPost=lambda *args: self.fail('readiness posted input'))
+        def hit(system, x, y, output):
+            self.assertEqual((x, y), (60, 80))
+            output._obj.value = 2
+            return 0
+        for pid, role, title, ready in ((43, 'AXButton', 'Restore window', False),
+                                       (42, 'AXWindow', 'Restore window', False),
+                                       (42, 'AXButton', 'Maximize window', False),
+                                       (42, 'AXButton', None, False),
+                                       (42, 'AXButton', 'Restore window', True)):
+            released.clear()
+            attributes.clear()
+            def owner(element, output):
+                output._obj.value = pid
+                return 0
+            def copy(element, name, optional=False):
+                attributes.append(name)
+                return {'AXRole': role, 'AXTitle': title}[name]
+            driver.copy = copy
+            driver.ax = SimpleNamespace(AXUIElementCreateSystemWide=lambda: 1,
+                AXUIElementSetMessagingTimeout=lambda element, seconds: 0,
+                AXUIElementCopyElementAtPosition=hit, AXUIElementGetPid=owner)
+            self.assertIs(driver.pointer_caption_ready('Restore window', 40, 50), ready)
+            self.assertEqual(released[-2:], [2, 1])
+            if pid == 43:
+                self.assertEqual(attributes, [])
+                self.assertEqual(released, [2, 1])
+            else:
+                expected = [role] + ([title, 'AXButton', 'Restore window'] if title else [])
+                self.assertEqual(released, expected + [2, 1])
+        self.assertEqual(points, [(40, 50)] * 5)
+        with self.assertRaises(BenchmarkError):
+            driver.pointer_caption_ready('Run command', 40, 50)
+        self.assertEqual(len(points), 5)
+        released.clear()
+        driver.check = lambda: (_ for _ in ()).throw(BenchmarkError('focus changed'))
+        with self.assertRaises(BenchmarkError):
+            driver.pointer_caption_ready('Restore window', 40, 50)
+        self.assertEqual(released, [])
+
+    def test_caption_probe_waits_for_windowserver_hit_after_size_has_settled(self):
+        probe = unix_ui_probe()
+        state = {'sequence': 21, 'scale_factor': 1, 'window_width': 1200,
+                 'window_height': 800, 'chrome': {'maximized': False,
+                 'controls_x': 1074, 'button_width': 42, 'header_height': 44}}
+        calls = []
+        for ready in (False, True):
+            def hit(label, x, y):
+                calls.append((label, x, y))
+                return ready
+            driver = SimpleNamespace(window_size=lambda: (1200, 800), pointer_caption_ready=hit)
+            self.assertIs(probe.caption_pointer_ready(state, driver), ready)
+        self.assertEqual(calls, [('Maximize window', 1137, 22)] * 2)
+        calls.clear()
+        driver.window_size = lambda: (1920, 959)
+        self.assertFalse(probe.caption_pointer_ready(state, driver))
+        self.assertEqual(calls, [])
+
     def test_macos_native_click_pairs_release_and_stops_before_foreign_press(self):
         driver = object.__new__(MacDriver)
         driver.window = 9

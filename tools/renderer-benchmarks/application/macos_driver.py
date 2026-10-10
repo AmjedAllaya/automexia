@@ -21,6 +21,8 @@ class Size(ct.Structure):
 
 
 class MacDriver:
+    CAPTION_LABELS = ('Minimize window', 'Maximize window', 'Restore window', 'Close window')
+
     def __init__(self, process):
         self.process, self.application, self.window = process, None, None
         self.cf = ct.CDLL('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation')
@@ -204,7 +206,10 @@ class MacDriver:
         finally:
             self.cf.CFRelease(windows)
 
-    def check_pointer_owner(self, point):
+    def pointer_hit_matches(self, point, caption=None):
+        """Read-only readiness; actual input retains strict ownership checks."""
+        if caption is not None and caption not in self.CAPTION_LABELS:
+            raise BenchmarkError('unsupported fixed caption probe')
         self.check()
         if not math.isfinite(point.x) or not math.isfinite(point.y):
             raise BenchmarkError('macOS pointer point is invalid')
@@ -218,13 +223,33 @@ class MacDriver:
                     or not hit.value
                     or self.ax.AXUIElementGetPid(hit.value, ct.byref(owner)) != 0
                     or owner.value != self.process.pid):
-                raise BenchmarkError('macOS pointer point is not owned; input stopped')
+                return False
+            if caption is None:
+                return True
+            values = []
+            try:
+                for attribute in ('AXRole', 'AXTitle'):
+                    value = self.copy(hit.value, attribute, optional=True)
+                    if not value:
+                        return False
+                    values.append(value)
+                for text in ('AXButton', caption):
+                    values.append(self.string(text))
+                return bool(self.cf.CFEqual(values[0], values[2])
+                            and self.cf.CFEqual(values[1], values[3]))
+            finally:
+                for value in values:
+                    self.cf.CFRelease(value)
         finally:
             if hit.value:
                 self.cf.CFRelease(hit.value)
             self.cf.CFRelease(system)
 
-    def click(self, x, y):
+    def check_pointer_owner(self, point):
+        if not self.pointer_hit_matches(point):
+            raise BenchmarkError('macOS pointer point is not owned; input stopped')
+
+    def pointer_point(self, x, y):
         self.check()
         point, size = Point(), Size()
         for name, kind, result in [('AXPosition', 1, point), ('AXSize', 2, size)]:
@@ -238,6 +263,15 @@ class MacDriver:
             raise BenchmarkError('macOS pointer probe outside owned window')
         point.x += x
         point.y += y
+        return point
+
+    def pointer_caption_ready(self, label, x, y):
+        if label not in self.CAPTION_LABELS:
+            raise BenchmarkError('unsupported fixed caption probe')
+        return self.pointer_hit_matches(self.pointer_point(x, y), label)
+
+    def click(self, x, y):
+        point = self.pointer_point(x, y)
         self.owned_window_number()  # Reject ambiguous or stale owned windows.
         events = []
         try:
@@ -289,7 +323,7 @@ class MacDriver:
 
     def caption(self, label, press=False):
         """Find a fixed caption in the owned AX tree, optionally activate it."""
-        if label not in ('Minimize window', 'Maximize window', 'Restore window', 'Close window'):
+        if label not in self.CAPTION_LABELS:
             raise BenchmarkError('unsupported fixed caption probe')
         self.check()
         pending, retained, matches = [self.window], [], []

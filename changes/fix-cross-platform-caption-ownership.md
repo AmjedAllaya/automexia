@@ -30,5 +30,7 @@ in isolation so workspace feature unification cannot hide a broken backend.
 Fish 4 native prompt markers now coexist with identified context rows without
 replacing their owner or counting command completion twice. Native caption
 probes handle initially maximized desktops and require a fresh transition whose
-presented bounds match the owned native window. Repeated CPU and Metal scenarios
-cover resize event ordering before subsequent pointer or accessibility actions.
+presented bounds match the owned native window. Mouse probes also wait for the
+exact caption button under the native hit-test point before sending input.
+Repeated CPU and Metal scenarios cover resize event ordering before subsequent
+pointer or accessibility actions.
