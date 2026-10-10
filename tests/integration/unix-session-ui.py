@@ -496,6 +496,100 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 check(any(row.get("result_exit_code") == 1 for row in result.get("semantic_rows", [])), "failed command status lost")
                 result = command("printf 'NAME  STATUS   AGE\\napi   Running  2d\\nweb   Pending  1d\\n'")
                 check(result.get("inline_table_count", 0) >= 1, "inline table not rendered")
+                # Captured GNU formats, with synthetic values and paths. The
+                # blank corner and sparse mountpoint continuations are absent
+                # from the simple uppercase-header smoke above.
+                for rows in (
+                    (
+                        "               total        used        free      shared  buff/cache   available",
+                        "Mem:            11Gi       958Mi         9Gi       125Mi       1.2Gi        10Gi",
+                        "Swap:          8.0Gi       8.4Mi       8.0Gi",
+                    ),
+                    (
+                        "NAME",
+                        "    MAJ:MIN RM   SIZE RO TYPE MOUNTPOINTS",
+                        "sda   8:0    0 722.9M  1 disk",
+                        "sdb   8:16   0 159.4M  1 disk",
+                        "sdc   8:32   0     8G  0 disk [SWAP]",
+                        "sdd   8:48   0     1T  0 disk /mnt/example",
+                        "                              /mnt/archive",
+                        "                              /",
+                    ),
+                ):
+                    command("clear")
+                    result = command("printf '" + "\\n".join(rows) + "\\n'")
+                    wait(lambda s: s.get("inline_table_count") == 1, "numeric inventory table not rendered")
+                capture("numeric-table")
+                unchanged_text = active(state()).get("visible_text")
+                unchanged_prompt = state().get("latest_prompt_id")
+                unchanged_route = active(state()).get("route_id")
+                send("open-customizations")
+
+                def table_control() -> list:
+                    current = wait(lambda s: s.get("settings", {}).get("ready") and any(
+                        control.get("id") == "terminal.inline_tables"
+                        for control in s["settings"].get("controls", [])), "inline table control not reachable")
+                    return next(control["bounds"] for control in current["settings"]["controls"]
+                                if control["id"] == "terminal.inline_tables")
+
+                x, y, w, h = table_control()
+                click(x + w / 2, y + h / 2)
+                wait(lambda s: s.get("settings", {}).get("active_category") == "terminal.inline_tables",
+                     "inline table category did not open")
+                for count in (0, 1, 0, 1):
+                    x, y, w, h = table_control()
+                    click(x + w / 2, y + h / 2)
+                    toggled = wait(lambda s: s.get("inline_table_count") == count,
+                                   "table toggle did not update existing output")
+                    check(active(toggled).get("visible_text") == unchanged_text and
+                          toggled.get("latest_prompt_id") == unchanged_prompt,
+                          "table toggle changed source text or reran the command")
+                key("Escape")
+                wait(lambda s: s.get("settings", {}).get("active_category") is None, "table category did not close")
+                key("Escape")
+                wait(lambda s: not s.get("settings", {}).get("open"), "customizations did not close")
+                if backend == "cpu" and shell == "default" and scale == 1.0 and launch_mode == "default":
+                    # A route change must not republish stale presentation defaults.
+                    send("open-customizations")
+                    wait(lambda s: s.get("settings", {}).get("ready"), "table settings did not reopen")
+                    x, y, w, h = table_control()
+                    click(x + w / 2, y + h / 2)
+                    wait(lambda s: s.get("settings", {}).get("active_category") == "terminal.inline_tables",
+                         "table category did not reopen")
+                    x, y, w, h = table_control()
+                    click(x + w / 2, y + h / 2)
+                    wait(lambda s: s.get("inline_table_count") == 0, "table disable did not apply")
+                    key("Escape")
+                    wait(lambda s: s.get("settings", {}).get("active_category") is None, "table category did not close")
+                    key("Escape")
+                    wait(lambda s: not s.get("settings", {}).get("open"), "table settings did not close")
+                    send("local-tab")
+                    wait(lambda s: active(s).get("local_tab_count") == 2 and integrated_ready(s),
+                         "table persistence tab did not open")
+                    send("select-local:0")
+                    returned = wait(lambda s: active(s).get("route_id") == unchanged_route and
+                                    s.get("latest_prompt_id") == unchanged_prompt,
+                                    "original table terminal did not return")
+                    check(returned.get("inline_table_count") == 0,
+                          "switching terminals reverted the table preference")
+                    send("close-local:1")
+                    closed = wait(lambda s: active(s).get("local_tab_count") == 1 and
+                                  active(s).get("visible_text") == unchanged_text,
+                                  "closing the extra tab did not restore the exact original output")
+                    check(closed.get("inline_table_count") == 0, "closing a tab reverted the table preference")
+                    send("open-customizations")
+                    wait(lambda s: s.get("settings", {}).get("ready"), "table settings did not reopen")
+                    x, y, w, h = table_control()
+                    click(x + w / 2, y + h / 2)
+                    wait(lambda s: s.get("settings", {}).get("active_category") == "terminal.inline_tables",
+                         "table category did not reopen")
+                    x, y, w, h = table_control()
+                    click(x + w / 2, y + h / 2)
+                    wait(lambda s: s.get("inline_table_count") == 1, "table re-enable did not apply")
+                    key("Escape")
+                    wait(lambda s: s.get("settings", {}).get("active_category") is None, "table category did not close")
+                    key("Escape")
+                    wait(lambda s: not s.get("settings", {}).get("open"), "table settings did not close")
                 wait(lambda s: bool(s.get("prompt_context_paints")), "information tags not painted")
                 identity = active(state())
                 os_name = identity.get("shell_os_name")
@@ -611,7 +705,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                         "native_pixel_capture": not MACOS,
                         "display_server": "AppKit" if MACOS else display_server,
                         "fixture_cleanup": cleanup_diagnostics,
-                        "shell_integration": True, "table": True, "tags": True,
+                        "shell_integration": True, "table": True, "numeric_tables": True, "table_live_toggle": True, "tags": True,
                         "palette": True, "settings": True, "themes": True,
                         "split": True, "local_tab": True, "resize": True, "shared_caption_controls": True,
                         "header_pointer": True, "native_maximize_restore": True if MACOS else None,

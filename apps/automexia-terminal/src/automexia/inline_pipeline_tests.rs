@@ -831,3 +831,41 @@ fn inline_pipeline_right_aligned_numeric_sparse_first_row_uses_data_evidence() {
     assert_eq!(state.surfaces[0].table.source().len(), 2);
     assert!(!state.hides_native(2));
 }
+
+#[test]
+fn inline_pipeline_linux_inventory_tables() {
+    let cases = [
+        vec![
+            "    MAJ:MIN RM   SIZE RO TYPE MOUNTPOINTS",
+            "sda   8:0    0 722.9M  1 disk",
+            "sdb   8:16   0 159.4M  1 disk",
+            "sdc   8:32   0     8G  0 disk [SWAP]",
+            "sdd   8:48   0     1T  0 disk /mnt/example",
+            "                              /mnt/archive",
+            "                              /",
+        ],
+        vec![
+            "NAME MAJ:MIN RM   SIZE RO TYPE MOUNTPOINTS",
+            "sda    8:0    0 722.9M  1 disk",
+            "sdb    8:16   0 159.4M  1 disk",
+            "sdc    8:32   0     8G  0 disk [SWAP]",
+            "sdd    8:48   0     1T  0 disk /",
+        ],
+        vec![
+            "               total        used        free      shared  buff/cache   available",
+            "Mem:            11Gi       958Mi         9Gi       125Mi       1.2Gi        10Gi",
+            "Swap:          8.0Gi       8.4Mi       8.0Gi",
+        ],
+    ];
+    for rows in cases {
+        for columns in [80, 120] {
+            for chunk in [1, 8192] {
+                let output = format!("{}\r\n\r\nprompt ", rows.join("\r\n"));
+                let term = pipeline_terminal(columns, output.as_bytes(), chunk);
+                let state = pipeline_state(&term);
+                assert_eq!(state.surfaces.len(), 1, "{}: {:?}", rows[0], state.diagnostics());
+                assert_eq!(state.surfaces[0].table.source(), rows);
+            }
+        }
+    }
+}

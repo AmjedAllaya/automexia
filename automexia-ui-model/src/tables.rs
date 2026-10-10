@@ -736,7 +736,11 @@ fn header_confidence(
         .collect();
     let names: Vec<_> = labels.iter().map(|label| label.to_lowercase()).collect();
     let ruled = kinds.get(head + 1) == Some(&TableRowKind::Rule);
+    let blank_corner = !ruled && labels.len() >= 3 && labels[0].is_empty();
     if labels.iter().enumerate().any(|(i, label)| {
+        if i == 0 && blank_corner {
+            return false;
+        }
         let valid = if ruled {
             !label.is_empty() && label.len() <= 64
         } else {
@@ -769,18 +773,34 @@ fn header_confidence(
     {
         return HeaderConfidence::UppercaseLabels;
     }
-    if (0..labels.len()).any(|column| {
-        let mut populated = false;
-        data.iter().all(|(text, row)| {
-            let value = &text[row[column].bytes.clone()];
-            if value.is_empty() {
-                true
-            } else {
-                populated = true;
-                numeric_value(value)
-            }
-        }) && populated
-    }) {
+    let numeric_columns = (0..labels.len())
+        .filter(|column| {
+            let mut populated = false;
+            data.iter().all(|(text, row)| {
+                let value = &text[row[*column].bytes.clone()];
+                if value.is_empty() {
+                    true
+                } else {
+                    populated = true;
+                    numeric_value(value)
+                }
+            }) && populated
+        })
+        .take(if blank_corner { 2 } else { 1 })
+        .count();
+    // A blank corner needs textual row labels and two populated numeric
+    // columns. Sparse continuation rows cannot establish it on their own.
+    if blank_corner
+        && (numeric_columns < 2
+            || !data.iter().any(|(_, row)| !row[0].bytes.is_empty())
+            || !data.iter().all(|(text, row)| {
+                let label = &text[row[0].bytes.clone()];
+                label.is_empty() || (valid_label(label) && !numeric_value(label))
+            }))
+    {
+        return HeaderConfidence::None;
+    }
+    if numeric_columns > 0 {
         HeaderConfidence::TypedColumns
     } else {
         HeaderConfidence::None

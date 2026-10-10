@@ -190,6 +190,9 @@ adapts for contrast against the final cell background; explicitly chosen text
 colors and source ANSI/status colors keep their existing precedence. Table text
 uses the terminal font baseline, preserving descenders beside dense borders.
 Turning inline tables off keeps your choices for when you enable them again.
+The toggle also updates recognized output already on screen. Numeric tables with
+an empty corner, such as `free -h` and some `lsblk` output, are supported across
+platforms. Ordinary prose and unlabelled lists keep their original layout.
 
 **Window controls** offers Soft, Glass, Outline and Circles for the title-bar
 buttons. Under **Choose a style**, click a card or press **E**, move with the arrow

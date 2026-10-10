@@ -983,3 +983,52 @@ fn shell_pipeline_prefix_cannot_become_a_framed_table_header() {
             .unwrap();
     assert!(table.wrap(40, cells).is_ok());
 }
+
+#[test]
+fn linux_inventory_retains_blank_corner_and_mountpoint_continuations() {
+    for rows in [
+        vec![
+            "NAME MAJ:MIN RM   SIZE RO TYPE MOUNTPOINTS",
+            "sda    8:0    0 722.9M  1 disk",
+            "sdb    8:16   0 159.4M  1 disk",
+            "sdc    8:32   0     8G  0 disk [SWAP]",
+            "sdd    8:48   0     1T  0 disk /mnt/example",
+            "                               /mnt/archive",
+            "                               /",
+        ],
+        vec![
+            "               total        used        free      shared  buff/cache   available",
+            "Mem:            11Gi       958Mi         9Gi       125Mi       1.2Gi        10Gi",
+            "Swap:          8.0Gi       8.4Mi       8.0Gi",
+        ],
+    ] {
+        let source: Vec<_> = rows.iter().map(|line| (*line).to_string()).collect();
+        let table = Table::detect(source.clone(), cells).unwrap();
+        let wrapped = table.wrap(120, cells).unwrap_or_else(|e| panic!("{}: {:?}", rows[0], e));
+        assert_eq!(wrapped.columns.len(), 7, "{}", rows[0]);
+        assert_eq!(table.source(), source);
+    }
+}
+
+#[test]
+fn blank_corner_requires_numeric_columns_and_real_row_labels() {
+    for rows in [
+        [
+            "       Total  Status",
+            "alpha  12     ready",
+            "beta   8      waiting",
+        ],
+        ["       Total  Used", "1      12     3", "2      8      2"],
+        ["Name          Used", "alpha  12     3", "beta   8      2"],
+        ["       Total  Total", "alpha  12     3", "beta   8      2"],
+    ] {
+        let source = rows.iter().map(|row| (*row).to_string()).collect();
+        if let Ok(table) = Table::detect(source, cells) {
+            assert!(
+                table.wrap(100, cells).is_err(),
+                "ambiguous header: {:?}",
+                rows
+            );
+        }
+    }
+}

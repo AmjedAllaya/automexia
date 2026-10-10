@@ -306,6 +306,28 @@ fn core_table_view(c: &mut Criterion) {
             "/../../automexia-ui-model/tests/support/compact_table_fixture.rs"
         ));
     }
+    for count in [3, 256] {
+        let source: Vec<String> = std::iter::once("        Total Used".to_owned())
+            .chain(
+                ["Memory  12    3", "Swap    8     2"]
+                    .into_iter()
+                    .cycle()
+                    .take(count - 1)
+                    .map(str::to_owned),
+            )
+            .collect();
+        group.bench_function(format!("blank_corner_checked_{count}"), |b| {
+            b.iter(|| {
+                let table = Table::detect(black_box(source.clone()), cell_width).unwrap();
+                let wrapped = table.wrap(80, cell_width).unwrap();
+                assert_eq!(wrapped.columns.len(), 3);
+                assert_eq!(wrapped.rows.len(), count);
+                assert!(wrapped.rows[0].cells[0].source_bytes.is_empty());
+                assert_eq!(table.source(), source);
+                black_box(wrapped);
+            })
+        });
+    }
     let compact = compact_fixture::disk_rows();
     for count in [6, 256] {
         let source: Vec<_> = std::iter::once(compact[0].clone())

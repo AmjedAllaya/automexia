@@ -502,6 +502,10 @@ impl Screen<'_> {
         &mut self,
         presentation: rio_backend::config::presentation::Presentation,
     ) {
+        // Route/theme synchronization starts from this window's resolved base.
+        // Keep lightweight output edits there too, so changing panes or tabs
+        // cannot restore presentation values from before the edit.
+        self.profile_base_config.presentation = presentation;
         self.renderer.presentation = presentation;
         for grid in self.context_manager.contexts_mut() {
             for item in grid.contexts_mut().values_mut() {

@@ -66,7 +66,10 @@ data row while explicit source ANSI, inverse, and selection retain glyph
 precedence; repaint uses the current source row after a watch-style rewrite.
 
 Recognition uses distinct uppercase labels, typed data beneath mixed-case or
-lowercase labels, or an explicit header ruler. Aligned whitespace, Markdown
+lowercase labels, or an explicit header ruler. A blank first header cell is allowed
+only with textual row labels and at least two populated numeric columns. Sparse
+continuation rows retain their original cells; they cannot establish that header
+on their own. Aligned whitespace, Markdown
 pipes and ASCII/Unicode frames share one detector without command-specific
 schemas. Ruled single-column tables and empty cells retain their source rows;
 structural rulers own their horizontal edge. Ambiguous unruled string matrices,
