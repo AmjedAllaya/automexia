@@ -33,6 +33,15 @@ class ReleaseIdentityTests(unittest.TestCase):
                 self.assertEqual(workspace["dependencies"][name]["version"], package["version"])
                 self.assertEqual(packages[name]["version"], package["version"])
 
+    def test_direct_library_consumers_keep_compatible_versions(self):
+        import tomllib
+        embedding = tomllib.loads((ROOT / "librio/Cargo.toml").read_text())
+        native = tomllib.loads((ROOT / "third-party/accesskit-windows/Cargo.toml").read_text())
+        for name, dependency in (("rio-vt", embedding["dependencies"]["rio-vt"]),
+                                 ("rio-window", native["target"]["cfg(windows)"]["dev-dependencies"]["winit"])):
+            package = tomllib.loads((ROOT / name / "Cargo.toml").read_text())["package"]
+            self.assertEqual(dependency["version"], package["version"])
+
     def test_rejects_ambiguous_injected_and_unrepresentable_versions(self):
         for value in ("0.0.1_alpha", "v0.0.1-alpha", "01.2.3", "1.2.3\n", "1.2.3;id",
                       "1.2", "1.2.3.4", "1.2.3+dev", "1.2.3-beta", "256.1.1", "1.256.1", "1.2.65536"):

@@ -12,3 +12,5 @@ black/white-backdrop pixel checks for settings cards and Linux compositing.
 Isolate native fixtures from inherited preferences and verify cleanup after both
 successful and failed runs. Windows and macOS native CI retain their independent
 renderer checks.
+
+- Keep dim prompt text in every built-in dark theme above the existing text-contrast requirement.
