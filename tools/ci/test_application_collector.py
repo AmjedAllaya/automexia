@@ -415,7 +415,8 @@ class CollectorTests(unittest.TestCase):
         process = SimpleNamespace(pid=42, poll=lambda: None)
         with patch.object(display, "window", return_value={"id": 7}) as window, \
              patch.object(probe.subprocess, "run") as run:
-            for chord in ["ctrl+shift+F1", "ctrl+shift+F3", "alt+j", "alt+shift+j", "x", "a", "F3", "Return", *"connect"]:
+            for chord in ["ctrl+shift+F1", "ctrl+shift+F3", "alt+j", "alt+shift+j", "x", "a", "F3", "Return",
+                          "BackSpace", "space", *"connectTextsizeInheritshared1250"]:
                 display.key(process, chord)
                 window.assert_called_with(process, focused=True)
                 run.assert_called_with(
