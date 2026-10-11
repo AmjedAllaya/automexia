@@ -613,6 +613,8 @@ pub enum BarRecipeError {
 /// semantics. A fixed icon never changes the text source's identity or action.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedBarItem {
+    pub icon_brand: Option<crate::os_brand::OsBrand>,
+    pub color_brand: Option<crate::os_brand::OsBrand>,
     pub style: TagTypography,
     pub slot_id: String,
     pub value: String,
@@ -626,6 +628,15 @@ pub struct ResolvedBarItem {
     pub freshness: Freshness,
     pub observed_at_ms: u64,
     pub details_action: Option<DetailsAction>,
+}
+
+impl ResolvedBarItem {
+    pub fn icon_glyph(&self) -> Option<&'static str> {
+        self.icon.map(|icon| {
+            self.icon_brand
+                .map_or_else(|| crate::icon_glyph(icon), |brand| brand.glyph)
+        })
+    }
 }
 
 pub const STANDARD_ROLES: [SegmentRole; 13] = [
@@ -995,6 +1006,12 @@ pub fn resolve_recipe(
             BarIconSource::None => None,
         };
         resolved.push(ResolvedBarItem {
+            icon_brand: match slot.icon {
+                BarIconSource::TextSource => text_segment.and_then(|s| s.os_brand),
+                BarIconSource::Role(_) => icon_segment.and_then(|s| s.os_brand),
+                _ => None,
+            },
+            color_brand: semantic.and_then(|s| s.os_brand),
             style: recipe.styles.resolve(&slot.id),
             slot_id: slot.id.clone(),
             value,
@@ -1046,6 +1063,7 @@ mod tests {
 
     fn segment(role: SegmentRole, value: &str, icon: IconKind) -> Segment {
         Segment {
+            os_brand: None,
             value: value.into(),
             accessibility_label: format!("{role:?} {value}"),
             role,

@@ -948,6 +948,11 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 os_label = "".join(list(os_name)[:13]) + "…" if len(os_name) > 14 else os_name
                 # The OS label must reach the core projection, even without DevOps.
                 check(os_label in identity.get("context_segments", []), "native OS tag missing from information bar")
+                expected_brand = {"Ubuntu": "Ubuntu", "macOS": "macOS", "Linux Mint": "Linux Mint", "LMDE": "Linux Mint"}.get(os_name)
+                if expected_brand:
+                    check(identity.get("tab_os_brand", {}).get("name") == expected_brand,
+                          "native tab branding disagrees with shell OS identity")
+                    check(bool(identity.get("tab_os_brand", {}).get("glyph")), "native OS logo missing")
                 capture("terminal")
 
                 key("ctrl+shift+p")
@@ -1128,6 +1133,10 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 tabbed = wait(lambda s: active(s).get("local_tab_count") == 2 and
                               integrated_ready(s), "native local tab failed")
                 check(active(tabbed).get("launch_program") == (None if MACOS and shell == "default" else program), "tab changed native shell")
+                if expected_brand:
+                    check(len(active(tabbed).get("local_tab_brands", [])) == 2 and
+                          all(brand == expected_brand for brand in active(tabbed)["local_tab_brands"]),
+                          "cloned local tabs lost native OS branding")
                 # Use the native key path for both distinct right-pane actions.
                 key("meta+d" if MACOS else "alt+shift+j")
                 wait(lambda s: s.get("panel_count") == 3 and integrated_ready(s),

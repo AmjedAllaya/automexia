@@ -5384,11 +5384,11 @@ impl SettingsView {
                     }
                 }
             }
-            let anchor = item.color.unwrap_or_else(|| {
-                item.source_role.map_or(foreground, |role| {
-                    crate::automexia::presentation::tag_anchor(&appearance, role)
-                })
-            });
+            let anchor = crate::automexia::presentation::bar_item_anchor(
+                &appearance,
+                item,
+                foreground,
+            );
             let paint = item.style.paint_with_background(
                 terminal_background,
                 anchor,
@@ -5409,8 +5409,7 @@ impl SettingsView {
                 &item.style,
             );
             if fragment.leading > 0.0 {
-                if let Some(icon) = item.icon {
-                    let glyph = automexia_ui_model::icon_glyph(icon);
+                if let Some(glyph) = item.icon_glyph() {
                     let icon_opts = DrawOpts {
                         font_size: metrics.icon_size,
                         color: color_u8(paint.icon),
@@ -6135,6 +6134,7 @@ fn preview_segments() -> Vec<automexia_ui_model::Segment> {
         .map(|role| {
             let value = preview_role_value(role).to_owned();
             automexia_ui_model::Segment {
+                os_brand: None,
                 accessibility_label: value.clone(),
                 value,
                 role,

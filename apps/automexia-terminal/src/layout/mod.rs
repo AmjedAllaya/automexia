@@ -426,31 +426,10 @@ impl<T: rio_backend::event::EventListener> ContextGridItem<T> {
         self.tabs_before.len()
     }
 
-    /// Best available display title for a tab in this pane.
-    ///
-    /// Only the active tab attempts a non-blocking terminal-title read.
-    /// Inactive tabs retain the last title cached by their route, and a busy
-    /// PTY falls back to the same cache instead of stalling the render frame.
+    /// Same stable presentation as the global strip, including inactive tabs.
+    /// No blocking terminal lock or raw OSC title participates in identity selection.
     pub fn tab_title(&self, index: usize) -> Option<String> {
-        let context = self.context_at(index)?;
-        if index == self.active_tab_index() {
-            if let Some(terminal) = context.terminal.try_lock_unfair() {
-                let raw = terminal.title.to_string();
-                if !raw.trim().is_empty() {
-                    return Some(raw);
-                }
-            }
-        }
-        if !context.title.content.trim().is_empty()
-            && context.title.content.trim().chars().ne(['~'])
-        {
-            return Some(context.title.content.clone());
-        }
-        context
-            .launch_descriptor
-            .profile_identity()
-            .or_else(|| context.launch_descriptor.program())
-            .map(ToOwned::to_owned)
+        self.context_at(index)?.tab_profile_identity()
     }
 
     pub fn context_at(&self, index: usize) -> Option<&Context<T>> {
@@ -719,7 +698,7 @@ mod pane_tab_tests {
     #[test]
     fn pane_tab_title_uses_cached_identity_when_the_terminal_is_busy() {
         let mut item = ContextGridItem::new(dead(55));
-        item.val.title.content = "Cached PowerShell".to_string();
+        item.val.renderable_content.shell_name = Some("Cached PowerShell".to_string());
         let _terminal_guard = item.val.terminal.lock_unfair();
 
         assert_eq!(item.tab_title(0).as_deref(), Some("Cached PowerShell"));

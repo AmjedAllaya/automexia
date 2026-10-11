@@ -287,11 +287,40 @@ pub fn normalized_to_u8(color: [f32; 4]) -> [u8; 4] {
 }
 
 pub fn tag_anchor(appearance: &TagAppearance, role: SegmentRole) -> [u8; 3] {
+    tag_anchor_with_brand(appearance, role, None)
+}
+
+fn tag_anchor_with_brand(
+    appearance: &TagAppearance,
+    role: SegmentRole,
+    brand: Option<automexia_ui_model::os_brand::OsBrand>,
+) -> [u8; 3] {
     TAG_COLOR_BINDINGS
         .iter()
         .find(|binding| binding.role == role)
         .and_then(|binding| (binding.read)(&appearance.colors))
-        .map_or_else(|| automexia_ui_model::segment_anchor_rgb(role), Rgb::bytes)
+        .map_or_else(
+            || {
+                brand.map_or_else(
+                    || automexia_ui_model::segment_anchor_rgb(role),
+                    |brand| brand.color,
+                )
+            },
+            Rgb::bytes,
+        )
+}
+
+/// Slot and legacy user overrides win over detected brand defaults.
+pub fn bar_item_anchor(
+    appearance: &TagAppearance,
+    item: &automexia_ui_model::information_bar::ResolvedBarItem,
+    foreground: [u8; 3],
+) -> [u8; 3] {
+    item.color.unwrap_or_else(|| {
+        item.source_role.map_or(foreground, |role| {
+            tag_anchor_with_brand(appearance, role, item.color_brand)
+        })
+    })
 }
 
 pub fn output_foreground(
@@ -348,6 +377,28 @@ pub fn tag_text_options(
 
 #[cfg(test)]
 mod output_domain_tests {
+    #[test]
+    fn distro_brand_defaults_yield_to_user_colors_and_reset_inherits_brand() {
+        use super::*;
+        use automexia_ui_model::os_brand::MINT;
+        let mut appearance = TagAppearance::default();
+        let role = SegmentRole::UbuntuWsl;
+        assert_eq!(
+            tag_anchor_with_brand(&appearance, role, Some(MINT)),
+            [0x87, 0xcf, 0x3e]
+        );
+        appearance.colors.ubuntu_wsl = Some(Rgb::from_bytes([20, 40, 60]));
+        assert_eq!(
+            tag_anchor_with_brand(&appearance, role, Some(MINT)),
+            [20, 40, 60]
+        );
+        appearance.colors.ubuntu_wsl = None;
+        assert_eq!(
+            tag_anchor_with_brand(&appearance, role, Some(MINT)),
+            [0x87, 0xcf, 0x3e]
+        );
+    }
+
     use super::*;
 
     #[test]

@@ -769,14 +769,6 @@ fn tab_title_budget(layout: &TabStripLayout) -> f32 {
 }
 
 #[inline]
-fn centered_tab_title_budget(layout: &TabStripLayout) -> f32 {
-    let side_guard = tab_close_hit_left(layout)
-        .map(|close_left| layout.tab_width - close_left + 1.0)
-        .unwrap_or(layout.tab_padding_x);
-    (layout.tab_width - side_guard * 2.0).max(0.0)
-}
-
-#[inline]
 pub fn close_button_hit(
     layout: &TabStripLayout,
     tab_index: usize,
@@ -1710,6 +1702,7 @@ impl Island {
             // tab or past the left edge (issue #1508).
             let raw_title = self.get_title_for_tab(context_manager, tab_index);
             let raw_title = normalized_profile_title(&raw_title);
+            let brand = context_manager.tab_os_brand(tab_index);
             if raw_title.is_empty() {
                 x_position += tab_width;
                 continue;
@@ -1761,6 +1754,16 @@ impl Island {
                 inactive_text
             };
 
+            let text_color = if context_manager.custom_color(tab_index).is_none()
+                && if is_active {
+                    appearance.text.is_none()
+                } else {
+                    appearance.inactive_text.is_none()
+                } {
+                brand.map_or(text_color, |brand| brand.accent(is_active))
+            } else {
+                text_color
+            };
             let text_color = tab_title_color(text_color, bg_color, fill);
             let title_opts = DrawOpts {
                 font_size: layout.title_font_size,
@@ -1795,13 +1798,16 @@ impl Island {
             }
 
             if !hidden_by_drag && tab_width >= 42.0 {
-                let icon = context_manager
-                    .profile_icon(tab_index)
-                    .unwrap_or_else(|| profile_icon(&raw_title));
+                let icon = context_manager.profile_icon(tab_index).unwrap_or_else(|| {
+                    brand.map_or_else(|| profile_icon(&raw_title), |brand| brand.glyph)
+                });
                 let icon_opts = DrawOpts {
                     font_size: layout.profile_icon_size,
                     color: color_u8(tab_title_color(
-                        profile_accent(&raw_title, is_active),
+                        brand.map_or_else(
+                            || profile_accent(&raw_title, is_active),
+                            |brand| brand.accent(is_active),
+                        ),
                         bg_color,
                         fill,
                     )),
@@ -2013,22 +2019,50 @@ impl Island {
             }
 
             let raw_title = self.get_title_for_tab(context_manager, drag_idx);
+            let raw_title = normalized_profile_title(&raw_title);
             if !raw_title.is_empty() {
-                let max_text_width = centered_tab_title_budget(&layout);
+                let max_text_width = tab_title_budget(&layout);
                 let title = fit_title_to_width(
                     sugarloaf,
                     &raw_title,
                     max_text_width,
                     layout.title_font_size,
                 );
+                let brand = context_manager.tab_os_brand(drag_idx);
+                let accent = brand.map_or_else(
+                    || profile_accent(&raw_title, true),
+                    |brand| brand.accent(true),
+                );
+                let title_color = if appearance.text.is_none()
+                    && context_manager.custom_color(drag_idx).is_none()
+                {
+                    accent
+                } else {
+                    active_text
+                };
+                let icon = context_manager.profile_icon(drag_idx).unwrap_or_else(|| {
+                    brand.map_or_else(|| profile_icon(&raw_title), |brand| brand.glyph)
+                });
+                let icon_opts = DrawOpts {
+                    font_size: layout.profile_icon_size,
+                    color: color_u8(tab_title_color(accent, bg_color, fill)),
+                    ..DrawOpts::default()
+                };
+                if tab_width >= 42.0 {
+                    sugarloaf.text_mut().draw(
+                        floating_x + layout.tab_padding_x - 8.0,
+                        (metrics.header_height - layout.profile_icon_size) / 2.0 - 1.0,
+                        icon,
+                        &icon_opts,
+                    );
+                }
                 let title_opts = DrawOpts {
                     font_size: layout.title_font_size,
-                    color: color_u8(tab_title_color(active_text, bg_color, fill)),
+                    color: color_u8(tab_title_color(title_color, bg_color, fill)),
                     ..DrawOpts::default()
                 };
                 let ui = sugarloaf.text_mut();
-                let text_width = ui.measure(&title, &title_opts);
-                let text_x = floating_x + (tab_width - text_width) / 2.0;
+                let text_x = floating_x + layout.tab_padding_x + PROFILE_TITLE_OFFSET_X;
                 let text_y = (metrics.header_height - layout.title_font_size) / 2.0;
                 ui.draw(text_x, text_y, &title, &title_opts);
             }
@@ -2548,13 +2582,6 @@ fn normalized_profile_title(raw: &str) -> Cow<'_, str> {
     if lower.contains("ssh") {
         return Cow::Borrowed("SSH Lab");
     }
-    if value.contains('@')
-        && value
-            .split_once(':')
-            .is_some_and(|(_, path)| path.trim().starts_with('/'))
-    {
-        return Cow::Borrowed("Ubuntu");
-    }
     Cow::Borrowed(value)
 }
 
@@ -2569,7 +2596,7 @@ fn profile_icon(title: &str) -> &'static str {
     } else if lower.contains("ssh") {
         "\u{f489}"
     } else {
-        "\u{f085}"
+        "\u{f489}"
     }
 }
 
@@ -2720,7 +2747,12 @@ fn draw_pane_local_tab_rails(
                 .map(|title| normalized_profile_title(&title).into_owned())
                 .filter(|title| !title.is_empty())
                 .unwrap_or_else(|| format!("Session {}", tab.index + 1));
-            let accent = profile_accent(&title, is_active);
+            let context = item.context_at(tab.index);
+            let brand = context.and_then(|context| context.tab_os_brand());
+            let accent = brand.map_or_else(
+                || profile_accent(&title, is_active),
+                |brand| brand.accent(is_active),
+            );
             let outline = if is_active {
                 theme.accent
             } else {
@@ -2756,7 +2788,11 @@ fn draw_pane_local_tab_rails(
             );
 
             if tab.width >= 46.0 {
-                let icon = profile_icon(&title);
+                let icon = context
+                    .and_then(|context| context.profile_icon.as_deref())
+                    .unwrap_or_else(|| {
+                        brand.map_or_else(|| profile_icon(&title), |brand| brand.glyph)
+                    });
                 let icon_size = metrics.local_tab_icon_size;
                 let icon_opts = DrawOpts {
                     font_size: icon_size,
@@ -2790,10 +2826,19 @@ fn draw_pane_local_tab_rails(
                 let opts = DrawOpts {
                     font_size,
                     color: color_u8(super::ui_theme::readable_on(
-                        if is_active {
+                        if is_active && appearance.text.is_some() {
                             theme.text
-                        } else {
+                        } else if !is_active && appearance.inactive_text.is_some() {
                             theme.muted_text
+                        } else {
+                            brand.map_or(
+                                if is_active {
+                                    theme.text
+                                } else {
+                                    theme.muted_text
+                                },
+                                |brand| brand.accent(is_active),
+                            )
                         },
                         super::ui_theme::over(rail_fill, fill),
                     )),
@@ -4137,7 +4182,7 @@ mod tests {
         );
         assert_eq!(
             normalized_profile_title("developer@DEVBOX:/mnt/d/workspaces"),
-            "Ubuntu"
+            "developer@DEVBOX:/mnt/d/workspaces"
         );
         assert_eq!(
             normalized_profile_title("PowerShell - D:/workspaces"),
@@ -4849,7 +4894,8 @@ mod tests {
         let title_start = layout.tab_padding_x + PROFILE_TITLE_OFFSET_X;
         let title_max_right = title_start + tab_title_budget(&layout);
         assert!(cx - CLOSE_HIT_HALF_WIDTH > title_max_right);
-        assert!(centered_tab_title_budget(&layout) <= layout.tab_width);
+        // Dragged tabs now reserve the same logo/title/close geometry.
+        assert!(tab_title_budget(&layout) <= layout.tab_width - title_start);
     }
 
     #[test]
