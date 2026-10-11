@@ -79,6 +79,21 @@ def replace_search_query(key, previous_bytes: int, value: str) -> None:
         key("space" if char == " " else char)
 
 
+def wait_for_native_state(read, predicate, message: str, seconds: float = 15, wake=None) -> dict:
+    end = time.monotonic() + seconds
+    value = {}
+    while time.monotonic() < end:
+        value = read()
+        if value and predicate(value):
+            return value
+        if wake is not None:
+            wake()
+        time.sleep(.05)
+    error = Failure(message)
+    error.observed = native_failure_state(value)
+    raise error
+
+
 def native_pixel_args(converter: str, image: Path, x: int, y: int, *, macos: bool) -> list[str]:
     args = [converter, str(image)]
     if macos:
@@ -477,19 +492,17 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                             shell_pids.add(panel["shell_pid"])
                     return value
 
-                def wait(predicate, message: str, seconds: float = 15, wake=None) -> dict:
-                    end = time.monotonic() + seconds
-                    value = {}
-                    while time.monotonic() < end:
-                        value = state()
-                        if value and predicate(value):
-                            return value
-                        if wake is not None:
-                            wake()
-                        time.sleep(.05)
-                    error = Failure(message)
-                    error.observed = native_failure_state(value)
-                    raise error
+                wake_sequence = 0
+                def wake_wayland():
+                    nonlocal wake_sequence
+                    wake_sequence += 1
+                    wayland.wake_control(process, wake_sequence)
+
+                def wait(predicate, message: str, seconds: float = 15) -> dict:
+                    # UI-only changes need the same native test-transport wake
+                    # as commands; they must not await the passive status clock.
+                    return wait_for_native_state(state, predicate, message, seconds,
+                                                 wake_wayland if wayland else None)
 
                 def attach_window():
                     nonlocal driver, handle
@@ -541,13 +554,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     pending = control.with_suffix(".next")
                     pending.write_text(command, encoding="utf-8")
                     pending.replace(control)
-                    wake_sequence = 0
-                    def wake():
-                        nonlocal wake_sequence
-                        wake_sequence += 1
-                        wayland.wake_control(process, wake_sequence)
-                    return wait(lambda s: s.get("last_control") == command, "control not presented",
-                                wake=wake if wayland else None)
+                    return wait(lambda s: s.get("last_control") == command, "control not presented")
 
                 def capture(name: str) -> None:
                     # Reject identifying shell output before publishing pixels.
@@ -1142,7 +1149,8 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 capture("resized")
                 return {"scenario": label, "renderer": expected, "scale": initial["scale_factor"],
                         "timing_kind": "diagnostic-polling-50ms-not-performance-baseline",
-                        "control_transport": "file-consumed-on-render-may-wait-for-idle-refresh",
+                        "control_transport": ("file-consumed-on-render-with-native-pointer-wake" if wayland else
+                                              "file-consumed-on-render-may-wait-for-idle-refresh"),
                         "startup_shell_ready_ms": ready_ms, "command_roundtrip_ms": command_samples,
                         "native_pixel_capture": not MACOS,
                         "display_server": "AppKit" if MACOS else display_server,
@@ -1177,6 +1185,12 @@ def native_failure_state(state: dict) -> dict:
         values = state.get(section) or {}
         result[section] = {key: values[key] for key in keys
                            if isinstance(values.get(key), (int, float)) and math.isfinite(values[key])}
+    settings = state.get("settings")
+    if isinstance(settings, dict):
+        result["settings"] = {key: settings[key] for key in
+                              ("open", "ready", "list_focused", "save_pending")
+                              if type(settings.get(key)) is bool}
+        result["settings"]["confirmation_visible"] = bool(settings.get("confirmation"))
     for key in ("scale_factor", "window_width", "window_height", "palette_enabled", "prompt_active"):
         value = state.get(key)
         if isinstance(value, (int, float)) and math.isfinite(value):

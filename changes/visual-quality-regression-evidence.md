@@ -43,3 +43,5 @@ Changed
     defect rejection checks. Native input oracles wait for painted scroll targets
     and the private Wayland control transport wakes without changing the idle
     refresh interval of production windows.
+  - Keep reset-confirmation readiness independent of a hidden page's pending
+    keyboard scroll, hiding underlying test targets until the dialog closes.

@@ -8641,6 +8641,29 @@ fn preview_shortcuts_do_not_replace_save_or_loading_feedback() {
     }
 }
 
+#[cfg(feature = "native-gui-test-hooks")]
+#[test]
+fn native_confirmation_readiness_does_not_wait_for_obscured_page_reveal() {
+    let mut view = workflow_tag_view();
+    view.paint(&mut Raster::new(1.0), theme());
+    view.focus = Focus::Search;
+    named(&mut view, NamedKey::ArrowDown);
+    assert!(view.reveal_focus);
+    settings_letter(&mut view, "r");
+    assert!(view.confirmation.is_some());
+    assert_eq!(view.native_test_snapshot()["ready"], false);
+    view.paint(&mut Raster::new(1.0), theme());
+    let native = view.native_test_snapshot();
+    assert_eq!(native["ready"], true, "the visible confirmation is painted");
+    assert!(native["confirmation"]["accept"][2].as_f64().unwrap() > 0.0);
+    assert!(native["controls"].as_array().unwrap().is_empty());
+    assert!(native["targets"].as_array().unwrap().is_empty());
+    named(&mut view, NamedKey::Escape);
+    assert_eq!(view.native_test_snapshot()["ready"], false);
+    view.paint(&mut Raster::new(1.0), theme());
+    assert_eq!(view.native_test_snapshot()["ready"], true);
+}
+
 #[test]
 fn customization_reset_and_restore_wait_for_confirmation_and_escape_cancels() {
     let mut view = workflow_tag_view();

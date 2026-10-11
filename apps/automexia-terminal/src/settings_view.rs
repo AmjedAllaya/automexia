@@ -739,7 +739,12 @@ impl SettingsView {
         // provider context, search queries or user-entered labels.
         // Keyboard focus can request scrolling without invalidating measured
         // row geometry. Do not publish old hit targets until reveal is painted.
-        let ready = self.is_open() && !self.layout_dirty && !self.reveal_focus;
+        // A confirmation paints independently while preserving the underlying
+        // page's reveal request until dismissal. Expose only its own targets.
+        let ready = self.is_open()
+            && !self.layout_dirty
+            && (self.confirmation.is_some() || !self.reveal_focus);
+        let page_ready = ready && self.confirmation.is_none();
         let recipe = self
             .customizations
             .as_ref()
@@ -748,7 +753,7 @@ impl SettingsView {
         let targets: Vec<_> = self
             .preview_targets
             .iter()
-            .filter(|_| ready)
+            .filter(|_| page_ready)
             .map(|(id, bounds)| {
                 serde_json::json!({
                     "id": id.as_str(), "bounds": bounds.array(),
@@ -759,7 +764,7 @@ impl SettingsView {
         let controls: Vec<_> = self
             .rows
             .iter()
-            .filter(|_| ready)
+            .filter(|_| page_ready)
             .filter_map(|row| {
                 Some(serde_json::json!({
                     "id": row.id.as_str(),

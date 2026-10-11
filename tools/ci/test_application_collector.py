@@ -28,6 +28,37 @@ def unix_ui_probe():
 
 
 class CollectorTests(unittest.TestCase):
+    def test_native_wait_wakes_pending_frames_only_and_keeps_its_deadline(self):
+        probe = unix_ui_probe()
+        frames = iter([{"settings": {"ready": False}}, {"settings": {"ready": True}}])
+        wakes = []
+        with patch.object(probe.time, "monotonic", side_effect=[0.0, .01, .1]), \
+                patch.object(probe.time, "sleep"):
+            actual = probe.wait_for_native_state(lambda: next(frames),
+                lambda s: s["settings"]["ready"], "fixture wait", 1.0,
+                lambda: wakes.append(True))
+        self.assertTrue(actual["settings"]["ready"])
+        self.assertEqual(len(wakes), 1)
+        wakes.clear()
+        with patch.object(probe.time, "monotonic", side_effect=[0.0, .01, 1.0]), \
+                patch.object(probe.time, "sleep"), self.assertRaises(probe.Failure) as failure:
+            probe.wait_for_native_state(lambda: {"settings": {"ready": False}},
+                lambda s: s["settings"]["ready"], "fixture deadline", 1.0,
+                lambda: wakes.append(True))
+        self.assertEqual(len(wakes), 1)
+        self.assertFalse(failure.exception.observed["settings"]["ready"])
+
+    def test_native_failure_state_keeps_modal_readiness_without_user_values(self):
+        import json
+        probe = unix_ui_probe()
+        state = probe.native_failure_state({"settings": {
+            "open": True, "ready": False, "list_focused": True,
+            "save_pending": "private path", "query": "private query",
+            "confirmation": {"title": "private title"}}})
+        self.assertEqual(state["settings"], {"open": True, "ready": False,
+                         "list_focused": True, "confirmation_visible": True})
+        self.assertNotIn("private", json.dumps(state))
+
     def test_native_pixel_reader_converts_display_profile_before_sampling(self):
         probe = unix_ui_probe()
         tail = ['-crop', '1x1+80+60', '-depth', '8', 'rgb:-']
