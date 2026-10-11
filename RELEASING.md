@@ -238,3 +238,8 @@ No stable release may contain placeholder assets or unsigned/notarized desktop
 artifacts. A signed artifact can still receive a vendor false positive; follow
 the evidence and submission procedure in `docs/RELEASE-TRUST.md` instead of
 disabling protection or adding antivirus exclusions.
+
+The application release version is independent of the maintained Rio libraries.
+Those internal libraries retain their `0.4.0` identity and existing dependency
+review requirements; preparing an Automexia alpha must not relabel them as new
+registry releases or create replacement audit exemptions.

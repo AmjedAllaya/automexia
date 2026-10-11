@@ -100,16 +100,16 @@ automexia-ui-model = { path = "automexia-ui-model", version = "0.0.1-alpha" }
 # Note: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#multiple-locations
 # Sugarloaf example uses path when used locally, but uses
 # version from crates.io when published.
-teletypewriter = { path = "teletypewriter", version = "0.0.1-alpha" }
-rio-backend = { path = "rio-backend", version = "0.0.1-alpha" }
-rio-window = { path = "rio-window", version = "0.0.1-alpha", default-features = false }
-rio-notifier = { path = "rio-notifier", version = "0.0.1-alpha" }
-rio-grapheme-width = { path = "rio-grapheme-width", version = "0.0.1-alpha" }
-sugarloaf = { path = "sugarloaf", version = "0.0.1-alpha" }
-corcovado = { path = "corcovado", version = "0.0.1-alpha" }
-rio-graphics = { path = "rio-graphics", version = "0.0.1-alpha" }
-rio-fonts = { path = "rio-fonts", version = "0.0.1-alpha" }
-rio-vt = { path = "rio-vt", version = "0.0.1-alpha" }
+teletypewriter = { path = "teletypewriter", version = "0.4.0" }
+rio-backend = { path = "rio-backend", version = "0.4.0" }
+rio-window = { path = "rio-window", version = "0.4.0", default-features = false }
+rio-notifier = { path = "rio-notifier", version = "0.4.0" }
+rio-grapheme-width = { path = "rio-grapheme-width", version = "0.4.0" }
+sugarloaf = { path = "sugarloaf", version = "0.4.0" }
+corcovado = { path = "corcovado", version = "0.4.0" }
+rio-graphics = { path = "rio-graphics", version = "0.4.0" }
+rio-fonts = { path = "rio-fonts", version = "0.4.0" }
+rio-vt = { path = "rio-vt", version = "0.4.0" }
 
 raw-window-handle = { version = "0.6.2", features = ["std"] }
 rfd = { version = "=0.17.2" }
