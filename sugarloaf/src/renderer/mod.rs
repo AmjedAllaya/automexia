@@ -147,6 +147,23 @@ pub(crate) struct InstanceBuffer {
     pub size: usize,
 }
 
+#[cfg(target_os = "macos")]
+impl InstanceBuffer {
+    /// Publish all frame writes once before committing GPU work. Managed
+    /// buffers have separate CPU/GPU copies; returning a buffer to the pool
+    /// does not make a later CPU rewrite visible to the GPU automatically.
+    fn publish_writes(&self, written: usize) {
+        debug_assert!(written <= self.size);
+        if written != 0 && self.buffer.0.storage_mode() == metal::MTLStorageMode::Managed
+        {
+            self.buffer.0.did_modify_range(metal::NSRange {
+                location: 0,
+                length: written as u64,
+            });
+        }
+    }
+}
+
 /// Free list of equally-sized `metal::Buffer`s, plus the current target
 /// size. `acquire` pops a free buffer or allocates a new one; `release`
 /// pushes the buffer back if its size still matches the current target
@@ -2825,6 +2842,7 @@ impl Renderer {
             }
 
             render_encoder.end_encoding();
+            instance_buffer.publish_writes(instance_offset);
 
             // Completion handler returns the buffer to the pool +
             // releases the swap-chain permit on GPU finish. The block
@@ -3708,6 +3726,71 @@ impl WgpuRenderer {
                 ],
                 label: Some("rich_text::Pipeline uniforms"),
             });
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod native_instance_buffer_tests {
+    use super::{align_offset, bump_copy, InstanceBufferPool};
+
+    #[test]
+    fn native_instance_buffer_reuse_publishes_current_frame_to_gpu() {
+        use metal::{Device, MTLCommandBufferStatus, MTLResourceOptions};
+        use std::time::{Duration, Instant};
+
+        let device = Device::system_default().expect("native Metal test requires a GPU");
+        let queue = device.new_command_queue();
+        let readback = device.new_buffer(512, MTLResourceOptions::StorageModeShared);
+        let mut pool = InstanceBufferPool::new();
+        let mut previous_allocation = None;
+        for alpha in [0.5_f32, 1.0, 0.25, 1.0] {
+            let buffer = pool.acquire(&device);
+            let allocation = buffer.buffer.0.contents();
+            if let Some(previous) = previous_allocation {
+                assert_eq!(allocation, previous, "exercise the reused allocation");
+            }
+            previous_allocation = Some(allocation);
+            let background = [0.1_f32, 0.2, 0.3, alpha];
+            let foreground = [0.9_f32, 0.8, 0.7, 1.0 - alpha];
+            let mut written = 0;
+            // SAFETY: both arrays are live, disjoint from the bounded mapped
+            // buffer, and bump_copy checks capacity before copying them.
+            let first =
+                unsafe { bump_copy(&buffer, &mut written, background.as_ptr(), 4) }
+                    .unwrap();
+            align_offset(&mut written);
+            let second =
+                unsafe { bump_copy(&buffer, &mut written, foreground.as_ptr(), 4) }
+                    .unwrap();
+            buffer.publish_writes(written);
+
+            let command = queue.new_command_buffer();
+            let blit = command.new_blit_command_encoder();
+            blit.copy_from_buffer(&buffer.buffer.0, 0, &readback, 0, written as u64);
+            blit.end_encoding();
+            command.commit();
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !matches!(
+                command.status(),
+                MTLCommandBufferStatus::Completed | MTLCommandBufferStatus::Error
+            ) && Instant::now() < deadline
+            {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert_eq!(command.status(), MTLCommandBufferStatus::Completed);
+            // SAFETY: completed GPU work wrote both aligned f32 arrays into
+            // the shared readback allocation, whose size exceeds each range.
+            for (offset, expected) in [(first, background), (second, foreground)] {
+                let actual = unsafe {
+                    std::slice::from_raw_parts(
+                        (readback.contents() as *const u8).add(offset).cast::<f32>(),
+                        4,
+                    )
+                };
+                assert_eq!(actual, expected);
+            }
+            pool.release(buffer);
+        }
     }
 }
 

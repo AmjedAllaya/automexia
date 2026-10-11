@@ -30,7 +30,7 @@ def unix_ui_probe():
 class CollectorTests(unittest.TestCase):
     def test_native_wait_wakes_pending_frames_only_and_keeps_its_deadline(self):
         probe = unix_ui_probe()
-        frames = iter([{"settings": {"ready": False}}, {"settings": {"ready": True}}])
+        frames = iter([{"sequence": 1, "settings": {"ready": False}}, {"sequence": 2, "settings": {"ready": True}}])
         wakes = []
         with patch.object(probe.time, "monotonic", side_effect=[0.0, .01, .1]), \
                 patch.object(probe.time, "sleep"):
@@ -42,11 +42,22 @@ class CollectorTests(unittest.TestCase):
         wakes.clear()
         with patch.object(probe.time, "monotonic", side_effect=[0.0, .01, 1.0]), \
                 patch.object(probe.time, "sleep"), self.assertRaises(probe.Failure) as failure:
-            probe.wait_for_native_state(lambda: {"settings": {"ready": False}},
+            probe.wait_for_native_state(lambda: {"sequence": 1, "settings": {"ready": False}},
                 lambda s: s["settings"]["ready"], "fixture deadline", 1.0,
                 lambda: wakes.append(True))
         self.assertEqual(len(wakes), 1)
         self.assertFalse(failure.exception.observed["settings"]["ready"])
+
+    def test_native_startup_wait_does_not_wake_an_unmapped_window(self):
+        probe = unix_ui_probe()
+        for initial in ({}, {"sequence": 0}):
+            frames = iter([initial, {"sequence": 1}])
+            with patch.object(probe.time, "sleep"), patch.object(probe.time, "monotonic", side_effect=[0, .01, .1]):
+                def premature_wake():
+                    self.fail("pointer wake attempted before the first native frame")
+                state = probe.wait_for_native_state(lambda: next(frames),
+                    lambda s: s.get("sequence", 0) > 0, "startup", 30, premature_wake)
+            self.assertEqual(state["sequence"], 1)
 
     def test_native_failure_state_keeps_modal_readiness_without_user_values(self):
         import json

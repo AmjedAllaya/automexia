@@ -86,7 +86,9 @@ def wait_for_native_state(read, predicate, message: str, seconds: float = 15, wa
         value = read()
         if value and predicate(value):
             return value
-        if wake is not None:
+        # A new/restarted process may not have mapped a native window yet.
+        # Only published frames can be safely targeted by the owned input driver.
+        if wake is not None and type(value.get("sequence")) is int and value["sequence"] > 0:
             wake()
         time.sleep(.05)
     error = Failure(message)

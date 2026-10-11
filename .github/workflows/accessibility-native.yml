@@ -99,6 +99,9 @@ jobs:
           set -euo pipefail
           comparator=target/debug/xtask
           if [[ "$RUNNER_OS" == Windows ]]; then comparator+=.exe; fi
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            cargo test -p sugarloaf --lib --locked native_instance_buffer_reuse_publishes_current_frame_to_gpu
+          fi
           # Retain native compiler diagnostics in the job log. The driver then
           # resolves the already-built harness from Cargo's structured receipt.
           cargo test -p automexia-terminal --bin automexia --features visual-test-hooks --locked --no-run
