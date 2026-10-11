@@ -2589,12 +2589,6 @@ fn profile_icon(title: &str) -> &'static str {
     let lower = title.to_ascii_lowercase();
     if lower.contains("powershell") {
         "\u{e70f}"
-    } else if lower.contains("command prompt") || lower == "cmd" {
-        "\u{f489}"
-    } else if lower.contains("ubuntu") {
-        "\u{f31b}"
-    } else if lower.contains("ssh") {
-        "\u{f489}"
     } else {
         "\u{f489}"
     }
@@ -2602,9 +2596,7 @@ fn profile_icon(title: &str) -> &'static str {
 
 fn profile_accent(title: &str, active: bool) -> [f32; 4] {
     let lower = title.to_ascii_lowercase();
-    let mut color = if lower.contains("ubuntu") {
-        [1.0, 0.35, 0.04, 1.0]
-    } else if lower.contains("powershell") {
+    let mut color = if lower.contains("powershell") {
         [0.29, 0.65, 1.0, 1.0]
     } else if lower.contains("command prompt") || lower == "cmd" {
         [0.45, 0.95, 0.42, 1.0]
@@ -4197,6 +4189,8 @@ mod tests {
             normalized_profile_title(r"C:\Windows\System32\wsl.exe"),
             "WSL"
         );
+        // A title alone cannot claim Ubuntu branding; only OS metadata can.
+        assert_eq!(profile_icon("Ubuntu"), "\u{f489}");
         assert_ne!(profile_icon("Command Prompt"), profile_icon("PowerShell"));
         assert_ne!(
             profile_accent("Command Prompt", true),
