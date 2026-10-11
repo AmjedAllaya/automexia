@@ -1,5 +1,10 @@
 # Release platforms
 
+The table describes the production signing channel. The owner-authorized
+`0.0.1_alpha` uses the same native architectures and package checks with
+unsigned Windows packages and an ad-hoc signed, non-notarized macOS DMG; see
+[first-alpha disclosures](../docs/public-release/FIRST-ALPHA-NOTES.md).
+
 | Artifact | Native build runner | Final verification |
 |---|---|---|
 | Windows x86_64 MSVC | `windows-2025` | signed MSI/ZIP smoke during packaging |
