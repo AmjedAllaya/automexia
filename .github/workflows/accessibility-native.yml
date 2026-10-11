@@ -202,30 +202,6 @@ jobs:
             artifacts/native-helper-prompt-timings.json
           if-no-files-found: warn
           retention-days: 14
-      - name: Native macOS renderer microbenchmarks
-        if: always() && !cancelled() && runner.os == 'macOS' && steps.visual.outcome != 'skipped'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo bench -p automexia-renderer-benchmarks --bench text_fit --locked -- responsive_fitting --sample-size 10 --measurement-time 1 --warm-up-time 1
-          cargo bench -p rio-vt --bench vt_input --locked -- 'prompt_(startup_resize|passthrough|native_markers)_snapshot' --sample-size 10 --measurement-time 1 --warm-up-time 1
-          cargo bench -p rio-vt --bench vt_input --locked -- native_untrusted_output --sample-size 10 --measurement-time 1 --warm-up-time 1
-          cargo bench -p teletypewriter --bench pty_io --locked -- --measurement-time 1 --warm-up-time 1
-      - name: Retain macOS benchmark raw data
-        if: always() && runner.os == 'macOS'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: macos-microbench-${{ matrix.runner }}
-          path: |
-            target/criterion/responsive_fitting
-            target/criterion/unix_prompt_startup_resize_snapshot
-            target/criterion/conpty_prompt_passthrough_snapshot
-            target/criterion/fish_prompt_native_markers_snapshot
-            target/criterion/native_untrusted_output
-            target/criterion/pty_process
-            target/criterion/pty_output
-          if-no-files-found: warn
-          retention-days: 14
       - name: Preserve exact geometry, environment and mutation reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -253,3 +229,54 @@ jobs:
       - name: State the evidence boundary
         shell: bash
         run: echo 'Controlled raster and mutation checks run on each platform. macOS additionally runs native shell/PTYs, AX/Quartz application interaction and diagnostic microbenchmarks. Missing reviewed baselines, native compositor pixels, real IME, screen-reader and physical-display evidence are not certified by this job.'
+
+  # Release-profile compilation and measurement have their own finite budget;
+  # native UI checks must not consume the time needed to run these benchmarks.
+  native-microbench:
+    name: Native microbenchmarks (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-26, macos-26-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - name: Verify the repository toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+          python tools/ci/rust_toolchain.py verify --kind development
+      - name: Native macOS renderer microbenchmarks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo bench -p automexia-renderer-benchmarks --bench text_fit --locked -- responsive_fitting --sample-size 10 --measurement-time 1 --warm-up-time 1
+          cargo bench -p rio-vt --bench vt_input --locked -- 'prompt_(startup_resize|passthrough|native_markers)_snapshot' --sample-size 10 --measurement-time 1 --warm-up-time 1
+          cargo bench -p rio-vt --bench vt_input --locked -- native_untrusted_output --sample-size 10 --measurement-time 1 --warm-up-time 1
+          cargo bench -p teletypewriter --bench pty_io --locked -- --measurement-time 1 --warm-up-time 1
+      - name: Retain macOS benchmark raw data
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: macos-microbench-${{ matrix.runner }}
+          path: |
+            target/criterion/responsive_fitting
+            target/criterion/unix_prompt_startup_resize_snapshot
+            target/criterion/conpty_prompt_passthrough_snapshot
+            target/criterion/fish_prompt_native_markers_snapshot
+            target/criterion/native_untrusted_output
+            target/criterion/pty_process
+            target/criterion/pty_output
+          if-no-files-found: error
+          retention-days: 14

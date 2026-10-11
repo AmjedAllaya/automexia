@@ -138,6 +138,63 @@ class FreePlanContractTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn("native accessibility assurance", result.stdout + result.stderr)
 
+    def test_native_benchmarks_have_an_independent_bounded_job(self) -> None:
+        import shlex
+        import yaml
+
+        workflow = yaml.safe_load((ROOT / ".github/workflows/accessibility-native.yml").read_text(encoding="utf-8"))
+        jobs = workflow["jobs"]
+        benchmark_jobs = {
+            name: job for name, job in jobs.items()
+            if any(line.strip().startswith("cargo bench ")
+                   for step in job.get("steps", [])
+                   for line in step.get("run", "").splitlines())
+        }
+        self.assertEqual(len(benchmark_jobs), 1)
+        name, job = next(iter(benchmark_jobs.items()))
+        # The Intel UI scenarios consume most of their 90-minute budget.
+        # Release-profile compilation must not cancel the benchmark workload.
+        self.assertNotEqual(name, "controlled-visual")
+        self.assertNotIn("needs", job)
+        self.assertNotIn("if", job)
+        self.assertFalse(job.get("continue-on-error", False))
+        self.assertGreater(job["timeout-minutes"], 0)
+        self.assertLessEqual(job["timeout-minutes"], 45)
+        self.assertEqual(jobs["controlled-visual"]["timeout-minutes"], 90)
+        self.assertEqual(set(job["strategy"]["matrix"]["runner"]), {"macos-26", "macos-26-intel"})
+        commands = []
+        for step in job["steps"]:
+            lines = [line.strip() for line in step.get("run", "").splitlines()
+                     if line.strip().startswith("cargo bench ")]
+            if not lines:
+                continue
+            self.assertNotIn("if", step)
+            self.assertFalse(step.get("continue-on-error", False))
+            self.assertIn("set -euo pipefail", step["run"])
+            commands.extend(shlex.split(line) for line in lines)
+        prefix = "cargo bench -p "
+        sampling = " --sample-size 10 --measurement-time 1 --warm-up-time 1"
+        self.assertEqual(commands, [shlex.split(command) for command in (
+            prefix + "automexia-renderer-benchmarks --bench text_fit --locked -- responsive_fitting" + sampling,
+            prefix + "rio-vt --bench vt_input --locked -- 'prompt_(startup_resize|passthrough|native_markers)_snapshot'" + sampling,
+            prefix + "rio-vt --bench vt_input --locked -- native_untrusted_output" + sampling,
+            prefix + "teletypewriter --bench pty_io --locked -- --measurement-time 1 --warm-up-time 1",
+        )])
+        uploads = [step for step in job["steps"]
+                   if step.get("uses", "").startswith("actions/upload-artifact@")]
+        self.assertEqual(len(uploads), 1)
+        self.assertEqual(uploads[0]["if"], "always()")
+        self.assertEqual(uploads[0]["with"]["if-no-files-found"], "error")
+        self.assertEqual(set(uploads[0]["with"]["path"].splitlines()), {
+            "target/criterion/responsive_fitting",
+            "target/criterion/unix_prompt_startup_resize_snapshot",
+            "target/criterion/conpty_prompt_passthrough_snapshot",
+            "target/criterion/fish_prompt_native_markers_snapshot",
+            "target/criterion/native_untrusted_output",
+            "target/criterion/pty_process",
+            "target/criterion/pty_output",
+        })
+
     @staticmethod
     def populate_contract_root(root: Path) -> None:
         shutil.copytree(ROOT / ".github", root / ".github")

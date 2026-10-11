@@ -375,6 +375,10 @@ native_accessibility = (wf/'accessibility-native.yml').read_text(encoding='utf-8
 trigger = re.search(r'(?ms)^on:\n(?P<body>.*?)(?=^\S|\Z)', native_accessibility)
 if not trigger or trigger.group('body').strip() != 'workflow_call:\n  workflow_dispatch:':
     errors.append('native accessibility assurance must remain manual or release-reusable only')
+# Another Mac job may use the same matrix. It cannot stand in for missing AX
+# runners, commands or bounds in the job that actually owns native AX evidence.
+native_ax = re.search(r'(?ms)^  macos-ax:\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)', native_accessibility)
+native_ax_body = native_ax.group('body') if native_ax else ''
 for required in (
     '  contents: read', '    timeout-minutes: 15',
     '        runner: [macos-26, macos-26-intel]',
@@ -383,7 +387,10 @@ for required in (
     'cargo run -p accesskit_macos --example native-accessibility-smoke --locked',
     'python tools/ci/check_accessibility_contract.py',
 ):
-    if required not in native_accessibility:
+    owner = native_accessibility if required in (
+        '  contents: read', '          persist-credentials: false',
+    ) else native_ax_body
+    if required not in owner:
         errors.append('native accessibility assurance missing required boundary: ' + required.strip())
 if re.search(r'(?m)^\s*(?:continue-on-error|secrets|environment):|\b(?:contents|id-token|packages):\s*write|\bsecrets\.', native_accessibility):
     errors.append('native accessibility assurance must not bypass failures or use publishing credentials')
