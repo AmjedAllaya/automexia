@@ -631,6 +631,31 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 wait(lambda s: s.get("palette_enabled"), "native header pointer action failed")
                 key("Escape")
                 wait(lambda s: not s.get("palette_enabled"), "pointer-opened palette did not close")
+                # Exercise the shared SSH picker through native input on X11,
+                # Wayland and AppKit. Opening it must never create a session.
+                picker_before = active(state())
+                pane_count = len(state().get("panels", []))
+                key("ctrl+shift+p")
+                wait(lambda s: s.get("palette_enabled"), "SSH picker palette did not open")
+                for character in "connect":
+                    key(character)
+                wait(lambda s: 0 < s.get("palette_total_results", 0) <= 2,
+                     "SSH picker palette search did not settle")
+                key("Return")
+                wait(lambda s: s.get("connection_hub_active") and s.get("connection_hub_ssh_picker"),
+                     "SSH picker action did not open its own view")
+                capture("ssh-picker")
+                key("Escape")
+                picker_after = wait(lambda s: not s.get("connection_hub_active"),
+                                    "SSH picker did not close")
+                if picker_after.get("palette_enabled"):
+                    key("Escape")
+                    picker_after = wait(lambda s: not s.get("palette_enabled"),
+                                        "SSH picker opener did not close")
+                check(len(picker_after.get("panels", [])) == pane_count,
+                      "SSH picker created an unexpected pane")
+                check(active(picker_after).get("raw_cursor_line_text") == picker_before.get("raw_cursor_line_text"),
+                      "SSH picker leaked native keys into terminal input")
                 if MACOS:
                     for _ in range(2):
                         before = wait(lambda s: caption_pointer_ready(s, driver),
@@ -804,7 +829,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                         "display_server": "AppKit" if MACOS else display_server,
                         "fixture_cleanup": cleanup_diagnostics,
                         "shell_integration": True, "table": True, "numeric_tables": True, "table_live_toggle": True, "tags": True,
-                        "palette": True, "settings": True, "themes": True, "color_picker_focus": True,
+                        "palette": True, "ssh_picker": True, "settings": True, "themes": True, "color_picker_focus": True,
                         "split": True, "local_tab": True, "resize": True, "shared_caption_controls": True,
                         "header_pointer": True, "native_maximize_restore": True if MACOS else None,
                         "native_ax_caption": True if MACOS else None}

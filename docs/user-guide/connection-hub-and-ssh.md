@@ -12,6 +12,36 @@ OpenSSH and the operating system retain credentials, agents, configuration,
 host-key policy, authentication, and networking. Automexia never adds Enter to
 pasted text.
 
+## SSH connection picker
+
+Press `Ctrl+Shift+P` on Windows/Linux or `Cmd+Shift+P` on macOS, search **Connect**, and
+choose **Connect… (SSH)**, or use `Ctrl/Cmd+Shift+J` directly. These are
+classic-profile shortcuts; `Ctrl+K` stays available to the shell. It shows only SSH entries from the existing reviewed
+inventory and saved connections. Recently used entries come first, followed by
+unused favorites and other hosts. Opening this picker does not inherit or change
+the broader Connection Hub's filters.
+
+When hosts are available, search has keyboard focus. Search an alias, hostname
+label, display name or tag; use arrows to select and Enter to preview. Escape
+returns to the results, then closes the picker. Outside search, Space reviews a
+favorite change and Enter confirms it. Previewing, copying or favoriting a host
+does not mark it as a successful connection. Favorites and existing recent-use
+metadata use the same private transactional store as the Hub.
+
+**Uses system OpenSSH** identifies the transport owner. Discovery does not run
+`ssh -G`, `Match exec`, provider commands, or authentication helpers. Conditional
+`Match` blocks, including their `Include` files, are excluded from static discovery.
+Labels are static hints, not the effective OpenSSH configuration: wildcard
+settings and conditional routing may differ when OpenSSH evaluates them. A file
+selected for inventory is not automatically passed to OpenSSH as `-F`.
+
+Direct launch is still disabled by this build's protected activation gate.
+Enter previews; it does not establish a connection. New-tab/split launch modifiers
+are not enabled. Where available, `C` copies the prepared command for you to
+review and run in your chosen terminal. No passwords, keys or vault contents are
+copied into the picker or its metadata. Authentication, agents, configuration
+and host-key policy remain with system OpenSSH.
+
 ## Browse connections with the keyboard
 
 Open **Connection Hub** with `Ctrl+Shift+H` on Windows/Linux or `Cmd+Shift+H`

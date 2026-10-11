@@ -2730,6 +2730,39 @@ $wallpaperConfig
             throw 'Held Hub Back leaked into terminal input'
         }
 
+        $script:testStage = 'SSH picker palette keyboard workflow'
+        function Wait-SshPicker($Predicate) {
+            $deadline = [DateTime]::UtcNow.AddSeconds(10)
+            do {
+                $state = Read-AutomexiaSnapshot
+                if (& $Predicate $state) { return $state }
+                Start-Sleep -Milliseconds 30
+            } while ([DateTime]::UtcNow -lt $deadline)
+            throw "SSH picker did not settle at $script:testStage"
+        }
+        if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x50, $false, $true, $true)) { throw 'SSH picker lost native keyboard focus' }
+        $null = Wait-SshPicker { param($s) $s.palette_enabled }
+        if (-not [AutomexiaResizeDriver]::SendProfileFixtureText($window, 'Connect')) { throw 'SSH picker palette search failed' }
+        $null = Wait-SshPicker { param($s) $s.palette_enabled -and $s.palette_total_results -le 2 }
+        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x0D, $false)
+        $picker = Wait-SshPicker { param($s) $s.connection_hub_active -and $s.connection_hub_ssh_picker }
+        if ($null -ne $modalCaptureRoot) {
+            [void][AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $modalCaptureRoot "ssh-picker-$rendererName.png"))
+        }
+        # The earlier isolated saved-profile fixture supplies one SSH row.
+        # Preview must remain non-executing even when Enter repeats.
+        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x0D, $false)
+        $picker = Wait-SshPicker { param($s) $s.connection_hub_route -eq 'review' }
+        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x28, $false)
+        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x0D, $false)
+        $picker = Read-AutomexiaSnapshot -AfterSequence ([int64]$picker.sequence)
+        if ($picker.connection_hub_route -ne 'review') { throw 'SSH preview navigation escaped its review' }
+        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
+        $null = Wait-SshPicker { param($s) $s.connection_hub_route -eq 'results' }
+        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
+        $picker = Wait-SshPicker { param($s) -not $s.connection_hub_active }
+        if ([string](Get-ActiveAutomexiaPanel $picker).raw_cursor_line_text -ne [string]$terminalBefore.raw_cursor_line_text) { throw 'SSH picker leaked keys into terminal input' }
+
         if (-not [string]::IsNullOrWhiteSpace($ResourceReport)) {
             $reportPath = [IO.Path]::GetFullPath($ResourceReport)
             $reportDirectory = [IO.Path]::GetDirectoryName($reportPath)
@@ -2743,6 +2776,7 @@ $wallpaperConfig
                 fixture = [string]$initial.visual_test_fixture
                 credential_source_saved = $true
                 source_bound_profile_saved = $true
+                ssh_picker_palette_preview_verified = $true
                 setup = [ordered]@{
                     frame = @($setupFrame.Width, $setupFrame.Height)
                     distinct_color_buckets = $setupFrame.DistinctColorBuckets

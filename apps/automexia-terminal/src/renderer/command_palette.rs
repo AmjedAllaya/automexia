@@ -222,6 +222,10 @@ const SHORTCUT_CONNECTION_HUB: &str = "Cmd+Shift+H";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_CONNECTION_HUB: &str = "Ctrl+Shift+H";
 #[cfg(target_os = "macos")]
+const SHORTCUT_SSH_PICKER: &str = "Cmd+Shift+J";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_SSH_PICKER: &str = "Ctrl+Shift+J";
+#[cfg(target_os = "macos")]
 const SHORTCUT_QUICK_ACTIONS: &str = "Cmd+Shift+O";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_QUICK_ACTIONS: &str = "Ctrl+Shift+O";
@@ -297,6 +301,7 @@ enum CommandIcon {
     Table,
     QuickActions,
     Connections,
+    SshConnect,
     Extension,
     Font,
     Power,
@@ -494,6 +499,10 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
         OpenMarket => RowPresentation {
             icon: CommandIcon::Extension,
             accent: UiAccent::Success,
+        },
+        OpenSshPicker => RowPresentation {
+            icon: CommandIcon::SshConnect,
+            accent: UiAccent::Cyan,
         },
         OpenConnections => RowPresentation {
             icon: CommandIcon::Connections,
@@ -759,6 +768,11 @@ const COMMANDS: &[Command] = &[
         title: "Clear Screen and History",
         shortcut: SHORTCUT_CLEAR_SCREEN,
         action: PaletteAction::ClearScreen,
+    },
+    Command {
+        title: "Connect… (SSH)",
+        shortcut: SHORTCUT_SSH_PICKER,
+        action: PaletteAction::OpenSshPicker,
     },
     Command {
         title: "Connection Hub (read-only)",
@@ -1503,6 +1517,12 @@ fn draw_command_icon(
             canvas.line(18.0, 9.0, 12.0, 9.0);
             canvas.line(12.0, 9.0, 12.0, 2.0);
         }
+        CommandIcon::SshConnect => {
+            canvas.outline(2.0, 3.0, 18.0, 16.0, 2.5);
+            canvas.line(6.0, 7.0, 10.0, 11.0);
+            canvas.line(10.0, 11.0, 6.0, 15.0);
+            canvas.line(12.0, 15.0, 17.0, 15.0);
+        }
         CommandIcon::Connections => {
             canvas.outline(2.0, 3.0, 18.0, 6.0, 2.5);
             canvas.dot(5.0, 5.0, 2.0);
@@ -1842,6 +1862,7 @@ impl CommandPalette {
                     | PaletteAction::OpenThemeGallery
                     | PaletteAction::OpenProfiles
                     | PaletteAction::OpenConnections
+                    | PaletteAction::OpenSshPicker
                     | PaletteAction::OpenActions
                     | PaletteAction::OpenMarket
                     | PaletteAction::ListFonts
@@ -3436,6 +3457,16 @@ mod tests {
             .filtered_rows()
             .iter()
             .any(|(_, row)| row.action() == Some(PaletteAction::ToggleAppearanceTheme)));
+    }
+
+    #[test]
+    fn connect_query_selects_the_dedicated_ssh_picker() {
+        let mut palette = CommandPalette::default();
+        palette.set_query("Connect".into());
+        assert_eq!(
+            palette.get_selected_action(),
+            Some(PaletteAction::OpenSshPicker)
+        );
     }
 
     #[test]
