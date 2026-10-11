@@ -295,6 +295,15 @@ impl Screen<'_> {
         self.sync_connection_hub();
         self.mark_dirty();
     }
+    pub fn open_ssh_picker(&mut self) {
+        self.open_connection_hub();
+        let opener =
+            format!("terminal-route-{}", self.context_manager.current().route_id);
+        self.connection_hub.open_ssh_picker(opener);
+        self.sync_connection_hub();
+        self.mark_dirty();
+    }
+
     fn attempt_managed_openssh(&mut self, decision: Decision) {
         let Some(preparation) = self.connection_hub.direct_openssh_preparation().cloned()
         else {

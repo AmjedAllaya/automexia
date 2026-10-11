@@ -527,6 +527,7 @@ struct NativeWindowSnapshot {
     settings: serde_json::Value,
     font_primary: Option<String>,
     connection_hub_active: bool,
+    connection_hub_ssh_picker: bool,
     connection_hub_route: Option<&'static str>,
     connection_hub_literal_entry: bool,
     connection_hub_credentials_active: bool,
@@ -750,6 +751,8 @@ fn write_native_resize_snapshot(
     snapshot["display_offset"] = serde_json::json!(content.display_offset);
     snapshot["palette_enabled"] = serde_json::json!(window.palette_enabled);
     snapshot["connection_hub_active"] = serde_json::json!(window.connection_hub_active);
+    snapshot["connection_hub_ssh_picker"] =
+        serde_json::json!(window.connection_hub_ssh_picker);
     snapshot["connection_hub_route"] = serde_json::json!(window.connection_hub_route);
     snapshot["connection_hub_literal_entry"] =
         serde_json::json!(window.connection_hub_literal_entry);
@@ -2977,6 +2980,7 @@ impl Screen<'_> {
                         }
                     }
                     Act::OpenConnectionHub => self.open_connection_hub(),
+                    Act::OpenSshPicker => self.open_ssh_picker(),
                     Act::ViewTableOutput => self.open_table_view(),
                     Act::LastCommandActions => self.open_last_command_actions(),
                     Act::OpenActionCenter => self.open_action_center(),
@@ -6433,6 +6437,7 @@ impl Screen<'_> {
             }
             PaletteAction::OpenMarket => self.open_extension_marketplace(),
             PaletteAction::OpenActions => self.open_action_center(),
+            PaletteAction::OpenSshPicker => self.open_ssh_picker(),
             PaletteAction::OpenConnections => {
                 self.open_connection_hub();
             }
@@ -6861,6 +6866,7 @@ impl Screen<'_> {
                     settings: self.settings_view.native_test_snapshot(),
                     font_primary: self.sugarloaf.font_library().inner.read().try_get(&0).and_then(|font| font.postscript_name()).map(str::to_owned),
                     connection_hub_active: self.connection_hub.is_active(),
+                    connection_hub_ssh_picker: self.connection_hub.is_ssh_picker(),
                     connection_hub_route: self
                         .connection_hub
                         .is_active()

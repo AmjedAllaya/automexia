@@ -325,6 +325,7 @@ impl From<String> for Action {
             "togglefullscreen" => Some(Action::ToggleFullscreen),
             "opencommandpalette" => Some(Action::OpenCommandPalette),
             "openconnectionhub" => Some(Action::OpenConnectionHub),
+            "opensshpicker" => Some(Action::OpenSshPicker),
             "openactioncenter" => Some(Action::OpenActionCenter),
             "openextensionmarketplace" => Some(Action::OpenExtensionMarketplace),
             "openfontbrowser" => Some(Action::OpenFontBrowser),
@@ -577,6 +578,7 @@ pub enum Action {
 
     /// Open the application-owned, read-only Connection Hub.
     OpenConnectionHub,
+    OpenSshPicker,
 
     /// Open the application-owned action search and review surface.
     OpenActionCenter,
@@ -1337,6 +1339,7 @@ fn automexia_macos_key_bindings(
         ",", ModifiersState::SUPER; Action::ConfigEditor;
         "p", ModifiersState::SUPER | ModifiersState::SHIFT; Action::OpenCommandPalette;
         "s", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenSettings;
+        "j", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenSshPicker;
         "h", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenConnectionHub;
         "o", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenActionCenter;
         "m", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenExtensionMarketplace;
@@ -1448,6 +1451,7 @@ fn automexia_windows_key_bindings(
         "n", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::WindowCreateNew;
         "p", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::OpenCommandPalette;
         "s", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenSettings;
+        "j", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenSshPicker;
         "h", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenConnectionHub;
         "o", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenActionCenter;
         "m", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenExtensionMarketplace;
@@ -1553,6 +1557,7 @@ fn automexia_unix_key_bindings(
         ",", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::ConfigEditor;
         "p", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::OpenCommandPalette;
         "s", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenSettings;
+        "j", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenSshPicker;
         "h", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenConnectionHub;
         "o", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenActionCenter;
         "m", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenExtensionMarketplace;
@@ -2217,6 +2222,7 @@ mod tests {
         for (name, action) in [
             ("OpenCustomizations", Action::OpenCustomizations),
             ("OpenConnectionHub", Action::OpenConnectionHub),
+            ("OpenSshPicker", Action::OpenSshPicker),
             ("OpenActionCenter", Action::OpenActionCenter),
             ("OpenExtensionMarketplace", Action::OpenExtensionMarketplace),
             ("OpenFontBrowser", Action::OpenFontBrowser),
@@ -2964,6 +2970,7 @@ mod tests {
     ) {
         for (key, action) in [
             ("h", Action::OpenConnectionHub),
+            ("j", Action::OpenSshPicker),
             ("o", Action::OpenActionCenter),
             ("m", Action::OpenExtensionMarketplace),
             ("l", Action::OpenFontBrowser),

@@ -448,3 +448,174 @@ fn exact_file_review_is_visible_and_revocable_only_by_its_owning_controller() {
     owner.cancel_grant_review();
     assert_eq!(runtime.snapshot().grant_review, GrantReviewState::None);
 }
+
+#[test]
+fn ssh_picker_opens_with_clean_search_and_restores_hub_filters() {
+    let temporary = tempfile::tempdir().unwrap();
+    let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    runtime.request_explicit_scan(vec![grant(temporary.path())]);
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    let mut controller = ConnectionHubController::new(runtime);
+    controller.open("hub");
+    controller.set_search_text("beta");
+    controller.toggle_favorites_filter();
+    let original = controller.catalog_query().clone();
+    controller.open_ssh_picker("picker");
+    assert!(controller.is_ssh_picker());
+    assert_eq!(controller.query(), "");
+    let view = controller.presentation(
+        Viewport::new(1280.0, 800.0, 1.0),
+        HubVisualPreferences::default(),
+    );
+    assert_eq!(view.view.rows.len(), 2);
+    assert!(view
+        .view
+        .accessibility_tree
+        .iter()
+        .any(|node| node.description.contains("Uses system OpenSSH")));
+    assert!(!controller.open_workspaces());
+    assert!(!controller.open_providers());
+    controller.handle_key(HubKey::Escape, Box::new(|| {}));
+    assert!(!controller.is_active());
+    controller.open("hub");
+    assert!(!controller.is_ssh_picker());
+    assert_eq!(controller.catalog_query(), &original);
+}
+
+#[test]
+fn removed_review_target_cannot_silently_become_another_host() {
+    let temporary = tempfile::tempdir().unwrap();
+    let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    let scan = grant(temporary.path());
+    runtime.request_explicit_scan(vec![scan.clone()]);
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    let mut controller = ConnectionHubController::new(runtime.clone());
+    controller.open("hub");
+    controller.select_projected_index(1);
+    controller.handle_key(HubKey::Enter, Box::new(|| {}));
+    assert!(controller.direct_openssh_preparation().is_some());
+    fs::write(
+        temporary.path().join("config"),
+        "Host alpha\n HostName alpha.example.test\n",
+    )
+    .unwrap();
+    runtime.request_explicit_scan(vec![scan]);
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    controller.sync();
+    assert_eq!(
+        controller.route(),
+        automexia_ui_model::connection_hub::HubRoute::Results
+    );
+    assert!(controller.direct_openssh_preparation().is_none());
+    assert!(!controller.execution_requested());
+}
+
+#[test]
+fn reopening_hub_keeps_painted_selection_equal_to_keyboard_review() {
+    let temporary = tempfile::tempdir().unwrap();
+    let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    runtime.request_explicit_scan(vec![grant(temporary.path())]);
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    let mut controller = ConnectionHubController::new(runtime);
+    controller.open("first");
+    controller.select_projected_index(1);
+    controller.close();
+    controller.open("second");
+    let view = controller.presentation(
+        Viewport::new(1280.0, 800.0, 1.0),
+        HubVisualPreferences::default(),
+    );
+    let painted = view
+        .view
+        .rows
+        .iter()
+        .find(|r| r.selected)
+        .unwrap()
+        .id
+        .clone();
+    assert_eq!(painted, view.selected_entry.unwrap().summary.id);
+    controller.handle_key(HubKey::Enter, Box::new(|| {}));
+    let review = controller.presentation(
+        Viewport::new(1280.0, 800.0, 1.0),
+        HubVisualPreferences::default(),
+    );
+    assert_eq!(painted, review.selected_entry.unwrap().summary.id);
+}
+
+#[test]
+fn ssh_picker_favorite_review_preserves_recent_metadata_and_selected_identity() {
+    use automexia_devops_ssh::{ConnectionMetadata, MetadataDocument};
+    let temporary = tempfile::tempdir().unwrap();
+    let store = MetadataStore::new(temporary.path().join("state")).unwrap();
+    store
+        .save(&MetadataDocument {
+            schema: 1,
+            revision: 1,
+            connections: vec![
+                ConnectionMetadata {
+                    connection_id: "openssh:alpha".into(),
+                    display_name: None,
+                    tags: vec![],
+                    favorite: true,
+                    last_used_at_ms: None,
+                },
+                ConnectionMetadata {
+                    connection_id: "openssh:beta".into(),
+                    display_name: None,
+                    tags: vec![],
+                    favorite: false,
+                    last_used_at_ms: Some(42),
+                },
+            ],
+        })
+        .unwrap();
+    let runtime = ConnectionHubRuntime::open(store.clone()).unwrap();
+    let scan_root = temporary.path().join("ssh");
+    fs::create_dir(&scan_root).unwrap();
+    runtime.request_explicit_scan(vec![grant(&scan_root)]);
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    let mut controller = ConnectionHubController::new(runtime.clone());
+    controller.open_ssh_picker("picker");
+    let view = controller.presentation(
+        Viewport::new(1280.0, 800.0, 1.0),
+        HubVisualPreferences::default(),
+    );
+    assert_eq!(view.view.rows[0].id, "openssh:beta");
+    assert_eq!(controller.focus(), HubFocus::Search);
+    controller.handle_key(HubKey::Enter, Box::new(|| {}));
+    controller.handle_key(HubKey::Escape, Box::new(|| {}));
+    assert_eq!(
+        controller.handle_key(HubKey::Space, Box::new(|| {})),
+        HubControllerEffect::MetadataReviewReady
+    );
+    let (send, receive) = std::sync::mpsc::channel();
+    controller.handle_key(
+        HubKey::Enter,
+        Box::new(move || {
+            let _ = send.send(());
+        }),
+    );
+    receive.recv_timeout(Duration::from_secs(5)).unwrap();
+    controller.sync();
+    let view = controller.presentation(
+        Viewport::new(1280.0, 800.0, 1.0),
+        HubVisualPreferences::default(),
+    );
+    assert_eq!(view.selected_entry.unwrap().summary.id, "openssh:beta");
+    let saved = store.load().unwrap();
+    let beta = saved
+        .connections
+        .iter()
+        .find(|r| r.connection_id == "openssh:beta")
+        .unwrap();
+    assert!(beta.favorite);
+    assert_eq!(
+        beta.last_used_at_ms,
+        Some(42),
+        "preview and favorite changes must not fabricate a successful connection"
+    );
+    assert!(!controller.execution_requested());
+}

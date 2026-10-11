@@ -104,3 +104,13 @@ See [Keyboard compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md),
 
 This page contains no future compatibility roadmap. Unreleased expansion plans
 remain private.
+
+## SSH picker command
+
+The classic profile adds `Ctrl+Shift+J` (Windows/Linux/BSD) or `Cmd+Shift+J`
+(macOS) for **Connect… (SSH)**. It also appears in the existing
+`Ctrl/Cmd+Shift+P` command palette. `OpenSshPicker` is a configurable action;
+custom overrides retain precedence. It is inactive in alternate-screen, search,
+and Vi modes. Pinned Ghostty profile triggers are unchanged. `Ctrl+K` retains
+its existing shell behavior. Selection opens a review, not a network connection;
+see [SSH picker availability](user-guide/connection-hub-and-ssh.md#ssh-connection-picker).

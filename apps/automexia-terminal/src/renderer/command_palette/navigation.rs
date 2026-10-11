@@ -96,7 +96,7 @@ impl Category {
                 Self::Customizations
             }
             ConfigEditor | PreviewSelectedImage | ViewTableOutput | OpenMarket
-            | OpenConnections | OpenActions => Self::Tools,
+            | OpenConnections | OpenSshPicker | OpenActions => Self::Tools,
         }
     }
 }

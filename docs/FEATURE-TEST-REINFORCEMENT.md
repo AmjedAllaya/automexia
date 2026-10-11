@@ -1419,6 +1419,14 @@ Reinforce immutable snapshots, deterministic filtering/grouping, route and
 generation isolation, size ceilings, stale-result rejection, and truthful
 empty/loading/unavailable states.
 
+The SSH-only picker must keep recent-first order and independent Hub filters.
+Test aliased search, disappearing review targets, review keyboard isolation and
+Close activation, private favorite persistence without fabricated recents, and
+the native palette entry without execution. The shared picker model tests and
+connection catalog benchmark own bounded sorting/search evidence. Conditional
+Match includes remain excluded from static discovery; native launch approval is
+still a separate, unsatisfied gate.
+
 ### connection-hub-f3-composition
 
 Reinforce single-owner composition of public connection sources with explicit

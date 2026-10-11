@@ -267,7 +267,7 @@ impl ConnectionHub {
             if layout.close.contains(mouse_x, mouse_y) {
                 return Some(ConnectionHubHit::CancelLiteralDestination);
             }
-        } else {
+        } else if !presentation.ssh_picker {
             let (
                 connections_tab,
                 workspaces_tab,
@@ -293,6 +293,9 @@ impl ConnectionHub {
             if layout.close.contains(mouse_x, mouse_y) {
                 return Some(ConnectionHubHit::Close);
             }
+        }
+        if layout.close.contains(mouse_x, mouse_y) {
+            return Some(ConnectionHubHit::Close);
         }
         if matches!(
             presentation.view.route,
@@ -477,6 +480,7 @@ impl ConnectionHub {
                 }
                 if filter.contains(mouse_x, mouse_y) {
                     let hit = match index {
+                        0 if presentation.ssh_picker => ConnectionHubHit::Inert,
                         0 => ConnectionHubHit::CycleGrouping,
                         1 => ConnectionHubHit::ToggleFavoritesFilter,
                         2 => ConnectionHubHit::ToggleRecentFilter,
@@ -573,11 +577,12 @@ impl ConnectionHub {
             width: 32.0,
             height: 32.0,
         };
-        let header_end = if presentation.literal_destination.is_some() {
-            layout.close.x
-        } else {
-            hub_tabs(&layout).4.x
-        };
+        let header_end =
+            if presentation.literal_destination.is_some() || presentation.ssh_picker {
+                layout.close.x
+            } else {
+                hub_tabs(&layout).4.x
+            };
         if header_end - left >= 36.0 {
             rounded(sugarloaf, brand, theme.raised, 9.0);
             draw_hub_icon(
@@ -589,7 +594,9 @@ impl ConnectionHub {
                 theme.raised,
             );
         }
-        let hub_title = if header_end - left < 200.0 {
+        let hub_title = if presentation.ssh_picker {
+            "Connect…"
+        } else if header_end - left < 200.0 {
             "Hub"
         } else {
             "Connection Hub"
@@ -606,7 +613,9 @@ impl ConnectionHub {
             && layout.setup_panel.is_none()
             && header_end - left >= 220.0
         {
-            let subtitle = if presentation.view.route == HubRoute::Review {
+            let subtitle = if presentation.ssh_picker {
+                "Uses system OpenSSH"
+            } else if presentation.view.route == HubRoute::Review {
                 "Connection review"
             } else if presentation.view.route == HubRoute::Workspaces {
                 "Saved environments"
@@ -629,7 +638,7 @@ impl ConnectionHub {
             );
         }
 
-        if presentation.literal_destination.is_none() {
+        if presentation.literal_destination.is_none() && !presentation.ssh_picker {
             let (
                 connections_tab,
                 workspaces_tab,
@@ -851,6 +860,15 @@ impl ConnectionHub {
             ];
             for (index, rect) in layout.filters.iter().copied().enumerate() {
                 if index == 4 && !filters_are_active(presentation) {
+                    continue;
+                }
+                if index == 0 && presentation.ssh_picker {
+                    sugarloaf.text_mut().draw(
+                        rect.x + 4.0,
+                        rect.y + 10.0,
+                        "Recent first",
+                        &small,
+                    );
                     continue;
                 }
                 filter_button(
@@ -2816,7 +2834,11 @@ fn render_status_footer(
             (footer.width - 20.0).max(0.0),
             16.0,
         ],
-        "Esc / Backspace / Alt+Left: back",
+        if presentation.ssh_picker {
+            "Uses system OpenSSH · Enter: preview · Esc: back"
+        } else {
+            "Esc / Backspace / Alt+Left: back"
+        },
         10.0,
         *theme,
     );
@@ -3740,6 +3762,7 @@ mod tests {
             literal_destination_valid: false,
         });
         HubControllerPresentation {
+            ssh_picker: false,
             profile_editor: None,
             credential_editor: None,
             view,
@@ -3770,6 +3793,45 @@ mod tests {
             workspace_restore: None,
             provider_catalog: None,
             provider_review: None,
+        }
+    }
+
+    #[test]
+    fn ssh_picker_hides_unrelated_section_hit_targets_and_keeps_close() {
+        for scale in [1.0, 1.5, 2.0] {
+            let mut p = presentation();
+            p.ssh_picker = true;
+            let dimensions = (1280.0 * scale, 800.0 * scale, scale);
+            let layout = ConnectionHub::layout(&p, dimensions);
+            let mut hub = ConnectionHub::default();
+            hub.set_presentation(Some(p));
+            let tabs = hub_tabs(&layout);
+            for rect in [tabs.0, tabs.1, tabs.2, tabs.3, tabs.4] {
+                let hit = hub.hit_test(
+                    rect.x + rect.width / 2.0,
+                    rect.y + rect.height / 2.0,
+                    dimensions,
+                );
+                assert!(!matches!(
+                    hit,
+                    Some(
+                        ConnectionHubHit::OpenConnections
+                            | ConnectionHubHit::OpenWorkspaces
+                            | ConnectionHubHit::OpenProviders
+                            | ConnectionHubHit::OpenCredentials
+                            | ConnectionHubHit::OpenProfiles
+                    )
+                ));
+            }
+            let rect = layout.close;
+            assert_eq!(
+                hub.hit_test(
+                    rect.x + rect.width / 2.0,
+                    rect.y + rect.height / 2.0,
+                    dimensions
+                ),
+                Some(ConnectionHubHit::Close)
+            );
         }
     }
 

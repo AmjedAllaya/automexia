@@ -54,6 +54,8 @@ pub enum PaletteAction {
     /// Open the application-owned, read-only Connection Hub. This action
     /// grants no filesystem, network, process, authentication, or PTY access.
     OpenConnections,
+    /// SSH-only picker; discovery and review grant no execution authority.
+    OpenSshPicker,
     /// Search typed Quick Actions. Selection enters a separate review step;
     /// this action never writes to the PTY itself.
     OpenActions,

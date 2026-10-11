@@ -17,7 +17,7 @@ use automexia_ui_model::connection_hub::{
     apply_hub_key, hub_catalog_controls_visible, project_connection_catalog,
     project_connection_hub, project_direct_openssh_preparation,
     project_direct_openssh_review, project_provider_catalog, project_provider_review,
-    project_workspace_catalog, project_workspace_restore,
+    project_ssh_connection_picker, project_workspace_catalog, project_workspace_restore,
     validate_connection_catalog_query, ConnectionCatalogEntry,
     ConnectionCatalogProjection, ConnectionCatalogQuery, ConnectionHubView,
     ConnectionReviewView, ConnectionSummary, HubCatalogGrouping, HubCatalogSource,
@@ -83,6 +83,7 @@ pub enum HubControllerEffect {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct HubControllerPresentation {
+    pub ssh_picker: bool,
     pub profile_editor: Option<super::ProfileEditor>,
     pub credential_editor: Option<super::CredentialEditor>,
     pub view: ConnectionHubView,
@@ -114,6 +115,7 @@ pub struct HubControllerPresentation {
 }
 
 pub struct ConnectionHubController {
+    hub_query_before_picker: Option<ConnectionCatalogQuery>,
     profile_editor: Option<super::ProfileEditor>,
     credential_editor: Option<super::CredentialEditor>,
     runtime: ConnectionHubRuntime,
@@ -164,6 +166,7 @@ impl ConnectionHubController {
             projected_summaries(&runtime_snapshot.catalog, &projection);
         let result_count = projection.indices.len();
         Self {
+            hub_query_before_picker: None,
             profile_editor: None,
             credential_editor: None,
             runtime,
@@ -218,6 +221,23 @@ impl ConnectionHubController {
             opener_id,
         );
         self.sync();
+        self.selected_id = self.selected_entry().map(|entry| entry.summary.id.clone());
+    }
+
+    /// Reuse the Hub owner without inheriting unrelated filters or writing preferences.
+    pub fn open_ssh_picker(&mut self, opener_id: impl Into<String>) {
+        self.open(opener_id);
+        self.hub_query_before_picker = Some(std::mem::take(&mut self.query));
+        self.selected_id = None;
+        self.interaction.selected_index = 0;
+        self.refresh_projection();
+        if self.catalog_controls_visible() {
+            self.interaction.focus = HubFocus::Search;
+        }
+    }
+
+    pub const fn is_ssh_picker(&self) -> bool {
+        self.hub_query_before_picker.is_some()
     }
 
     pub const fn is_active(&self) -> bool {
@@ -247,6 +267,10 @@ impl ConnectionHubController {
         self.provider_review = None;
         self.ime_preedit = None;
         self.active = false;
+        if let Some(query) = self.hub_query_before_picker.take() {
+            self.query = query;
+            self.refresh_projection();
+        }
         self.interaction.opener_id.clone()
     }
 
@@ -565,6 +589,7 @@ impl ConnectionHubController {
 
     fn can_change_section(&self) -> bool {
         self.active
+            && !self.is_ssh_picker()
             && self.profile_editor.is_none()
             && self.credential_editor.is_none()
             && self.literal_destination.is_none()
@@ -801,9 +826,7 @@ impl ConnectionHubController {
     pub fn set_search_text(&mut self, value: &str) -> bool {
         let mut query = self.query.clone();
         query.text = value.to_owned();
-        let Ok(projection) =
-            project_connection_catalog(&self.runtime_snapshot.catalog, &query)
-        else {
+        let Ok(projection) = self.project_catalog(&query) else {
             return false;
         };
         self.query = query;
@@ -1016,6 +1039,9 @@ impl ConnectionHubController {
     }
 
     pub fn cycle_grouping(&mut self) {
+        if self.is_ssh_picker() {
+            return;
+        }
         self.query.grouping = match self.query.grouping {
             HubCatalogGrouping::None => HubCatalogGrouping::Source,
             HubCatalogGrouping::Source => HubCatalogGrouping::Environment,
@@ -1117,11 +1143,15 @@ impl ConnectionHubController {
             && !matches!(self.runtime_snapshot.state, HubRuntimeState::Initializing)
         {
             let preferences = &self.runtime_snapshot.library.preferences;
-            self.query.favorites_only = preferences.favorites_only;
-            self.query.recent_only = preferences.recent_only;
-            self.query.tag.clone_from(&preferences.tag);
-            self.query.source = preferences.source;
-            self.query.grouping = preferences.grouping;
+            let query = self
+                .hub_query_before_picker
+                .as_mut()
+                .unwrap_or(&mut self.query);
+            query.favorites_only = preferences.favorites_only;
+            query.recent_only = preferences.recent_only;
+            query.tag.clone_from(&preferences.tag);
+            query.source = preferences.source;
+            query.grouping = preferences.grouping;
             self.library_preferences_applied = true;
             refresh_projection = true;
         }
@@ -1176,6 +1206,14 @@ impl ConnectionHubController {
             literal_destination_entry: self.literal_destination.is_some(),
             literal_destination_valid: self.literal_destination_is_valid(),
         });
+        if self.is_ssh_picker() {
+            for node in &mut view.accessibility_tree {
+                if node.id == "connection-hub" || node.id == "connection-hub-title" {
+                    node.name = "Connect…".into();
+                    node.description = "Uses system OpenSSH. Recent hosts first. Enter previews; authentication, keys, agents and host-key policy stay with OpenSSH.".into();
+                }
+            }
+        }
         if let Some(editor) = &self.credential_editor {
             view.accessibility_tree = editor.accessibility_tree();
         }
@@ -1234,6 +1272,7 @@ impl ConnectionHubController {
             None
         };
         HubControllerPresentation {
+            ssh_picker: self.is_ssh_picker(),
             profile_editor: self.profile_editor.clone(),
             credential_editor: self.credential_editor.clone(),
             view,
@@ -1461,7 +1500,7 @@ impl ConnectionHubController {
             InteractionEffect::CloseAndRestoreFocus(opener) => {
                 self.clear_direct_openssh_preparation();
                 self.discard_owned_review();
-                self.active = false;
+                self.close();
                 return HubControllerEffect::Closed {
                     restore_focus_to: opener.clone(),
                 };
@@ -1672,19 +1711,49 @@ impl ConnectionHubController {
         self.grant_review_offset = 0;
     }
 
+    fn project_catalog(
+        &self,
+        query: &ConnectionCatalogQuery,
+    ) -> Result<
+        ConnectionCatalogProjection,
+        automexia_ui_model::connection_hub::HubCatalogError,
+    > {
+        if self.is_ssh_picker() {
+            project_ssh_connection_picker(&self.runtime_snapshot.catalog, query)
+        } else {
+            project_connection_catalog(&self.runtime_snapshot.catalog, query)
+        }
+    }
+
     fn refresh_projection(&mut self) {
-        let projection =
-            project_connection_catalog(&self.runtime_snapshot.catalog, &self.query)
-                .unwrap_or_else(|_| ConnectionCatalogProjection {
-                    indices: Vec::new(),
-                    groups: Vec::new(),
-                    source_revision: self.runtime_snapshot.metadata_revision,
-                    content_state: HubContentState::Error,
-                });
+        let projection = self.project_catalog(&self.query).unwrap_or_else(|_| {
+            ConnectionCatalogProjection {
+                indices: Vec::new(),
+                groups: Vec::new(),
+                source_revision: self.runtime_snapshot.metadata_revision,
+                content_state: HubContentState::Error,
+            }
+        });
         self.install_projection(projection);
     }
 
     fn install_projection(&mut self, projection: ConnectionCatalogProjection) {
+        // A disappearing review target must never retarget a different host.
+        if self.interaction.route == HubRoute::Review
+            && self.direct_openssh_preparation_origin
+                == Some(DirectOpenSshPreparationOrigin::Inventory)
+            && !self.selected_id.as_ref().is_some_and(|id| {
+                projection
+                    .indices
+                    .iter()
+                    .any(|index| self.runtime_snapshot.catalog[*index].summary.id == *id)
+            })
+        {
+            self.clear_direct_openssh_preparation();
+            self.interaction.route = HubRoute::Results;
+            self.interaction.focus = HubFocus::Results;
+            self.direct_openssh_diagnostic = Some("connection-launch-review-stale");
+        }
         self.projected_summaries =
             projected_summaries(&self.runtime_snapshot.catalog, &projection);
         self.projection = projection;
