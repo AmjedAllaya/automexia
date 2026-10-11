@@ -3745,6 +3745,12 @@ mod native_instance_buffer_tests {
         let mut previous_allocation = None;
         for alpha in [0.5_f32, 1.0, 0.25, 1.0] {
             let buffer = pool.acquire(&device);
+            if previous_allocation.is_none() {
+                eprintln!(
+                    "Native instance buffer storage: {:?}",
+                    buffer.buffer.0.storage_mode()
+                );
+            }
             let allocation = buffer.buffer.0.contents();
             if let Some(previous) = previous_allocation {
                 assert_eq!(allocation, previous, "exercise the reused allocation");

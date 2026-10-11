@@ -70,6 +70,15 @@ class CollectorTests(unittest.TestCase):
                          "list_focused": True, "confirmation_visible": True})
         self.assertNotIn("private", json.dumps(state))
 
+    def test_native_failure_appearance_rejects_private_or_nonfinite_values(self):
+        probe = unix_ui_probe()
+        source = {"appearance": {"window_alpha": 1.0, "clear": [0.1, 0.2, 0.3, 0.5], "path": "private"}}
+        self.assertEqual(probe.native_failure_state(source)["appearance"],
+                         {"window_alpha": 1.0, "clear": [0.1, 0.2, 0.3, 0.5]})
+        for clear in ([0, 0, 0, float("nan")], [0, 0, 0, "private"], [1, 2, 3], [0, 0, 0, True]):
+            self.assertEqual(probe.native_failure_state({"appearance": {
+                "window_alpha": "private", "clear": clear}})["appearance"], {})
+
     def test_native_pixel_reader_converts_display_profile_before_sampling(self):
         probe = unix_ui_probe()
         tail = ['-crop', '1x1+80+60', '-depth', '8', 'rgb:-']

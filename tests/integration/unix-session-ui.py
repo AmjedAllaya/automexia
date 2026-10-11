@@ -641,8 +641,10 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                                       f"native body blend mismatch: {name}, alpha={alpha}, actual={actual}, expected={expected_rgb}")
                         elif alpha == 1.0:
                             actual = presented_rgb(lambda: body_pixel(name), rgb, 6)
-                            check(max(abs(a-b) for a,b in zip(actual, rgb)) <= 6,
-                                  f"opaque body pixel mismatch: {name}, actual={actual}, expected={rgb}")
+                            if max(abs(a-b) for a,b in zip(actual, rgb)) > 6:
+                                error = Failure(f"opaque body pixel mismatch: {name}, actual={actual}, expected={rgb}")
+                                error.observed = native_failure_state(state())
+                                raise error
 
                     def setting_row(identity):
                         current = wait(lambda s: s.get("settings", {}).get("ready") and
@@ -1187,6 +1189,17 @@ def native_failure_state(state: dict) -> dict:
         values = state.get(section) or {}
         result[section] = {key: values[key] for key in keys
                            if isinstance(values.get(key), (int, float)) and math.isfinite(values[key])}
+    appearance = state.get("appearance")
+    if isinstance(appearance, dict):
+        safe = {}
+        alpha = appearance.get("window_alpha")
+        if type(alpha) in (int, float) and math.isfinite(alpha) and 0 <= alpha <= 1:
+            safe["window_alpha"] = alpha
+        clear = appearance.get("clear")
+        if (isinstance(clear, list) and len(clear) == 4 and
+                all(type(v) in (int, float) and math.isfinite(v) and 0 <= v <= 1 for v in clear)):
+            safe["clear"] = clear
+        result["appearance"] = safe
     settings = state.get("settings")
     if isinstance(settings, dict):
         result["settings"] = {key: settings[key] for key in
