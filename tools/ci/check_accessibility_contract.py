@@ -15,7 +15,7 @@ MAX_FILE_BYTES = 128 * 1024
 MAX_TOTAL_BYTES = 512 * 1024
 # Canonical UTF-8/LF text digests; updating these requires source review.
 VENDOR_HASHES = {
-    'Cargo.toml': '3b3af85187449beba705b21dcd5882ac56813a86542717b030e63a8786094507',
+    'Cargo.toml': 'eb82eb6d85a7dcfa78dec883a7853b96f738b0dfd557c659cdb22c07e4830e0b',
     'LICENSE-APACHE': '62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a',
     'LICENSE-MIT': '23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3',
     'LICENSE.chromium': '845022e0c1db1abb41a6ba4cd3c4b674ec290f3359d9d3c78ae558d4c0ed9308',

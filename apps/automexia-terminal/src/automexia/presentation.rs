@@ -329,6 +329,23 @@ pub fn output_background(
         })
 }
 
+/// Measurement and paint share the prepared face and style; no font lookup I/O.
+pub fn tag_text_options(
+    engine: &rio_backend::sugarloaf::text::Text,
+    style: &automexia_ui_model::information_bar::TagTypography,
+    font_size: f32,
+) -> rio_backend::sugarloaf::text::DrawOpts {
+    let bold = style.bold.unwrap_or(false);
+    let italic = style.italic.unwrap_or(false);
+    rio_backend::sugarloaf::text::DrawOpts {
+        font_size,
+        bold,
+        italic,
+        preferred_font_id: engine.ui_font_id(style.family.as_deref(), bold, italic),
+        ..Default::default()
+    }
+}
+
 #[cfg(test)]
 mod output_domain_tests {
     use super::*;

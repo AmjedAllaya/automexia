@@ -341,6 +341,7 @@ pub struct State {
     write_list: VecDeque<Cow<'static, [u8]>>,
     writing: Option<Writing>,
     parser: handler::Processor,
+    kitty_deadline: Option<Instant>,
     pending_paste: Option<PasteRequest>,
     pending_word_delete: Option<crate::crosswords::command_actions::CmdWordDeleteReceipt>,
     word_delete_drain_rounds: u8,
@@ -570,6 +571,8 @@ where
 
             // Parse the incoming bytes.
             state.parser.advance(&mut **terminal, &buf[..unprocessed]);
+            state.kitty_deadline =
+                terminal.graphics.kitty_chunking_state.pending_deadline();
 
             processed += unprocessed;
             unprocessed = 0;
@@ -818,6 +821,10 @@ where
                 {
                     timeout = Some(timeout.map_or(wait, |sync| sync.min(wait)));
                 }
+                if let Some(deadline) = state.kitty_deadline {
+                    let wait = deadline.saturating_duration_since(Instant::now());
+                    timeout = Some(timeout.map_or(wait, |other| other.min(wait)));
+                }
                 if self.sender.shutdown_requested()
                     || state.pending_paste.is_some()
                     || state.pending_word_delete.is_some()
@@ -837,6 +844,22 @@ where
                     }
                 }
 
+                // Retire abandoned transfers on this existing PTY worker even
+                // when no more terminal output arrives. No extra timer/thread,
+                // and no wakeups or terminal locks when there are no uploads.
+                if state
+                    .kitty_deadline
+                    .is_some_and(|deadline| deadline <= Instant::now())
+                {
+                    let mut terminal = self.terminal.lock();
+                    terminal
+                        .graphics
+                        .kitty_chunking_state
+                        .expire_incomplete(Instant::now());
+                    state.kitty_deadline =
+                        terminal.graphics.kitty_chunking_state.pending_deadline();
+                }
+
                 // A native input deadline must not postpone synchronized-output
                 // expiry or turn an expired sync timeout into a busy poll.
                 if state
@@ -847,6 +870,10 @@ where
                 {
                     let mut terminal = self.terminal.lock();
                     state.parser.stop_sync(&mut *terminal);
+                    // Flushing synchronized bytes can create or retire uploads
+                    // without another PTY read. Refresh their idle wakeup here.
+                    state.kitty_deadline =
+                        terminal.graphics.kitty_chunking_state.pending_deadline();
 
                     // Notify renderer if damage available and no event in flight
                     if !terminal.damage_event_in_flight

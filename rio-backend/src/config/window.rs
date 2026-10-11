@@ -248,6 +248,18 @@ pub struct Window {
     pub quake_height_percentage: f32,
 }
 
+impl Window {
+    /// Retain intentional transparency, but never send malformed TOML numbers
+    /// (including NaN) to native compositors or silently convert them to alpha 0.
+    pub fn effective_opacity(&self) -> f32 {
+        if self.opacity.is_finite() && (0.0..=1.0).contains(&self.opacity) {
+            self.opacity
+        } else {
+            default_opacity()
+        }
+    }
+}
+
 impl Default for Window {
     fn default() -> Window {
         Window {
@@ -326,5 +338,30 @@ mod chrome_default_tests {
             Window::default().decorations,
             Decorations::Disabled | Decorations::Buttonless
         ));
+    }
+}
+
+#[cfg(test)]
+mod opacity_contract_tests {
+    use super::*;
+
+    #[test]
+    fn appearance_opacity_accepts_saved_intent_and_rejects_malformed_numbers() {
+        assert_eq!(Window::default().effective_opacity(), 1.0);
+        for value in ["nan", "inf", "-inf", "-0.1", "1.1"] {
+            let window: Window = toml::from_str(&format!("opacity = {value}")).unwrap();
+            assert_eq!(window.effective_opacity(), 1.0, "{value}");
+        }
+        for alpha in [0.0, 0.01, 0.25, 0.5, 0.99, 1.0] {
+            let window: Window = toml::from_str(&format!("opacity = {alpha}")).unwrap();
+            assert_eq!(window.effective_opacity(), alpha);
+            let saved = toml::to_string(&window).unwrap();
+            assert_eq!(
+                toml::from_str::<Window>(&saved)
+                    .unwrap()
+                    .effective_opacity(),
+                alpha
+            );
+        }
     }
 }

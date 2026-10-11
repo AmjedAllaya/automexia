@@ -797,12 +797,13 @@ def _sbom_input_names(version: str) -> frozenset[str]:
     return frozenset({"Cargo.lock", *("packages/" + str(row["file"]) for row in _artifact_contract(version).values())})
 
 
-def validate_public_sboms(spdx: dict, cdx: dict, version: str) -> None:
+def validate_public_sboms(spdx: dict, cdx: dict, version: str, *,
+                          allowed_inputs: frozenset[str] | None = None) -> None:
     for payload in (spdx, cdx):
         _sbom_structure(payload, privacy=True)
     try:
         release_trust.validate_sboms(spdx, cdx, version, release_trust.load_policy())
-        allowed = _sbom_input_names(version)
+        allowed = _sbom_input_names(version) if allowed_inputs is None else allowed_inputs
         if spdx.get("spdxVersion") != "SPDX-2.3" or cdx.get("specVersion") not in {"1.6", "1.7"}:
             fail("public SBOM format requires explicit compatibility review")
         files = spdx.get("files", [])
@@ -852,16 +853,22 @@ def validate_public_sboms(spdx: dict, cdx: dict, version: str) -> None:
         raise DistributionError("public SBOM package or file evidence is invalid") from None
 
 
-def prepare_public_sboms(source: Path, output: Path, scan_root: Path, version: str) -> None:
+def prepare_public_sboms(source: Path, output: Path, scan_root: Path, version: str, *,
+                         allowed_inputs: frozenset[str] | None = None) -> None:
     """Project only known location fields; keep the scanner's evidence intact."""
-    if (VERSION_RE.fullmatch(version) is None or source.is_symlink() or not source.is_dir()
+    if ((VERSION_RE.fullmatch(version) is None and version != "0.0.1-alpha") or source.is_symlink() or not source.is_dir()
             or output.is_symlink() or not output.is_dir() or scan_root.is_symlink()
             or not scan_root.is_dir() or source.resolve() == output.resolve()):
         fail("public SBOM preparation needs separate real input and output directories")
     names = ("automexia-terminal.spdx.json", "automexia-terminal.cdx.json")
     spdx, cdx = (_load_sbom(source / name) for name in names)
     prefix = scan_root.resolve().as_posix().rstrip("/") + "/"
-    allowed = _sbom_input_names(version)
+    allowed = _sbom_input_names(version) if allowed_inputs is None else allowed_inputs
+    if ("Cargo.lock" not in allowed or len(allowed) > 32
+            or any(name != "Cargo.lock" and
+                   (not name.startswith("packages/") or name.count("/") != 1
+                    or not re.fullmatch(r"packages/[A-Za-z0-9_.~+-]{1,200}", name)) for name in allowed)):
+        fail("public SBOM input inventory is invalid")
 
     def relative_location(value: object, *, virtual: bool = False) -> str:
         if not isinstance(value, str):
@@ -899,7 +906,7 @@ def prepare_public_sboms(source: Path, output: Path, scan_root: Path, version: s
             for prop in component.get("properties", []):
                 if re.fullmatch(r"syft:location:[0-9]+:path", prop.get("name", "")):
                     prop["value"] = relative_location(prop.get("value"), virtual=True)
-        validate_public_sboms(spdx, cdx, version)
+        validate_public_sboms(spdx, cdx, version, allowed_inputs=allowed)
     except (TypeError, AttributeError, KeyError):
         raise DistributionError("public SBOM structure is invalid") from None
     # Both documents pass before either write. Replacement is atomic per file;

@@ -421,11 +421,16 @@ impl Application<'_> {
         has_font_updates: bool,
     ) {
         let old_line_height = self.config.line_height;
-        self.config = resolve_runtime_preference_config(
+        let mut config = resolve_runtime_preference_config(
             &self.base_config,
             &self.user_preferences,
             event_loop.system_theme(),
         );
+        crate::automexia::general_preferences::retain_restart_settings(
+            &self.config,
+            &mut config,
+        );
+        self.config = config;
         self.router.set_information_bar_recipe(
             self.user_preferences.visual.information_bar.recipe(),
         );
@@ -1200,6 +1205,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     }
                 };
                 let mut config = self.user_preferences.apply_to(&base_config);
+                crate::automexia::general_preferences::retain_restart_settings(
+                    &self.config,
+                    &mut config,
+                );
 
                 let system_theme = event_loop.system_theme();
                 let theme = config
@@ -1544,40 +1553,12 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     drop(terminal);
                 }
             }
-            RioEventType::Rio(RioEvent::ClipboardLoad(
-                route_id,
-                clipboard_type,
-                format,
-            )) => {
-                let Router {
-                    routes, clipboard, ..
-                } = &mut self.router;
-                if let Some(route) = routes.get_mut(&window_id) {
-                    if route.window.is_focused {
-                        let text = format(clipboard.get(clipboard_type).as_str());
-                        // Route the paste back to the panel that asked for it
-                        // (OSC 52 reply), not whichever panel happens to be
-                        // focused now.
-                        if let Some(context) = route
-                            .window
-                            .screen
-                            .context_manager
-                            .get_by_route_id(route_id)
-                        {
-                            context.messenger.send_bytes(text.into_bytes());
-                        }
-                    }
-                }
-            }
-            RioEventType::Rio(RioEvent::ClipboardStore(clipboard_type, content)) => {
-                let Router {
-                    routes, clipboard, ..
-                } = &mut self.router;
-                if let Some(route) = routes.get_mut(&window_id) {
-                    if route.window.is_focused {
-                        clipboard.set(clipboard_type, content);
-                    }
-                }
+            RioEventType::Rio(
+                RioEvent::ClipboardLoad(..) | RioEvent::ClipboardStore(..),
+            ) => {
+                // Defense in depth: output-originated events never authorize
+                // desktop clipboard access. Explicit copy/paste uses its own
+                // user-action and live-route checks.
             }
             RioEventType::Rio(RioEvent::PtyWrite(route_id, text)) => {
                 if let Some(route) = self.router.routes.get_mut(&window_id) {
@@ -1761,9 +1742,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
             }
             RioEventType::Rio(RioEvent::OpenSettings) => {
-                // Retain existing shortcuts and custom bindings while using the
-                // one feature-organized preference editor.
-                self.open_settings(window_id, true)
+                // Full Settings and visual Customizations share the same catalog
+                // and preference writer, with distinct entry points.
+                self.open_settings(window_id, false)
             }
             RioEventType::Rio(RioEvent::RestorePreviousSession) => {
                 self.restore_previous_session();

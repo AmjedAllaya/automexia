@@ -34,6 +34,11 @@ jobs:
       version: ${{ steps.auth.outputs.version }}
       commit: ${{ steps.auth.outputs.commit }}
     steps:
+    - name: Check out exact merged source for authorization helpers
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
     - name: Validate release authorization event
       id: auth
       shell: bash
@@ -55,11 +60,12 @@ jobs:
         [[ "$PR_MERGED" == "true" ]]
         [[ "$PR_BASE" == "main" ]]
         [[ "$PR_REPO" == "$GITHUB_REPOSITORY" ]]
-        [[ "$PR_BRANCH" =~ ^release/([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || {
-          echo "Release branch must be exactly release/X.Y.Z" >&2
+        [[ "$PR_BRANCH" =~ ^release/([0-9]+)\.([0-9]+)\.([0-9]+)$ || "$PR_BRANCH" == "release/0.0.1-alpha" ]] || {
+          echo "Release branch must be release/X.Y.Z or release/0.0.1-alpha" >&2
           exit 1
         }
         version="${PR_BRANCH#release/}"
+        python3 tools/ci/release_identity.py tag "$version" >/dev/null
         [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo 'Missing merged commit SHA' >&2; exit 1; }
         [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Missing pull-request head SHA' >&2; exit 1; }
         min="${MIN_APPROVALS:-0}"
@@ -369,11 +375,12 @@ jobs:
           cat "$RUNNER_TEMP/release-files.txt" >&2
           exit 1
         fi
-        if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-          echo "Release v$VERSION already exists" >&2; exit 1
+        tag="$(python3 tools/ci/release_identity.py tag "$VERSION")"
+        if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          echo "Release $tag already exists" >&2; exit 1
         fi
-        if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
-          echo "Tag v$VERSION already exists" >&2; exit 1
+        if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+          echo "Tag $tag already exists" >&2; exit 1
         fi
         python tools/ci/stable_release.py check-policy
         python tools/ci/test_stable_release.py
@@ -381,6 +388,12 @@ jobs:
         python3 .github/scripts/check_action_pins.py
         python3 .github/scripts/check_free_plan_contract.py
         python3 tools/ci/test_free_plan_contract.py
+  native-platform-qa:
+    name: Native platform accessibility, session and visual QA
+    needs: preflight
+    uses: ./.github/workflows/accessibility-native.yml
+    permissions:
+      contents: read
   release-quality:
     name: Release quality and dependency gate
     needs: preflight
@@ -490,7 +503,7 @@ jobs:
     - run: rustup target add ${{ matrix.target }}
     - name: Build native release artifact
       shell: bash
-      run: cargo build --release --locked -p automexia-terminal --target "${{ matrix.target }}"
+      run: python tools/ci/reproducible_build.py --build-once --target "${{ matrix.target }}"
     - name: Native version smoke
       shell: bash
       run: 'set -euo pipefail
@@ -527,11 +540,84 @@ jobs:
     timeout-minutes: 90
     permissions:
       contents: read
+  reproducibility-desktop:
+    name: Verify Windows and macOS unsigned runtime reproducibility
+    needs:
+    - preflight
+    - release-quality
+    - build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - runner: windows-2025
+          runner_arch: X64
+          target: x86_64-pc-windows-msvc
+          artifact: windows-x86_64
+        - runner: windows-11-arm
+          runner_arch: ARM64
+          target: aarch64-pc-windows-msvc
+          artifact: windows-arm64
+        - runner: macos-26-intel
+          runner_arch: X64
+          target: x86_64-apple-darwin
+          artifact: macos-x86_64
+        - runner: macos-26
+          runner_arch: ARM64
+          target: aarch64-apple-darwin
+          artifact: macos-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    permissions:
+      contents: read
+    steps:
+    - name: Check out exact release source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.preflight.outputs.commit }}
+        persist-credentials: false
+    - name: Download exact unsigned package inputs
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ matrix.artifact }}
+        path: reference
+    - name: Require native runner architecture
+      shell: bash
+      run: test "$RUNNER_ARCH" = "${{ matrix.runner_arch }}"
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - name: Install pinned Rust toolchain
+      shell: bash
+      run: 'set -euo pipefail
+
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+
+        rustup target add "${{ matrix.target }}" --toolchain "$RUSTUP_TOOLCHAIN"
+
+        python tools/ci/rust_toolchain.py verify --kind development
+
+        '
+    - name: Verify two independent cold source builds
+      shell: bash
+      run: 'python tools/ci/reproducible_build.py "trust/evidence/reproducibility-${{ matrix.target }}.json" --target "${{ matrix.target }}" --reference "reference/${{ matrix.artifact }}"
+
+        '
+    - name: Upload cold-build reproducibility evidence
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-reproducibility-${{ matrix.target }}
+        path: trust/evidence/reproducibility-${{ matrix.target }}.json
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
   reproducibility-linux:
     name: Verify Linux release reproducibility
     needs:
     - preflight
     - release-quality
+    - build
     strategy:
       fail-fast: false
       matrix:
@@ -540,10 +626,12 @@ jobs:
           arch: x86_64
           runner_arch: X64
           target: x86_64-unknown-linux-gnu
+          artifact: linux-x86_64
         - runner: ubuntu-22.04-arm
           arch: aarch64
           runner_arch: ARM64
           target: aarch64-unknown-linux-gnu
+          artifact: linux-arm64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     permissions:
@@ -554,6 +642,11 @@ jobs:
       with:
         ref: ${{ needs.preflight.outputs.commit }}
         persist-credentials: false
+    - name: Download exact unsigned package inputs
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ matrix.artifact }}
+        path: reference
     - name: Require native runner architecture
       shell: bash
       run: test "$RUNNER_ARCH" = "${{ matrix.runner_arch }}"
@@ -565,17 +658,18 @@ jobs:
         python-version: '3.12'
     - name: Install pinned Rust toolchain
       shell: bash
-      run: |
-        set -euo pipefail
+      run: 'set -euo pipefail
+
         rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+
         rustup target add "${{ matrix.target }}" --toolchain "$RUSTUP_TOOLCHAIN"
+
         python tools/ci/rust_toolchain.py verify --kind development
+
+        '
     - name: Verify two independent cold source builds
       shell: bash
-      run: |
-        set -euo pipefail
-        tools/ci/check_reproducible_build.sh \
-          "trust/evidence/reproducibility-${{ matrix.arch }}.json"
+      run: "set -euo pipefail\ntools/ci/check_reproducible_build.sh \\\n  \"trust/evidence/reproducibility-${{ matrix.arch }}.json\" \"reference/${{ matrix.artifact }}\"\n"
     - name: Upload cold-build reproducibility evidence
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
@@ -691,7 +785,7 @@ jobs:
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
         description: Automexia Terminal
-        description-url: https://github.com/AmjedAllaya/automexia-terminal
+        description-url: https://github.com/AmjedAllaya/automexia
     - name: Sign runtime inputs with fallback PFX
       if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'pfx'
       shell: pwsh
@@ -704,7 +798,7 @@ jobs:
         try {
           [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CERTIFICATE_BASE64))
           foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe', 'automexia-ssh-helper.exe')) {
-            signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.acs.microsoft.com /d "Automexia Terminal" /du "https://github.com/AmjedAllaya/automexia-terminal" /f $pfxPath /p $env:CERTIFICATE_PASSWORD (Join-Path signing-input $runtime)
+            signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.acs.microsoft.com /d "Automexia Terminal" /du "https://github.com/AmjedAllaya/automexia" /f $pfxPath /p $env:CERTIFICATE_PASSWORD (Join-Path signing-input $runtime)
             if ($LASTEXITCODE -ne 0) { throw "executable Authenticode signing failed: $runtime" }
           }
           $flags = [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
@@ -921,7 +1015,7 @@ jobs:
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
         description: Automexia Terminal
-        description-url: https://github.com/AmjedAllaya/automexia-terminal
+        description-url: https://github.com/AmjedAllaya/automexia
     - name: Sign MSI with fallback PFX
       if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'pfx'
       shell: pwsh
@@ -934,7 +1028,7 @@ jobs:
         try {
           [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CERTIFICATE_BASE64))
           $msi = Get-Item unsigned/*.msi
-          signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.acs.microsoft.com /d "Automexia Terminal" /du "https://github.com/AmjedAllaya/automexia-terminal" /f $pfxPath /p $env:CERTIFICATE_PASSWORD $msi.FullName
+          signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.acs.microsoft.com /d "Automexia Terminal" /du "https://github.com/AmjedAllaya/automexia" /f $pfxPath /p $env:CERTIFICATE_PASSWORD $msi.FullName
           if ($LASTEXITCODE -ne 0) { throw 'MSI Authenticode signing failed' }
         } finally {
           Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
@@ -1003,7 +1097,8 @@ jobs:
           lipo -verify_arch x86_64 arm64 "$app/Contents/MacOS/$runtime"
           file "$app/Contents/MacOS/$runtime" | grep -F 'universal binary'
         done
-        sed "s/@AUTOMEXIA_VERSION@/$AUTOMEXIA_VERSION/g" packaging/macos/Info.plist > "$app/Contents/Info.plist"
+        python3 tools/ci/release_identity.py plist "$AUTOMEXIA_VERSION" \
+          --template packaging/macos/Info.plist --output "$app/Contents/Info.plist"
         cp assets/brand/automexia-terminal.icns "$app/Contents/Resources/automexia-terminal.icns"
         cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md "$app/Contents/Resources/"
         cp README.md "$app/Contents/Resources/"
@@ -1192,6 +1287,7 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
+        export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
         target_dir="target/${{ matrix.target }}/release"
         mkdir -p "$target_dir"
         for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
@@ -1301,7 +1397,7 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        mkdir -p release-assets sbom-input/packages
+        mkdir -p release-assets sbom-raw sbom-input/packages
         python3 .github/scripts/build_release_manifest.py \
           --source packages \
           --output release-assets \
@@ -1315,17 +1411,22 @@ jobs:
       with:
         path: sbom-input
         format: spdx-json
-        output-file: release-assets/automexia-terminal.spdx.json
+        output-file: sbom-raw/automexia-terminal.spdx.json
         upload-artifact: false
     - name: Generate CycloneDX SBOM
       uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
       with:
         path: sbom-input
         format: cyclonedx-json
-        output-file: release-assets/automexia-terminal.cdx.json
+        output-file: sbom-raw/automexia-terminal.cdx.json
         upload-artifact: false
     - name: Bind pinned Microsoft transport to both SBOM formats
-      run: python3 tools/ci/release_trust.py --add-vendor-sbom release-assets
+      run: |
+        set -euo pipefail
+        python3 .github/scripts/build_release_manifest.py \
+          --source sbom-raw --output release-assets --scan-root sbom-input \
+          --version "${{ needs.preflight.outputs.version }}" \
+          --commit "${{ needs.preflight.outputs.commit }}" --prepare-sbom
     - name: Finalize release manifest and SHA-256 checksums
       shell: bash
       run: |
@@ -1545,8 +1646,8 @@ jobs:
     - name: Download release artifacts
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
       with:
+        name: packages-macos-universal
         path: artifacts
-        merge-multiple: false
     - name: Verify, mount and execute exact notarized DMG
       shell: bash
       run: |
@@ -1581,9 +1682,11 @@ jobs:
         include:
         - runner: ubuntu-24.04
           arch: x86_64
+          artifact: packages-linux-x86_64
           needle_regex: (x86_64|amd64)
         - runner: ubuntu-24.04-arm
           arch: aarch64
+          artifact: packages-linux-arm64
           needle_regex: (aarch64|arm64)
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
@@ -1593,8 +1696,8 @@ jobs:
     - name: Download release artifacts
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
       with:
+        name: ${{ matrix.artifact }}
         path: artifacts
-        merge-multiple: false
     - name: Install package inspection tools
       run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils rpm cpio
     - name: Verify tar, DEB and RPM assets
@@ -1606,14 +1709,14 @@ jobs:
         mapfile -t tars < <(find artifacts -type f \( -name '*.tar.gz' -o -name '*.tgz' \) | grep -Ei "$TARGET_REGEX")
         mapfile -t debs < <(find artifacts -type f -name '*.deb' | grep -Ei "$TARGET_REGEX")
         mapfile -t rpms < <(find artifacts -type f -name '*.rpm' | grep -Ei "$TARGET_REGEX")
-        (( ${#tars[@]} >= 1 )) || { echo 'No target tarball found' >&2; exit 1; }
-        (( ${#debs[@]} >= 1 )) || { echo 'No target DEB found' >&2; exit 1; }
-        (( ${#rpms[@]} >= 1 )) || { echo 'No target RPM found' >&2; exit 1; }
+        (( ${#tars[@]} == 1 )) || { echo 'No target tarball found' >&2; exit 1; }
+        (( ${#debs[@]} == 1 )) || { echo 'No target DEB found' >&2; exit 1; }
+        (( ${#rpms[@]} == 1 )) || { echo 'No target RPM found' >&2; exit 1; }
 
         work="$(mktemp -d)"
         trap 'rm -rf "$work"' EXIT
         tar -xzf "${tars[0]}" -C "$work"
-        bin="$(find "$work" -type f -perm -111 -name 'automexia*' -print -quit)"
+        bin="$(find "$work" -type f -perm -111 -name 'automexia' -print -quit)"
         test -n "$bin"
         file "$bin"
         "$bin" --version
@@ -1632,7 +1735,7 @@ jobs:
         sudo apt-get install -y "${debs[0]}"
         installed="$(command -v automexia || command -v automexia-terminal || true)"
         if [[ -z "$installed" ]]; then
-          installed="$(find /usr/bin /usr/local/bin -maxdepth 1 -type f -name 'automexia*' -print -quit)"
+          installed="$(find /usr/bin /usr/local/bin -maxdepth 1 -type f -name 'automexia' -print -quit)"
         fi
         test -n "$installed"
         "$installed" --version
@@ -1643,7 +1746,9 @@ jobs:
     - verify-windows-final
     - verify-macos-final
     - verify-linux-final
+    - native-platform-qa
     - reproducibility-linux
+    - reproducibility-desktop
     - hardware-smoke
     if: ${{ always() && needs.authorize.result == 'success' }}
     runs-on: ubuntu-24.04
@@ -1687,8 +1792,8 @@ jobs:
         RELEASE_COMMIT: ${{ needs.preflight.outputs.commit }}
       run: |
         set -euo pipefail
-        tag="v$VERSION"
-        [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+        tag="$(python3 tools/ci/release_identity.py tag "$VERSION")"
+        prerelease="$(python3 tools/ci/release_identity.py prerelease "$VERSION")"
         [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
 
         mkdir publish
@@ -1710,14 +1815,14 @@ jobs:
         test -f publish/SHA256SUMS.minisig
         test -f publish/release-manifest.json
         (cd publish && sha256sum -c SHA256SUMS)
-        python3 - "$VERSION" "$RELEASE_COMMIT" <<'PY2'
+        python3 - "$VERSION" "$RELEASE_COMMIT" "$tag" <<'PY2'
         import json, sys
         m=json.load(open('publish/release-manifest.json', encoding='utf-8'))
         if m.get('version') != sys.argv[1]:
             raise SystemExit('release-manifest version mismatch')
         if m.get('source_commit') != sys.argv[2]:
             raise SystemExit('release-manifest source_commit mismatch')
-        if m.get('tag') != 'v' + sys.argv[1]:
+        if m.get('tag') != sys.argv[3]:
             raise SystemExit('release-manifest tag mismatch')
         if not m.get('artifacts'):
             raise SystemExit('release-manifest has no artifacts')
@@ -1749,15 +1854,26 @@ jobs:
             -f ref="refs/tags/$tag" \
             -f sha="$tag_object" >/dev/null
         fi
+        git fetch --no-tags origin "refs/tags/$tag:refs/tags/$tag"
         python tools/ci/stable_release.py validate-source \
           --expected-commit "$RELEASE_COMMIT" \
           --release-tag "$tag"
 
-        gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --generate-notes --title "Automexia Terminal $VERSION"
+        options=()
+        if [[ "$prerelease" == true ]]; then options+=(--prerelease); fi
+        gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --generate-notes --title "Automexia Terminal $tag" "${options[@]}"
         mapfile -d '' assets < <(find publish -maxdepth 1 -type f -print0 | sort -z)
         (( ${#assets[@]} > 0 ))
         gh release upload "$tag" --repo "$GITHUB_REPOSITORY" "${assets[@]}"
-        gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+        if [[ "$prerelease" == true ]]; then
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
+        else
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+        fi
+        gh release verify "$tag" --repo "$GITHUB_REPOSITORY"
+        for asset in "${assets[@]}"; do
+          gh release verify-asset "$tag" "$asset" --repo "$GITHUB_REPOSITORY"
+        done
 concurrency:
   group: stable-release-${{ github.repository }}
   cancel-in-progress: false

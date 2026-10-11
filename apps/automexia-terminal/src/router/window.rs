@@ -42,6 +42,16 @@ pub fn create_window_builder(
         .with_transparent(native_transparency(config))
         .with_blur(native_blur(config));
 
+    // X11 cannot change its visual/depth after creation (`set_transparent` is
+    // a no-op). Reserve an alpha-capable surface for live GPU opacity edits.
+    // The renderer still clears to alpha 1 for the opaque default; Wayland's
+    // opaque region is updated separately by configure_window.
+    #[cfg(target_os = "linux")]
+    {
+        window_builder = window_builder
+            .with_transparent(config.renderer.supports_window_transparency());
+    }
+
     if quake {
         window_builder = window_builder
             .with_decorations(false)
@@ -283,7 +293,7 @@ pub fn configure_window(winit_window: &Window, config: &Config) {
             bg_color.r,
             bg_color.g,
             bg_color.b,
-            config.window.opacity as f64,
+            config.window.effective_opacity() as f64,
         );
 
         if !config.window.macos_use_shadow {
@@ -326,7 +336,7 @@ pub fn configure_window(winit_window: &Window, config: &Config) {
     #[cfg(target_os = "macos")]
     {
         use rio_window::platform::macos::WindowExtMacOS;
-        winit_window.set_glass_opacity(config.window.opacity as f64);
+        winit_window.set_glass_opacity(config.window.effective_opacity() as f64);
     }
 
     winit_window.set_blur(native_blur(config));
@@ -354,6 +364,18 @@ mod transparency_tests {
         }
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn appearance_x11_reserves_alpha_visual_for_later_customization() {
+        let mut config = Config::default();
+        assert_eq!(crate::renderer::window_bg_alpha(&config), 1.0);
+        assert!(create_window_builder("Fixture", &config, None, None, false).transparent);
+        config.renderer.use_cpu = true;
+        assert!(
+            !create_window_builder("Fixture", &config, None, None, false).transparent
+        );
+    }
+
     #[test]
     fn native_startup_and_live_composition_use_one_backend_policy() {
         let mut config = Config::default();
@@ -369,7 +391,14 @@ mod transparency_tests {
                 let builder =
                     create_window_builder("Fixture", &config, None, None, false);
                 #[cfg(not(target_os = "macos"))]
-                assert_eq!(builder.transparent, expected);
+                assert_eq!(
+                    builder.transparent,
+                    if cfg!(target_os = "linux") {
+                        config.renderer.supports_window_transparency()
+                    } else {
+                        expected
+                    }
+                );
                 assert_eq!(native_transparency(&config), expected);
                 assert_eq!(native_blur(&config).is_enabled(), expected);
             }

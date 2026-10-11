@@ -56,10 +56,12 @@ fn drain_to_exit(mut pty: Pty, expected_bytes: usize) -> usize {
     let mut buffer = [0_u8; 16 * 1024];
 
     while Instant::now() < deadline {
+        let mut progressed = false;
         if !read_closed {
             match pty.reader().read(&mut buffer) {
                 Ok(0) => {}
                 Ok(read) => {
+                    progressed = true;
                     received = received.saturating_add(read);
                     tail.extend_from_slice(&buffer[..read]);
                     marker_seen |= tail
@@ -80,7 +82,11 @@ fn drain_to_exit(mut pty: Pty, expected_bytes: usize) -> usize {
         if exited && marker_seen {
             break;
         }
-        thread::sleep(Duration::from_millis(1));
+        // Do not throttle every successful read: that measures the fixture's
+        // sleep rate rather than the PTY. Yield only while waiting for progress.
+        if !progressed {
+            thread::sleep(Duration::from_millis(1));
+        }
     }
 
     assert!(

@@ -134,6 +134,9 @@ fn default_font_family() -> String {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct SugarloafFonts {
+    /// Host-admitted overlay families, prepared with the primary library.
+    #[serde(skip)]
+    pub ui_families: Vec<String>,
     #[serde(default = "default_font_size")]
     pub size: f32,
     #[serde(default = "default_bool_true")]
@@ -173,6 +176,7 @@ pub fn parse_unicode(input: &str) -> Option<char> {
 impl Default for SugarloafFonts {
     fn default() -> SugarloafFonts {
         SugarloafFonts {
+            ui_families: Vec::new(),
             features: None,
             hinting: true,
             size: default_font_size(),

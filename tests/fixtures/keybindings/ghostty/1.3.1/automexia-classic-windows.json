@@ -1101,6 +1101,16 @@
       "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"s\"), location: Standard }"
     },
     {
+      "action": "OpenSshPicker",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"j\"), location: Standard }"
+    },
+    {
       "action": "OpenConnectionHub",
       "effective": true,
       "mode": "BindingMode(0x0)",

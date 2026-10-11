@@ -1,3 +1,9 @@
+automexia-terminal (0.0.1~alpha-1) unstable; urgency=medium
+
+  * First cross-platform alpha release in the Automexia repository.
+
+ -- Automexia Contributors <AmjedAllaya@users.noreply.github.com>  Sun, 11 Oct 2026 12:00:00 +0000
+
 automexia-terminal (0.4.0-1) unstable; urgency=medium
 
   * Initial standalone Automexia Terminal package.

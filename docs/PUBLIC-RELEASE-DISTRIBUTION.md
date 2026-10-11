@@ -1,4 +1,11 @@
-# Public Linux Early Access distribution
+# Historical Linux Early Access distribution
+
+> Retired for new publications. The current release owner is
+> [`release.yml`](../.github/workflows/release.yml), publishing all supported
+> platforms in [Automexia Releases](https://github.com/AmjedAllaya/automexia/releases).
+> The former Linux publisher is disabled. The configuration and operations below
+> document the earlier immutable release and are not instructions to reactivate it.
+> See [Releasing](../RELEASING.md) for the `0.0.1_alpha` workflow.
 
 Status: Linux Early Access `v0.4.0` is published in the public binary repository.
 New candidates remain gated by native package, signing and publication evidence.

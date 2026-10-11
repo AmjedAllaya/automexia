@@ -11,6 +11,11 @@ WSL distribution, or create persistent files.
 
 If integration resources are missing or invalid, Automexia starts the ordinary
 shell and reports a bounded redacted diagnostic.
+Linux DEB/RPM packages include the complete resource tree under
+`/usr/share/automexia/shell-integration`; discovery resolves it relative to the
+installed executable prefix. Portable builds retain adjacent resources, and
+macOS bundles use `Contents/Resources/shell-integration`. Missing required files,
+including hidden Zsh startup resources, reject the resource set as a whole.
 
 PowerShell integration is dot-sourced into the interactive child session. Its
 prompt, input callback, completion state, and nested CMD helpers must remain

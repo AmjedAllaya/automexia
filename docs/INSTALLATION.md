@@ -5,11 +5,16 @@ This guide builds the current source, prepares the native prerequisites, and
 opens the first terminal using the same project commands on all three systems.
 Local builds are not signed release packages.
 
+For published installers and portable packages, use
+**[Automexia Releases](https://github.com/AmjedAllaya/automexia/releases)**.
+The `0.0.1_alpha` pipeline targets Windows MSI/ZIP, Linux DEB/RPM/tar.gz and a
+universal macOS DMG. Check the release's assets and validation notes; source
+availability does not mean a signed package has been published.
+
 If you already have a working checkout, continue with
-[Getting started](GETTING-STARTED.md). The separate existing Linux prerelease
-has [package verification instructions](#verify-a-linux-early-access-package)
-at the end of this page; its package availability does not define the product's
-platform scope. Stable Windows and macOS installers are not published.
+[Getting started](GETTING-STARTED.md). The older separate Linux prerelease has
+[historical verification instructions](#verify-a-linux-early-access-package)
+at the end of this page; new versions are published in this project.
 
 ## Choose a workflow
 

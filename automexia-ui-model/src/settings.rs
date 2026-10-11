@@ -68,18 +68,39 @@ pub enum Section {
     Appearance,
     Customizations,
     Input,
+    Window,
+    Profiles,
+    Shell,
     Workspace,
     Sessions,
     Extensions,
     Advanced,
 }
 impl Section {
+    pub const fn order(self) -> u8 {
+        match self {
+            Self::Appearance => 0,
+            Self::Terminal => 1,
+            Self::Input => 2,
+            Self::Window => 3,
+            Self::Profiles => 4,
+            Self::Shell => 5,
+            Self::Advanced => 6,
+            Self::Customizations => 7,
+            Self::Workspace => 8,
+            Self::Sessions => 9,
+            Self::Extensions => 10,
+        }
+    }
     pub const fn label(self) -> &'static str {
         match self {
             Self::Terminal => "Terminal & Output",
             Self::Appearance => "Appearance",
             Self::Customizations => "Customizations",
-            Self::Input => "Input & Shortcuts",
+            Self::Input => "Keyboard",
+            Self::Window => "Window",
+            Self::Profiles => "Profiles",
+            Self::Shell => "Shell",
             Self::Workspace => "Workspace",
             Self::Sessions => "Sessions & Tools",
             Self::Extensions => "Extensions",
@@ -135,8 +156,20 @@ pub enum ValueOrigin {
     #[default]
     Default,
     Configuration,
+    Profile,
     User,
     Extension,
+}
+impl ValueOrigin {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Default => "Default",
+            Self::Configuration => "config.toml",
+            Self::Profile => "Profile",
+            Self::User => "UI override",
+            Self::Extension => "Extension default",
+        }
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Availability {
@@ -157,6 +190,28 @@ pub enum ChangeScope {
     NewSession,
     NewWindow,
     Restart,
+    /// Structural configuration is exported for review, never written as a UI override.
+    ConfigOnly,
+}
+impl ChangeScope {
+    pub const fn compact_label(self) -> &'static str {
+        match self {
+            Self::Immediate => "Live",
+            Self::NewSession => "New terminal",
+            Self::NewWindow => "New window",
+            Self::Restart => "Restart",
+            Self::ConfigOnly => "TOML",
+        }
+    }
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Immediate => "Runtime override",
+            Self::NewSession => "Launch only: new terminal",
+            Self::NewWindow => "Launch only: new window",
+            Self::Restart => "Launch only: restart required",
+            Self::ConfigOnly => "Config only: export TOML",
+        }
+    }
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct SettingDescriptor {
@@ -175,6 +230,10 @@ pub struct SettingDescriptor {
     pub scope: ChangeScope,
 }
 impl SettingDescriptor {
+    pub fn ownership_summary(&self) -> String {
+        format!("{} · {}", self.origin.label(), self.scope.label())
+    }
+
     pub fn boolean(
         id: SettingId,
         section: Section,
@@ -753,12 +812,13 @@ fn search_matches(entry: &SettingDescriptor, query: &str) -> bool {
     }
     // Each string and the number of rows/options were validated by Catalog.
     let mut haystack = format!(
-        "{} {} {} {} {}",
+        "{} {} {} {} {} {}",
         entry.id.as_str(),
         entry.section.label(),
         entry.label,
         entry.description,
-        entry.availability.reason().unwrap_or_default()
+        entry.availability.reason().unwrap_or_default(),
+        entry.ownership_summary()
     );
     for keyword in &entry.keywords {
         haystack.push(' ');

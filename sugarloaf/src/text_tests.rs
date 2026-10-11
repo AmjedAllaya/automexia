@@ -1100,3 +1100,75 @@ fn stacked_combining_marks_keep_font_vertical_offsets_in_labels_and_cells() {
         }
     }
 }
+
+#[test]
+fn prepared_tag_faces_keep_primary_ui_and_invalidate_on_reload() {
+    let fonts = fixture_fonts();
+    let face = FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap();
+    fonts.inner.write().insert(face);
+    fonts
+        .inner
+        .write()
+        .ui_families
+        .insert("Example Mono".into(), [4; 4]);
+    let mut text = Text::new(&fonts);
+    assert_eq!(text.ui_font_id(Some("Example Mono"), false, false), Some(4));
+    assert_eq!(text.ui_font_id(Some("Missing"), false, false), None);
+    let opts = DrawOpts {
+        preferred_font_id: Some(4),
+        ..Default::default()
+    };
+    let chosen = text.shape_label("tag example", &opts);
+    assert!(!chosen.is_empty());
+    assert!(chosen.iter().all(|r| r.font_id == 4));
+    assert_eq!(
+        text.shape_for("tag example", &DrawOpts::default())
+            .unwrap()
+            .font_id,
+        0
+    );
+    assert_eq!(
+        text.measure("tag example", &opts),
+        text.measure("tag example", &DrawOpts::default())
+    );
+    let original = fixture_fonts();
+    text.update_font(&original);
+    assert_eq!(text.ui_font_id(Some("Example Mono"), false, false), None);
+    assert_eq!(
+        text.shape_for("tag example", &DrawOpts::default())
+            .unwrap()
+            .font_id,
+        0
+    );
+}
+
+#[test]
+fn prepared_tag_face_fallback_and_cache_survive_unicode_and_reload() {
+    let fonts = fixture_fonts();
+    let mut text = Text::new(&fonts);
+    let invalid = DrawOpts {
+        preferred_font_id: Some(usize::MAX),
+        ..Default::default()
+    };
+    for value in ["tag", "cafe\u{301}", "中文", "👩\u{200d}💻", "العربية"] {
+        let a = text.measure(value, &invalid);
+        let b = text.measure(value, &DrawOpts::default());
+        assert_eq!(
+            a, b,
+            "unavailable preferred face must fall back for {value}"
+        );
+        assert!(a.is_finite());
+    }
+    for id in 0..100 {
+        let _ = text.shape_label(
+            "tag",
+            &DrawOpts {
+                preferred_font_id: Some(id),
+                ..Default::default()
+            },
+        );
+    }
+    assert!(text.preferred_ascii_faces.len() <= 68);
+    text.update_font(&fonts);
+    assert!(text.preferred_ascii_faces.is_empty());
+}

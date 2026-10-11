@@ -98,6 +98,10 @@ fn installed_candidates(executable: &Path) -> Vec<PathBuf> {
     if let Some(contents) = binary_directory.parent() {
         candidates.push(contents.join("Resources").join("shell-integration"));
         candidates.push(contents.join("resources").join("shell-integration"));
+        // DEB/RPM resources belong to the executable's installation prefix.
+        // Do not consult PATH or arbitrary user-controlled resource locations.
+        #[cfg(target_os = "linux")]
+        candidates.push(contents.join("share/automexia/shell-integration"));
     }
     candidates
 }
@@ -426,6 +430,26 @@ mod tests {
         let candidates = installed_candidates(&executable);
         assert!(candidates.contains(&root));
         assert!(usable_root(&root));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn native_linux_package_resources_are_discovered_without_environment_overrides() {
+        let temporary = tempfile::tempdir().unwrap();
+        let executable = temporary.path().join("usr/bin/automexia");
+        let root = temporary
+            .path()
+            .join("usr/share/automexia/shell-integration");
+        make_root(&root);
+        let discovered = installed_candidates(&executable)
+            .into_iter()
+            .find_map(canonical_usable_root);
+        assert_eq!(discovered, Some(fs::canonicalize(&root).unwrap()));
+        fs::remove_file(root.join("zsh/session/.zshenv")).unwrap();
+        assert!(installed_candidates(&executable)
+            .into_iter()
+            .find_map(canonical_usable_root)
+            .is_none());
     }
 
     #[test]

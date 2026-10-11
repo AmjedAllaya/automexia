@@ -253,6 +253,7 @@ struct Draft {
 }
 
 struct ScanState {
+    conditional_match: bool,
     limits: InventoryLimits,
     files: usize,
     bytes: usize,
@@ -288,6 +289,7 @@ fn scan_inventory_inner(
 ) -> Result<ScanOutcome, InventoryError> {
     let limits = limits.validate()?;
     let mut state = ScanState {
+        conditional_match: false,
         limits,
         files: 0,
         bytes: 0,
@@ -300,6 +302,7 @@ fn scan_inventory_inner(
     for grant in grants {
         for entry in &grant.entries {
             state.check_cancelled()?;
+            state.conditional_match = false;
             state.parse_file(grant, entry, 0, Vec::new())?;
         }
     }
@@ -425,6 +428,7 @@ impl ScanState {
             }
             match keyword.as_str() {
                 "host" => {
+                    self.conditional_match = false;
                     aliases = values
                         .iter()
                         .filter(|value| concrete_alias(value))
@@ -450,6 +454,7 @@ impl ScanState {
                     }
                 }
                 "match" => {
+                    self.conditional_match = true;
                     aliases.clear();
                     self.diagnostics.push(Diagnostic {
                         source: grant.label.clone(),
@@ -458,6 +463,9 @@ impl ScanState {
                             .into(),
                     });
                 }
+                // Conditional values and paths are not an effective configuration.
+                // Keep Match state through includes, until the next explicit Host.
+                _ if self.conditional_match => continue,
                 "include" => {
                     for value in values {
                         for include in expand_include(
@@ -799,6 +807,50 @@ mod tests {
 
     fn grant(root: &Path, entry: &Path) -> InventoryGrant {
         InventoryGrant::new("user-config", root, [entry], GrantKind::User).unwrap()
+    }
+
+    #[test]
+    fn conditional_includes_do_not_read_files_or_invent_hosts() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config");
+        write(
+            &root.path().join("hidden"),
+            "Host conditional-only\n HostName hidden.example.invalid\n",
+        );
+        write(&config, "Host first\nMatch exec false\n Port %invalid-conditional\n ProxyJump %conditional\n Include hidden\n Include ../outside-not-authorized\nHost visible\n HostName visible.example.invalid\n");
+        let outcome = scan_inventory(
+            &[grant(root.path(), &config)],
+            InventoryLimits::default(),
+            1,
+        )
+        .unwrap();
+        let aliases = outcome
+            .snapshot
+            .records
+            .iter()
+            .map(|r| r.alias.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(aliases, ["first", "visible"]);
+        assert_eq!(outcome.snapshot.observed_files, 1);
+        assert_eq!(outcome.watched_files.len(), 1);
+    }
+
+    #[test]
+    fn match_context_from_include_is_kept_until_next_host() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config");
+        write(&root.path().join("condition"), "Match exec false\n");
+        write(&root.path().join("hidden"), "Host conditional-only\n");
+        write(&config, "Include condition\nInclude hidden\nHost visible\n");
+        let outcome = scan_inventory(
+            &[grant(root.path(), &config)],
+            InventoryLimits::default(),
+            1,
+        )
+        .unwrap();
+        assert_eq!(outcome.snapshot.records.len(), 1);
+        assert_eq!(outcome.snapshot.records[0].alias, "visible");
+        assert_eq!(outcome.snapshot.observed_files, 2);
     }
 
     #[test]

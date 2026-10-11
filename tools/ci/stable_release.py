@@ -21,12 +21,12 @@ from typing import NoReturn
 ROOT = Path(__file__).resolve().parents[2]
 POLICY_PATH = ROOT / "tests/assurance/stable-release-policy-v1.json"
 RELEASE_WORKFLOW = ROOT / ".github/workflows/release.yml"
-EXPECTED_POLICY_SHA256 = "e101a331835fbef397a9465f64dd4b3f3343215c2fe7bd6f463de5e800188b9d"
+EXPECTED_POLICY_SHA256 = "0d595caf7b625ed772eaf20c49060372bbfb9f7ae799a6cd5241e74e72dcc730"
 MAX_POLICY_BYTES = 128 * 1024
 MAX_GIT_OUTPUT_BYTES = 16 * 1024 * 1024
 MAX_RELEASE_COMMITS = 100_000
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
-EXPECTED_TAG_PATTERN = r"^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+EXPECTED_TAG_PATTERN = r"^(?:v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?|0\.0\.1_alpha)$"
 POLICY_KEYS = {
     "schema",
     "repository",
@@ -137,7 +137,7 @@ def validate_policy(policy: dict[str, object]) -> None:
     _require_exact_keys(policy, POLICY_KEYS, "policy")
     if policy.get("schema") != 2:
         fail("stable-release policy schema must be 2")
-    if policy.get("repository") != "AmjedAllaya/automexia-terminal":
+    if policy.get("repository") != "AmjedAllaya/automexia":
         fail("stable-release repository identity drifted")
     if policy.get("default_branch") != "main":
         fail("stable-release default branch drifted")

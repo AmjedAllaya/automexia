@@ -3,7 +3,7 @@
 //! This module projects already validated public records. It cannot launch,
 //! authenticate, open a listener, resize a PTY, or access a renderer.
 
-use std::{cmp::Ordering, collections::HashSet, fmt, ops::Range};
+use std::{cmp::Reverse, collections::HashSet, fmt, ops::Range};
 
 use automexia_connectivity::connections::{
     ActionRisk, AuthState, AutomationAction, BroadcastLifecycle, BroadcastReview,
@@ -302,7 +302,39 @@ pub fn project_connection_catalog(
     entries: &[ConnectionCatalogEntry],
     query: &ConnectionCatalogQuery,
 ) -> Result<ConnectionCatalogProjection, HubCatalogError> {
+    project_catalog(entries, query, CatalogMode::Hub)
+}
+
+/// Project the existing catalog as a flat SSH-only, recent-first picker.
+/// Inventory, metadata, limits and search remain owned by the shared catalog.
+/// Opening the picker never rewrites the user's general Hub preferences.
+pub fn project_ssh_connection_picker(
+    entries: &[ConnectionCatalogEntry],
+    query: &ConnectionCatalogQuery,
+) -> Result<ConnectionCatalogProjection, HubCatalogError> {
+    project_catalog(entries, query, CatalogMode::SshPicker)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CatalogMode {
+    Hub,
+    SshPicker,
+}
+
+fn project_catalog(
+    entries: &[ConnectionCatalogEntry],
+    query: &ConnectionCatalogQuery,
+    mode: CatalogMode,
+) -> Result<ConnectionCatalogProjection, HubCatalogError> {
     validate_catalog(entries, query)?;
+    let grouping = if mode == CatalogMode::SshPicker {
+        HubCatalogGrouping::None
+    } else {
+        query.grouping
+    };
+    let accepts = |entry: &ConnectionCatalogEntry| {
+        mode == CatalogMode::Hub || entry.summary.provider == ProviderKind::Ssh
+    };
 
     let source_revision = entries
         .iter()
@@ -314,15 +346,34 @@ pub fn project_connection_catalog(
         .iter()
         .enumerate()
         .filter_map(|(index, entry)| {
-            catalog_entry_matches(entry, query, &folded_query).then_some(index)
+            (accepts(entry) && catalog_entry_matches(entry, query, &folded_query))
+                .then_some(index)
         })
         .collect::<Vec<_>>();
-    indices.sort_by(|left, right| {
-        compare_catalog_entries(&entries[*left], &entries[*right], query.grouping)
+    // Bound normalization/allocation to one key per matching entry instead of
+    // repeating it on every comparison while the user types into search.
+    indices.sort_by_cached_key(|index| {
+        let entry = &entries[*index];
+        (
+            Reverse(if mode == CatalogMode::SshPicker {
+                entry.last_used_at_ms
+            } else {
+                None
+            }),
+            fold_for_search(&catalog_group_label(entry, grouping)),
+            Reverse(entry.summary.favorite),
+            Reverse(entry.last_used_at_ms),
+            fold_for_search(&entry.summary.display_name),
+            entry.summary.id.as_str(),
+        )
     });
 
-    let groups = catalog_groups(entries, &indices, query.grouping);
-    let content_state = if entries.is_empty() {
+    let groups = if mode == CatalogMode::SshPicker {
+        Vec::new()
+    } else {
+        catalog_groups(entries, &indices, grouping)
+    };
+    let content_state = if !entries.iter().any(accepts) {
         HubContentState::Empty
     } else if indices.is_empty() {
         HubContentState::FilteredEmpty
@@ -471,24 +522,6 @@ fn catalog_entry_matches(
         .into_iter()
         .chain(entry.tags.iter().map(String::as_str))
         .any(|candidate| fold_for_search(candidate).contains(folded_query))
-}
-
-fn compare_catalog_entries(
-    left: &ConnectionCatalogEntry,
-    right: &ConnectionCatalogEntry,
-    grouping: HubCatalogGrouping,
-) -> Ordering {
-    let left_group = catalog_group_label(left, grouping);
-    let right_group = catalog_group_label(right, grouping);
-    fold_for_search(&left_group)
-        .cmp(&fold_for_search(&right_group))
-        .then_with(|| right.summary.favorite.cmp(&left.summary.favorite))
-        .then_with(|| right.last_used_at_ms.cmp(&left.last_used_at_ms))
-        .then_with(|| {
-            fold_for_search(&left.summary.display_name)
-                .cmp(&fold_for_search(&right.summary.display_name))
-        })
-        .then_with(|| left.summary.id.cmp(&right.summary.id))
 }
 
 fn catalog_group_label(
@@ -1100,7 +1133,28 @@ fn move_selection(state: &mut InteractionState, next: usize) -> InteractionEffec
 }
 
 pub fn apply_hub_key(state: &mut InteractionState, key: HubKey) -> InteractionEffect {
+    // Review owns its focus and immutable target. Catalog navigation is inert
+    // behind it; Back is the only route back to selectable hosts.
+    if state.route != HubRoute::Results
+        && matches!(
+            key,
+            HubKey::Find
+                | HubKey::Slash
+                | HubKey::Up
+                | HubKey::Down
+                | HubKey::Home
+                | HubKey::End
+                | HubKey::PageUp
+                | HubKey::PageDown
+        )
+    {
+        return InteractionEffect::None;
+    }
     match key {
+        HubKey::Enter if state.focus == HubFocus::Close => {
+            InteractionEffect::CloseAndRestoreFocus(state.opener_id.clone())
+        }
+
         HubKey::Find | HubKey::Slash => {
             state.focus = HubFocus::Search;
             InteractionEffect::FocusChanged(HubFocus::Search)

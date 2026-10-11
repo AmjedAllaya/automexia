@@ -1,3 +1,5 @@
+# Retired: release.yml publishes future packages in this repository.
+# This previous lane is inert; historical evidence remains auditable.
 name: Linux Early Access release
 run-name: "Linux Early Access · ${{ github.event_name }} · ${{ github.event.pull_request.head.ref || github.ref_name }}"
 
@@ -26,11 +28,11 @@ jobs:
   authorize:
     name: Authorize Linux release or rehearsal
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      false && (github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.merged == true &&
        github.event.pull_request.base.ref == 'main' &&
        startsWith(github.event.pull_request.head.ref, 'release/linux/') &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+       github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:

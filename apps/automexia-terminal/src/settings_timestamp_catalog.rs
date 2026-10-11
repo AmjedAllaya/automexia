@@ -404,7 +404,7 @@ mod tests {
             prefs
         );
         let mut expected = original;
-        expected.presentation.command_timestamps = Some(true);
+        expected.presentation.command_timestamps = None;
         assert_eq!(
             reset_customizations(
                 &prefs,

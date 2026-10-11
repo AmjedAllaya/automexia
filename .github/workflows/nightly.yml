@@ -528,7 +528,8 @@ jobs:
           lipo -verify_arch x86_64 arm64 "target/release/$runtime"
         done
 
-        cargo packager --manifest-path apps/automexia-terminal/Cargo.toml --release --no-build --out-dir target/package --formats app,dmg
+        version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "automexia-terminal") | .version')"
+        python tools/ci/release_identity.py package "$version" --binaries target/release --output target/package --target aarch64-apple-darwin --formats app,dmg
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
         name: automexia-nightly-macos-universal

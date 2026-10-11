@@ -544,3 +544,25 @@ fn color_kinds_keep_revision_availability_and_activation_boundaries() {
         Err(SettingsError::Unavailable)
     );
 }
+
+#[test]
+fn ownership_labels_and_change_scope_are_explicit_and_searchable() {
+    assert_eq!(ValueOrigin::Default.label(), "Default");
+    assert_eq!(ValueOrigin::Configuration.label(), "config.toml");
+    assert_eq!(ValueOrigin::Profile.label(), "Profile");
+    assert_eq!(ValueOrigin::User.label(), "UI override");
+    assert_eq!(ChangeScope::Immediate.label(), "Runtime override");
+    assert_eq!(ChangeScope::NewSession.label(), "Launch only: new terminal");
+    assert_eq!(ChangeScope::ConfigOnly.label(), "Config only: export TOML");
+    let mut row = core().entries()[0].clone();
+    row.origin = ValueOrigin::Profile;
+    row.scope = ChangeScope::NewSession;
+    let catalog = Catalog::new(7, vec![row]).unwrap();
+    let mut view = ViewState::new(&catalog, 5);
+    view.set_query("profile launch", &catalog).unwrap();
+    assert_eq!(view.filtered_ids().len(), 1);
+    assert!(catalog.entries()[0].ownership_summary().contains("Profile"));
+    assert!(catalog.entries()[0]
+        .ownership_summary()
+        .contains("new terminal"));
+}

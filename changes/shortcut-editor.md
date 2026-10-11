@@ -1,4 +1,4 @@
-### Added
+Added
 
 - Double-click command-palette shortcut badges or press F2 on a selected command
   to record a new binding, review conflicts, save, cancel or reset to config.

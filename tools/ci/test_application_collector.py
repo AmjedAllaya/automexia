@@ -28,6 +28,47 @@ def unix_ui_probe():
 
 
 class CollectorTests(unittest.TestCase):
+    def test_native_appearance_profile_isolation_and_cleanup_on_success_and_failure(self):
+        probe = unix_ui_probe()
+        with TemporaryDirectory() as parent:
+            root = Path(parent)
+            normal = root / 'normal-profile'
+            normal.mkdir()
+            sentinel = normal / 'user-preferences-v16.toml'
+            sentinel.write_bytes(b'visual preferences must survive unchanged')
+            original = sentinel.read_bytes()
+            for fail in (False, True):
+                with patch.dict(os.environ, {'AUTOMEXIA_CONFIG_HOME': str(normal),
+                                'RIO_CONFIG_HOME': str(normal), 'XDG_STATE_HOME': str(normal),
+                                'AUTOMEXIA_VISUAL_TEST_FIXTURE': 'inherited',
+                                'AUTOMEXIA_BENCHMARK_TRACE': str(normal / 'trace'),
+                                'FAKE_CREDENTIAL': 'must-not-be-inherited'}):
+                    try:
+                        with probe.fixture_workspace() as (temporary, diagnostics):
+                            home = Path(temporary)
+                            config = home / 'config'
+                            config.mkdir()
+                            env = probe.fixture_environment(home, config, '/bin/bash', home/'control', home/'snapshot', 1.0)
+                            self.assertEqual(env['AUTOMEXIA_CONFIG_HOME'], str(config))
+                            for name in ('RIO_CONFIG_HOME', 'HOME', 'USERPROFILE', 'LOCALAPPDATA', 'APPDATA',
+                                         'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'XDG_CACHE_HOME',
+                                         'TMPDIR', 'TMP', 'TEMP'):
+                                self.assertTrue(Path(env[name]).is_relative_to(home), name)
+                            for name in ('FAKE_CREDENTIAL', 'AUTOMEXIA_VISUAL_TEST_FIXTURE', 'AUTOMEXIA_BENCHMARK_TRACE'):
+                                self.assertNotIn(name, env)
+                            state = config / 'state'
+                            state.mkdir()
+                            for name in ('user-preferences-v16.toml', 'user-preferences-v16.previous.toml'):
+                                (state/name).write_text('[visual.interface]\nopacity = 0\n')
+                            if fail:
+                                raise probe.Failure('injected native failure')
+                    except probe.Failure:
+                        self.assertTrue(fail)
+                    self.assertTrue(diagnostics['removed'])
+                    self.assertFalse(home.exists())
+                    self.assertEqual(sentinel.read_bytes(), original)
+                    self.assertEqual(os.environ['AUTOMEXIA_CONFIG_HOME'], str(normal))
+
     def test_macos_caption_probe_is_owned_bounded_and_releases_references(self):
         driver = object.__new__(MacDriver)
         driver.process = SimpleNamespace(pid=42)
@@ -374,7 +415,7 @@ class CollectorTests(unittest.TestCase):
         process = SimpleNamespace(pid=42, poll=lambda: None)
         with patch.object(display, "window", return_value={"id": 7}) as window, \
              patch.object(probe.subprocess, "run") as run:
-            for chord in ["ctrl+shift+F1", "ctrl+shift+F3", "alt+j", "alt+shift+j", "x", "a", "F3", "Return"]:
+            for chord in ["ctrl+shift+F1", "ctrl+shift+F3", "alt+j", "alt+shift+j", "x", "a", "F3", "Return", *"connect"]:
                 display.key(process, chord)
                 window.assert_called_with(process, focused=True)
                 run.assert_called_with(
@@ -458,7 +499,7 @@ class CollectorTests(unittest.TestCase):
                 home = Path(temporary)
                 (home / 'initial').write_text('synthetic fixture')
         self.assertTrue(injected)
-        self.assertEqual(diagnostics, {'retries': 1})
+        self.assertEqual(diagnostics, {'retries': 1, 'removed': True})
         self.assertFalse(home.exists())
 
     def test_native_cleanup_is_bounded_and_never_hides_other_failures(self):
@@ -480,9 +521,17 @@ class CollectorTests(unittest.TestCase):
                     temporary.cleanup()
         with TemporaryDirectory() as parent:
             temporary = probe.tempfile.TemporaryDirectory(dir=parent)
+            cleanup_real = temporary.cleanup
+            first = True
+            def cleanup_after_race():
+                nonlocal first
+                if first:
+                    first = False
+                    raise OSError(errno.ENOTEMPTY, 'synthetic')
+                cleanup_real()
             try:
                 with patch.object(probe.tempfile, 'TemporaryDirectory', return_value=temporary), \
-                     patch.object(temporary, 'cleanup', side_effect=[OSError(errno.ENOTEMPTY, 'synthetic'), None]), \
+                     patch.object(temporary, 'cleanup', side_effect=cleanup_after_race), \
                      patch.object(probe.time, 'sleep'):
                     with self.assertRaisesRegex(probe.Failure, 'owned shell survived'):
                         with probe.fixture_workspace():
@@ -492,8 +541,9 @@ class CollectorTests(unittest.TestCase):
 
     def test_native_startup_waits_for_fragmented_cwd_before_asserting_its_value(self):
         probe = unix_ui_probe()
-        panel = {'active': True, 'shell_integration': True, 'current_directory': None}
-        state = {'panels': [panel], 'prompt_active': True}
+        panel = {'active': True, 'shell_integration': True, 'current_directory': None,
+                 'cursor_line_text': '\u03bb', 'raw_cursor_line_text': '\u03bb', 'raw_cursor_prompt_id': 7}
+        state = {'panels': [panel], 'prompt_active': True, 'latest_prompt_id': 7}
         self.assertFalse(probe.integrated_ready(state))
         panel['current_directory'] = '/fixture/actual'
         self.assertTrue(probe.integrated_ready(state))
@@ -501,6 +551,29 @@ class CollectorTests(unittest.TestCase):
         # still reject a real clone launched somewhere else.
         self.assertNotEqual(panel['current_directory'], '/fixture/expected')
         state['prompt_active'] = False
+        self.assertFalse(probe.integrated_ready(state))
+
+    def test_native_prompt_readiness_waits_for_the_presented_input_row(self):
+        probe = unix_ui_probe()
+        # Bash publishes prompt-active/A and the path before Readline emits PS1.
+        panel = {'active': True, 'shell_integration': True, 'current_directory': '/fixture',
+                 'cursor_line_text': '', 'raw_cursor_line_text': '', 'raw_cursor_prompt_id': 7}
+        state = {'panels': [panel], 'prompt_active': True, 'latest_prompt_id': 7}
+        self.assertFalse(probe.integrated_ready(state))
+        panel['raw_cursor_line_text'] = 'λ'
+        self.assertFalse(probe.integrated_ready(state))
+        panel['cursor_line_text'] = 'λ'
+        self.assertTrue(probe.integrated_ready(state))
+        # A raw grid can advance while the previous presented frame is retained.
+        panel['raw_cursor_prompt_id'] = 8
+        self.assertFalse(probe.integrated_ready(state))
+        state['latest_prompt_id'] = 8
+        self.assertTrue(probe.integrated_ready(state))
+        panel['raw_cursor_line_text'] = 'λ unexpected input'
+        self.assertFalse(probe.integrated_ready(state))
+        panel.update(shell_name='fish', cursor_line_text='fixture>', raw_cursor_line_text='fixture>')
+        self.assertTrue(probe.integrated_ready(state))
+        panel['raw_cursor_line_text'] = 'λ'
         self.assertFalse(probe.integrated_ready(state))
 
     def test_native_failure_diagnostics_keep_errno_but_never_paths_or_output(self):
@@ -539,6 +612,12 @@ class CollectorTests(unittest.TestCase):
         for key in ('meta+meta+p', 'unknown+p', 'meta+unsupported', '', 'meta+'):
             with self.subTest(key=key), self.assertRaises(BenchmarkError):
                 MacDriver.key_spec(key)
+
+    def test_macos_native_picker_search_supports_every_fixed_query_key(self):
+        # Exercise the exact native palette query, including repeated letters.
+        for key, code in zip("connect", (8, 31, 45, 45, 14, 8, 17)):
+            with self.subTest(key=key):
+                self.assertEqual(MacDriver.key_spec(key), (code, 0, key))
 
     def test_native_search_query_matches_the_actual_fixture_history(self):
         with TemporaryDirectory() as temporary:

@@ -499,6 +499,7 @@ fn claim_native_test_control(control: &str) -> bool {
 
 #[cfg(feature = "native-gui-test-hooks")]
 struct NativeWindowSnapshot {
+    appearance: serde_json::Value,
     chrome: serde_json::Value,
     window_width: f32,
     window_height: f32,
@@ -527,6 +528,7 @@ struct NativeWindowSnapshot {
     settings: serde_json::Value,
     font_primary: Option<String>,
     connection_hub_active: bool,
+    connection_hub_ssh_picker: bool,
     connection_hub_route: Option<&'static str>,
     connection_hub_literal_entry: bool,
     connection_hub_credentials_active: bool,
@@ -742,6 +744,7 @@ fn write_native_resize_snapshot(
     snapshot["window_tab_titles"] = serde_json::json!(window.window_tab_titles);
     snapshot["tab_appearance_open"] = serde_json::json!(window.tab_appearance_open);
     snapshot["semantic_rows"] = serde_json::json!(semantic_rows);
+    snapshot["appearance"] = window.appearance;
     snapshot["renderer_backend"] = serde_json::json!(window.renderer_backend);
     snapshot["renderer_grid_count"] = serde_json::json!(window.renderer_grid_count);
     snapshot["owned_route_count"] = serde_json::json!(window.owned_route_count);
@@ -750,6 +753,8 @@ fn write_native_resize_snapshot(
     snapshot["display_offset"] = serde_json::json!(content.display_offset);
     snapshot["palette_enabled"] = serde_json::json!(window.palette_enabled);
     snapshot["connection_hub_active"] = serde_json::json!(window.connection_hub_active);
+    snapshot["connection_hub_ssh_picker"] =
+        serde_json::json!(window.connection_hub_ssh_picker);
     snapshot["connection_hub_route"] = serde_json::json!(window.connection_hub_route);
     snapshot["connection_hub_literal_entry"] =
         serde_json::json!(window.connection_hub_literal_entry);
@@ -1881,8 +1886,8 @@ impl Screen<'_> {
         self.mouse
             .set_multiplier_and_divider(config.scroll.multiplier, config.scroll.divider);
 
-        // Update keyboard config in context manager
-        self.context_manager.config.keyboard = config.keyboard.clone();
+        // Publish future-session defaults without changing existing PTYs/history.
+        self.context_manager.update_core_preferences(config, false);
         self.fit_settings_view();
         self.last_ime_cursor_pos = None;
 
@@ -2977,6 +2982,7 @@ impl Screen<'_> {
                         }
                     }
                     Act::OpenConnectionHub => self.open_connection_hub(),
+                    Act::OpenSshPicker => self.open_ssh_picker(),
                     Act::ViewTableOutput => self.open_table_view(),
                     Act::LastCommandActions => self.open_last_command_actions(),
                     Act::OpenActionCenter => self.open_action_center(),
@@ -6433,6 +6439,7 @@ impl Screen<'_> {
             }
             PaletteAction::OpenMarket => self.open_extension_marketplace(),
             PaletteAction::OpenActions => self.open_action_center(),
+            PaletteAction::OpenSshPicker => self.open_ssh_picker(),
             PaletteAction::OpenConnections => {
                 self.open_connection_hub();
             }
@@ -6822,6 +6829,10 @@ impl Screen<'_> {
                 &self.context_manager.current().renderable_content,
                 panels,
                 NativeWindowSnapshot {
+                    appearance: serde_json::json!({
+                        "window_alpha": self.renderer.window_bg_alpha,
+                        "clear": self.sugarloaf.background_color.map(|c| [c.r, c.g, c.b, c.a]),
+                    }),
                     chrome: self.renderer.island.as_ref().map_or(serde_json::Value::Null, |island| {
                         island.native_test_chrome(window_size.width, window_size.height, self.sugarloaf.scale_factor(), self.context_manager.len())
                     }),
@@ -6861,6 +6872,7 @@ impl Screen<'_> {
                     settings: self.settings_view.native_test_snapshot(),
                     font_primary: self.sugarloaf.font_library().inner.read().try_get(&0).and_then(|font| font.postscript_name()).map(str::to_owned),
                     connection_hub_active: self.connection_hub.is_active(),
+                    connection_hub_ssh_picker: self.connection_hub.is_ssh_picker(),
                     connection_hub_route: self
                         .connection_hub
                         .is_active()

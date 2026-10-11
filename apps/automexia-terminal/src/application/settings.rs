@@ -125,7 +125,12 @@ impl Application<'_> {
             self.package_customizations.request_refresh();
         }
         let market = runtime::market_items();
-        let Ok(catalog) = settings_catalog::catalog_with_palette(
+        let build_catalog = if customizations {
+            settings_catalog::catalog_with_palette
+        } else {
+            settings_catalog::full_catalog_with_palette
+        };
+        let Ok(catalog) = build_catalog(
             self.settings_revision,
             &self.base_config,
             &self.user_preferences,
@@ -226,6 +231,13 @@ impl Application<'_> {
             &market,
             &self.config.colors,
         );
+        let full_catalog = settings_catalog::full_catalog_with_palette(
+            self.settings_revision,
+            &self.base_config,
+            &self.user_preferences,
+            &market,
+            &self.config.colors,
+        );
         let slot_pages = settings_catalog::slot_page_snapshot_with_config(
             &self.user_preferences,
             &self.config,
@@ -236,7 +248,13 @@ impl Application<'_> {
             if !route.window.screen.settings_view.is_open() {
                 continue;
             }
-            match &catalog {
+            let active_catalog =
+                if route.window.screen.settings_view.is_customization_view() {
+                    &catalog
+                } else {
+                    &full_catalog
+                };
+            match active_catalog {
                 Ok(catalog) => route.window.screen.settings_view.refresh_with_resources(
                     catalog.clone(),
                     package_pages.clone(),
@@ -363,10 +381,40 @@ impl Application<'_> {
         window_id: rio_backend::event::WindowId,
         edit: automexia_ui_model::settings::Edit,
     ) {
+        if edit.id.as_str().starts_with("configuration.") {
+            let operation = crate::settings_configuration::prepare(
+                self.settings_revision,
+                &self.base_config,
+                &edit,
+            );
+            if let Some(route) = self.router.routes.get_mut(&window_id) {
+                match operation {
+                    Ok(crate::settings_configuration::Operation::OpenEditor) => {
+                        route.window.screen.close_settings_view();
+                        route.window.screen.execute_palette_action(
+                            crate::renderer::command_palette::PaletteAction::ConfigEditor, &mut self.router.clipboard);
+                    }
+                    Ok(crate::settings_configuration::Operation::Export(patch)) => {
+                        let status = if self.router.clipboard.try_set(ClipboardType::Clipboard, patch).is_ok() {
+                            "TOML patch copied. Review and merge in config.toml; no file was changed."
+                        } else { "Clipboard unavailable. The configuration has not changed." };
+                        route.window.screen.settings_view.set_status(status);
+                    }
+                    Err(_) => route.window.screen.settings_view.set_status(
+                        "Invalid TOML or settings changed. Reopen Settings and review the current configuration."),
+                }
+                route.request_overlay_redraw();
+            }
+            return;
+        }
         if edit.id.as_str() == "profiles.open"
             && edit.change == automexia_ui_model::settings::Change::Activate
         {
-            self.open_profiles(window_id);
+            if edit.revision == self.settings_revision {
+                self.open_profiles(window_id);
+            } else {
+                self.refresh_settings_catalogs();
+            }
             return;
         }
         if edit.id.as_str().starts_with("extension.pkg_") {
@@ -868,7 +916,8 @@ mod extension_feature_preference_tests {
 }
 
 fn requires_runtime_publication(id: &str) -> bool {
-    id.starts_with("interface.")
+    id.starts_with("general.")
+        || id.starts_with("interface.")
         || id.starts_with("fonts.")
         || matches!(
             id,

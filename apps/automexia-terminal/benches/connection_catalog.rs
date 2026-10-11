@@ -3,9 +3,9 @@ use std::hint::black_box;
 use automexia_connectivity::connections::{AuthState, EnvironmentRisk, ProviderKind};
 use automexia_terminal::automexia::connections::ProviderProductSnapshot;
 use automexia_ui_model::connection_hub::{
-    project_connection_catalog, project_provider_catalog, ConnectionCatalogEntry,
-    ConnectionCatalogQuery, ConnectionSummary, HubCatalogGrouping, HubCatalogSource,
-    Viewport,
+    project_connection_catalog, project_provider_catalog, project_ssh_connection_picker,
+    ConnectionCatalogEntry, ConnectionCatalogQuery, ConnectionSummary,
+    HubCatalogGrouping, HubCatalogSource, Viewport,
 };
 use criterion::{criterion_group, criterion_main, Criterion};
 
@@ -66,6 +66,19 @@ fn connection_catalog_10_000_rapid_filters(criterion: &mut Criterion) {
     });
 }
 
+fn ssh_picker_10_000_recent_first(criterion: &mut Criterion) {
+    let entries = (0..10_000).map(catalog_entry).collect::<Vec<_>>();
+    let query = ConnectionCatalogQuery::default();
+    criterion.bench_function("ssh_picker_10000_recent_first", |bencher| {
+        bencher.iter(|| {
+            black_box(
+                project_ssh_connection_picker(black_box(&entries), black_box(&query))
+                    .unwrap(),
+            )
+        });
+    });
+}
+
 fn provider_catalog_cached_projection(criterion: &mut Criterion) {
     let snapshot = ProviderProductSnapshot::default();
     criterion.bench_function("provider_catalog_6_cached_projection", |bencher| {
@@ -82,6 +95,7 @@ fn provider_catalog_cached_projection(criterion: &mut Criterion) {
 criterion_group!(
     benches,
     connection_catalog_10_000_rapid_filters,
-    provider_catalog_cached_projection
+    provider_catalog_cached_projection,
+    ssh_picker_10_000_recent_first
 );
 criterion_main!(benches);

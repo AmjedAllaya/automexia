@@ -53,6 +53,7 @@ pub(crate) fn palette_binding_target(
         | OpenProfiles
         | OpenMarket
         | OpenConnections
+        | OpenSshPicker
         | OpenActions
         | ListFonts => None,
     }
@@ -111,6 +112,7 @@ pub(crate) fn legacy_binding_target(action: PaletteAction) -> crate::bindings::A
         ClearScreen => Action::ClearScreen,
         OpenMarket => Action::OpenExtensionMarketplace,
         OpenConnections => Action::OpenConnectionHub,
+        OpenSshPicker => Action::OpenSshPicker,
         OpenActions => Action::OpenActionCenter,
         ListFonts => Action::OpenFontBrowser,
         Quit => Action::Quit,

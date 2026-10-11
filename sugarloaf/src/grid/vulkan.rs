@@ -1569,12 +1569,9 @@ fn create_bg_pipeline(
         pipeline_cache,
         layout,
         color_format,
-        BG_VERT_SPV,
-        BG_FRAG_SPV,
-        &[], // no vertex bindings
-        &[],
+        (BG_VERT_SPV, BG_FRAG_SPV),
+        (&[], &[]), // no vertex bindings
         vk::PrimitiveTopology::TRIANGLE_LIST,
-        BlendMode::Premultiplied, // bg uses src=SRC_ALPHA
     )
 }
 
@@ -1636,39 +1633,26 @@ fn create_text_pipeline(
         pipeline_cache,
         layout,
         color_format,
-        TEXT_VERT_SPV,
-        TEXT_FRAG_SPV,
-        &bindings,
-        &attrs,
+        (TEXT_VERT_SPV, TEXT_FRAG_SPV),
+        (&bindings, &attrs),
         vk::PrimitiveTopology::TRIANGLE_STRIP,
-        BlendMode::PremultipliedOverFromOne, // text fragment returns premultiplied
     )
 }
 
-#[derive(Copy, Clone)]
-enum BlendMode {
-    /// Source RGB factor = `SRC_ALPHA`. For shaders that return
-    /// non-premultiplied RGBA + alpha (the bg pass).
-    Premultiplied,
-    /// Source RGB factor = `ONE`. For shaders that return
-    /// already-premultiplied RGBA (the text pass — `in.color * mask_a`
-    /// and the color atlas sample are both premultiplied).
-    PremultipliedOverFromOne,
-}
-
-#[allow(clippy::too_many_arguments)]
 fn build_pipeline(
     device: &ash::Device,
     pipeline_cache: vk::PipelineCache,
     layout: vk::PipelineLayout,
     color_format: vk::Format,
-    vert_spv: &[u8],
-    frag_spv: &[u8],
-    vertex_bindings: &[vk::VertexInputBindingDescription],
-    vertex_attrs: &[vk::VertexInputAttributeDescription],
+    shaders: (&[u8], &[u8]),
+    vertex_layout: (
+        &[vk::VertexInputBindingDescription],
+        &[vk::VertexInputAttributeDescription],
+    ),
     topology: vk::PrimitiveTopology,
-    blend: BlendMode,
 ) -> vk::Pipeline {
+    let (vert_spv, frag_spv) = shaders;
+    let (vertex_bindings, vertex_attrs) = vertex_layout;
     let vert = load_shader_module(device, vert_spv);
     let frag = load_shader_module(device, frag_spv);
 
@@ -1705,19 +1689,12 @@ fn build_pipeline(
     let multisample = vk::PipelineMultisampleStateCreateInfo::default()
         .rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
-    let (src_rgb, dst_rgb) = match blend {
-        BlendMode::Premultiplied => (
-            vk::BlendFactor::SRC_ALPHA,
-            vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
-        ),
-        BlendMode::PremultipliedOverFromOne => {
-            (vk::BlendFactor::ONE, vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
-        }
-    };
+    // Both grid fragments already premultiply RGB by alpha. Applying SRC_ALPHA
+    // here would darken translucent backgrounds and cursor fills a second time.
     let blend_attachment = vk::PipelineColorBlendAttachmentState::default()
         .blend_enable(true)
-        .src_color_blend_factor(src_rgb)
-        .dst_color_blend_factor(dst_rgb)
+        .src_color_blend_factor(vk::BlendFactor::ONE)
+        .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
         .color_blend_op(vk::BlendOp::ADD)
         .src_alpha_blend_factor(vk::BlendFactor::ONE)
         .dst_alpha_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)

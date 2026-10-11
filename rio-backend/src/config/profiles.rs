@@ -218,6 +218,8 @@ impl NamedProfile {
         }
         let mut config = base.clone();
         if let Some(program) = &self.program {
+            config.setting_sources.mark_profile("shell.program");
+            config.setting_sources.mark_profile("shell.args");
             config.shell = super::Shell {
                 program: Some(program.clone()),
                 args: self.args.clone(),
@@ -240,6 +242,16 @@ impl NamedProfile {
             }
             ProfileDirectory::Fixed { path } => Some(path.clone()),
         };
+        if !matches!(self.directory, ProfileDirectory::Configuration) {
+            config.setting_sources.mark_profile("working-dir");
+        }
+        if !self.environment.is_empty() {
+            config.setting_sources.mark_profile("env-vars");
+        }
+        config
+            .setting_sources
+            .mark_profile("navigation.current-working-directory");
+        config.setting_sources.mark_profile("use-fork");
         let mut overrides = super::environment::parse_environment(&config.env_vars)
             .map_err(|_| ProfileError::Environment)?;
         for reference in &self.environment {

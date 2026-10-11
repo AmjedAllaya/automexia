@@ -237,3 +237,32 @@ read-only when newer snapshots are absent; old files remain available for rollba
 Version 13 input claiming the new height is rejected. Omitted height preserves the
 responsive default. Configuration uses an optional typed height in the existing
 Presentation interface owner; no parallel theme or settings model is introduced.
+
+
+## 2026-10-11 full Settings amendment
+
+The existing OpenSettings action now opens the categorized full catalog; the
+palette exposes Settings alongside the visual customization routes. This
+supersedes the entry-point restriction in the September 30 amendment. All routes
+share SettingsView, settings_catalog, typed edits, revision validation and the
+existing transactional UserPreferences writer.
+
+Version 16 adds sparse typed general overrides without introducing a generic
+configuration map. Version 15 and earlier stores remain read-only migration
+sources. Field-presence metadata is bounded, stores schema keys only and is never
+serialized. It distinguishes explicit default-valued configuration from built-in
+defaults, and tracks validated profile ownership without storing private values.
+
+Rows expose ownership and runtime, new-terminal, new-window, restart or config-only
+application timing. Reset removes an override; visual resets preserve general
+behavior and shortcut choices. Runtime publication updates the existing live
+cursor, scrolling and keyboard owners without recreating PTYs. Future launch
+settings update ContextManager defaults without replacing existing descriptors.
+
+Structural edits are bounded, schema-validated TOML clipboard exports. They never
+rewrite config.toml, preserving comments, ordering and external changes. Reloaded
+configuration invalidates drafts. Secret-capable launch/environment fields and
+advanced optional structures use the existing configuration editor; no values are
+copied into preferences or an automatic export. The configuration reference owns
+the user workflow and timing details. Controlled raster, model, persistence and
+runtime-owner evidence do not substitute for native platform testing.

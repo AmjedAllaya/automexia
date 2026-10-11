@@ -649,9 +649,9 @@ fn island_fills(bg: [f32; 4]) -> IslandFills {
     let luminance = 0.2126 * bg[0] + 0.7152 * bg[1] + 0.0722 * bg[2];
     if luminance > 0.5 {
         IslandFills {
-            inactive: [0.0, 0.0, 0.0, 0.05],
-            active: [1.0, 1.0, 1.0, 0.92],
-            outline: Some([0.0, 0.0, 0.0, 0.14]),
+            inactive: over(bg, [0.0, 0.0, 0.0, 0.05]),
+            active: over(bg, [1.0, 1.0, 1.0, 0.92]),
+            outline: Some(over(bg, [0.0, 0.0, 0.0, 0.14])),
             close_hover: [0.0, 0.0, 0.0, 0.09],
         }
     } else {
@@ -671,13 +671,9 @@ pub(crate) fn tab_background_defaults(bg: [f32; 4]) -> ([f32; 4], [f32; 4]) {
 
 #[inline]
 fn over(dst: [f32; 4], src: [f32; 4]) -> [f32; 4] {
-    let a = src[3];
-    [
-        src[0] * a + dst[0] * (1.0 - a),
-        src[1] * a + dst[1] * (1.0 - a),
-        src[2] * a + dst[2] * (1.0 - a),
-        dst[3],
-    ]
+    // Chrome surfaces are resolved over the theme RGB, independently of the
+    // native window's alpha. Raw user RGBA overrides remain separate paint.
+    super::ui_theme::over(dst, src)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3503,6 +3499,34 @@ mod tests {
     }
 
     #[test]
+    fn appearance_chrome_does_not_inherit_window_alpha() {
+        for entry in crate::automexia::theme_gallery::builtins() {
+            let colors = entry.theme.unwrap().colors;
+            for alpha in [0.0, 0.01, 0.25, 0.5, 0.99, 1.0] {
+                let mut window = colors.background.0;
+                window[3] = alpha;
+                let base = UiTheme::from_colors(&colors);
+                let header = header_theme(&base, Default::default(), window);
+                let background = over(window, header.surface);
+                assert_eq!(
+                    background[3], 1.0,
+                    "opaque header over window alpha {alpha}"
+                );
+                let fills = island_fills(background);
+                for fill in [fills.active, fills.inactive] {
+                    assert_eq!(
+                        fill[3], 1.0,
+                        "default tabs stay opaque for {}",
+                        entry.name
+                    );
+                    let ink = tab_title_color(colors.tabs_active, background, fill);
+                    assert!(automexia_ui_model::contrast_ratio(ink, fill) >= 4.5);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn island_fills_adapt_to_background_luminance() {
         let dark = island_fills([0.06, 0.05, 0.06, 1.0]);
         let light = island_fills([0.98, 0.98, 0.97, 1.0]);
@@ -3511,12 +3535,13 @@ mod tests {
         assert!(dark.active[2] > dark.inactive[2]);
         assert_eq!(dark.active[3], 1.0);
         assert_eq!(dark.inactive[3], 1.0);
-        assert_eq!(light.inactive[0], 0.0);
+        assert!(light.inactive[0] < 0.98);
         // On light themes the active island must read as the brighter,
         // elevated card: a strong white overlay against the recessed
         // black-tinted inactive fill.
-        assert_eq!(light.active[0], 1.0);
-        assert!(light.active[3] >= 0.8);
+        assert!(light.active[0] > light.inactive[0]);
+        assert_eq!(light.active[3], 1.0);
+        assert_eq!(light.inactive[3], 1.0);
         // Both palettes use a subtle keyline to remain legible over glass.
         assert!(light.outline.is_some());
         assert!(dark.outline.is_some());

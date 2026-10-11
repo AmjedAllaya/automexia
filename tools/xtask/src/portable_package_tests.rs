@@ -186,3 +186,50 @@ fn portable_packages_reject_missing_companions_before_replacing_staging() {
         assert_eq!(fs::read(retained).unwrap(), b"previous package");
     }
 }
+
+#[test]
+fn portable_archive_bytes_ignore_input_mtimes() {
+    let temporary = tempfile::tempdir().unwrap();
+    let source = temporary.path().join("inputs");
+    let output = temporary.path().join("packages");
+    fs::create_dir_all(&source).unwrap();
+    fs::create_dir_all(&output).unwrap();
+    for name in [
+        "automexia",
+        "amx",
+        "automexia-suggestion-helper",
+        "automexia-ssh-helper",
+    ] {
+        fs::write(source.join(name), b"unchanged fixture bytes").unwrap();
+    }
+    let identity = product_identity().unwrap();
+    let archive = output.join(format!(
+        "{}-{}-x86_64-unknown-linux-gnu.tar.gz",
+        identity.package_name, identity.version
+    ));
+    portable_archive(
+        &identity,
+        "x86_64-unknown-linux-gnu",
+        &source.join("automexia"),
+        &output,
+        "tar.gz",
+    )
+    .unwrap();
+    let first = fs::read(&archive).unwrap();
+    // Real wall-clock staging timestamps changed the previous tar writer even
+    // when all bytes were identical. Cross the whole-second timestamp boundary.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    portable_archive(
+        &identity,
+        "x86_64-unknown-linux-gnu",
+        &source.join("automexia"),
+        &output,
+        "tar.gz",
+    )
+    .unwrap();
+    let second = fs::read(&archive).unwrap();
+    assert!(
+        first == second,
+        "identical release payloads produced different archive bytes"
+    );
+}

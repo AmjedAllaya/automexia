@@ -14,6 +14,7 @@ pub(super) enum FontAction {
     Intent(CustomizationIntent),
     Inventory(u64),
     Preview {
+        setting: String,
         generation: u64,
         family: String,
         apply: bool,
@@ -143,9 +144,13 @@ impl Application<'_> {
                 view.font_picker_session() == Some((*generation, pending.revision))
             }
             FontAction::Preview {
-                generation, family, ..
+                generation,
+                family,
+                setting,
+                ..
             } => {
                 view.font_picker_session() == Some((*generation, pending.revision))
+                    && view.font_picker_setting() == Some(setting.as_str())
                     && (!selection
                         || view.font_picker_selection() == Some(family.as_str()))
             }
@@ -159,6 +164,11 @@ impl Application<'_> {
                     &self.config,
                     true,
                     Some(&self.router.font_library),
+                );
+                route.window.screen.renderer.information_bar_recipe =
+                    self.user_preferences.visual.information_bar.recipe();
+                route.window.screen.settings_view.preview_tag_styles(
+                    self.user_preferences.visual.information_bar.styles.clone(),
                 );
                 route.request_redraw();
             }
@@ -185,6 +195,15 @@ impl Application<'_> {
         else {
             return;
         };
+        let Some(setting) = route
+            .window
+            .screen
+            .settings_view
+            .font_picker_setting()
+            .map(str::to_owned)
+        else {
+            return;
+        };
         let mut identity = resource_identity(&self.config.fonts);
         let apply = matches!(intent, FontPickerIntent::Apply(_));
         let action = match intent {
@@ -193,8 +212,17 @@ impl Application<'_> {
                 if !crate::automexia::font_preferences::valid_family(&family) {
                     return;
                 }
-                identity.family = Some(family.clone());
+                let Ok(candidate) = crate::settings_catalog::font_family_candidate(
+                    &self.user_preferences,
+                    &setting,
+                    &family,
+                ) else {
+                    return;
+                };
+                identity =
+                    resource_identity(&candidate.apply_to(&self.base_config).fonts);
                 FontAction::Preview {
+                    setting,
                     generation,
                     family,
                     apply,
@@ -217,9 +245,6 @@ impl Application<'_> {
                 && preview.target.window == window
                 && preview.target.identity == request.identity
             {
-                if !apply {
-                    return;
-                }
                 let library = preview.library.clone();
                 self.publish_font_picker(event_loop, request, library);
                 return;
@@ -288,12 +313,17 @@ impl Application<'_> {
         request: PendingFont,
         library: FontLibrary,
     ) {
-        let FontAction::Preview { family, apply, .. } = &request.action else {
+        let FontAction::Preview {
+            setting,
+            family,
+            apply,
+            ..
+        } = &request.action
+        else {
             return;
         };
         if *apply {
-            let Ok(id) = automexia_ui_model::settings::SettingId::new("fonts.family")
-            else {
+            let Ok(id) = automexia_ui_model::settings::SettingId::new(setting) else {
                 return;
             };
             let edit = Edit {
@@ -324,22 +354,37 @@ impl Application<'_> {
             {
                 self.restore_font_preview();
             }
-            let mut config = self.config.clone();
-            config.fonts.family = Some(family.clone());
+            let Ok(candidate) = crate::settings_catalog::font_family_candidate(
+                &self.user_preferences,
+                setting,
+                family,
+            ) else {
+                return;
+            };
+            let config = candidate.apply_to(&self.base_config);
             if let Some(route) = self.router.routes.get_mut(&request.window) {
                 route.window.screen.update_runtime_preferences(
                     &config,
                     true,
                     Some(&library),
                 );
-                // The terminal previews the candidate; controls remain readable
-                // even for a symbol font. Apply updates the shared UI font too.
-                route
-                    .window
-                    .screen
-                    .sugarloaf
-                    .text_mut()
-                    .update_font(&self.router.font_library);
+                if setting == "fonts.family" {
+                    // Main-font preview keeps controls in the saved family.
+                    route
+                        .window
+                        .screen
+                        .sugarloaf
+                        .text_mut()
+                        .update_font(&self.router.font_library);
+                } else {
+                    // Auxiliary faces preserve the UI's primary font while both
+                    // real tags and the sample use the temporary prepared face.
+                    route.window.screen.renderer.information_bar_recipe =
+                        candidate.visual.information_bar.recipe();
+                    route.window.screen.settings_view.preview_tag_styles(
+                        candidate.visual.information_bar.styles.clone(),
+                    );
+                }
                 route
                     .window
                     .screen

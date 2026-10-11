@@ -9,6 +9,8 @@ mod fonts;
 mod interface;
 #[path = "settings_table_catalog.rs"]
 mod tables;
+#[path = "settings_tag_typography.rs"]
+mod tag_typography;
 #[path = "settings_timestamp_catalog.rs"]
 mod timestamps;
 #[path = "settings_visibility.rs"]
@@ -56,6 +58,12 @@ pub(crate) struct SlotPageSnapshot {
 }
 
 impl SlotPageSnapshot {
+    pub(crate) fn preview_tag_styles(
+        &mut self,
+        styles: automexia_ui_model::information_bar::TagStyles,
+    ) {
+        self.bar.styles = styles;
+    }
     pub(crate) fn preview_window_controls(
         &self,
     ) -> (
@@ -208,6 +216,31 @@ pub(crate) fn test_installed_extensions() -> [MarketItem; 1] {
 }
 
 pub(crate) fn interface_control_section(id: &str) -> Option<&'static str> {
+    if let Some(field) = id.strip_prefix("tags.shared.") {
+        return Some(match field {
+            "size" | "family" | "bold" | "italic" | "underline" | "strike" => {
+                "Shared typography"
+            }
+            "foreground" | "background" | "icon-color" | "border-color" | "opacity" => {
+                "Shared colors"
+            }
+            _ => "Shared spacing and borders",
+        });
+    }
+    if let Some((_, field)) = id
+        .strip_prefix("tags.slot.")
+        .and_then(|s| s.split_once(".style."))
+    {
+        return Some(match field {
+            "size" | "family" | "bold" | "italic" | "underline" | "strike" => {
+                "This tag: typography"
+            }
+            "foreground" | "background" | "icon-color" | "border-color" | "opacity" => {
+                "This tag: colors"
+            }
+            _ => "This tag: spacing and borders",
+        });
+    }
     if !id.starts_with("interface.header.") {
         return None;
     }
@@ -217,6 +250,23 @@ pub(crate) fn interface_control_section(id: &str) -> Option<&'static str> {
         }
         _ => "Tabs",
     })
+}
+
+pub(crate) fn information_tag_page_catalog(
+    full: &Catalog,
+    snapshot: &SlotPageSnapshot,
+) -> Result<Catalog, SettingsError> {
+    let group = customization_groups(full)
+        .into_iter()
+        .find(|group| group.key.as_str() == "tags.enabled")
+        .ok_or(SettingsError::UnknownSetting)?;
+    let mut rows = group
+        .members
+        .iter()
+        .filter_map(|id| full.get(id).cloned())
+        .collect::<Vec<_>>();
+    rows.extend(tag_typography::descriptors(snapshot, None)?);
+    Catalog::new(full.revision(), rows)
 }
 
 pub(crate) fn interface_page_catalog(
@@ -410,9 +460,8 @@ pub(crate) enum CustomizationResetScope {
     PackageFeature(settings::SettingId),
 }
 
-/// Clear only the selected customization overlays. Explicit core On values
-/// make reset defaults independent of a user's configured feature switches;
-/// optional extension/package features retain their declared defaults.
+/// Remove only the selected UI overrides. Reset inherits the current configuration
+/// (including explicit Off values) and continues to follow future config changes.
 pub(crate) fn reset_customizations(
     current: &UserPreferences,
     scope: &CustomizationResetScope,
@@ -444,19 +493,15 @@ pub(crate) fn reset_customizations(
         }
         CustomizationResetScope::All => {
             let shortcuts = std::mem::take(&mut next.shortcuts);
+            let general = std::mem::take(&mut next.general);
             next = UserPreferences::default();
             next.shortcuts = shortcuts;
-            next.presentation.inline_tables = Some(true);
-            next.presentation.output_highlighting = Some(true);
-            next.presentation.command_output_highlighting = Some(true);
-            next.presentation.kubernetes_highlighting = Some(true);
-            next.presentation.command_timestamps = Some(true);
-            next.visual.tags.enabled = Some(true);
+            next.general = general;
         }
         CustomizationResetScope::Group(key) => match key.as_str() {
             crate::automexia::presentation::TAG_ENABLED => {
                 next.visual.tags = Default::default();
-                next.visual.tags.enabled = Some(true);
+                next.visual.tags.enabled = None;
                 next.visual.information_bar = Default::default();
                 for id in [
                     settings_extensions::DEVOPS_CONTEXT_STATUS_ID,
@@ -467,25 +512,25 @@ pub(crate) fn reset_customizations(
                 }
             }
             settings::OUTPUT_HIGHLIGHTING => {
-                next.presentation.output_highlighting = Some(true);
+                next.presentation.output_highlighting = None;
                 next.visual.highlight = Default::default();
             }
             settings::COMMAND_OUTPUT_HIGHLIGHTING => {
-                next.presentation.command_output_highlighting = Some(true);
-                next.presentation.output_highlighting = Some(true);
+                next.presentation.command_output_highlighting = None;
+                next.presentation.output_highlighting = None;
                 next.visual.command_output = Default::default();
                 next.visual.highlight = Default::default();
             }
             settings::KUBERNETES_HIGHLIGHTING => {
-                next.presentation.kubernetes_highlighting = Some(true);
+                next.presentation.kubernetes_highlighting = None;
                 next.visual.kubernetes = Default::default();
             }
             settings::INLINE_TABLES => {
-                next.presentation.inline_tables = Some(true);
+                next.presentation.inline_tables = None;
                 next.visual.tables = Default::default();
             }
             settings::COMMAND_TIMESTAMPS => {
-                next.presentation.command_timestamps = Some(true);
+                next.presentation.command_timestamps = None;
                 next.visual.timestamps = Default::default();
             }
             settings::APPEARANCE_THEME => {
@@ -535,6 +580,7 @@ pub(crate) fn reset_customizations(
             }
             validate_recipe(&recipe).map_err(|_| SettingsError::InvalidValue)?;
             bar.source_drafts.remove(slot_id);
+            bar.styles.tags.remove(slot_id);
             if bar.use_custom {
                 bar.custom_recipe = Some(recipe);
             }
@@ -1201,26 +1247,33 @@ pub(crate) fn catalog_with_palette(
     palette: &Colors,
 ) -> Result<Catalog, SettingsError> {
     let effective = preferences.apply_to(base);
-    let origin = |value: Option<bool>| {
-        if value.is_some() {
-            ValueOrigin::User
-        } else {
-            ValueOrigin::Configuration
-        }
+    let origin = |value: Option<bool>, field: &str| {
+        setting_origin(&base.setting_sources, field, value.is_some())
     };
     let mut entries = settings::core_descriptors(
         values(&effective),
         values(base),
         CoreOrigins {
-            inline_tables: origin(preferences.presentation.inline_tables),
-            output_highlighting: origin(preferences.presentation.output_highlighting),
+            inline_tables: origin(
+                preferences.presentation.inline_tables,
+                "presentation.inline-tables",
+            ),
+            output_highlighting: origin(
+                preferences.presentation.output_highlighting,
+                "presentation.output-highlighting",
+            ),
             command_output_highlighting: origin(
                 preferences.presentation.command_output_highlighting,
+                "presentation.command-output-highlighting",
             ),
             kubernetes_highlighting: origin(
                 preferences.presentation.kubernetes_highlighting,
+                "presentation.kubernetes-highlighting",
             ),
-            command_timestamps: origin(preferences.presentation.command_timestamps),
+            command_timestamps: origin(
+                preferences.presentation.command_timestamps,
+                "presentation.command-timestamps",
+            ),
         },
     );
     if let Some(highlighting) = entries
@@ -1243,17 +1296,24 @@ pub(crate) fn catalog_with_palette(
         configured_font_size: f64::from(base.fonts.size),
         font_min: f64::from(crate::automexia::preferences::MIN_FONT_POINTS),
         font_max: f64::from(crate::automexia::preferences::MAX_FONT_POINTS),
-        font_origin: if preferences.font_size.is_some() {
-            ValueOrigin::User
-        } else {
-            ValueOrigin::Configuration
-        },
+        font_origin: setting_origin(
+            &base.setting_sources,
+            "fonts.size",
+            preferences.font_size.is_some(),
+        ),
         theme,
     });
     if let Some(row) = appearance
         .iter_mut()
         .find(|row| row.id.as_str() == settings::APPEARANCE_THEME)
     {
+        if preferences.appearance_theme.is_none() {
+            row.origin = setting_origin(&base.setting_sources, "force-theme", false);
+            if row.origin == ValueOrigin::Default {
+                row.origin =
+                    setting_origin(&base.setting_sources, "adaptive-theme", false);
+            }
+        }
         row.description = match base.force_theme {
             Some(rio_backend::config::theme::AppearanceTheme::Light) => {
                 "Configuration uses Light."
@@ -1295,6 +1355,27 @@ pub(crate) fn catalog_with_palette(
     Catalog::new(revision, entries)
 }
 
+/// General settings add core configuration controls without consuming the
+/// extension/customization catalog's reserved lazy-page capacity.
+pub(crate) fn full_catalog_with_palette(
+    revision: u64,
+    base: &Config,
+    preferences: &UserPreferences,
+    market: &[MarketItem],
+    palette: &Colors,
+) -> Result<Catalog, SettingsError> {
+    let mut entries = catalog_with_palette(revision, base, preferences, market, palette)?
+        .entries()
+        .to_vec();
+    entries.extend(crate::settings_general_catalog::descriptors(
+        base,
+        preferences,
+    )?);
+    entries.extend(crate::settings_configuration::descriptors(base)?);
+    entries.sort_by_key(|row| row.section.order());
+    Catalog::new(revision, entries)
+}
+
 /// Validate against current membership and revision before publishing any override.
 #[cfg(test)]
 pub(crate) fn apply_edit(
@@ -1315,6 +1396,27 @@ pub(crate) fn apply_edit_with_palette(
     edit: &Edit,
     palette: &Colors,
 ) -> Result<UserPreferences, SettingsError> {
+    if edit.id.as_str().starts_with("general.") {
+        Catalog::new(
+            revision,
+            crate::settings_general_catalog::descriptors(base, preferences)?,
+        )?
+        .validate_edit(edit)?;
+        return crate::settings_general_catalog::apply(preferences, edit);
+    }
+    if edit.id.as_str().starts_with("tags.shared.") {
+        let snapshot = slot_page_snapshot_with_config(
+            preferences,
+            &preferences.apply_to(base),
+            base,
+            market,
+        );
+        Catalog::new(revision, tag_typography::descriptors(&snapshot, None)?)?
+            .validate_edit(edit)?;
+        let mut candidate = preferences.clone();
+        tag_typography::apply(&mut candidate, edit)?;
+        return Ok(candidate);
+    }
     if edit.id.as_str().starts_with("interface.") {
         Catalog::new(
             revision,
@@ -1434,7 +1536,8 @@ pub(crate) fn apply_edit_with_palette(
         }
         _ => {}
     }
-    if fonts::apply(&mut candidate, edit)?
+    if tag_typography::apply(&mut candidate, edit)?
+        || fonts::apply(&mut candidate, edit)?
         || apply_slot_edit(&mut candidate, edit)?
         || apply_visual_edit(&mut candidate, edit)?
     {
@@ -1502,6 +1605,7 @@ fn apply_slot_edit(
             return Err(SettingsError::InvalidValue);
         }
         recipe.slots.remove(index);
+        bar.styles.tags.remove(slot_id);
         bar.custom_recipe = Some(recipe);
         bar.use_custom = true;
         return Ok(true);
@@ -1734,6 +1838,33 @@ fn visual_row(
         availability: settings::Availability::Available,
         scope: settings::ChangeScope::Immediate,
     })
+}
+
+fn palette_origin(base: &Config, prefs: &UserPreferences) -> ValueOrigin {
+    if prefs.theme_selection.is_some() {
+        return ValueOrigin::User;
+    }
+    let theme = setting_origin(&base.setting_sources, "theme", false);
+    if theme != ValueOrigin::Default {
+        return theme;
+    }
+    setting_origin(&base.setting_sources, "colors", false)
+}
+
+pub(crate) fn setting_origin(
+    sources: &rio_backend::config::provenance::SettingSources,
+    field: &str,
+    overridden: bool,
+) -> ValueOrigin {
+    if overridden {
+        ValueOrigin::User
+    } else if sources.profile(field) {
+        ValueOrigin::Profile
+    } else if sources.configured(field) {
+        ValueOrigin::Configuration
+    } else {
+        ValueOrigin::Default
+    }
 }
 
 fn visual_origin(user: bool, configured: bool, inherited: ValueOrigin) -> ValueOrigin {
@@ -2108,8 +2239,8 @@ fn slot_descriptors(
         let default_color = inherited_color;
         add(
             "color",
-            "This tag color",
-            "Text and tint for this tag.",
+            "Accent color",
+            "Base tint; specific style colors override this accent.",
             settings::SettingKind::Color { alpha: false },
             SettingValue::Color([
                 current_color[0],
@@ -2163,6 +2294,7 @@ fn slot_descriptors(
             rows.push(remove);
         }
     }
+    rows.extend(tag_typography::descriptors(snapshot, Some(only_slot))?);
     Ok(rows)
 }
 
@@ -2217,10 +2349,10 @@ fn visual_descriptors(
         settings::SettingKind::Boolean,
         SettingValue::Boolean(effective.presentation.tags.enabled),
         SettingValue::Boolean(base.presentation.tags.enabled),
-        visual_origin(
+        setting_origin(
+            &base.setting_sources,
+            "presentation.tags.enabled",
             preferences.visual.tags.enabled.is_some(),
-            true,
-            ValueOrigin::Configuration,
         ),
     )?;
     enabled.description = "Show tags beside prompts.".into();
@@ -2354,10 +2486,10 @@ fn visual_descriptors(
         choice_kind(&[("tinted", "Tinted"), ("plain", "Plain")]),
         tag_style_value(effective.presentation.tags.style),
         tag_style_value(base.presentation.tags.style),
-        visual_origin(
+        setting_origin(
+            &base.setting_sources,
+            "presentation.tags.style",
             preferences.visual.tags.style.is_some(),
-            true,
-            ValueOrigin::Configuration,
         ),
     )?;
     style.description = "Tinted background or plain text.".into();
@@ -2372,10 +2504,10 @@ fn visual_descriptors(
         },
         SettingValue::Number(f64::from(effective.presentation.tags.opacity.get())),
         SettingValue::Number(f64::from(base.presentation.tags.opacity.get())),
-        visual_origin(
+        setting_origin(
+            &base.setting_sources,
+            "presentation.tags.opacity",
             preferences.visual.tags.opacity.is_some(),
-            true,
-            ValueOrigin::Configuration,
         ),
     )?;
     opacity.description = "Tint opacity, 0-100%.".into();
@@ -2410,10 +2542,10 @@ fn visual_descriptors(
         ]),
         output_style_value(effective.presentation.highlight.style),
         output_style_value(base.presentation.highlight.style),
-        visual_origin(
+        setting_origin(
+            &base.setting_sources,
+            "presentation.highlight.style",
             preferences.visual.highlight.style.is_some(),
-            true,
-            ValueOrigin::Configuration,
         ),
     )?;
     style.description = "Text, background, or both.".into();
@@ -2436,7 +2568,7 @@ fn visual_descriptors(
             visual_origin(
                 (binding.read)(&preferences.visual.highlight.colors).is_some(),
                 (binding.read)(&base.presentation.highlight.colors).is_some(),
-                ValueOrigin::Configuration,
+                palette_origin(base, preferences),
             ),
         )?;
         row.description = "Detected status text color.".into();
@@ -2487,10 +2619,10 @@ fn visual_descriptors(
         settings::SettingKind::Boolean,
         SettingValue::Boolean(effective.presentation.command_output.pulse),
         SettingValue::Boolean(base.presentation.command_output.pulse),
-        visual_origin(
+        setting_origin(
+            &base.setting_sources,
+            "presentation.command-output.pulse",
             preferences.visual.command_output.pulse.is_some(),
-            true,
-            ValueOrigin::Configuration,
         ),
     )?;
     pulse.description = "Brief color pulse after completion.".into();
@@ -2550,10 +2682,10 @@ fn visual_descriptors(
         ]),
         output_style_value(effective.presentation.kubernetes.style),
         output_style_value(base.presentation.kubernetes.style),
-        visual_origin(
+        setting_origin(
+            &base.setting_sources,
+            "presentation.kubernetes.style",
             preferences.visual.kubernetes.style.is_some(),
-            true,
-            ValueOrigin::Configuration,
         ),
     )?;
     kubernetes_style.description = "Kubernetes status text, background, or both.".into();
@@ -2576,7 +2708,7 @@ fn visual_descriptors(
             visual_origin(
                 (binding.read)(&preferences.visual.kubernetes.colors).is_some(),
                 (binding.read)(&base.presentation.kubernetes.colors).is_some(),
-                ValueOrigin::Configuration,
+                palette_origin(base, preferences),
             ),
         )?;
         row.description = "Recognized Kubernetes status text color.".into();
@@ -2964,7 +3096,7 @@ mod tests {
     use settings::{SettingId, SettingOwner};
 
     #[test]
-    fn temporary_global_defaults_enable_core_features_without_mutating_saved_choices() {
+    fn global_reset_inherits_configuration_without_mutating_saved_choices() {
         let mut saved = UserPreferences::default();
         saved.presentation.inline_tables = Some(false);
         saved.presentation.output_highlighting = Some(false);
@@ -2984,11 +3116,15 @@ mod tests {
             saved, original,
             "the saved snapshot is never changed in place"
         );
-        assert_eq!(preview.presentation.inline_tables, Some(true));
-        assert_eq!(preview.presentation.output_highlighting, Some(true));
-        assert_eq!(preview.presentation.command_timestamps, Some(true));
-        assert_eq!(preview.visual.tags.enabled, Some(true));
+        assert_eq!(preview.presentation.inline_tables, None);
+        assert_eq!(preview.presentation.output_highlighting, None);
+        assert_eq!(preview.presentation.command_timestamps, None);
+        assert_eq!(preview.visual.tags.enabled, None);
         assert_eq!(preview.font_size, None);
+        let inherited = preview.apply_to(&Config::default());
+        assert!(inherited.presentation.inline_tables);
+        assert!(inherited.presentation.output_highlighting);
+        assert!(inherited.presentation.command_timestamps);
         assert!(
             preview.extension_features.is_empty(),
             "extension defaults belong to their declarations"
@@ -3020,7 +3156,7 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(preview.visual.tags.enabled, Some(true));
+        assert_eq!(preview.visual.tags.enabled, None);
         assert_eq!(preview.visual.tags.style, None);
         assert_eq!(preview.presentation.output_highlighting, Some(false));
         assert_eq!(preview.presentation.inline_tables, Some(false));
@@ -3676,7 +3812,7 @@ mod tests {
             .unwrap()
             .entries()
             .len(),
-            11
+            28
         );
         assert!(customization_root_catalog(&snapshot, &groups).is_ok());
     }
@@ -3717,7 +3853,7 @@ mod tests {
         let detail =
             slot_page_catalog(7, &slot_page_snapshot(&preferences, &base), "windows")
                 .unwrap();
-        assert_eq!(detail.entries().len(), 11);
+        assert_eq!(detail.entries().len(), 28);
         assert!(detail
             .get(&SettingId::new("tags.slot.windows.literal").unwrap())
             .is_some());
@@ -4973,8 +5109,7 @@ mod tests {
 
     #[test]
     fn information_tags_toggle_is_core_owned_independent_and_resettable() {
-        let mut base = Config::default();
-        base.presentation.tags.enabled = false;
+        let base = Config::parse("[presentation.tags]\nenabled = false").unwrap();
         let mut preferences = UserPreferences::default();
         preferences
             .set_extension_feature_enabled(
@@ -6319,5 +6454,567 @@ mod window_controls_entry_regression {
             catalog(1, &Config::default(), &UserPreferences::default(), &[]).unwrap();
         let groups = customization_groups(&catalog);
         assert!(groups.iter().any(|g| g.label == "Window controls"));
+    }
+}
+
+#[cfg(test)]
+mod tag_typography_contract_tests {
+    use super::*;
+    #[test]
+    fn information_tags_offer_shared_and_individual_typography() {
+        let base = Config::default();
+        let preferences = UserPreferences::default();
+        let root = catalog(1, &base, &preferences, &[]).unwrap();
+        let full =
+            information_tag_page_catalog(&root, &slot_page_snapshot(&preferences, &base))
+                .unwrap();
+        for id in [
+            "tags.shared.size",
+            "tags.shared.family",
+            "tags.shared.foreground",
+            "tags.shared.background",
+            "tags.shared.bold",
+        ] {
+            assert!(
+                full.get(&settings::SettingId::new(id).unwrap()).is_some(),
+                "missing {id}"
+            );
+        }
+        let snapshot = slot_page_snapshot(&preferences, &base);
+        let page = slot_page_catalog(1, &snapshot, "user").unwrap();
+        for field in ["size", "family", "foreground", "background", "bold"] {
+            let id = settings::SettingId::new(format!("tags.slot.user.style.{field}"))
+                .unwrap();
+            assert!(page.get(&id).is_some(), "missing {field}");
+        }
+    }
+}
+
+pub(crate) fn is_font_family_setting(id: &str) -> bool {
+    id == "fonts.family"
+        || id == "tags.shared.family"
+        || id
+            .strip_prefix("tags.slot.")
+            .and_then(|s| s.strip_suffix(".style.family"))
+            .is_some_and(|id| {
+                automexia_ui_model::information_bar::role_from_id(id).is_some()
+                    || matches!(id, "custom-1" | "custom-2" | "custom-3")
+            })
+}
+pub(crate) fn font_family_candidate(
+    preferences: &UserPreferences,
+    id: &str,
+    family: &str,
+) -> Result<UserPreferences, SettingsError> {
+    if !is_font_family_setting(id)
+        || !crate::automexia::font_preferences::valid_family(family)
+    {
+        return Err(SettingsError::InvalidValue);
+    }
+    let mut candidate = preferences.clone();
+    let edit = Edit {
+        revision: 0,
+        id: settings::SettingId::new(id)?,
+        change: Change::Set(SettingValue::Text(family.into())),
+    };
+    if id == "fonts.family" {
+        fonts::apply(&mut candidate, &edit)?;
+    } else {
+        tag_typography::apply(&mut candidate, &edit)?;
+    }
+    Ok(candidate)
+}
+
+#[cfg(test)]
+mod tag_style_transaction_tests {
+    use super::*;
+    fn apply(prefs: &UserPreferences, id: &str, change: Change) -> UserPreferences {
+        apply_edit(
+            1,
+            &Config::default(),
+            prefs,
+            &[],
+            &Edit {
+                revision: 1,
+                id: settings::SettingId::new(id).unwrap(),
+                change,
+            },
+        )
+        .unwrap()
+    }
+    #[test]
+    fn tag_style_shared_single_reset_and_layout_changes_preserve_independence() {
+        let shared = apply(
+            &UserPreferences::default(),
+            "tags.shared.size",
+            Change::Set(SettingValue::Number(130.0)),
+        );
+        let shared = apply(
+            &shared,
+            "tags.shared.bold",
+            Change::Set(SettingValue::Boolean(true)),
+        );
+        let single = apply(
+            &shared,
+            "tags.slot.user.style.size",
+            Change::Set(SettingValue::Number(75.0)),
+        );
+        let single = apply(
+            &single,
+            "tags.slot.user.style.bold",
+            Change::Set(SettingValue::Boolean(false)),
+        );
+        let changed = apply(
+            &single,
+            "tags.shared.size",
+            Change::Set(SettingValue::Number(120.0)),
+        );
+        assert_eq!(
+            changed
+                .visual
+                .information_bar
+                .recipe()
+                .styles
+                .resolve("user")
+                .size,
+            Some(75)
+        );
+        assert_eq!(
+            changed
+                .visual
+                .information_bar
+                .recipe()
+                .styles
+                .resolve("windows")
+                .size,
+            Some(120)
+        );
+        assert_eq!(
+            changed.visual.information_bar.styles.resolve("user").bold,
+            Some(false)
+        );
+        let reset = apply(&changed, "tags.slot.user.style.size", Change::Reset);
+        assert_eq!(
+            reset.visual.information_bar.styles.resolve("user").size,
+            Some(120)
+        );
+        let preset = apply(
+            &reset,
+            "tags.format",
+            Change::Set(SettingValue::Choice("minimal-flat".into())),
+        );
+        assert_eq!(
+            preset.visual.information_bar.styles,
+            reset.visual.information_bar.styles
+        );
+        let reset = reset_customizations(
+            &preset,
+            &CustomizationResetScope::Tag("user".into()),
+            None,
+        )
+        .unwrap();
+        assert!(!reset
+            .visual
+            .information_bar
+            .styles
+            .tags
+            .contains_key("user"));
+        assert_eq!(
+            reset.visual.information_bar.styles.resolve("user").bold,
+            Some(true)
+        );
+    }
+    #[test]
+    fn tag_style_every_control_sets_resets_and_rejects_stale_edits() {
+        let base = Config::default();
+        let prefs = UserPreferences::default();
+        let snap = slot_page_snapshot(&prefs, &base);
+        for slot in [None, Some("user")] {
+            for row in tag_typography::descriptors(&snap, slot).unwrap() {
+                if matches!(row.kind, settings::SettingKind::Action) {
+                    continue;
+                }
+                let value = match row.kind {
+                    settings::SettingKind::Number { max, .. } => {
+                        SettingValue::Number(max)
+                    }
+                    settings::SettingKind::Boolean => SettingValue::Boolean(true),
+                    settings::SettingKind::Color { .. } => {
+                        SettingValue::Color([48, 96, 144, 255])
+                    }
+                    settings::SettingKind::Text { .. } => {
+                        SettingValue::Text("Example Mono".into())
+                    }
+                    _ => panic!("unexpected style control"),
+                };
+                let saved = apply(&prefs, row.id.as_str(), Change::Set(value));
+                assert!(!saved.visual.information_bar.styles.is_empty());
+                let reset = apply(&saved, row.id.as_str(), Change::Reset);
+                assert!(
+                    reset.visual.information_bar.styles.is_empty(),
+                    "{} reset must inherit",
+                    row.id.as_str()
+                );
+                assert!(apply_edit(
+                    2,
+                    &base,
+                    &prefs,
+                    &[],
+                    &Edit {
+                        revision: 1,
+                        id: row.id.clone(),
+                        change: Change::Reset
+                    }
+                )
+                .is_err());
+            }
+        }
+    }
+    #[test]
+    fn tag_style_limits_and_missing_extension_cannot_be_bypassed() {
+        let base = Config::default();
+        let prefs = UserPreferences::default();
+        for (id, value) in [
+            ("tags.shared.size", 151.),
+            ("tags.shared.opacity", 101.),
+            ("tags.slot.user.style.icon-gap", 17.),
+            ("tags.shared.size", f64::NAN),
+        ] {
+            assert!(apply_edit(
+                1,
+                &base,
+                &prefs,
+                &[],
+                &Edit {
+                    revision: 1,
+                    id: settings::SettingId::new(id).unwrap(),
+                    change: Change::Set(SettingValue::Number(value))
+                }
+            )
+            .is_err());
+        }
+        assert!(apply_edit(
+            1,
+            &base,
+            &prefs,
+            &[],
+            &Edit {
+                revision: 1,
+                id: settings::SettingId::new("tags.slot.kubernetes.style.bold").unwrap(),
+                change: Change::Set(SettingValue::Boolean(true))
+            }
+        )
+        .is_err());
+    }
+    #[test]
+    fn tag_style_inherit_action_preserves_tag_identity_and_other_overrides() {
+        let mut prefs = apply(
+            &UserPreferences::default(),
+            "tags.shared.bold",
+            Change::Set(SettingValue::Boolean(true)),
+        );
+        prefs = apply(
+            &prefs,
+            "tags.slot.user.style.size",
+            Change::Set(SettingValue::Number(125.0)),
+        );
+        prefs = apply(
+            &prefs,
+            "tags.slot.windows.style.italic",
+            Change::Set(SettingValue::Boolean(true)),
+        );
+        let mut recipe = prefs.visual.information_bar.recipe();
+        let tag = recipe.slots.iter_mut().find(|s| s.id == "user").unwrap();
+        tag.color = Some([10, 20, 30]);
+        let mut expected = tag.clone();
+        expected.color = None;
+        prefs.visual.information_bar.custom_recipe = Some(recipe);
+        let inherited = apply(&prefs, "tags.slot.user.style.inherit", Change::Activate);
+        assert!(!inherited
+            .visual
+            .information_bar
+            .styles
+            .tags
+            .contains_key("user"));
+        assert_eq!(
+            inherited.visual.information_bar.styles.resolve("user").bold,
+            Some(true)
+        );
+        assert_eq!(
+            inherited
+                .visual
+                .information_bar
+                .styles
+                .resolve("windows")
+                .italic,
+            Some(true)
+        );
+        assert_eq!(
+            inherited
+                .visual
+                .information_bar
+                .custom_recipe
+                .as_ref()
+                .unwrap()
+                .slots
+                .iter()
+                .find(|s| s.id == "user")
+                .unwrap(),
+            &expected
+        );
+    }
+    #[test]
+    fn tag_style_fonts_keep_primary_font_and_share_preparation_identity() {
+        let base = Config::default();
+        let prefs = UserPreferences::default();
+        let p =
+            font_family_candidate(&prefs, "tags.shared.family", "Example Mono").unwrap();
+        let p = font_family_candidate(&p, "tags.slot.user.style.family", "Other Mono")
+            .unwrap();
+        let config = p.apply_to(&base);
+        assert_eq!(config.fonts.family, base.fonts.family);
+        assert_eq!(config.fonts.ui_families, vec!["Example Mono", "Other Mono"]);
+        assert_ne!(
+            crate::automexia::font_preferences::resource_identity(&base.fonts),
+            crate::automexia::font_preferences::resource_identity(&config.fonts)
+        );
+        assert_eq!(prefs.visual.information_bar.styles, Default::default());
+    }
+}
+
+#[cfg(test)]
+mod ownership_tests {
+    use super::*;
+    #[test]
+    fn defaults_explicit_config_and_reset_keep_distinct_owners() {
+        let defaults = Config::default();
+        let configured = Config::parse("[presentation]\ninline-tables = true").unwrap();
+        let id = settings::SettingId::new(settings::INLINE_TABLES).unwrap();
+        let mut prefs = UserPreferences::default();
+        assert_eq!(
+            catalog(1, &defaults, &prefs, &[])
+                .unwrap()
+                .get(&id)
+                .unwrap()
+                .origin,
+            ValueOrigin::Default
+        );
+        assert_eq!(
+            catalog(1, &configured, &prefs, &[])
+                .unwrap()
+                .get(&id)
+                .unwrap()
+                .origin,
+            ValueOrigin::Configuration
+        );
+        prefs.presentation.inline_tables = Some(true);
+        assert_eq!(
+            catalog(1, &configured, &prefs, &[])
+                .unwrap()
+                .get(&id)
+                .unwrap()
+                .origin,
+            ValueOrigin::User
+        );
+        let reset = apply_edit(
+            1,
+            &configured,
+            &prefs,
+            &[],
+            &Edit {
+                revision: 1,
+                id: id.clone(),
+                change: Change::Reset,
+            },
+        )
+        .unwrap();
+        assert_eq!(reset.presentation.inline_tables, None);
+        assert_eq!(
+            catalog(2, &configured, &reset, &[])
+                .unwrap()
+                .get(&id)
+                .unwrap()
+                .origin,
+            ValueOrigin::Configuration
+        );
+        assert_eq!(
+            catalog(3, &defaults, &reset, &[])
+                .unwrap()
+                .get(&id)
+                .unwrap()
+                .origin,
+            ValueOrigin::Default
+        );
+    }
+}
+
+#[cfg(test)]
+mod reset_inheritance_tests {
+    use super::*;
+
+    #[test]
+    fn every_core_section_and_reset_all_inherits_disabled_configuration() {
+        let base = Config::parse("[presentation]\ninline-tables = false\noutput-highlighting = false\ncommand-output-highlighting = false\nkubernetes-highlighting = false\ncommand-timestamps = false\n[presentation.tags]\nenabled = false").unwrap();
+        let mut current = UserPreferences::default();
+        current.presentation.inline_tables = Some(true);
+        current.presentation.output_highlighting = Some(true);
+        current.presentation.command_output_highlighting = Some(true);
+        current.presentation.kubernetes_highlighting = Some(true);
+        current.presentation.command_timestamps = Some(true);
+        current.visual.tags.enabled = Some(true);
+        let scopes = [
+            CustomizationResetScope::All,
+            CustomizationResetScope::Area(CustomizationArea::Workflow),
+            CustomizationResetScope::Group(
+                settings::SettingId::new(settings::INLINE_TABLES).unwrap(),
+            ),
+            CustomizationResetScope::Group(
+                settings::SettingId::new(settings::OUTPUT_HIGHLIGHTING).unwrap(),
+            ),
+            CustomizationResetScope::Group(
+                settings::SettingId::new(settings::COMMAND_OUTPUT_HIGHLIGHTING).unwrap(),
+            ),
+            CustomizationResetScope::Group(
+                settings::SettingId::new(settings::KUBERNETES_HIGHLIGHTING).unwrap(),
+            ),
+            CustomizationResetScope::Group(
+                settings::SettingId::new(settings::COMMAND_TIMESTAMPS).unwrap(),
+            ),
+            CustomizationResetScope::Group(
+                settings::SettingId::new(crate::automexia::presentation::TAG_ENABLED)
+                    .unwrap(),
+            ),
+        ];
+        for scope in scopes {
+            let next = reset_customizations(&current, &scope, None).unwrap();
+            let effective = next.apply_to(&base);
+            match scope {
+                CustomizationResetScope::All | CustomizationResetScope::Area(_) => {
+                    assert_eq!(next.presentation, Default::default());
+                    assert_eq!(next.visual.tags.enabled, None);
+                    assert_eq!(effective.presentation, base.presentation);
+                }
+                CustomizationResetScope::Group(key) => {
+                    let row = catalog(1, &base, &next, &[])
+                        .unwrap()
+                        .get(&key)
+                        .unwrap()
+                        .clone();
+                    assert_eq!(
+                        row.value,
+                        SettingValue::Boolean(false),
+                        "{}",
+                        key.as_str()
+                    );
+                    assert_eq!(
+                        row.origin,
+                        ValueOrigin::Configuration,
+                        "{}",
+                        key.as_str()
+                    );
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod full_coverage_tests {
+    use super::*;
+    use settings::{Section, ViewState};
+    #[test]
+    fn full_settings_search_covers_categories_owners_and_launch_scopes() {
+        let base = Config::parse("copy-on-select=true\n[window]\nwidth=1000").unwrap();
+        let prefs = UserPreferences::default();
+        let catalog =
+            full_catalog_with_palette(19, &base, &prefs, &[], &base.colors).unwrap();
+        for section in [
+            Section::Appearance,
+            Section::Terminal,
+            Section::Input,
+            Section::Window,
+            Section::Profiles,
+            Section::Shell,
+            Section::Advanced,
+        ] {
+            assert!(
+                catalog.entries().iter().any(|row| row.section == section),
+                "{section:?}"
+            );
+        }
+        for (query, id) in [
+            ("copy-on-select", "general.copy_on_select"),
+            ("launch history", "general.history_limit"),
+            ("environment", "configuration.env-vars"),
+            ("config.toml", "general.window_width"),
+        ] {
+            let mut view = ViewState::new(&catalog, 8);
+            view.set_query(query, &catalog).unwrap();
+            assert!(
+                view.filtered_ids()
+                    .iter()
+                    .any(|candidate| candidate.as_str() == id),
+                "{query}"
+            );
+        }
+        assert!(catalog
+            .entries()
+            .windows(2)
+            .all(|pair| pair[0].section.order() <= pair[1].section.order()));
+    }
+    #[test]
+    fn fresh_defaults_and_explicit_color_owners_are_distinguished() {
+        let base = Config::default();
+        let prefs = UserPreferences::default();
+        let rows =
+            full_catalog_with_palette(1, &base, &prefs, &[], &base.colors).unwrap();
+        for row in rows.entries() {
+            assert_ne!(
+                row.origin,
+                ValueOrigin::Configuration,
+                "false config owner: {}",
+                row.id.as_str()
+            );
+        }
+        let configured = Config::parse(
+            "[colors]\nlight-red='#112233'\n[presentation.command-output]\npulse=false",
+        )
+        .unwrap();
+        let snapshot = fonts::Snapshot::new(&configured, &configured, &prefs);
+        let rows = fonts::descriptors(&snapshot).unwrap();
+        assert_eq!(
+            rows.iter()
+                .find(|r| r.id.as_str() == "fonts.colors.bright-red")
+                .unwrap()
+                .origin,
+            ValueOrigin::Configuration
+        );
+        assert_eq!(
+            rows.iter()
+                .find(|r| r.id.as_str() == "fonts.colors.blue")
+                .unwrap()
+                .origin,
+            ValueOrigin::Default
+        );
+        let mut profile = Config::default();
+        profile.setting_sources.mark_profile_theme();
+        let snapshot = fonts::Snapshot::new(&profile, &profile, &prefs);
+        assert!(fonts::descriptors(&snapshot)
+            .unwrap()
+            .iter()
+            .filter(|r| r.id.as_str().starts_with("fonts.colors."))
+            .all(|r| r.origin == ValueOrigin::Profile));
+    }
+    #[test]
+    fn resetting_appearance_preserves_unrelated_general_settings() {
+        let mut prefs = UserPreferences::default();
+        prefs.general.copy_on_select = Some(true);
+        prefs.general.history_limit = Some(1000);
+        prefs.font_size = Some(25.0);
+        let reset =
+            reset_customizations(&prefs, &CustomizationResetScope::All, None).unwrap();
+        assert_eq!(reset.general, prefs.general);
+        assert_eq!(reset.font_size, None);
     }
 }

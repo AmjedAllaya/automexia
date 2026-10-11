@@ -165,10 +165,14 @@ impl Application<'_> {
                     preferences.appearance_theme = None;
                 }
                 preferences.theme_selection = selection;
-                let config = resolve_runtime_preference_config(
+                let mut config = resolve_runtime_preference_config(
                     &self.base_config,
                     &preferences,
                     event_loop.system_theme(),
+                );
+                crate::automexia::general_preferences::retain_restart_settings(
+                    &self.config,
+                    &mut config,
                 );
                 if let Some(route) = self.router.routes.get_mut(&window) {
                     route

@@ -960,6 +960,16 @@ These documents introduce no new test commands or relaxed quality thresholds.
 
 ## Native platform ownership
 
+Native boundary regressions run through `cargo test --locked -p teletypewriter --lib`
+and `cargo test --locked -p rio-vt --lib`. They cover PTY descriptor inheritance,
+OSC 52 denial, bounded unfinished images and real-worker idle expiry. The expiry
+case intentionally waits ten seconds and joins its worker. The macOS native CI
+also runs `platform::macos::tests::native_locale_`; a Linux path-conversion test
+does not replace those Foundation/libproc checks. Linux package resource contracts
+run with `python -m unittest tools.ci.test_release_runtime` and the application's
+`automexia::shell_integration::` tests. Construction, signing and installation of
+final packages remain separate release evidence.
+
 Windows, Linux/BSD, and macOS claims require native runs on the named platform
 for PTY/process behavior, windowing, input, clipboard, IME, accessibility,
 packaging, and credential integration as applicable. Cross-compilation and
@@ -1279,6 +1289,29 @@ and motion enabled/disabled.
 
 Automated accessibility checks do not replace current Narrator/NVDA, VoiceOver,
 and Orca evidence for releases claiming those environments.
+
+### Appearance, transparency and preference isolation
+
+Run `tests/integration/unix-session-ui.py --appearance-only` against a
+`visual-test-hooks` application build. The matrix covers clean defaults and all
+five bundled themes. GPU cases set 50% opacity through the settings UI, restart
+with that saved value, reset to inherited configuration and restart again. CPU
+cases verify opaque clean startup. The Windows `-OpacityOnly` native scenario
+also checks the opaque CPU fallback with saved transparency.
+
+On Wayland, the fixture changes its owned compositor backdrop between black and
+white and compares native body pixels with source-over blending. Its explicit
+ANSI-cell case detects double alpha multiplication independently of screenshots
+accepted as goldens. X11 and macOS check native opaque body pixels plus retained
+settings state; those cases alone do not prove compositor transparency. The
+settings raster matrix separately compares card interiors on black and white
+backdrops so a transparent card cannot be blessed by a defective golden.
+
+Native fixtures use isolated HOME, XDG, application and legacy configuration
+paths. Only display/toolchain environment capabilities are inherited. Cleanup
+must remove the owned profile on both success and failure; injected failure tests
+also verify that a separate normal-profile sentinel remains unchanged. Never
+reset or delete an ordinary user's preferences to prepare a visual test.
 
 ### Bound visual captures and deliberate defects
 
@@ -2119,3 +2152,65 @@ real numeric/color editor input, terminal row counts and captured pixels to chec
 updates while settings remain open. `-UseCpuRenderer` exercises the CPU path;
 without it the harness checks WGPU. An unlocked idle desktop is required. These
 results do not certify another platform's native compositor.
+
+The native renderer filters `renderer::prompt_visual_anchor_tests::native_` and
+`renderer::session_footer::tests::native_` exercise idle prompt-refresh admission,
+visible inactive panes, pending/unavailable and remote metadata, local clock
+minute boundaries, and hidden clock/footer wake suppression. The application
+benchmark's idle scenario supplies native frame, CPU and RSS evidence for the
+same behavior; the clock remains independent from optional context discovery.
+
+## First alpha release regressions
+
+The in-repository `0.0.1_alpha` workflow keeps native platform and publication
+checks independent. Run its local contract tests with:
+
+```sh
+python3 -m unittest discover -s tools/ci -p 'test_release_*.py'
+python3 -m unittest discover -s tools/ci -p 'test_platform_coverage.py'
+cargo test -p xtask --locked
+```
+
+`test_release_identity.py` covers Cargo/public/native version mappings, real
+plist serialization, desktop metadata adaptation, deterministic ZIP/tar data,
+all-runtime comparison, cached-comparison rejection and native-host enforcement.
+`test_release_runtime.py` executes the package-step bodies in isolated fixtures;
+with nFPM, dpkg-deb and RPM available it also checks both native package formats,
+alpha metadata, deterministic bytes and the complete shell-resource tree.
+Windows-only fixture skips are reported explicitly on Linux.
+
+`test_release_manifest.py` rejects missing/duplicate/wrong-platform assets,
+vendor-only SBOMs, version drift and private scanner paths. Platform mutation
+tests reject missing QA/reproducibility targets or unbound package inputs.
+`reproducible_build.py` compares two clean copies of the committed source and
+verifies the unsigned inputs selected for signing; it does not attest a dirty
+working tree or claim timestamped signed containers are byte-identical.
+
+These tests are local preparation evidence. Native Windows installer lifecycle,
+macOS Gatekeeper/notarization and the required controlled hardware jobs must
+still pass for the exact release source before publication.
+
+
+## Full Settings coverage
+
+Run `cargo test -p automexia-ui-model --test settings`, the backend `config::`
+tests, application `settings_` and `command_palette` tests, preferences tests and
+`user_preferences_restart`. These cover category search, explicit-default field
+ownership, profile/theme inheritance, stale revisions, structured exports,
+version-16 migration and sparse override removal. The context regression
+`core_settings_update_live_cursor_and_future_defaults_without_replacing_sessions`
+checks live cursor changes while retaining session identities and descriptors.
+
+`visual_quality_settings_full` captures the production CPU primitives for every
+built-in palette at 100%, 125%, 150%, 175% and 200% scale. It independently checks
+opaque cards and unchanged pixels outside the dialog. Set the existing
+`AUTOMEXIA_VISUAL_CAPTURE_DIR` to an isolated evidence directory to retain frames.
+
+On an available Windows desktop, build with `visual-test-hooks`, then run
+`tests/integration/resize-stress-windows.ps1 -FullSettingsOnly -Binary <test-binary>`.
+The existing isolated harness supplies temporary config/state and owns cleanup.
+The scenario checks the actual keyboard entry, search, value ownership, saved
+choice, reset to inheritance, launch timing and reopen, while comparing config
+bytes. Its native pixel assertion requires visible decrement, value and increment
+ink inside the numeric control on both CPU and WGPU runs. It requires exclusive desktop input. Native results are reported per run;
+model and CPU raster success do not establish Linux/macOS or screen-reader proof.

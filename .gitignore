@@ -13,6 +13,9 @@ target/
 # removed without affecting an application build.
 /.automexia-tools/
 
+# Generated development-cache leases and reusable build/tool cache.
+/.automexia-cache/
+
 # Private product research and unreleased implementation plans. This directory
 # is local-only and must never be staged or committed.
 /.automexia-private/

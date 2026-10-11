@@ -625,6 +625,26 @@ class PlatformCoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "cold native"):
             PLATFORM.validate_release(altered)
 
+    def test_release_cannot_bypass_native_qa_or_desktop_reproducibility(self) -> None:
+        for removed in ("native-platform-qa", "reproducibility-desktop"):
+            altered = copy.deepcopy(self.release)
+            altered["jobs"]["release-final-gate"]["needs"].remove(removed)
+            with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "final gate"):
+                PLATFORM.validate_release(altered)
+
+    def test_desktop_reproducibility_cannot_drop_a_target_or_package_identity(self) -> None:
+        for target in range(4):
+            altered = copy.deepcopy(self.release)
+            altered["jobs"]["reproducibility-desktop"]["strategy"]["matrix"]["include"].pop(target)
+            with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "desktop reproducibility"):
+                PLATFORM.validate_release(altered)
+        for name in ("reproducibility-linux", "reproducibility-desktop"):
+            altered = copy.deepcopy(self.release)
+            altered["jobs"][name]["steps"] = [step for step in altered["jobs"][name]["steps"]
+                                                    if "actions/download-artifact@" not in str(step.get("uses", ""))]
+            with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "unsigned package inputs"):
+                PLATFORM.validate_release(altered)
+
     def test_windows_executable_signing_cannot_escape_isolated_input(self) -> None:
         altered = copy.deepcopy(self.release)
         signing = next(

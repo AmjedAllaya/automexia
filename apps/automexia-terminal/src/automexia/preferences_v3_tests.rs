@@ -563,6 +563,7 @@ fn information_bar_recipe_roundtrips_with_independent_icon_and_text_sources() {
     recipe.slots[1].enabled = false;
     let mut preferences = UserPreferences::default();
     preferences.visual.information_bar = InformationBarPreferences {
+        styles: Default::default(),
         preset: Some(InformationBarPreset::FloatingCards),
         custom_recipe: Some(recipe.clone()),
         use_custom: true,

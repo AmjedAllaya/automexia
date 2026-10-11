@@ -470,7 +470,7 @@ impl DevOpsStatus {
         let Some(text) = item.value.get(fragment.bytes.clone()) else {
             return;
         };
-        let metrics = prompt_tag_metrics(anchor.height);
+        let metrics = item.style.metrics(anchor.height);
         let top_inset = automexia_ui_model::prompt_context_top_inset(
             anchor.height,
             metrics.height,
@@ -479,14 +479,18 @@ impl DevOpsStatus {
         .unwrap_or(0.0);
         let x = anchor.x + PROMPT_TAG_LEFT_INSET + fragment.x;
         let y = anchor.y + fragment.row as f32 * anchor.height + top_inset;
-        let paint = prompt_bar_item_colors(colors, item, appearance, visual);
-        let color = paint.foreground;
-        draw_tag_surface_in_run(
+        let paint = styled_prompt_bar_item_colors(colors, item, appearance, visual);
+        let color = paint.colors.foreground;
+        draw_tag_surface_styled(
             sugarloaf,
             visual,
             [x, y, fragment.width, metrics.height],
-            paint,
+            automexia_ui_model::ContextTagColors {
+                foreground: paint.border,
+                ..paint.colors
+            },
             fragment.shape_position,
+            &item.style,
         );
         #[cfg(feature = "native-gui-test-hooks")]
         self.native_prompt_paints.borrow_mut().push((
@@ -506,19 +510,41 @@ impl DevOpsStatus {
                     y + (metrics.height - icon) * 0.5,
                     slot,
                     icon,
-                    color,
+                    paint.icon,
                 );
             }
         }
         if !item.icon_only && !text.is_empty() {
-            super::command_info::draw_fragment_text(
+            let mut opts = crate::automexia::presentation::tag_text_options(
                 sugarloaf.text_mut(),
-                text,
-                fragment,
-                [anchor.x, anchor.y],
-                [anchor.height, metrics.font_size, metrics.height],
-                color_to_u8(color),
+                &item.style,
+                metrics.font_size * fragment.text_scale,
             );
+            opts.color = color_to_u8(color);
+            let tx = x + fragment.padding + fragment.leading;
+            let ty = y + (metrics.height - opts.font_size) * 0.5 - 1.0;
+            sugarloaf.text_mut().draw_clipped(
+                tx,
+                ty,
+                text,
+                &opts,
+                [x, y, fragment.width, metrics.height],
+            );
+            for line in item
+                .style
+                .decoration_lines(
+                    tx,
+                    ty,
+                    (fragment.width - fragment.padding * 2.0 - fragment.leading).max(0.0),
+                    opts.font_size,
+                    opts.font_size,
+                )
+                .into_iter()
+                .flatten()
+            {
+                sugarloaf
+                    .rect(None, line[0], line[1], line[2], line[3], color, 0.0, ORDER);
+            }
         }
     }
 
@@ -1017,12 +1043,22 @@ fn prompt_tag_colors(
     )
 }
 
+#[cfg(test)]
 fn prompt_bar_item_colors(
     colors: Colors,
     item: &ResolvedBarItem,
     appearance: &rio_backend::config::presentation::TagAppearance,
     visual: BarVisualStyle,
 ) -> automexia_ui_model::ContextTagColors {
+    styled_prompt_bar_item_colors(colors, item, appearance, visual).colors
+}
+
+fn styled_prompt_bar_item_colors(
+    colors: Colors,
+    item: &ResolvedBarItem,
+    appearance: &rio_backend::config::presentation::TagAppearance,
+    visual: BarVisualStyle,
+) -> automexia_ui_model::information_bar::TagPaint {
     use rio_backend::config::presentation::TagStyle;
     let foreground = color_to_u8(colors.foreground);
     let anchor = item.color.unwrap_or_else(|| {
@@ -1037,7 +1073,12 @@ fn prompt_bar_item_colors(
         } else {
             appearance.opacity.get()
         };
-    automexia_ui_model::context_tag_colors(colors.background.0, anchor, opacity)
+    item.style.paint_with_background(
+        colors.background.0,
+        anchor,
+        opacity,
+        appearance.style != TagStyle::Plain && visual != BarVisualStyle::Underline,
+    )
 }
 
 /// Every vertex stays inside the fragment rectangle supplied by the shared
@@ -1124,6 +1165,7 @@ fn draw_tag_surface(
     );
 }
 
+#[cfg(test)]
 fn draw_tag_surface_in_run(
     sugarloaf: &mut impl TagSurfaceCanvas,
     visual: BarVisualStyle,
@@ -1131,16 +1173,38 @@ fn draw_tag_surface_in_run(
     paint: automexia_ui_model::ContextTagColors,
     position: automexia_ui_model::information_bar::TagShapePosition,
 ) {
+    draw_tag_surface_styled(
+        sugarloaf,
+        visual,
+        [x, y, width, height],
+        paint,
+        position,
+        &Default::default(),
+    );
+}
+
+fn draw_tag_surface_styled(
+    sugarloaf: &mut impl TagSurfaceCanvas,
+    visual: BarVisualStyle,
+    [x, y, width, height]: [f32; 4],
+    paint: automexia_ui_model::ContextTagColors,
+    position: automexia_ui_model::information_bar::TagShapePosition,
+    style: &automexia_ui_model::information_bar::TagTypography,
+) {
     if !x.is_finite() || !y.is_finite() {
         return;
     }
-    let Some(geometry) = automexia_ui_model::information_bar::tag_fragment_geometry(
-        visual, width, height, position,
-    ) else {
+    let Some(geometry) = style.surface(visual, width, height, position) else {
         return;
     };
     let mut outline = paint.foreground;
-    outline[3] = 0.45;
+    outline[3] = if style.border_color.is_some() {
+        1.0
+    } else {
+        0.45
+    };
+    let outline_enabled = style.border_width != Some(0);
+    let custom_border = style.border_width.is_some_and(|v| v > 0);
     let layers = tag_surface_paint_layers(visual, paint.background[3]);
     match geometry {
         TagSurfaceGeometry::Connected(shape) => {
@@ -1149,7 +1213,8 @@ fn draw_tag_surface_in_run(
                 for triangle in shape.triangles() {
                     sugarloaf.fill_polygon(&triangle.map(offset), paint.background);
                 }
-            } else {
+            }
+            if outline_enabled && (!layers.fill || custom_border) {
                 for (a, b) in shape
                     .points()
                     .iter()
@@ -1173,7 +1238,8 @@ fn draw_tag_surface_in_run(
         TagSurfaceGeometry::Capsule { radius, stroke } => {
             if layers.fill {
                 sugarloaf.fill_rounded([x, y, width, height], radius, paint.background);
-            } else {
+            }
+            if outline_enabled && (!layers.fill || custom_border) {
                 draw_rounded_outline(
                     sugarloaf, x, y, width, height, radius, stroke, outline,
                 );
@@ -1182,7 +1248,8 @@ fn draw_tag_surface_in_run(
         TagSurfaceGeometry::Flat { stroke } => {
             if layers.fill {
                 sugarloaf.fill_rect([x, y, width, height], paint.background);
-            } else {
+            }
+            if outline_enabled && (!layers.fill || custom_border) {
                 draw_rect_outline(sugarloaf, x, y, width, height, stroke, outline);
             }
         }
@@ -1191,7 +1258,8 @@ fn draw_tag_surface_in_run(
             let points = points.map(|(px, py)| (x + px, y + py));
             if layers.fill {
                 sugarloaf.fill_polygon(&points, paint.background);
-            } else {
+            }
+            if outline_enabled && (!layers.fill || custom_border) {
                 draw_polygon_outline(sugarloaf, &points, stroke, outline);
             }
         }
@@ -1199,9 +1267,16 @@ fn draw_tag_surface_in_run(
             if layers.fill {
                 sugarloaf.fill_rounded([x, y, width, height], radius, paint.background);
             }
-            draw_rounded_outline(sugarloaf, x, y, width, height, radius, stroke, outline);
+            if outline_enabled {
+                draw_rounded_outline(
+                    sugarloaf, x, y, width, height, radius, stroke, outline,
+                );
+            }
         }
         TagSurfaceGeometry::Underline { baseline_y, stroke } => {
+            if !outline_enabled {
+                return;
+            }
             sugarloaf.stroke_line(
                 (x + stroke * 0.5, y + baseline_y),
                 (x + width - stroke * 0.5, y + baseline_y),
@@ -2510,6 +2585,7 @@ mod visual_tag_render_tests {
         use automexia_extension_api::Freshness;
         let renderer = super::super::Renderer::new(&Config::default());
         let mut item = ResolvedBarItem {
+            style: Default::default(),
             slot_id: "cluster".into(),
             value: String::new(),
             icon_only: true,

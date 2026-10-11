@@ -242,6 +242,19 @@ current library. Apply reuses the prepared preview in the existing typed edit;
 previewing never modifies preferences. No second font parser or installer exists.
 Only successful preparation updates the router, existing screens and saved
 preferences; screen font caches and every local tab's metrics refresh together.
+Information tags share the same picker and worker. Version-15 preferences own
+one `TagStyles` value: shared optional fields and at most 16 stable-slot overrides.
+The effective recipe carries this derived, nonserialized style projection; its
+layout serialization is unchanged. Pure UI-model helpers resolve inheritance,
+contrast, metrics and outlines for both preview and terminal painters. Tag family
+inventory is deduplicated (at most 17 names) and prepared with four face slots per
+family in the existing Sugarloaf library. Auxiliary faces are excluded from the
+ordinary terminal fallback walk. DrawOpts selects a prepared preferred face and
+uses existing Unicode fallback for uncovered glyphs. Bounded ASCII coverage and
+shape caches are invalidated on font replacement. Preview identity includes the
+owning setting; cancelling restores both resources and effective tag styles.
+See [ADR 0096](adr/0096-shared-and-individual-tag-styling.md).
+
 Version-10 preferences add a validated theme snapshot and migrate strict version-9
 snapshots without overwriting them. The Settings-owned gallery uses the existing
 backend `Theme`/`Colors` parser and one indexed descriptor inventory. Application

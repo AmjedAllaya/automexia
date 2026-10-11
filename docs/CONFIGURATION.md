@@ -16,11 +16,11 @@ Automexia uses one writable product root:
 
 The root contains `config.toml`, `themes/`, `extensions/`, `logs/`, and
 application-owned `state/`. Runtime font, appearance, shortcut and supported
-Settings choices use the private, versioned `state/user-preferences-v14.toml`
+Settings choices use the private, versioned `state/user-preferences-v16.toml`
 overlay. It contains explicit UI overrides, not a second general configuration.
 Version-12 preferences import only when both version-13 snapshots are absent;
 older versions import only when every newer snapshot pair is absent.
-Version 14 adds header height and imports version 13 without rewriting it. Version 13 added bounded terminal interface overrides. Version 12 added up to 16 shared color favorites. Version 11 added independent window-control style profiles. Version 10 added the
+Version 16 adds typed, sparse core Settings overrides and imports version 15 without rewriting it. Version 15 adds bounded shared/per-tag information-bar styles and imports version 14 without rewriting it. Version 14 adds header height and imports version 13 without rewriting it. Version 13 added bounded terminal interface overrides. Version 12 added up to 16 shared color favorites. Version 11 added independent window-control style profiles. Version 10 added the
 selected theme name and validated palette. Version 9 added font and terminal palette overrides. Version 8 added command
 timestamp appearance; version 7 added inline table appearance.
 Version 6 added connected tag shapes. Older files remain unchanged
@@ -47,6 +47,49 @@ failure; see [ADR 0070](adr/0070-validated-startup-configuration.md).
 The main file must be a regular UTF-8 file no larger than 4 MiB. Each theme
 must be a regular UTF-8 file no larger than 1 MiB. Parse/read/theme failure is
 reported and runtime reload keeps the last known-good configuration.
+
+## Settings coverage and ownership
+
+Open Settings from the command palette. Search stays at the top; the catalog groups
+controls into Appearance, Terminal, Keyboard, Window, Profiles, Shell and Advanced.
+These are application defaults. Named profile launch settings belong to the Profiles
+editor and apply when creating a terminal with that profile.
+
+Every value control displays its owner and when a change takes effect:
+
+| Owner | Meaning |
+|---|---|
+| Default | No explicit configuration or UI override owns this value. |
+| config.toml | The file explicitly supplies it, even if it equals the built-in default. |
+| Profile | The named profile supplies the launch value or theme. |
+| UI override | A saved Settings choice overrides the inherited value. |
+
+Runtime controls include cursor shape/blink, selection behavior, scrolling, keyboard
+and IME behavior, tab presentation and background-rendering policy. History limits
+and directory inheritance apply to new terminals; initial window dimensions apply
+to new windows. CPU renderer and recovery policy changes require restart. Existing
+processes and history are not recreated by changing a launch setting.
+
+**Reset to inherit** removes the selected UI override. It follows the current
+configuration, including future file changes, instead of writing a built-in default.
+Reset all in Customizations resets visual choices; it preserves general behavior
+and keyboard shortcut choices. Version 16 stores the additional typed overrides in
+the same transactional preferences owner. Prior snapshots remain read-only migration
+sources; malformed current snapshots cannot silently revive an older preference set.
+
+Structural controls marked **TOML** use the existing configuration parser. Edit the
+bounded fragment, choose **Export patch**, then review and merge the clipboard text
+in config.toml. Export does not write the file, so comments, ordering and concurrent
+external edits remain untouched. Reset on an export control produces field-removal
+instructions. A configuration reload invalidates an open draft's revision; reopen
+Settings before exporting again. The fragment excludes fields owned by the matching
+runtime controls.
+
+Executable/argument arrays, environment settings, platform overrides and advanced
+font/theme structures open the existing configuration editor rather than copying
+those values into UI preferences or clipboard exports. **Open complete config.toml**
+provides access to optional fields not present in the bounded fragment. Never put
+credentials in configuration; use the existing connection credential source.
 
 ## Explicit command preferences
 
@@ -208,7 +251,7 @@ border-radius = 0
 |---|---|---|
 | `navigation.mode` | `Plain`, `Tab`; macOS also `NativeTab` / `Tab` | `Tab` enables renderer-owned product chrome. |
 | `current-working-directory` | bool / `true` | New sessions may inherit validated directory metadata. Alias: `cwd`. |
-| `use-terminal-title` | bool / `false` | Prefer terminal-provided title in navigation. |
+| `use-terminal-title` | bool / `false` | Legacy parser compatibility only; the current tab title pipeline does not consume this field. |
 | `hide-if-single` | bool / `false` | Hide global tab chrome only when one tab exists. |
 | `use-split` | bool / `true` | Enable split actions/default bindings. |
 | `open-config-with-split` | bool / `true` | Open configuration using the split-aware workflow. |
@@ -216,7 +259,7 @@ border-radius = 0
 | `unfocused-split-fill` | hex color / theme background | Optional inactive-pane tint. |
 | `max-tab-width` | float / `184` | Clamped to `80…280` logical pixels. |
 | `color-automation` | array / `[]` | Program/path-specific tab colors; retained for inherited compatibility. |
-| `clickable` | bool / `false` | Inherited navigation click behavior; normal Automexia tabs remain interactive through native routing. |
+| `clickable` | bool / `false` | Legacy parser compatibility only; Automexia tabs remain interactive through native routing. |
 | `panel.margin`, `panel.padding` | 1/2/4 floats / `[2]`, `[5]` | Per-pane inner spacing. |
 | `panel.row-gap`, `column-gap` | float / `0` | Space between split panes. |
 | `panel.border-width`, `border-radius` | float / `2`, `0` | Split border geometry. |
@@ -270,6 +313,14 @@ very short panes suppress it automatically. Footer status labels progressively
 hide when width is insufficient. Header/footer label colors receive contrast
 correction; terminal application ANSI colors keep their existing precedence.
 Unsupported native blur/transparency effects do not change terminal behavior.
+The terminal body starts fully opaque (`window.opacity = 1.0`), including with
+light themes and after Reset all. Window opacity is independent of the default
+opaque tabs, menus and settings cards. Explicit header/footer RGBA overrides
+retain their own alpha. On Linux, GPU windows reserve transparency capability at
+creation so opacity edits can apply immediately on X11 as well as Wayland; the
+actual appearance remains opaque until transparency is requested. Invalid window
+opacity values (non-finite or outside 0…1) safely resolve to opaque without
+rewriting the configuration. Valid saved transparency choices are preserved.
 CPU rendering uses an opaque native window; opacity/blur preferences remain saved
 for GPU use. Resetting a header/footer opacity control restores inherited alpha
 without discarding its RGB override. Windows GPU rendering uses the compiled
@@ -328,8 +379,8 @@ oversized, linked, permission-denied, or contended file never replaces live
 configuration; Automexia reports a warning and uses the recovered snapshot or
 `config.toml` values. Invalid or newer current-version data is never replaced by an
 automatic predecessor import. To clear individual choices, use Reset. To clear all
-runtime overrides, close Automexia and move `user-preferences-v14.toml` and
-`user-preferences-v14.previous.toml` from the configuration root's `state/`
+runtime overrides, close Automexia and move `user-preferences-v16.toml` and
+`user-preferences-v16.previous.toml` from the configuration root's `state/`
 directory to a backup, together with any retained older version pairs; leaving
 older files would import their choices again. These files never store credentials, terminal contents,
 history, paths, tabs, panes, sessions, or provider state.
@@ -446,14 +497,14 @@ a preview. Background and border opacity controls edit their RGBA alpha bytes.
 
 The command palette's **Customizations → Workflow & Output** opens a feature
 list; each feature has a separate page for its supported switch and appearance
-controls. The existing Settings shortcut opens this same list for compatibility.
+controls. The Settings shortcut opens the full categorized catalog.
 Changes apply across windows, panes and tabs. **Reset all** or a feature's
-**Reset default** saves defaults in the selected scope. New themes and all other
+**Reset to inherit** removes overrides in the selected scope. New themes and all other
 customizations can be applied immediately. **Restore saved** optionally saves the
 choices from before the most recent reset, replacing changes since then; this
 undo point lasts until used or the application exits. Restart loads the latest
 saved choices. Appearance resets restore configured colors and styles, or
-built-in defaults where none are configured, and enable affected core switches.
+built-in defaults where none are configured, including configured core switches.
 Reset inside an individual value editor still clears that
 value's UI override and inherits the current configuration.
 **Edit Configuration File** and its existing
@@ -845,3 +896,15 @@ and `[[profiles.profiles]]` entries. Private visual overrides live separately in
 `profiles/profiles-v1.toml`; they replace matching configuration IDs. Environment
 entries are variable-name references and never contain saved values. See
 [ADR 0093](adr/0093-named-terminal-profiles.md) for ownership and compatibility.
+
+## Terminal output permissions
+
+Terminal output cannot read, overwrite or clear the desktop clipboard with OSC 52.
+Use explicit Copy/Paste actions or their keyboard shortcuts. This also applies to
+output from remote sessions and inactive panes; focusing a window does not grant
+clipboard authority to its child programs.
+
+Unfinished Kitty image uploads share a per-terminal limit of eight transfers and
+64 MiB of retained payload capacity. An upload idle for ten seconds expires even
+without further output. Completion, rejection and terminal reset release its
+retained input. Decoded images retain their separate storage limits.

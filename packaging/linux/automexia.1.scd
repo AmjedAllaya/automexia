@@ -56,5 +56,5 @@ See docs/CONFIGURATION.md for Windows, macOS, Linux, and BSD paths.
 # BUGS
 
 Report public defects at
-https://github.com/AmjedAllaya/automexia-terminal/issues. Report security
+https://github.com/AmjedAllaya/automexia/issues. Report security
 vulnerabilities privately as described in SECURITY.md.

@@ -132,11 +132,12 @@ windowing and rendering adapters. BSD and other Unix systems are best-effort.
 | Linux | Unix PTY; X11 and Wayland | Distribution development libraries |
 | macOS | Unix PTY; native macOS windowing and Metal/WGPU | Xcode Command Line Tools |
 
-Product platform support and published packages are separate. The existing
-[v0.4.0 Linux Early Access prerelease](https://github.com/AmjedAllaya/automexia-releases/releases/tag/v0.4.0)
-contains x64/Arm64 DEB, RPM and portable packages. It does not include subsequent
-source changes or establish Windows/macOS package availability. Stable Windows
-and macOS installers are not published.
+Download published builds from **[this repository's Releases](https://github.com/AmjedAllaya/automexia/releases)**.
+The first multi-platform prerelease is prepared as `0.0.1_alpha`: Windows x64/Arm64
+MSI and portable ZIP, Linux x64/Arm64 DEB/RPM/tar.gz, and a universal macOS DMG.
+A package is available only after its native validation, signing and publication
+gates pass; this source change alone does not mean the release is published.
+The former separate binary repository is retired for new releases.
 
 See [Platform support](docs/PLATFORMS.md) for native evidence and limitations,
 and [Release trust](docs/RELEASE-TRUST.md) for package verification.

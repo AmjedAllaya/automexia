@@ -47,6 +47,8 @@ const _: () = assert!(std::mem::size_of::<TextInstance>() == 36);
 
 #[derive(Clone, Copy, Debug)]
 pub struct DrawOpts {
+    /// Prepared overlay face; missing glyphs retain the normal fallback policy.
+    pub preferred_font_id: Option<usize>,
     // unscaled font size. Text multiplies by its
     // stored `scale_factor` internally before shaping / rasterizing.
     pub font_size: f32,
@@ -80,6 +82,7 @@ impl Default for DrawOpts {
             bold: false,
             italic: false,
             font_id: None,
+            preferred_font_id: None,
         }
     }
 }
@@ -179,6 +182,8 @@ pub struct Text {
     // At most four style results, invalidated with the font library. ASCII
     // labels can use the existing shape cache without segmenting every redraw.
     ascii_faces: [Option<Option<u32>>; 4],
+    // At most the 17 prepared overlay families times four style faces.
+    preferred_ascii_faces: FxHashMap<usize, bool>,
     synthesis_cache: FxHashMap<u32, (bool, bool, bool)>,
     #[cfg(not(target_os = "macos"))]
     wght_variation_cache: FxHashMap<u32, Option<f32>>,
@@ -214,6 +219,7 @@ impl Text {
             font_library: font_library.clone(),
             font_resolve: FxHashMap::default(),
             ascii_faces: [None; 4],
+            preferred_ascii_faces: FxHashMap::default(),
             synthesis_cache: FxHashMap::default(),
             #[cfg(not(target_os = "macos"))]
             wght_variation_cache: FxHashMap::default(),
@@ -245,6 +251,7 @@ impl Text {
         self.font_library = font_library.clone();
         self.font_resolve.clear();
         self.ascii_faces = [None; 4];
+        self.preferred_ascii_faces.clear();
         self.synthesis_cache.clear();
         self.ascent_cache.clear();
         self.shape_cache = ShapeCache::default();
@@ -617,11 +624,12 @@ impl Text {
             return result;
         }
         if text.bytes().all(|byte| (0x20..=0x7e).contains(&byte)) {
-            if let Some(font) = opts
-                .font_id
-                .map(|id| id as u32)
-                .or_else(|| self.homogeneous_ascii_face(opts))
-            {
+            if let Some(font) = opts.font_id.map(|id| id as u32).or_else(|| {
+                match opts.preferred_font_id {
+                    Some(id) => self.preferred_ascii_face(id).then_some(id as u32),
+                    None => self.homogeneous_ascii_face(opts),
+                }
+            }) {
                 let run_opts = DrawOpts {
                     font_id: Some(font as usize),
                     ..*opts
@@ -678,6 +686,20 @@ impl Text {
         result
     }
 
+    fn preferred_ascii_face(&mut self, id: usize) -> bool {
+        if let Some(covered) = self.preferred_ascii_faces.get(&id) {
+            return *covered;
+        }
+        let library = self.font_library.inner.read();
+        let covered = (0x20u8..=0x7e).all(|byte| {
+            crate::font::prepared_font_has_char(&library, id, char::from(byte))
+        });
+        if self.preferred_ascii_faces.len() < 68 {
+            self.preferred_ascii_faces.insert(id, covered);
+        }
+        covered
+    }
+
     fn homogeneous_ascii_face(&mut self, opts: &DrawOpts) -> Option<u32> {
         use crate::{Attributes, SpanStyle, Stretch, Style as FontStyle, Weight};
         let style = usize::from(opts.bold) | (usize::from(opts.italic) << 1);
@@ -717,10 +739,30 @@ impl Text {
         face
     }
 
+    /// Lookup only: families are loaded before settings publication.
+    pub fn ui_font_id(
+        &self,
+        family: Option<&str>,
+        bold: bool,
+        italic: bool,
+    ) -> Option<usize> {
+        let library = self.font_library.inner.read();
+        library
+            .ui_families
+            .get(family?)
+            .map(|ids| ids[usize::from(bold) + 2 * usize::from(italic)])
+    }
+
     fn resolve_font_id(&mut self, first_ch: char, opts: &DrawOpts) -> u32 {
         use crate::{Attributes, SpanStyle, Stretch, Style as FontStyle, Weight};
         if let Some(id) = opts.font_id {
             return id as u32;
+        }
+        if let Some(id) = opts.preferred_font_id {
+            let library = self.font_library.inner.read();
+            if crate::font::prepared_font_has_char(&library, id, first_ch) {
+                return id as u32;
+            }
         }
         let style_flags =
             (if opts.bold { 1u8 } else { 0 }) | (if opts.italic { 2u8 } else { 0 });

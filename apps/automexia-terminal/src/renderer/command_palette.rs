@@ -154,6 +154,11 @@ const SHORTCUT_PREV_PANE: &str = "Cmd+[";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_PREV_PANE: &str = "Shift+F6";
 #[cfg(target_os = "macos")]
+const SHORTCUT_FULL_SETTINGS: &str = "Cmd+Shift+S";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_FULL_SETTINGS: &str = "Ctrl+Shift+S";
+
+#[cfg(target_os = "macos")]
 const SHORTCUT_SETTINGS: &str = "Cmd+,";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_SETTINGS: &str = "Ctrl+,";
@@ -222,6 +227,10 @@ const SHORTCUT_CONNECTION_HUB: &str = "Cmd+Shift+H";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_CONNECTION_HUB: &str = "Ctrl+Shift+H";
 #[cfg(target_os = "macos")]
+const SHORTCUT_SSH_PICKER: &str = "Cmd+Shift+J";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_SSH_PICKER: &str = "Ctrl+Shift+J";
+#[cfg(target_os = "macos")]
 const SHORTCUT_QUICK_ACTIONS: &str = "Cmd+Shift+O";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_QUICK_ACTIONS: &str = "Ctrl+Shift+O";
@@ -270,6 +279,7 @@ enum CommandIcon {
     FocusDown,
     Close,
     Settings,
+    Profiles,
     Customizations,
     TerminalAppearance,
     Toolbox,
@@ -297,6 +307,7 @@ enum CommandIcon {
     Table,
     QuickActions,
     Connections,
+    SshConnect,
     Extension,
     Font,
     Power,
@@ -387,7 +398,11 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             icon: CommandIcon::FocusDown,
             accent: UiAccent::Cyan,
         },
-        OpenSettings | OpenProfiles => RowPresentation {
+        OpenProfiles => RowPresentation {
+            icon: CommandIcon::Profiles,
+            accent: UiAccent::Warning,
+        },
+        OpenSettings => RowPresentation {
             icon: CommandIcon::Settings,
             accent: UiAccent::Warning,
         },
@@ -494,6 +509,10 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
         OpenMarket => RowPresentation {
             icon: CommandIcon::Extension,
             accent: UiAccent::Success,
+        },
+        OpenSshPicker => RowPresentation {
+            icon: CommandIcon::SshConnect,
+            accent: UiAccent::Cyan,
         },
         OpenConnections => RowPresentation {
             icon: CommandIcon::Connections,
@@ -661,6 +680,11 @@ const COMMANDS: &[Command] = &[
         action: PaletteAction::OpenTerminalAppearance,
     },
     Command {
+        title: "Settings",
+        shortcut: SHORTCUT_FULL_SETTINGS,
+        action: PaletteAction::OpenSettings,
+    },
+    Command {
         title: "Edit Configuration File",
         shortcut: SHORTCUT_SETTINGS,
         action: PaletteAction::ConfigEditor,
@@ -759,6 +783,11 @@ const COMMANDS: &[Command] = &[
         title: "Clear Screen and History",
         shortcut: SHORTCUT_CLEAR_SCREEN,
         action: PaletteAction::ClearScreen,
+    },
+    Command {
+        title: "Connect… (SSH)",
+        shortcut: SHORTCUT_SSH_PICKER,
+        action: PaletteAction::OpenSshPicker,
     },
     Command {
         title: "Connection Hub (read-only)",
@@ -1322,6 +1351,13 @@ fn draw_command_icon(
             canvas.outline(3.5, 3.5, 15.0, 15.0, 7.5);
             canvas.line(7.0, 11.0, 15.0, 11.0);
         }
+        CommandIcon::Profiles => {
+            canvas.outline(2.0, 3.0, 18.0, 16.0, 2.0);
+            canvas.outline(5.0, 6.0, 5.0, 5.0, 2.5);
+            canvas.line(4.0, 15.0, 11.0, 15.0);
+            canvas.line(13.0, 7.0, 17.0, 7.0);
+            canvas.line(13.0, 11.0, 17.0, 11.0);
+        }
         CommandIcon::Settings => {
             canvas.line(2.5, 5.0, 19.5, 5.0);
             canvas.line(2.5, 11.0, 19.5, 11.0);
@@ -1502,6 +1538,12 @@ fn draw_command_icon(
             canvas.line(9.0, 20.0, 18.0, 9.0);
             canvas.line(18.0, 9.0, 12.0, 9.0);
             canvas.line(12.0, 9.0, 12.0, 2.0);
+        }
+        CommandIcon::SshConnect => {
+            canvas.outline(2.0, 3.0, 18.0, 16.0, 2.5);
+            canvas.line(6.0, 7.0, 10.0, 11.0);
+            canvas.line(10.0, 11.0, 6.0, 15.0);
+            canvas.line(12.0, 15.0, 17.0, 15.0);
         }
         CommandIcon::Connections => {
             canvas.outline(2.0, 3.0, 18.0, 6.0, 2.5);
@@ -1842,6 +1884,7 @@ impl CommandPalette {
                     | PaletteAction::OpenThemeGallery
                     | PaletteAction::OpenProfiles
                     | PaletteAction::OpenConnections
+                    | PaletteAction::OpenSshPicker
                     | PaletteAction::OpenActions
                     | PaletteAction::OpenMarket
                     | PaletteAction::ListFonts
@@ -3439,6 +3482,16 @@ mod tests {
     }
 
     #[test]
+    fn connect_query_selects_the_dedicated_ssh_picker() {
+        let mut palette = CommandPalette::default();
+        palette.set_query("Connect".into());
+        assert_eq!(
+            palette.get_selected_action(),
+            Some(PaletteAction::OpenSshPicker)
+        );
+    }
+
+    #[test]
     fn test_filtered_commands_by_title() {
         let mut palette = CommandPalette::new();
         palette.query = "split".to_string();
@@ -3519,10 +3572,22 @@ mod tests {
     }
 
     #[test]
-    fn visual_preferences_have_one_palette_entry_and_keep_text_editor_accessible() {
-        assert!(!COMMANDS
-            .iter()
-            .any(|command| command.action == PaletteAction::OpenSettings));
+    fn full_settings_and_visual_customizations_are_discoverable_with_one_action_each() {
+        assert_eq!(
+            COMMANDS
+                .iter()
+                .filter(|command| command.action == PaletteAction::OpenSettings)
+                .count(),
+            1
+        );
+        assert_eq!(
+            COMMANDS
+                .iter()
+                .find(|command| command.action == PaletteAction::OpenSettings)
+                .unwrap()
+                .title,
+            "Settings"
+        );
         assert!(COMMANDS
             .iter()
             .any(|command| command.action == PaletteAction::OpenCustomizations));

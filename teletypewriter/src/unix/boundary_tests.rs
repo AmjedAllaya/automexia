@@ -560,3 +560,87 @@ fn fork_environment_keeps_bare_bash_login_startup() {
             .any(|window| window == b"fork-login-ok"));
     });
 }
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn native_pty_descriptors_do_not_survive_exec() {
+    let size = Winsize {
+        ws_row: 24,
+        ws_col: 80,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    let (master, slave) = open_pty(&size).unwrap();
+    for fd in [master.as_raw_fd(), slave.as_raw_fd()] {
+        // SAFETY: fcntl inspects a descriptor owned for the whole assertion.
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+        assert!(flags >= 0);
+        assert_ne!(
+            flags & libc::FD_CLOEXEC,
+            0,
+            "PTY descriptor must not escape into unrelated children"
+        );
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn native_exec_descriptor_probe() {
+    let Ok(descriptors) = std::env::var("AUTOMEXIA_TEST_PTY_FDS") else {
+        return;
+    };
+    for entry in descriptors.split(';').filter(|entry| !entry.is_empty()) {
+        let (fd, identity) = entry.split_once(',').unwrap();
+        let fd: RawFd = fd.parse().unwrap();
+        let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+        // SAFETY: fstat writes a correctly sized record only on success.
+        if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } == 0 {
+            let stat = unsafe { stat.assume_init() };
+            assert_ne!(
+                format!("{},{},{}", stat.st_dev, stat.st_ino, stat.st_rdev),
+                identity,
+                "inherited another terminal's PTY"
+            );
+        }
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn native_multiple_ptys_are_not_inherited_by_unrelated_children() {
+    let size = Winsize {
+        ws_row: 24,
+        ws_col: 80,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    let pairs: Vec<_> = (0..8).map(|_| open_pty(&size).unwrap()).collect();
+    let mut descriptors = String::new();
+    for (master, slave) in &pairs {
+        for fd in [master.as_raw_fd(), slave.as_raw_fd()] {
+            let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+            // SAFETY: each descriptor is owned by pairs until the child exits.
+            assert_eq!(unsafe { libc::fstat(fd, stat.as_mut_ptr()) }, 0);
+            let stat = unsafe { stat.assume_init() };
+            descriptors.push_str(&format!(
+                "{fd},{},{},{};",
+                stat.st_dev, stat.st_ino, stat.st_rdev
+            ));
+        }
+    }
+    let child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "unix::boundary_tests::native_exec_descriptor_probe",
+            "--test-threads=1",
+        ])
+        .env("AUTOMEXIA_TEST_PTY_FDS", descriptors)
+        .output()
+        .unwrap();
+    assert!(
+        child.status.success(),
+        "{}",
+        String::from_utf8_lossy(&child.stdout)
+    );
+    assert!(String::from_utf8_lossy(&child.stdout).contains("1 passed"));
+}

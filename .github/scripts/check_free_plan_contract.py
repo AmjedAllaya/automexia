@@ -148,6 +148,8 @@ if not re.search(r'^  publish:\n(?:.*\n){0,15}?    - reproducibility-linux$', re
     errors.append('release publication preparation must directly depend on reproducibility-linux')
 
 linux_early_access = (wf/'linux-early-access.yml').read_text(encoding='utf-8')
+if "      false && (github.event_name == 'workflow_dispatch' ||" not in linux_early_access:
+    errors.append('retired external Linux publisher must remain disabled')
 for fragment in (
     'workflow_dispatch:',
     "needs.authorize.outputs.publish == 'false'",
@@ -371,8 +373,8 @@ if re.search(r'^\s*schedule:\s*$', nightly, re.MULTILINE):
 
 native_accessibility = (wf/'accessibility-native.yml').read_text(encoding='utf-8')
 trigger = re.search(r'(?ms)^on:\n(?P<body>.*?)(?=^\S|\Z)', native_accessibility)
-if not trigger or trigger.group('body').strip() != 'workflow_dispatch:':
-    errors.append('native accessibility assurance must remain manual-only')
+if not trigger or trigger.group('body').strip() != 'workflow_call:\n  workflow_dispatch:':
+    errors.append('native accessibility assurance must remain manual or release-reusable only')
 for required in (
     '  contents: read', '    timeout-minutes: 15',
     '        runner: [macos-26, macos-26-intel]',
