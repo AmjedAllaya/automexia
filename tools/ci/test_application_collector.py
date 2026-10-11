@@ -492,8 +492,9 @@ class CollectorTests(unittest.TestCase):
 
     def test_native_startup_waits_for_fragmented_cwd_before_asserting_its_value(self):
         probe = unix_ui_probe()
-        panel = {'active': True, 'shell_integration': True, 'current_directory': None}
-        state = {'panels': [panel], 'prompt_active': True}
+        panel = {'active': True, 'shell_integration': True, 'current_directory': None,
+                 'cursor_line_text': '\u03bb', 'raw_cursor_line_text': '\u03bb', 'raw_cursor_prompt_id': 7}
+        state = {'panels': [panel], 'prompt_active': True, 'latest_prompt_id': 7}
         self.assertFalse(probe.integrated_ready(state))
         panel['current_directory'] = '/fixture/actual'
         self.assertTrue(probe.integrated_ready(state))
@@ -501,6 +502,29 @@ class CollectorTests(unittest.TestCase):
         # still reject a real clone launched somewhere else.
         self.assertNotEqual(panel['current_directory'], '/fixture/expected')
         state['prompt_active'] = False
+        self.assertFalse(probe.integrated_ready(state))
+
+    def test_native_prompt_readiness_waits_for_the_presented_input_row(self):
+        probe = unix_ui_probe()
+        # Bash publishes prompt-active/A and the path before Readline emits PS1.
+        panel = {'active': True, 'shell_integration': True, 'current_directory': '/fixture',
+                 'cursor_line_text': '', 'raw_cursor_line_text': '', 'raw_cursor_prompt_id': 7}
+        state = {'panels': [panel], 'prompt_active': True, 'latest_prompt_id': 7}
+        self.assertFalse(probe.integrated_ready(state))
+        panel['raw_cursor_line_text'] = 'λ'
+        self.assertFalse(probe.integrated_ready(state))
+        panel['cursor_line_text'] = 'λ'
+        self.assertTrue(probe.integrated_ready(state))
+        # A raw grid can advance while the previous presented frame is retained.
+        panel['raw_cursor_prompt_id'] = 8
+        self.assertFalse(probe.integrated_ready(state))
+        state['latest_prompt_id'] = 8
+        self.assertTrue(probe.integrated_ready(state))
+        panel['raw_cursor_line_text'] = 'λ unexpected input'
+        self.assertFalse(probe.integrated_ready(state))
+        panel.update(shell_name='fish', cursor_line_text='fixture>', raw_cursor_line_text='fixture>')
+        self.assertTrue(probe.integrated_ready(state))
+        panel['raw_cursor_line_text'] = 'λ'
         self.assertFalse(probe.integrated_ready(state))
 
     def test_native_failure_diagnostics_keep_errno_but_never_paths_or_output(self):
