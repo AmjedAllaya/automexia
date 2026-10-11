@@ -165,6 +165,26 @@ def native_geometry_ready(state: dict, scale: float | None, logical_size=None) -
     return True
 
 
+def native_pointer_ready(state: dict, x: float, y: float, logical_size) -> bool:
+    if not native_geometry_ready(state, None, logical_size):
+        return False
+    pointer = state.get("pointer") or {}
+    scale = state["scale_factor"]
+    return all(type(pointer.get(axis)) in (int, float) and math.isfinite(pointer[axis])
+               and abs(pointer[axis] / scale - expected) <= 1
+               for axis, expected in (("x", x), ("y", y)))
+
+
+def tag_geometry_saved(state: dict, identity: str, height: float) -> bool:
+    # Observe the effect and its persistence acknowledgement in the SAME frame.
+    # A pre-click save_pending=false is not evidence that this edit was saved.
+    settings = state.get("settings") or {}
+    return bool(settings.get("ready") and not settings.get("save_pending") and any(
+        target.get("id") == identity and not target.get("roster")
+        and len(target.get("bounds", [])) == 4 and target["bounds"][3] == height
+        for target in settings.get("targets", [])))
+
+
 def check(condition: bool, message: str) -> None:
     if not condition:
         raise Failure(message)
@@ -361,12 +381,17 @@ class WaylandDisplay:
             [self.tools["xdotool"], "windowfocus", self.input_window, "key", "--clearmodifiers", chord],
             env=self.input_env, check=True, capture_output=True, timeout=5)
 
-    def click(self, process, x, y):
+    def click(self, process, x, y, read):
         window = self.window(process, focused=True)
         rect = window["rect"]
         check(all(math.isfinite(value) for value in (x, y)) and
               0 <= x < rect["width"] and 0 <= y < rect["height"], "pointer outside owned Wayland window")
         self.ipc("seat", "seat0", "cursor", "set", str(round(rect["x"] + x)), str(round(rect["y"] + y)))
+        # Compositor IPC acceptance precedes client input/presentation. Do not
+        # race a click against the application's previous pointer coordinates.
+        # No wake motion is permitted here: it would move away from this target.
+        wait_for_native_state(read, lambda s: native_pointer_ready(s, x, y, (rect["width"], rect["height"])),
+                              "owned Wayland pointer did not reach target", 5)
         self.window(process, focused=True)
         self.ipc("seat", "seat0", "cursor", "press", "button1")
         self.ipc("seat", "seat0", "cursor", "release", "button1")
@@ -541,7 +566,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     if driver:
                         driver.click(x, y)
                     elif wayland:
-                        wayland.click(process, x, y)
+                        wayland.click(process, x, y, state)
                     else:
                         check(call("xdotool", "getwindowfocus") == handle, "owned window lost focus")
                         current_scale = state()["scale_factor"]
@@ -666,7 +691,8 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                         process = subprocess.Popen([str(binary), "--working-dir", str(home)], cwd=home, env=env,
                                                    stdout=subprocess.DEVNULL, stderr=log, start_new_session=True)
                         attach_window()
-                        wait(integrated_ready, "restarted session not ready")
+                        wait(lambda s: integrated_ready(s) and native_geometry_ready(
+                            s, scale, (1200, 800) if wayland else None), "restarted session geometry not ready")
 
                     assert_body("clean-startup", 1.0)
                     cell_rgb = None
@@ -885,11 +911,10 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 capture("tag-typography")
                 tag_search("Inherit shared")
                 tag_control("tags.slot.user.style.inherit")
-                wait(lambda s: not s.get("settings", {}).get("save_pending"), "tag inheritance did not save")
+                wait(lambda s: tag_geometry_saved(s, "tags.slot.user.page",
+                     sample_tag(shared_style, "tags.slot.user.page")[3]),
+                     "inherit did not restore shared geometry and complete its save")
                 tag_search("")
-                wait(lambda s: sample_tag(s,"tags.slot.user.page") is not None and
-                     sample_tag(s,"tags.slot.user.page")[3] == sample_tag(shared_style,"tags.slot.user.page")[3],
-                     "inherit did not restore shared geometry")
                 saved_tags = tomllib.loads((config / "state/user-preferences-v16.toml").read_text(encoding="utf-8"))["visual"]["information-bar"]["styles"]
                 check(saved_tags["shared"]["size"] == 125 and "user" not in saved_tags.get("tags", {}),
                       "tag styles did not persist through their existing preference owner")

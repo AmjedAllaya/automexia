@@ -483,6 +483,46 @@ class CollectorTests(unittest.TestCase):
                 with self.assertRaises(probe.Failure):
                     probe.WaylandDisplay.owned_window(invalid, 42, True)
 
+    def test_native_tag_inheritance_waits_for_saved_geometry(self):
+        probe = unix_ui_probe()
+        def frame(height, saving=False, ready=True, roster=False):
+            return {"settings": {"ready": ready, "save_pending": saving, "targets": [
+                {"id": "tags.slot.user.page", "bounds": [10, 20, 40, height], "roster": roster}]}}
+        for value in ({}, frame(10), frame(25, saving=True), frame(25, ready=False), frame(25, roster=True)):
+            self.assertFalse(probe.tag_geometry_saved(value, "tags.slot.user.page", 25))
+        self.assertTrue(probe.tag_geometry_saved(frame(25), "tags.slot.user.page", 25))
+
+    def test_wayland_click_waits_for_presented_pointer_before_pressing(self):
+        probe = unix_ui_probe()
+        display = object.__new__(probe.WaylandDisplay)
+        process = SimpleNamespace(pid=42, poll=lambda: None)
+        rect = {"x": 40, "y": 50, "width": 1200, "height": 800}
+        stale = {"scale_factor": 1.5, "window_width": 1800, "window_height": 1200,
+                 "pointer": {"x": 19.5, "y": 600}}
+        ready = dict(stale, pointer={"x": 900, "y": 450})
+        self.assertFalse(probe.native_pointer_ready(stale, 600, 300, (1200, 800)))
+        self.assertTrue(probe.native_pointer_ready(ready, 600, 300, (1200, 800)))
+        self.assertFalse(probe.native_pointer_ready(dict(ready, window_width=900), 600, 300, (1200, 800)))
+        frames, acknowledged = iter([stale, ready]), []
+        def read():
+            value = next(frames)
+            acknowledged.append(value is ready)
+            return value
+        def post(*args):
+            if "press" in args:
+                self.assertEqual(acknowledged, [False, True])
+        with patch.object(display, "window", return_value={"rect": rect}), \
+                patch.object(display, "ipc", side_effect=post) as ipc, patch.object(probe.time, "sleep"):
+            display.click(process, 600, 300, read)
+            self.assertEqual(ipc.call_args_list[-2].args, ("seat", "seat0", "cursor", "press", "button1"))
+            self.assertEqual(ipc.call_args_list[-1].args, ("seat", "seat0", "cursor", "release", "button1"))
+        with patch.object(display, "window", return_value={"rect": rect}), \
+                patch.object(display, "ipc") as ipc, patch.object(probe.time, "sleep"), \
+                patch.object(probe.time, "monotonic", side_effect=[0, .1, 5]):
+            with self.assertRaises(probe.Failure):
+                display.click(process, 600, 300, lambda: stale)
+            self.assertEqual(ipc.call_count, 1)  # Movement only; never click a stale target.
+
     def test_wayland_unsupported_inputs_never_post_keys(self):
         probe = unix_ui_probe()
         display = object.__new__(probe.WaylandDisplay)

@@ -7,3 +7,5 @@ Fixed
   rapid tab creation without giving incomplete shell metadata launch authority.
 - Cover aliases, hostile names, overrides, pending clone chains, bundled logo
   rasterization, contrast, native Unix identities and bounded lookup cost.
+- Make native UI checks acknowledge Wayland pointer delivery and observe tag
+  geometry with save completion in the same frame before checking persisted data.
