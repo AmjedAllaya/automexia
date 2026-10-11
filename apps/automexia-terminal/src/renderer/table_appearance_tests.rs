@@ -57,7 +57,7 @@ fn inherited_table_text_stays_readable_on_custom_backgrounds() {
 #[test]
 fn table_glyphs_follow_the_terminal_baseline_with_dense_borders() {
     use rio_backend::config::presentation::TableBorderWeight;
-    use sugarloaf::text::{TextCellAnchor, TextCellLayout};
+    use rio_backend::sugarloaf::text::{TextCellAnchor, TextCellLayout};
     let content = content(&mut terminal(
         "HHH   VALUE\r\njpqy  123\r\n\r\nprompt ",
         80,
