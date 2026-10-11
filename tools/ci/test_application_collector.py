@@ -619,6 +619,21 @@ class CollectorTests(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertEqual(MacDriver.key_spec(key), (code, 0, key))
 
+    def test_macos_tag_customization_supports_all_fixture_keys(self):
+        codes = {'t': 17, 'e': 14, 'x': 7, 's': 1, 'i': 34, 'z': 6,
+                 'n': 45, 'h': 4, 'r': 15, 'a': 0, 'd': 2,
+                 '1': 18, '2': 19, '5': 23, '0': 29, 'space': 49, 'BackSpace': 51}
+        for text in ('Text size', 'Inherit shared', '125', '50'):
+            for char in text:
+                key = 'space' if char == ' ' else char
+                base = key.lower() if len(key) == 1 else key
+                flags = (1 << 17) if char.isupper() else 0
+                self.assertEqual(MacDriver.key_spec(key), (codes[base], flags, base))
+        self.assertEqual(MacDriver.key_spec('BackSpace'), (51, 0, 'BackSpace'))
+        self.assertEqual(MacDriver.key_spec('shift+T'), (17, 1 << 17, 't'))
+        with self.assertRaises(BenchmarkError):
+            MacDriver.key_spec('shift+shift+T')
+
     def test_native_search_query_matches_the_actual_fixture_history(self):
         with TemporaryDirectory() as temporary:
             output = io.BytesIO()
