@@ -564,7 +564,10 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
 
                 def click(x: float, y: float) -> None:
                     if driver:
-                        driver.click(x, y)
+                        native_size = driver.window_size()
+                        driver.click(x, y, wait_for_motion=lambda: wait_for_native_state(
+                            state, lambda s: native_pointer_ready(s, x, y, native_size),
+                            "macOS pointer motion was not presented before click", 5))
                     elif wayland:
                         wayland.click(process, x, y, state)
                     else:
@@ -1240,6 +1243,17 @@ def native_failure_state(state: dict) -> dict:
                               ("open", "ready", "list_focused", "save_pending")
                               if type(settings.get(key)) is bool}
         result["settings"]["confirmation_visible"] = bool(settings.get("confirmation"))
+        editor = settings.get("color_editor")
+        if isinstance(editor, dict):
+            palette = editor.get("palette") or {}
+            focus = palette.get("focus")
+            # Fixed control identities only; never include draft hex or values.
+            if isinstance(focus, str) and (focus in (
+                    "Favorites", "Suggested", "FavoriteToggle", "Hex", "Apply", "Cancel")
+                    or re.fullmatch(r"Swatch\([0-9]{1,3}\)", focus)):
+                result["settings"]["color_focus"] = focus
+            if type(palette.get("browsing")) is bool:
+                result["settings"]["color_browsing"] = palette["browsing"]
     for key in ("scale_factor", "window_width", "window_height", "palette_enabled", "prompt_active"):
         value = state.get(key)
         if isinstance(value, (int, float)) and math.isfinite(value):

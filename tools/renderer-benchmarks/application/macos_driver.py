@@ -277,7 +277,7 @@ class MacDriver:
             raise BenchmarkError('unsupported fixed caption probe')
         return self.pointer_hit_matches(self.pointer_point(x, y), label)
 
-    def click(self, x, y):
+    def click(self, x, y, *, wait_for_motion=None):
         point = self.pointer_point(x, y)
         self.owned_window_number()  # Reject ambiguous or stale owned windows.
         events = []
@@ -293,7 +293,12 @@ class MacDriver:
             # Let WindowServer produce native window-relative mouse coordinates.
             # PID-posted keyboard events remain independent of this mouse path.
             self.cg.CGEventPost(1, events[0])  # kCGSessionEventTap
-            time.sleep(.02)
+            if wait_for_motion is not None:
+                # GUI probes acknowledge the presented pointer before pressing.
+                # A timeout must leave only motion posted, never a partial click.
+                wait_for_motion()
+            else:
+                time.sleep(.02)
             self.check_pointer_owner(point)
             try:
                 self.cg.CGEventPost(1, events[1])

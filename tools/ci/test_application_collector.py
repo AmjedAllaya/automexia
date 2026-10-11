@@ -70,6 +70,20 @@ class CollectorTests(unittest.TestCase):
                          "list_focused": True, "confirmation_visible": True})
         self.assertNotIn("private", json.dumps(state))
 
+    def test_native_color_failure_keeps_only_fixed_focus_and_browsing(self):
+        import json
+        probe = unix_ui_probe()
+        for focus in ('Hex', 'Suggested', 'Swatch(0)', 'Swatch(128)', 'private text', 'Swatch(1234)'):
+            state = probe.native_failure_state({'settings': {'color_editor': {
+                'draft_color': 'private color', 'palette': {'focus': focus, 'browsing': True,
+                                                          'controls': ['private values']}}}})
+            self.assertEqual(state['settings']['color_browsing'], True)
+            if focus in ('private text', 'Swatch(1234)'):
+                self.assertNotIn('color_focus', state['settings'])
+            else:
+                self.assertEqual(state['settings']['color_focus'], focus)
+            self.assertNotIn('private', json.dumps(state))
+
     def test_native_failure_appearance_rejects_private_or_nonfinite_values(self):
         probe = unix_ui_probe()
         source = {"appearance": {"window_alpha": 1.0, "clear": [0.1, 0.2, 0.3, 0.5], "path": "private"}}
@@ -350,6 +364,33 @@ class CollectorTests(unittest.TestCase):
             self.assertEqual(checked, [(60, 80), (60, 80)])
             self.assertEqual(posted, [5] if mode == 'foreign-before-press' else [5, 1, 2])
             self.assertEqual(released, ['AXPosition', 'AXSize', 5, 1, 2])
+
+    def test_macos_click_acknowledges_motion_before_press_and_aborts_on_timeout(self):
+        from macos_driver import Point
+        driver = object.__new__(MacDriver)
+        driver.pointer_point = lambda x, y: Point(x, y)
+        driver.owned_window_number = lambda: 7
+        driver.check_pointer_owner = lambda point: None
+        for acknowledged in (True, False):
+            posted, released = [], []
+            driver.cf = SimpleNamespace(CFRelease=released.append)
+            driver.cg = SimpleNamespace(CGEventCreateMouseEvent=lambda source, kind, point, button: kind,
+                CGEventSetFlags=lambda event, flags: None,
+                CGEventSetIntegerValueField=lambda event, field, value: None,
+                CGEventPost=lambda tap, event: posted.append(event))
+            def wait_for_motion():
+                self.assertEqual(posted, [5])
+                if not acknowledged:
+                    raise BenchmarkError('pointer acknowledgement timed out')
+            with patch('macos_driver.time.sleep') as sleep:
+                if acknowledged:
+                    driver.click(40, 50, wait_for_motion=wait_for_motion)
+                else:
+                    with self.assertRaises(BenchmarkError):
+                        driver.click(40, 50, wait_for_motion=wait_for_motion)
+                sleep.assert_not_called()
+            self.assertEqual(posted, [5, 1, 2] if acknowledged else [5])
+            self.assertEqual(released, [5, 1, 2])
 
     def test_native_failure_report_excludes_content_and_nonfinite_geometry(self):
         probe = unix_ui_probe()
