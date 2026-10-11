@@ -2759,7 +2759,7 @@ fn draw_pane_local_tab_rails(
                     .inactive_tab
                     .map_or(theme.surface, |v| v.bytes().map(|v| f32::from(v) / 255.0))
             };
-            let accent = super::ui_theme::readable_on(accent, fill);
+            let accent = tab_title_color(accent, rail_fill, fill);
             draw_glass(
                 sugarloaf,
                 [tab.x, tab.y, tab.width, tab.height],
@@ -4162,6 +4162,30 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn distro_tab_icons_remain_readable_over_transparent_custom_fills() {
+        for brand in automexia_ui_model::os_brand::ALL {
+            for base in [[0.03, 0.04, 0.05, 1.0], [0.97, 0.98, 0.99, 1.0]] {
+                for alpha in [0.0, 0.25, 0.5, 0.75, 1.0] {
+                    for fill in [[1.0, 1.0, 1.0, alpha], [0.0, 0.0, 0.0, alpha]] {
+                        for active in [false, true] {
+                            let foreground =
+                                tab_title_color(brand.accent(active), base, fill);
+                            let background = opaque_over(base, fill);
+                            assert!(
+                                automexia_ui_model::contrast_ratio(
+                                    foreground, background
+                                ) >= 4.5,
+                                "{} loses contrast at alpha {alpha}",
+                                brand.name
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]

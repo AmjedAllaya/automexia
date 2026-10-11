@@ -109,6 +109,7 @@ jobs:
           cargo test -p automexia-terminal --bin automexia --features visual-test-hooks --locked appearance_
           # Validate every bundled OS logo and pending clone chains natively.
           cargo test -p automexia-terminal --bin automexia --features visual-test-hooks --locked os_brand
+          cargo test -p automexia-terminal --bin automexia --features visual-test-hooks --locked distro_tab_icons
           cargo test -p automexia-terminal --bin automexia --features visual-test-hooks --locked profile_title_distinguishes_windows_drives_from_posix_paths
           if [[ "$RUNNER_OS" == macOS ]]; then
             cargo test -p rio-window --lib --locked webkit_cursor_hotspot
