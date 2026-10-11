@@ -97,7 +97,8 @@ impl<'a> WgpuContext<'a> {
             }
         };
 
-        surface.configure(
+        configure_surface(
+            &surface,
             &device,
             &wgpu::SurfaceConfiguration {
                 usage: Self::get_texture_usage(&surface_caps),
@@ -179,7 +180,8 @@ impl<'a> WgpuContext<'a> {
             }
         };
 
-        self.surface.configure(
+        configure_surface(
+            &self.surface,
             &self.device,
             &wgpu::SurfaceConfiguration {
                 usage: Self::get_texture_usage(&self.surface_caps),
@@ -364,16 +366,62 @@ fn create_surface_adapter<'a>(
     Some((surface, adapter))
 }
 
+// Keep configuration and native color tagging together: reconfiguration after
+// resize or surface loss must not restore an untagged macOS layer.
+fn configure_surface(
+    surface: &wgpu::Surface<'_>,
+    device: &wgpu::Device,
+    config: &wgpu::SurfaceConfiguration,
+) {
+    surface.configure(device, config);
+    #[cfg(target_os = "macos")]
+    tag_macos_surface_srgb(surface);
+}
+
+#[cfg(target_os = "macos")]
+fn tag_macos_surface_srgb(surface: &wgpu::Surface<'_>) {
+    use core_graphics::color_space::{kCGColorSpaceSRGB, CGColorSpace};
+    use metal::foreign_types::ForeignType;
+    use objc_rs::runtime::Object;
+    use objc_rs::{msg_send, sel, sel_impl};
+
+    // wgpu 30 represents SDR sRGB by clearing CAMetalLayer.colorspace. On
+    // displays with a non-sRGB ICC profile, an untagged layer can be interpreted
+    // in device space. Tag the encoded values explicitly without enabling EDR
+    // or adding another transfer function to the non-Srgb texture format.
+    // SAFETY: borrow the surface under wgpu's HAL guard, never destroy it or
+    // retain its pointer, and hold its layer mutex throughout the native call.
+    // This runs immediately after configuration, before acquiring a drawable.
+    let Some(native) = (unsafe { surface.as_hal::<wgpu::hal::api::Metal>() }) else {
+        return;
+    };
+    let Some(colorspace) = CGColorSpace::create_with_name(unsafe { kCGColorSpaceSRGB })
+    else {
+        tracing::warn!("Unable to tag the macOS surface with sRGB");
+        return;
+    };
+    let layer = native.render_layer().lock();
+    // SAFETY: the retained CAMetalLayer is a live Objective-C object. Bridge
+    // its borrowed pointer to our existing runtime bindings. The documented
+    // colorspace property retains the CGColorSpace, so our owned reference
+    // can be released normally after the setter returns.
+    unsafe {
+        let layer_object = std::ptr::from_ref(&**layer).cast::<Object>();
+        let _: () =
+            msg_send![layer_object, setColorspace: colorspace.as_ptr() as *mut Object];
+    }
+}
+
 #[inline]
 fn output_surface_color_space() -> wgpu::SurfaceColorSpace {
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     {
-        // Keep Windows in a deterministic SDR path across borderless
+        // Keep native compositors in a deterministic SDR path across borderless
         // fullscreen transitions. `Srgb` describes the encoded output while
         // the selected non-*Srgb BGRA format stores already-encoded values.
         wgpu::SurfaceColorSpace::Srgb
     }
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         wgpu::SurfaceColorSpace::Auto
     }
@@ -432,11 +480,12 @@ mod tests {
     }
 
     #[test]
-    #[cfg(windows)]
-    fn windows_output_is_explicit_sdr_srgb() {
+    #[cfg(any(windows, target_os = "macos"))]
+    fn native_compositor_output_is_explicit_sdr_srgb() {
         assert_eq!(
             super::output_surface_color_space(),
             wgpu::SurfaceColorSpace::Srgb
         );
+        assert!(!super::output_surface_color_space().is_hdr());
     }
 }
