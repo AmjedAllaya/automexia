@@ -296,7 +296,7 @@ class WaylandDisplay:
     def key(self, process, chord):
         self.window(process, focused=True)
         check(chord in ("ctrl+shift+p", "Escape", "Down", "ctrl+shift+F1", "ctrl+shift+F3",
-                        "alt+j", "alt+shift+j", "x", "a", "F3", "Return"),
+                        "alt+j", "alt+shift+j", "x", "a", "F3", "Return", *"connect"),
               "unsupported Wayland fixture key")
         subprocess.run(
             [self.tools["xdotool"], "windowfocus", self.input_window, "key", "--clearmodifiers", chord],

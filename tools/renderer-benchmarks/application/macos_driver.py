@@ -148,7 +148,7 @@ class MacDriver:
     def key_spec(key):
         codes = {'F1': 122, 'F3': 99, 'F5': 96, 'F6': 97, 'F8': 100, 'Escape': 53, 'Down': 125, 'Return': 36,
                  's': 1, 'e': 14, 'a': 0, 'r': 15, 'c': 8, 'h': 4,
-                 'n': 45, 'd': 2, 'l': 37, 'x': 7, 'q': 12, 'p': 35}
+                 'n': 45, 'd': 2, 'l': 37, 'x': 7, 'q': 12, 'p': 35, 'o': 31, 't': 17}
         fields = key.split('+')
         modifiers, base = fields[:-1], fields[-1]
         masks = {'shift': 1 << 17, 'ctrl': 1 << 18, 'alt': 1 << 19, 'meta': 1 << 20}

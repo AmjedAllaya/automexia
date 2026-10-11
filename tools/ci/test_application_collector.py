@@ -374,7 +374,7 @@ class CollectorTests(unittest.TestCase):
         process = SimpleNamespace(pid=42, poll=lambda: None)
         with patch.object(display, "window", return_value={"id": 7}) as window, \
              patch.object(probe.subprocess, "run") as run:
-            for chord in ["ctrl+shift+F1", "ctrl+shift+F3", "alt+j", "alt+shift+j", "x", "a", "F3", "Return"]:
+            for chord in ["ctrl+shift+F1", "ctrl+shift+F3", "alt+j", "alt+shift+j", "x", "a", "F3", "Return", *"connect"]:
                 display.key(process, chord)
                 window.assert_called_with(process, focused=True)
                 run.assert_called_with(
@@ -539,6 +539,12 @@ class CollectorTests(unittest.TestCase):
         for key in ('meta+meta+p', 'unknown+p', 'meta+unsupported', '', 'meta+'):
             with self.subTest(key=key), self.assertRaises(BenchmarkError):
                 MacDriver.key_spec(key)
+
+    def test_macos_native_picker_search_supports_every_fixed_query_key(self):
+        # Exercise the exact native palette query, including repeated letters.
+        for key, code in zip("connect", (8, 31, 45, 45, 14, 8, 17)):
+            with self.subTest(key=key):
+                self.assertEqual(MacDriver.key_spec(key), (code, 0, key))
 
     def test_native_search_query_matches_the_actual_fixture_history(self):
         with TemporaryDirectory() as temporary:
