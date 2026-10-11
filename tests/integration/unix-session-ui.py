@@ -53,11 +53,19 @@ def active(state: dict) -> dict:
 
 
 def integrated_ready(state: dict) -> bool:
-    # OSC boundaries and CWD may arrive in separate PTY reads. An integration
-    # marker alone does not mean startup metadata has reached the live grid.
+    # These fixtures use lambda for Bash/Zsh and a fixed Fish prompt. Prompt-active/A,
+    # CWD, and Readline's PS1 can arrive in separate PTY reads. Admit a baseline
+    # only after that input row is both in the live grid and presented, with the
+    # same generation; otherwise an ordinary late prompt looks like UI mutation.
     panel = active(state)
+    prompt_id = state.get("latest_prompt_id")
+    expected_prompt = "fixture>" if panel.get("shell_name") == "fish" else "λ"
     return bool(panel.get("shell_integration") and state.get("prompt_active")
-                and panel.get("current_directory") is not None)
+                and panel.get("current_directory") is not None
+                and type(prompt_id) is int and prompt_id > 0
+                and panel.get("raw_cursor_prompt_id") == prompt_id
+                and panel.get("raw_cursor_line_text") == expected_prompt
+                and panel.get("cursor_line_text") == expected_prompt)
 
 
 def theme_gallery_ready(state: dict) -> bool:
@@ -478,11 +486,11 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                         call("import", "-window", handle, str(output / f"{name}.png"))
 
                 def command(text: str) -> dict:
-                    previous = wait(lambda s: s.get("prompt_active"), "shell not ready")
+                    previous = wait(integrated_ready, "shell input prompt not fully presented")
                     prior_id = previous.get("latest_prompt_id")
                     command_start = time.monotonic()
                     send("write-line:" + text)
-                    value = wait(lambda s: s.get("prompt_active") and s.get("latest_prompt_id") != prior_id,
+                    value = wait(lambda s: integrated_ready(s) and s.get("latest_prompt_id") != prior_id,
                                 "command did not complete at a fresh prompt")
                     command_samples.append(round((time.monotonic() - command_start) * 1000, 3))
                     return value
@@ -541,9 +549,10 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     result = command("printf '" + "\\n".join(rows) + "\\n'")
                     wait(lambda s: s.get("inline_table_count") == 1, "numeric inventory table not rendered")
                 capture("numeric-table")
-                unchanged_text = active(state()).get("visible_text")
-                unchanged_prompt = state().get("latest_prompt_id")
-                unchanged_route = active(state()).get("route_id")
+                baseline = wait(integrated_ready, "table source prompt not fully presented")
+                unchanged_text = active(baseline).get("visible_text")
+                unchanged_prompt = baseline.get("latest_prompt_id")
+                unchanged_route = active(baseline).get("route_id")
                 send("open-customizations")
 
                 def table_control() -> list:
@@ -562,9 +571,10 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     click(x + w / 2, y + h / 2)
                     toggled = wait(lambda s: s.get("inline_table_count") == count,
                                    "table toggle did not update existing output")
-                    check(active(toggled).get("visible_text") == unchanged_text and
-                          toggled.get("latest_prompt_id") == unchanged_prompt,
-                          "table toggle changed source text or reran the command")
+                    check(active(toggled).get("visible_text") == unchanged_text,
+                          "table toggle changed source text")
+                    check(toggled.get("latest_prompt_id") == unchanged_prompt,
+                          "table toggle reran the command")
                 key("Escape")
                 wait(lambda s: s.get("settings", {}).get("active_category") is None, "table category did not close")
                 key("Escape")
