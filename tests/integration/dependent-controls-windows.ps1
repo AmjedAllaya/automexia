@@ -83,7 +83,7 @@ function Test-AutomexiaLiveInterface {
             if (& $Predicate $state) { return $state }
             Start-Sleep -Milliseconds 25
         } while ([DateTime]::UtcNow -lt $deadline)
-        throw "Interface did not settle: $script:testStage; size=$($state.window_width)x$($state.window_height), scale=$($state.scale_factor), settings=$($state.settings.open), ready=$($state.settings.ready), pending=$($state.settings.save_pending), pointer=$($state.settings.pointer -join ','), category=$($state.settings.active_category), numeric=$($state.settings.numeric_editor.id), controls=$(@($state.settings.controls.id) -join ',')"
+        throw "Interface did not settle: $script:testStage; size=$($state.window_width)x$($state.window_height), scale=$($state.scale_factor), settings=$($state.settings.open), ready=$($state.settings.ready), pending=$($state.settings.save_pending), pointer=$($state.settings.pointer -join ','), category=$($state.settings.active_category), focus=$($state.settings.focused_control)/$($state.settings.list_focused), numeric=$($state.settings.numeric_editor.id), controls=$(@($state.settings.controls.id) -join ',')"
     }
     function Interface-Key([int]$Key, [bool]$Control = $false) {
         if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, $Key, $false, $Control, $false)) { throw 'Interface key lost window ownership' }
@@ -91,18 +91,39 @@ function Test-AutomexiaLiveInterface {
     function Interface-Click($Bounds, $Scale) {
         $x = [int][Math]::Round(($Bounds[0] + $Bounds[2] * 0.5) * $Scale)
         $y = [int][Math]::Round(($Bounds[1] + $Bounds[3] * 0.5) * $Scale)
+        $approachX = [Math]::Max(0, $x - 12)
         if (-not [AutomexiaResizeDriver]::ActivateWindow($window) -or
-            -not [AutomexiaResizeDriver]::MovePhysicalPointerToClient($window, [Math]::Max(0, $x - 2), $y)) { throw 'Interface control focus failed' }
-        Start-Sleep -Milliseconds 30
+            -not [AutomexiaResizeDriver]::MovePhysicalPointerToClient($window, $approachX, $y)) { throw 'Interface control focus failed' }
+        # A fixed sleep does not prove that a native move was consumed before
+        # the next one. Observe the approach and target separately, including
+        # after opening an overlay or returning from a keyboard interaction.
+        $interfaceExpectedX = [double]$approachX / [double]$Scale
+        $interfaceExpectedY = [double]$y / [double]$Scale
+        $script:testStage = "interface pointer approach $interfaceExpectedX,$interfaceExpectedY"
+        $approach = { param($s) $s.settings.ready -and $null -ne $s.settings.pointer -and [Math]::Abs($s.settings.pointer[0] - $interfaceExpectedX) -le 1 -and [Math]::Abs($s.settings.pointer[1] - $interfaceExpectedY) -le 1 }.GetNewClosure()
+        $null = Wait-Interface $approach
         if (-not [AutomexiaResizeDriver]::MovePhysicalPointerToClient($window, $x, $y)) { throw 'Interface pointer placement failed' }
-        $script:testStage = "interface pointer expected $($x / $Scale),$($y / $Scale)"
-        $null = Wait-Interface { param($s) $s.settings.ready -and $null -ne $s.settings.pointer -and [Math]::Abs($s.settings.pointer[0] - $x / $Scale) -le 1 -and [Math]::Abs($s.settings.pointer[1] - $y / $Scale) -le 1 }
+        $interfaceExpectedX = [double]$x / [double]$Scale
+        $script:testStage = "interface pointer expected $interfaceExpectedX,$interfaceExpectedY"
+        $target = { param($s) $s.settings.ready -and $null -ne $s.settings.pointer -and [Math]::Abs($s.settings.pointer[0] - $interfaceExpectedX) -le 1 -and [Math]::Abs($s.settings.pointer[1] - $interfaceExpectedY) -le 1 }.GetNewClosure()
+        $null = Wait-Interface $target
         if (-not [AutomexiaResizeDriver]::SendPhysicalLeftClick($window, $x, $y)) { throw 'Interface click lost window ownership' }
     }
     function Interface-Row([string]$Id) {
         $script:testStage = "interface row $Id"
-        $state = Wait-Interface { param($s) $s.settings.ready -and -not $s.settings.save_pending -and @($s.settings.controls | Where-Object id -eq $Id).Count -eq 1 }
-        Interface-Click (@($state.settings.controls | Where-Object id -eq $Id)[0].bounds) $state.scale_factor
+        $state = Wait-Interface { param($s) $s.settings.open -and $s.settings.ready -and -not $s.settings.save_pending }
+        # The fixture has fixed physical dimensions; at higher DPI a row can
+        # legitimately be below the viewport. Reveal it via the real keyboard
+        # path instead of assuming every control is already visible.
+        for ($attempt = 0; $attempt -lt 32 -and @($state.settings.controls | Where-Object id -eq $Id).Count -eq 0; $attempt++) {
+            $previousFocus = $state.settings.focused_control
+            $previousListFocus = $state.settings.list_focused
+            Interface-Key 0x28
+            $state = Wait-Interface { param($s) ($s.settings.focused_control -ne $previousFocus -or $s.settings.list_focused -ne $previousListFocus) -and $s.settings.open -and $s.settings.ready -and -not $s.settings.save_pending }
+        }
+        $matches = @($state.settings.controls | Where-Object id -eq $Id)
+        if ($matches.Count -ne 1) { throw "Interface control was not revealed by bounded keyboard navigation: $Id" }
+        Interface-Click $matches[0].bounds $state.scale_factor
     }
     function Interface-Number([string]$Id, [string]$Value) {
         Interface-Row $Id
@@ -122,8 +143,10 @@ function Test-AutomexiaLiveInterface {
     }
     $script:testStage = 'physical interface fixture size'
     if (-not [AutomexiaResizeDriver]::MovePhysicalWindow($window, 20, 20, 1100, 680)) { throw 'Could not size the interface fixture' }
-    $null = Wait-Interface { param($s) $s.window_width -ge 1000 -and $s.window_width -lt 1450 }
-    $baseline = Read-AutomexiaSnapshot
+    # The initial window can already satisfy a broad width range. Capture the
+    # baseline only after the requested physical resize has been presented;
+    # otherwise its later reflow is incorrectly attributed to an opacity edit.
+    $baseline = Wait-Interface { param($s) $s.window_width -eq 1100 -and $s.window_height -eq 680 -and $s.rows -gt 0 -and $s.grid_height -gt 0 }
     $baseTop = [double]$baseline.grid_margin.top
     if ($OpacityChecks) {
         # Pump the backdrop on its own thread while the driver awaits snapshots.
@@ -211,6 +234,7 @@ public sealed class AutomexiaOpacityBackdrop : IDisposable {
             Assert-Opacity $InitialWindowOpacity 'startup'
             Send-AutomexiaTestControl 'open-terminal-appearance:opacity'
             Interface-Row 'interface.background.opacity'
+            $script:testStage = 'background category opened after native click'
             $null = Wait-Interface { param($s) $s.settings.ready -and $s.settings.active_category -eq 'interface.background.opacity' -and (@($s.settings.controls.id) -contains 'interface.background.padding-top' -or @($s.settings.controls.id) -contains 'interface.background.opacity-cells') }
             if ($UseCpuRenderer) {
                 Assert-Opacity 1.0 'CPU fallback'
@@ -218,7 +242,8 @@ public sealed class AutomexiaOpacityBackdrop : IDisposable {
                 foreach ($percent in @(20, 40, 60, 80, 100, 50, 100)) {
                     Interface-Number 'interface.background.opacity' ([string]$percent)
                     Assert-Opacity ($percent / 100.0) 'live edit'
-                    if ((Read-AutomexiaSnapshot).rows -ne $baseline.rows) { throw 'Opacity edit reflowed terminal rows' }
+                    $afterOpacity = Read-AutomexiaSnapshot
+                    if ($afterOpacity.rows -ne $baseline.rows) { throw "Opacity edit reflowed terminal rows: before=$($baseline.rows), after=$($afterOpacity.rows), size=$($afterOpacity.window_width)x$($afterOpacity.window_height)" }
                 }
                 $behind = @(192, 208, 224)
                 $backdrop.SetColor(192, 208, 224)

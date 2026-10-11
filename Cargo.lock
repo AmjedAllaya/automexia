@@ -1460,7 +1460,7 @@ dependencies = [
 
 [[package]]
 name = "corcovado"
-version = "0.0.1-alpha"
+version = "0.4.0"
 dependencies = [
  "criterion",
  "libc",
@@ -5166,7 +5166,7 @@ dependencies = [
 
 [[package]]
 name = "rio-backend"
-version = "0.0.1-alpha"
+version = "0.4.0"
 dependencies = [
  "automexia-keybindings",
  "base64",
@@ -5187,14 +5187,14 @@ dependencies = [
 
 [[package]]
 name = "rio-fonts"
-version = "0.0.1-alpha"
+version = "0.4.0"
 dependencies = [
  "ttf-parser",
 ]
 
 [[package]]
 name = "rio-grapheme-width"
-version = "0.0.1-alpha"
+version = "0.4.0"
 dependencies = [
  "phf",
  "ucd-trie",
@@ -5202,7 +5202,7 @@ dependencies = [
 
 [[package]]
 name = "rio-graphics"
-version = "0.0.1-alpha"
+version = "0.4.0"
 dependencies = [
  "image",
  "parking_lot",
@@ -5215,7 +5215,7 @@ dependencies = [
 
 [[package]]
 name = "rio-notifier"
-version = "0.0.1-alpha"
+version = "0.4.0"
 dependencies = [
  "block2 0.6.2",
  "objc-rs",
@@ -5228,7 +5228,7 @@ dependencies = [
 
 [[package]]
 name = "rio-vt"
-version = "0.0.1-alpha"
+version = "0.4.0"
 dependencies = [
  "automexia-terminal-protocol",
  "base64",
@@ -5267,7 +5267,7 @@ dependencies = [
 
 [[package]]
 name = "rio-window"
-version = "0.0.1-alpha"
+version = "0.4.0"
 dependencies = [
  "ahash",
  "atomic-waker",
@@ -5927,7 +5927,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "sugarloaf"
-version = "0.0.1-alpha"
+version = "0.4.0"
 dependencies = [
  "approx",
  "ash",
@@ -6061,7 +6061,7 @@ checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
 
 [[package]]
 name = "teletypewriter"
-version = "0.0.1-alpha"
+version = "0.4.0"
 dependencies = [
  "corcovado",
  "criterion",

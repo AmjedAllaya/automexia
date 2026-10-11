@@ -122,6 +122,9 @@ pub struct RenderableContent {
     pub shell_distro: Option<String>,
     /// Optional bounded display name, independent from WSL launch metadata.
     pub shell_os_name: Option<String>,
+    /// Display-only inherited branding, never part of SessionMetadataSeed or
+    /// launch readiness. Each fresh shell's validated identity takes precedence.
+    pub initial_os_brand: Option<automexia_ui_model::os_brand::OsBrand>,
     pub shell_os_version: Option<String>,
     pub shell_name: Option<String>,
     /// Explicit shell identity used by independent session cloning.
@@ -233,6 +236,7 @@ impl RenderableContent {
             terminal_title: String::new(),
             shell_distro: None,
             shell_os_name: None,
+            initial_os_brand: None,
             shell_os_version: None,
             shell_name: None,
             shell_user: None,

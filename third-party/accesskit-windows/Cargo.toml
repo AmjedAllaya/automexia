@@ -86,7 +86,7 @@ version = "1.1.0"
 [target.'cfg(windows)'.dev-dependencies.winit]
 package = "rio-window"
 path = "../../rio-window"
-version = "0.0.1-alpha"
+version = "0.4.0"
 
 [target.'cfg(windows)'.dev-dependencies.windows]
 version = "0.62.0"

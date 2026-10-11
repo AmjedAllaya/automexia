@@ -1,6 +1,7 @@
 """Evidence-contract regressions; renderer and pixel tests live with their owners."""
 import hashlib
 import json
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -52,6 +53,30 @@ class VisualQualityTests(unittest.TestCase):
         for cases in ([], [('case', 'correct', self.root)], [('case', 'correct', self.root)] * 2):
             with self.assertRaises(ValueError):
                 visual.validate_inventory(cases)
+
+    def test_inventory_covers_every_renderer_settings_page_and_scale(self):
+        # Read the renderer-owned export names, independently of the gate list.
+        source = (visual.ROOT / 'apps/automexia-terminal/src/settings_visual_quality_tests.rs').read_text(encoding='utf8')
+        cases_block = source.split('settings_cases! {', 1)[1]
+        pages = re.findall(r'=> \(.*?, "([a-z-]+)"\),', cases_block)
+        self.assertIn('full-settings', pages)
+        self.assertEqual(len(pages), len(set(pages)))
+        themes = ('aurora-night', 'solar-dusk', 'forest-operator', 'arctic-glass', 'arctic-day')
+        scales = (100, 125, 150, 175, 200)
+        cases = [(f'settings-{page}-{theme}-{scale}', 'correct', self.root)
+                 for page in pages for theme in themes for scale in scales]
+        cases += [(f'terminal-{theme}-{scale}', 'correct', self.root)
+                  for theme in themes for scale in scales]
+        cases += [(f'unicode-fallback-{scale}', 'correct', self.root) for scale in scales]
+        cases += [('glyph-mutations', variant, self.root)
+                  for variant in visual.MUTATIONS | {'correct', 'restored'}]
+        visual.validate_inventory(cases)
+        for case in cases:
+            if case[0].startswith('settings-full-settings-'):
+                with self.subTest(missing=case[0]), self.assertRaises(ValueError):
+                    visual.validate_inventory([item for item in cases if item != case])
+        with self.assertRaises(ValueError):
+            visual.validate_inventory(cases + [('unexpected', 'correct', self.root)])
 
     def test_stale_missing_or_unbound_comparator_reports_do_not_pass(self):
         destination = self.root / 'diff'

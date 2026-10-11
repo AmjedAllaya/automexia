@@ -148,11 +148,17 @@ class MacDriver:
     def key_spec(key):
         codes = {'F1': 122, 'F3': 99, 'F5': 96, 'F6': 97, 'F8': 100, 'Escape': 53, 'Down': 125, 'Return': 36,
                  's': 1, 'e': 14, 'a': 0, 'r': 15, 'c': 8, 'h': 4,
-                 '0': 29, '1': 18, '5': 23,
+                 '0': 29, '1': 18, '2': 19, '5': 23, 'i': 34, 'z': 6, 'space': 49, 'BackSpace': 51,
                  'n': 45, 'd': 2, 'l': 37, 'x': 7, 'q': 12, 'p': 35, 'o': 31, 't': 17}
         fields = key.split('+')
         modifiers, base = fields[:-1], fields[-1]
         masks = {'shift': 1 << 17, 'ctrl': 1 << 18, 'alt': 1 << 19, 'meta': 1 << 20}
+        # Fixture labels include capitals; keep the native keycode and express
+        # the case through Quartz flags, without accepting arbitrary text.
+        if len(base) == 1 and 'A' <= base <= 'Z':
+            base = base.lower()
+            if 'shift' not in modifiers:
+                modifiers.append('shift')
         if base not in codes or len(modifiers) != len(set(modifiers)) or any(m not in masks for m in modifiers):
             raise BenchmarkError('unsupported fixed probe key')
         return codes[base], sum(masks[m] for m in modifiers), base
@@ -271,7 +277,7 @@ class MacDriver:
             raise BenchmarkError('unsupported fixed caption probe')
         return self.pointer_hit_matches(self.pointer_point(x, y), label)
 
-    def click(self, x, y):
+    def click(self, x, y, *, wait_for_motion=None):
         point = self.pointer_point(x, y)
         self.owned_window_number()  # Reject ambiguous or stale owned windows.
         events = []
@@ -287,7 +293,12 @@ class MacDriver:
             # Let WindowServer produce native window-relative mouse coordinates.
             # PID-posted keyboard events remain independent of this mouse path.
             self.cg.CGEventPost(1, events[0])  # kCGSessionEventTap
-            time.sleep(.02)
+            if wait_for_motion is not None:
+                # GUI probes acknowledge the presented pointer before pressing.
+                # A timeout must leave only motion posted, never a partial click.
+                wait_for_motion()
+            else:
+                time.sleep(.02)
             self.check_pointer_owner(point)
             try:
                 self.cg.CGEventPost(1, events[1])

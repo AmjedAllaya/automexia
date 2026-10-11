@@ -14,6 +14,7 @@ use unicode_segmentation::UnicodeSegmentation;
 pub mod accessibility;
 pub mod connection_hub;
 pub mod information_bar;
+pub mod os_brand;
 pub mod quick_actions;
 pub mod semantic_table;
 pub mod settings;
@@ -60,6 +61,8 @@ pub fn prompt_context_top_inset(
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Segment {
+    /// Core-owned display identity; never serialized to extensions.
+    pub os_brand: Option<os_brand::OsBrand>,
     pub value: String,
     pub accessibility_label: String,
     pub role: SegmentRole,
@@ -137,6 +140,7 @@ fn project_with_identity(
                     || !matches!(s.role, SegmentRole::Windows | SegmentRole::UbuntuWsl)
             })
             .map(|segment| Segment {
+                os_brand: None,
                 value: segment.label.as_str().to_owned(),
                 accessibility_label: segment.accessibility_label.as_str().to_owned(),
                 role: segment.role,
@@ -166,6 +170,7 @@ pub fn immediate_session_segments(session: &SessionFacts) -> Vec<Segment> {
             })
     }) {
         segments.push(Segment {
+            os_brand: None,
             value: compact_label(user, 16),
             accessibility_label: format!("User {}", user.trim()),
             role: SegmentRole::User,
@@ -182,6 +187,16 @@ pub fn immediate_session_segments(session: &SessionFacts) -> Vec<Segment> {
 fn immediate_os_segments(session: &SessionFacts) -> Vec<Segment> {
     if let Some(distro) = immediate_wsl_value(session) {
         return vec![Segment {
+            os_brand: Some(os_brand::OsBrand::from_name(
+                session
+                    .os_name
+                    .as_deref()
+                    .filter(|name| {
+                        session.shell_integration
+                            && automexia_extension_api::valid_os_name(name)
+                    })
+                    .unwrap_or(&distro),
+            )),
             value: compact_label(&distro, MAX_OS_CHARS),
             accessibility_label: format!("WSL distribution {distro}"),
             role: SegmentRole::UbuntuWsl,
@@ -214,6 +229,7 @@ fn immediate_os_segments(session: &SessionFacts) -> Vec<Segment> {
         .trim();
     let windows = name.eq_ignore_ascii_case("Windows");
     vec![Segment {
+        os_brand: Some(os_brand::OsBrand::from_name(name)),
         value: compact_label(name, MAX_OS_CHARS),
         accessibility_label: format!("Operating system {name}"),
         // Retain persisted tag IDs/colors/visibility across this additive fix.
@@ -901,6 +917,54 @@ mod tests {
     }
 
     #[test]
+    fn distro_branding_survives_recipes_without_overriding_fixed_icons_or_colors() {
+        use information_bar::*;
+        for brand in os_brand::ALL {
+            let mut facts = session();
+            facts.os_name = Some(brand.name.into());
+            facts.shell_name = Some("bash".into());
+            let segments = immediate_session_segments(&facts);
+            assert_eq!(segments[0].os_brand, Some(*brand));
+            let mut recipe = preset_recipe(InformationBarPreset::default());
+            let items = resolve_recipe(&recipe, &segments).unwrap();
+            let item = items.iter().find(|i| i.color_brand.is_some()).unwrap();
+            assert_eq!(item.icon_glyph(), Some(brand.glyph));
+            assert_eq!(item.color_brand, Some(*brand));
+            assert!(item.accessibility_label.contains(brand.name));
+            let slot = recipe
+                .slots
+                .iter_mut()
+                .find(|s| s.id == item.slot_id)
+                .unwrap();
+            slot.icon = BarIconSource::Fixed(IconKind::User);
+            slot.color = Some([12, 34, 56]);
+            let items = resolve_recipe(&recipe, &segments).unwrap();
+            let item = items.iter().find(|i| i.color_brand.is_some()).unwrap();
+            assert_eq!(item.icon_glyph(), Some(icon_glyph(IconKind::User)));
+            assert_eq!(item.icon_brand, None);
+            assert_eq!(item.color, Some([12, 34, 56]));
+        }
+        let mut facts = session();
+        facts.shell_name = Some("bash".into());
+        facts.os_name = Some("Linux Mint".into());
+        facts.distro = Some("Custom-WSL-Instance".into());
+        let mint = immediate_session_segments(&facts);
+        assert_eq!(mint[0].os_brand, Some(os_brand::MINT));
+        facts.os_name = Some("New Linux Distribution".into());
+        facts.distro = None;
+        let unknown = immediate_session_segments(&facts);
+        assert_eq!(unknown[0].os_brand, Some(os_brand::LINUX));
+        assert!(unknown[0]
+            .accessibility_label
+            .ends_with("New Linux Distribution"));
+        assert_eq!(
+            mint[0].os_brand,
+            Some(os_brand::MINT),
+            "historical prompt is immutable"
+        );
+    }
+
+    #[test]
     fn native_os_identity_is_visible_without_a_wsl_distribution() {
         for shell in ["bash", "zsh", "fish", "sh", "dash", "ksh"] {
             let mut facts = session();
@@ -1268,6 +1332,7 @@ mod tests {
     fn responsive_layout_hides_whole_low_priority_segments_and_restores_them() {
         let segments = vec![
             Segment {
+                os_brand: None,
                 value: "Windows".into(),
                 accessibility_label: "Windows".into(),
                 role: SegmentRole::Windows,
@@ -1278,6 +1343,7 @@ mod tests {
                 details_action: None,
             },
             Segment {
+                os_brand: None,
                 value: "desktop-linux".into(),
                 accessibility_label: "Docker".into(),
                 role: SegmentRole::Docker,
@@ -1310,6 +1376,7 @@ mod tests {
     #[test]
     fn accessibility_keeps_identity_and_freshness_without_color() {
         let segment = Segment {
+            os_brand: None,
             value: "prod".into(),
             accessibility_label: "Production environment".into(),
             role: SegmentRole::Production,
@@ -1335,6 +1402,7 @@ mod tests {
             (Freshness::Error, "Context, error"),
         ] {
             let segment = Segment {
+                os_brand: None,
                 value: "context".into(),
                 accessibility_label: "Context".into(),
                 role: SegmentRole::Environment,

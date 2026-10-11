@@ -503,9 +503,14 @@ impl DevOpsStatus {
                 / (metrics.icon_slot + metrics.icon_gap);
             let icon = metrics.icon_size.min(slot);
             if let Some(kind) = item.icon {
+                let kind = if item.icon_brand.is_some() {
+                    IconKind::Wsl
+                } else {
+                    kind
+                };
                 draw_icon_in_slot(
                     sugarloaf,
-                    kind,
+                    (kind, item.icon_glyph().unwrap_or_else(|| icon_glyph(kind))),
                     x + fragment.padding,
                     y + (metrics.height - icon) * 0.5,
                     slot,
@@ -960,7 +965,7 @@ fn icon_draw_y(base_y: f32, base_size: f32, icon: IconKind) -> f32 {
 
 fn draw_icon_in_slot(
     sugarloaf: &mut Sugarloaf,
-    icon: IconKind,
+    (icon, glyph): (IconKind, &str),
     slot_x: f32,
     base_y: f32,
     slot_width: f32,
@@ -969,7 +974,7 @@ fn draw_icon_in_slot(
 ) {
     draw_icon_text_in_slot(
         sugarloaf.text_mut(),
-        icon,
+        (icon, glyph),
         slot_x,
         base_y,
         slot_width,
@@ -980,14 +985,13 @@ fn draw_icon_in_slot(
 
 fn draw_icon_text_in_slot(
     text: &mut rio_backend::sugarloaf::text::Text,
-    icon: IconKind,
+    (icon, glyph): (IconKind, &str),
     slot_x: f32,
     base_y: f32,
     slot_width: f32,
     base_size: f32,
     color: [f32; 4],
 ) {
-    let glyph = icon_glyph(icon);
     let opts = DrawOpts {
         font_size: icon_font_size(base_size, icon),
         color: color_to_u8(color),
@@ -1061,12 +1065,11 @@ fn styled_prompt_bar_item_colors(
 ) -> automexia_ui_model::information_bar::TagPaint {
     use rio_backend::config::presentation::TagStyle;
     let foreground = color_to_u8(colors.foreground);
-    let anchor = item.color.unwrap_or_else(|| {
-        item.source_role
-            .map_or([foreground[0], foreground[1], foreground[2]], |role| {
-                crate::automexia::presentation::tag_anchor(appearance, role)
-            })
-    });
+    let anchor = crate::automexia::presentation::bar_item_anchor(
+        appearance,
+        item,
+        [foreground[0], foreground[1], foreground[2]],
+    );
     let opacity =
         if appearance.style == TagStyle::Plain || visual == BarVisualStyle::Underline {
             0
@@ -2310,6 +2313,68 @@ mod tests {
     }
 
     #[test]
+    fn all_os_brand_logos_rasterize_inside_tag_slots_at_supported_scales() {
+        use rio_backend::sugarloaf::{
+            font::{FontData, FontLibrary, FontLibraryData},
+            text::Text,
+        };
+        use std::sync::Arc;
+        let mut data = FontLibraryData::default();
+        data.insert(FontData::from_static_slice(include_bytes!("../../../../rio-fonts/resources/SymbolsNerdFontMono/SymbolsNerdFontMono-Regular.ttf")).unwrap());
+        let fonts = FontLibrary {
+            inner: Arc::new(parking_lot::RwLock::new(data)),
+        };
+        let face = rio_backend::sugarloaf::swash::FontRef::from_index(include_bytes!("../../../../rio-fonts/resources/SymbolsNerdFontMono/SymbolsNerdFontMono-Regular.ttf"), 0).unwrap();
+        for brand in automexia_ui_model::os_brand::ALL {
+            assert_ne!(
+                face.charmap().map(brand.glyph.chars().next().unwrap()),
+                0,
+                "{} must have a real logo, not a missing-glyph box",
+                brand.name
+            );
+            for scale in [1.0, 1.25, 1.5, 2.0, 3.0] {
+                let metrics = prompt_tag_metrics(24.0);
+                let mut text = Text::new(&fonts);
+                text.set_scale_factor(scale);
+                text.init_cpu();
+                draw_icon_text_in_slot(
+                    &mut text,
+                    (IconKind::Wsl, brand.glyph),
+                    12.0,
+                    12.0,
+                    metrics.icon_slot,
+                    metrics.icon_size,
+                    brand.accent(true),
+                );
+                assert_eq!(
+                    text.instance_count(),
+                    1,
+                    "missing {} glyph at {scale}",
+                    brand.name
+                );
+                let glyph = text.instances()[0];
+                assert!(glyph.glyph_size[0] > 0 && glyph.glyph_size[1] > 0);
+                let right = glyph.pos[0]
+                    + f32::from(glyph.bearings[0])
+                    + glyph.glyph_size[0] as f32;
+                assert!(
+                    right <= (12.0 + metrics.icon_slot + metrics.icon_gap) * scale,
+                    "{} overlaps tag text at {scale}",
+                    brand.name
+                );
+            }
+            for background in [[0.02, 0.03, 0.05, 1.0], [0.97, 0.98, 1.0, 1.0]] {
+                let color = automexia_ui_model::ensure_contrast(
+                    brand.accent(true),
+                    background,
+                    4.55,
+                );
+                assert!(automexia_ui_model::contrast_ratio(color, background) >= 4.5);
+            }
+        }
+    }
+
+    #[test]
     fn kubernetes_icon_raster_grows_without_touching_its_label() {
         use rio_backend::sugarloaf::{
             font::{FontData, FontLibrary, FontLibraryData},
@@ -2331,7 +2396,7 @@ mod tests {
                 let y = 12.0;
                 draw_icon_text_in_slot(
                     &mut text,
-                    IconKind::Kubernetes,
+                    (IconKind::Kubernetes, icon_glyph(IconKind::Kubernetes)),
                     x,
                     y,
                     metrics.icon_slot,
@@ -2585,6 +2650,8 @@ mod visual_tag_render_tests {
         use automexia_extension_api::Freshness;
         let renderer = super::super::Renderer::new(&Config::default());
         let mut item = ResolvedBarItem {
+            icon_brand: None,
+            color_brand: None,
             style: Default::default(),
             slot_id: "cluster".into(),
             value: String::new(),

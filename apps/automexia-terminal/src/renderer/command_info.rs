@@ -458,6 +458,7 @@ mod tests {
             (SegmentRole::User, "alice", IconKind::User),
         ]
         .map(|(role, value, icon)| Segment {
+            os_brand: None,
             value: value.into(),
             accessibility_label: value.into(),
             role,

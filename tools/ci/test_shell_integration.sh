@@ -43,6 +43,12 @@ with tempfile.TemporaryDirectory(prefix="automexia-os-") as temporary:
         ('NAME="发行版"\n'.encode(), ["发行版", ""]),
         (b'NAME="Mint \\"Edition\\""\n', ['Mint "Edition"', ""]),
     ]
+    for distro_id, name in [("manjaro", "Manjaro Linux"), ("opensuse-tumbleweed", "openSUSE Tumbleweed"),
+                           ("nixos", "NixOS"), ("alpine", "Alpine Linux"), ("pop", "Pop!_OS"),
+                           ("rhel", "Red Hat Enterprise Linux"), ("rocky", "Rocky Linux"),
+                           ("almalinux", "AlmaLinux"), ("kali", "Kali GNU/Linux")]:
+        assert detect(('NAME="' + name + '"\nID=' + distro_id + '\nID_LIKE=ubuntu\n').encode())[0] == name
+        assert detect(('ID=' + distro_id + '\n').encode())[0] == distro_id
     for data, expected in cases:
         assert detect(data) == expected, (data[:64], expected, detect(data))
     for kernel, expected in [("Darwin", "macOS"), ("FreeBSD", "FreeBSD"), ("OpenBSD", "OpenBSD"), ("MINGW64_NT", "Windows")]:

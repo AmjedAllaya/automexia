@@ -84,5 +84,27 @@ fn semantic_table_presentation(c: &mut Criterion) {
     group.finish();
 }
 
+fn os_branding(c: &mut Criterion) {
+    use automexia_ui_model::os_brand::{OsBrand, LINUX, MACOS, MINT, UBUNTU};
+    let mut group = c.benchmark_group("os_branding");
+    group
+        .sample_size(30)
+        .warm_up_time(std::time::Duration::from_secs(1))
+        .measurement_time(std::time::Duration::from_secs(2));
+    for (name, expected) in [
+        ("Linux Mint", MINT),
+        ("Ubuntu-24.04", UBUNTU),
+        ("macOS", MACOS),
+        ("Unknown distribution", LINUX),
+    ] {
+        assert_eq!(OsBrand::from_name(name), expected);
+        group.bench_function(name, |b| {
+            b.iter(|| black_box(OsBrand::from_name(black_box(name))))
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(benches, semantic_table_presentation);
-criterion_main!(benches);
+criterion_group!(os_brand_benches, os_branding);
+criterion_main!(benches, os_brand_benches);

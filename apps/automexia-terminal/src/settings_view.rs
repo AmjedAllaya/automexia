@@ -737,7 +737,14 @@ impl SettingsView {
     pub(crate) fn native_test_snapshot(&self) -> serde_json::Value {
         // Geometry and validated setting identities only; never saved values,
         // provider context, search queries or user-entered labels.
-        let ready = self.is_open() && !self.layout_dirty;
+        // Keyboard focus can request scrolling without invalidating measured
+        // row geometry. Do not publish old hit targets until reveal is painted.
+        // A confirmation paints independently while preserving the underlying
+        // page's reveal request until dismissal. Expose only its own targets.
+        let ready = self.is_open()
+            && !self.layout_dirty
+            && (self.confirmation.is_some() || !self.reveal_focus);
+        let page_ready = ready && self.confirmation.is_none();
         let recipe = self
             .customizations
             .as_ref()
@@ -746,7 +753,7 @@ impl SettingsView {
         let targets: Vec<_> = self
             .preview_targets
             .iter()
-            .filter(|_| ready)
+            .filter(|_| page_ready)
             .map(|(id, bounds)| {
                 serde_json::json!({
                     "id": id.as_str(), "bounds": bounds.array(),
@@ -757,7 +764,7 @@ impl SettingsView {
         let controls: Vec<_> = self
             .rows
             .iter()
-            .filter(|_| ready)
+            .filter(|_| page_ready)
             .filter_map(|row| {
                 Some(serde_json::json!({
                     "id": row.id.as_str(),
@@ -777,6 +784,8 @@ impl SettingsView {
             "active_category": self.customizations.as_ref()
                 .and_then(|navigation| navigation.active_key.as_ref()).map(SettingId::as_str),
             "selected": self.preview_selected.as_ref().map(SettingId::as_str),
+            "focused_control": self.view.as_ref().and_then(|view| view.focused()).map(SettingId::as_str),
+            "list_focused": self.focus == Focus::List,
             "preview_edit_mode": self.preview_edit_mode,
             "confirmation": self.confirmation.as_ref().map(|confirmation| serde_json::json!({
                 "title": confirmation.title,
@@ -5375,11 +5384,11 @@ impl SettingsView {
                     }
                 }
             }
-            let anchor = item.color.unwrap_or_else(|| {
-                item.source_role.map_or(foreground, |role| {
-                    crate::automexia::presentation::tag_anchor(&appearance, role)
-                })
-            });
+            let anchor = crate::automexia::presentation::bar_item_anchor(
+                &appearance,
+                item,
+                foreground,
+            );
             let paint = item.style.paint_with_background(
                 terminal_background,
                 anchor,
@@ -5400,8 +5409,7 @@ impl SettingsView {
                 &item.style,
             );
             if fragment.leading > 0.0 {
-                if let Some(icon) = item.icon {
-                    let glyph = automexia_ui_model::icon_glyph(icon);
+                if let Some(glyph) = item.icon_glyph() {
                     let icon_opts = DrawOpts {
                         font_size: metrics.icon_size,
                         color: color_u8(paint.icon),
@@ -6126,6 +6134,7 @@ fn preview_segments() -> Vec<automexia_ui_model::Segment> {
         .map(|role| {
             let value = preview_role_value(role).to_owned();
             automexia_ui_model::Segment {
+                os_brand: None,
                 accessibility_label: value.clone(),
                 value,
                 role,

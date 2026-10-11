@@ -2614,6 +2614,20 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::CursorMoved { position, .. } => {
+                #[cfg(feature = "native-gui-test-hooks")]
+                {
+                    // A private native fixture publishes its control file before
+                    // moving the pointer. Wake that test transport without waiting
+                    // for the passive clock. Production and benchmark windows do
+                    // not have this transport enabled.
+                    static NATIVE_CONTROL: std::sync::OnceLock<bool> =
+                        std::sync::OnceLock::new();
+                    if *NATIVE_CONTROL.get_or_init(|| {
+                        std::env::var_os("AUTOMEXIA_NATIVE_TEST_CONTROL").is_some()
+                    }) {
+                        route.request_overlay_redraw();
+                    }
+                }
                 if self.config.hide_cursor_when_typing {
                     route.window.winit_window.set_cursor_visible(true);
                 }

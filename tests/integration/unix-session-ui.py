@@ -69,6 +69,53 @@ def integrated_ready(state: dict) -> bool:
                 and panel.get("cursor_line_text") == expected_prompt)
 
 
+def replace_search_query(key, previous_bytes: int, value: str) -> None:
+    # Backspace on an empty search is the documented Back action. Do not
+    # accidentally leave the page when clearing a query that is already empty.
+    if previous_bytes:
+        key("ctrl+a")
+        key("BackSpace")
+    for char in value:
+        key("space" if char == " " else char)
+
+
+def wait_for_native_state(read, predicate, message: str, seconds: float = 15, wake=None) -> dict:
+    end = time.monotonic() + seconds
+    value = {}
+    while time.monotonic() < end:
+        value = read()
+        if value and predicate(value):
+            return value
+        # A new/restarted process may not have mapped a native window yet.
+        # Only published frames can be safely targeted by the owned input driver.
+        if wake is not None and type(value.get("sequence")) is int and value["sequence"] > 0:
+            wake()
+        time.sleep(.05)
+    error = Failure(message)
+    error.observed = native_failure_state(value)
+    raise error
+
+
+def native_pixel_args(converter: str, image: Path, x: int, y: int, *, macos: bool) -> list[str]:
+    args = [converter, str(image)]
+    if macos:
+        # screencapture embeds the display ICC profile. Raw device bytes from
+        # different hosted displays are not comparable to encoded theme sRGB.
+        args += ["-profile", "/System/Library/ColorSync/Profiles/sRGB Profile.icc"]
+    return args + ["-crop", f"1x1+{x}+{y}", "-depth", "8", "rgb:-"]
+
+
+def presented_rgb(sample, expected: list[int], tolerance: int) -> list[int]:
+    # The renderer snapshot can precede compositor presentation. Preserve the
+    # original color tolerance and fail on a persistent mismatch after a bound.
+    deadline = time.monotonic() + 6.0
+    while True:
+        actual = sample()
+        if max(abs(a-b) for a, b in zip(actual, expected)) <= tolerance or time.monotonic() >= deadline:
+            return actual
+        time.sleep(.05)
+
+
 def theme_gallery_ready(state: dict) -> bool:
     # A visible gallery can still contain only its initial configuration row.
     # Require all five bundled themes before testing keyboard preview/scrolling.
@@ -116,6 +163,26 @@ def native_geometry_ready(state: dict, scale: float | None, logical_size=None) -
         if not isinstance(extent, (int, float)) or not math.isfinite(extent) or abs(extent / actual - required) >= 1:
             return False
     return True
+
+
+def native_pointer_ready(state: dict, x: float, y: float, logical_size) -> bool:
+    if not native_geometry_ready(state, None, logical_size):
+        return False
+    pointer = state.get("pointer") or {}
+    scale = state["scale_factor"]
+    return all(type(pointer.get(axis)) in (int, float) and math.isfinite(pointer[axis])
+               and abs(pointer[axis] / scale - expected) <= 1
+               for axis, expected in (("x", x), ("y", y)))
+
+
+def tag_geometry_saved(state: dict, identity: str, height: float) -> bool:
+    # Observe the effect and its persistence acknowledgement in the SAME frame.
+    # A pre-click save_pending=false is not evidence that this edit was saved.
+    settings = state.get("settings") or {}
+    return bool(settings.get("ready") and not settings.get("save_pending") and any(
+        target.get("id") == identity and not target.get("roster")
+        and len(target.get("bounds", [])) == 4 and target["bounds"][3] == height
+        for target in settings.get("targets", [])))
 
 
 def check(condition: bool, message: str) -> None:
@@ -307,21 +374,36 @@ class WaylandDisplay:
     def key(self, process, chord):
         self.window(process, focused=True)
         check(chord in ("ctrl+shift+p", "Escape", "Down", "ctrl+shift+F1", "ctrl+shift+F3",
-                        "alt+j", "alt+shift+j", "x", "a", "r", "0", "1", "5", "ctrl+a", "F3", "Return", *"connect"),
+                        "alt+j", "alt+shift+j", "x", "a", "r", "0", "1", "2", "5", "ctrl+a", "F3", "Return",
+                        "BackSpace", "space", *"connectTextsizeInheritshared"),
               "unsupported Wayland fixture key")
         subprocess.run(
             [self.tools["xdotool"], "windowfocus", self.input_window, "key", "--clearmodifiers", chord],
             env=self.input_env, check=True, capture_output=True, timeout=5)
 
-    def click(self, process, x, y):
+    def click(self, process, x, y, read):
         window = self.window(process, focused=True)
         rect = window["rect"]
         check(all(math.isfinite(value) for value in (x, y)) and
               0 <= x < rect["width"] and 0 <= y < rect["height"], "pointer outside owned Wayland window")
         self.ipc("seat", "seat0", "cursor", "set", str(round(rect["x"] + x)), str(round(rect["y"] + y)))
+        # Compositor IPC acceptance precedes client input/presentation. Do not
+        # race a click against the application's previous pointer coordinates.
+        # No wake motion is permitted here: it would move away from this target.
+        wait_for_native_state(read, lambda s: native_pointer_ready(s, x, y, (rect["width"], rect["height"])),
+                              "owned Wayland pointer did not reach target", 5)
         self.window(process, focused=True)
         self.ipc("seat", "seat0", "cursor", "press", "button1")
         self.ipc("seat", "seat0", "cursor", "release", "button1")
+
+    def wake_control(self, process, sequence):
+        window = self.window(process, focused=True)
+        rect = window["rect"]
+        check(rect["width"] >= 320 and rect["height"] >= 240, "invalid owned Wayland fixture size")
+        # Stay in the empty left margin; no click, resize, or PTY input. Only a
+        # native-test-hooks build with the private transport redraws on this move.
+        self.ipc("seat", "seat0", "cursor", "set", str(round(rect["x"] + 12 + sequence % 2)),
+                 str(round(rect["y"] + rect["height"] / 2)))
 
     def capture(self, process, destination):
         window = self.window(process, focused=True)
@@ -437,17 +519,17 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                             shell_pids.add(panel["shell_pid"])
                     return value
 
+                wake_sequence = 0
+                def wake_wayland():
+                    nonlocal wake_sequence
+                    wake_sequence += 1
+                    wayland.wake_control(process, wake_sequence)
+
                 def wait(predicate, message: str, seconds: float = 15) -> dict:
-                    end = time.monotonic() + seconds
-                    value = {}
-                    while time.monotonic() < end:
-                        value = state()
-                        if value and predicate(value):
-                            return value
-                        time.sleep(.05)
-                    error = Failure(message)
-                    error.observed = native_failure_state(value)
-                    raise error
+                    # UI-only changes need the same native test-transport wake
+                    # as commands; they must not await the passive status clock.
+                    return wait_for_native_state(state, predicate, message, seconds,
+                                                 wake_wayland if wayland else None)
 
                 def attach_window():
                     nonlocal driver, handle
@@ -482,9 +564,12 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
 
                 def click(x: float, y: float) -> None:
                     if driver:
-                        driver.click(x, y)
+                        native_size = driver.window_size()
+                        driver.click(x, y, wait_for_motion=lambda: wait_for_native_state(
+                            state, lambda s: native_pointer_ready(s, x, y, native_size),
+                            "macOS pointer motion was not presented before click", 5))
                     elif wayland:
-                        wayland.click(process, x, y)
+                        wayland.click(process, x, y, state)
                     else:
                         check(call("xdotool", "getwindowfocus") == handle, "owned window lost focus")
                         current_scale = state()["scale_factor"]
@@ -563,8 +648,8 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                         capture(name)
                         size = state()
                         x, y = round(size["window_width"] * .80), round(size["window_height"] * .60)
-                        raw = subprocess.run([converter, str(output / f"{name}.png"), "-crop",
-                                              f"1x1+{x}+{y}", "-depth", "8", "rgb:-"],
+                        raw = subprocess.run(native_pixel_args(converter, output / f"{name}.png", x, y,
+                                                               macos=MACOS),
                                              capture_output=True, check=True, timeout=10).stdout
                         check(len(raw) == 3, "native pixel reader did not return RGB")
                         return list(raw)
@@ -578,14 +663,16 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                             for shade in (0, 255):
                                 wayland.ipc("output", "*", "bg", "#000000" if shade == 0 else "#ffffff", "solid_color")
                                 time.sleep(.15)
-                                actual = body_pixel(f"{name}-{shade}")
                                 expected_rgb = [round(v * alpha + shade * (1-alpha)) for v in rgb]
+                                actual = presented_rgb(lambda: body_pixel(f"{name}-{shade}"), expected_rgb, 4)
                                 check(max(abs(a-b) for a,b in zip(actual, expected_rgb)) <= 4,
                                       f"native body blend mismatch: {name}, alpha={alpha}, actual={actual}, expected={expected_rgb}")
                         elif alpha == 1.0:
-                            actual = body_pixel(name)
-                            check(max(abs(a-b) for a,b in zip(actual, rgb)) <= 6,
-                                  f"opaque body pixel mismatch: {name}, actual={actual}, expected={rgb}")
+                            actual = presented_rgb(lambda: body_pixel(name), rgb, 6)
+                            if max(abs(a-b) for a,b in zip(actual, rgb)) > 6:
+                                error = Failure(f"opaque body pixel mismatch: {name}, actual={actual}, expected={rgb}")
+                                error.observed = native_failure_state(state())
+                                raise error
 
                     def setting_row(identity):
                         current = wait(lambda s: s.get("settings", {}).get("ready") and
@@ -607,7 +694,8 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                         process = subprocess.Popen([str(binary), "--working-dir", str(home)], cwd=home, env=env,
                                                    stdout=subprocess.DEVNULL, stderr=log, start_new_session=True)
                         attach_window()
-                        wait(integrated_ready, "restarted session not ready")
+                        wait(lambda s: integrated_ready(s) and native_geometry_ready(
+                            s, scale, (1200, 800) if wayland else None), "restarted session geometry not ready")
 
                     assert_body("clean-startup", 1.0)
                     cell_rgb = None
@@ -767,10 +855,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     current = wait(lambda s: s.get("settings", {}).get("ready"), "tag page not ready")
                     x,y,w,h = current["settings"]["search_button"]
                     click(x+w/2,y+h/2)
-                    key("ctrl+a")
-                    key("BackSpace")
-                    for char in value:
-                        key("space" if char == " " else char)
+                    replace_search_query(key, current["settings"]["search_bytes"], value)
                     wait(lambda s: s.get("settings", {}).get("search_bytes") == len(value), "tag search did not update")
 
                 def tag_size(identity, value):
@@ -790,18 +875,37 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     return next((t["bounds"] for t in s.get("settings", {}).get("targets", [])
                                  if t["id"] == identity and not t["roster"]), None)
 
+                def reveal_tag_sample(identity):
+                    current = wait(lambda s: s.get("settings", {}).get("ready"), "tag preview not ready")
+                    if not current["settings"].get("preview_edit_mode"):
+                        x, y, w, h = current["settings"]["edit_button"]
+                        click(x+w/2, y+h/2)
+                        current = wait(lambda s: s.get("settings", {}).get("ready") and
+                                       s["settings"].get("preview_edit_mode"), "tag editing did not start")
+                    # At fractional DPI the sample is scrollable. Use the real
+                    # keyboard selection/reveal path instead of assuming the
+                    # last User tag is in the initial viewport.
+                    for _ in range(32):
+                        selected = current["settings"].get("selected")
+                        if selected == identity:
+                            return wait(lambda s: s.get("settings", {}).get("ready") and
+                                        sample_tag(s, identity) is not None, "selected tag sample was not revealed")
+                        key("Down")
+                        current = wait(lambda s: s.get("settings", {}).get("ready") and
+                                       s["settings"].get("selected") != selected,
+                                       "tag preview selection did not advance")
+                    raise Failure("tag preview traversal exceeded its bounded inventory")
+
                 tag_control("tags.enabled")
                 wait(lambda s: s.get("settings", {}).get("active_category") == "tags.enabled", "information tags did not open")
-                before_style = wait(lambda s: sample_tag(s,"tags.slot.user.page") is not None, "user tag sample absent")
+                before_style = reveal_tag_sample("tags.slot.user.page")
                 before_height = sample_tag(before_style,"tags.slot.user.page")[3]
                 tag_size("tags.shared.size", 125)
+                reveal_tag_sample("tags.slot.user.page")
                 shared_style = wait(lambda s: sample_tag(s,"tags.slot.user.page") is not None and
                                     sample_tag(s,"tags.slot.user.page")[3] > before_height,
                                     "shared tag size did not change live preview")
-                x,y,w,h = shared_style["settings"]["edit_button"]
-                click(x+w/2,y+h/2)
-                edit_style = wait(lambda s: s.get("settings", {}).get("preview_edit_mode"), "tag editing did not start")
-                x,y,w,h = sample_tag(edit_style,"tags.slot.user.page")
+                x,y,w,h = sample_tag(shared_style,"tags.slot.user.page")
                 click(x+w/2,y+h/2)
                 wait(lambda s: s.get("settings", {}).get("active_slot") == "tags.slot.user.page", "individual tag did not open")
                 tag_size("tags.slot.user.style.size", 50)
@@ -810,11 +914,10 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 capture("tag-typography")
                 tag_search("Inherit shared")
                 tag_control("tags.slot.user.style.inherit")
-                wait(lambda s: not s.get("settings", {}).get("save_pending"), "tag inheritance did not save")
+                wait(lambda s: tag_geometry_saved(s, "tags.slot.user.page",
+                     sample_tag(shared_style, "tags.slot.user.page")[3]),
+                     "inherit did not restore shared geometry and complete its save")
                 tag_search("")
-                wait(lambda s: sample_tag(s,"tags.slot.user.page") is not None and
-                     sample_tag(s,"tags.slot.user.page")[3] == sample_tag(shared_style,"tags.slot.user.page")[3],
-                     "inherit did not restore shared geometry")
                 saved_tags = tomllib.loads((config / "state/user-preferences-v16.toml").read_text(encoding="utf-8"))["visual"]["information-bar"]["styles"]
                 check(saved_tags["shared"]["size"] == 125 and "user" not in saved_tags.get("tags", {}),
                       "tag styles did not persist through their existing preference owner")
@@ -873,6 +976,11 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 os_label = "".join(list(os_name)[:13]) + "…" if len(os_name) > 14 else os_name
                 # The OS label must reach the core projection, even without DevOps.
                 check(os_label in identity.get("context_segments", []), "native OS tag missing from information bar")
+                expected_brand = {"Ubuntu": "Ubuntu", "macOS": "macOS", "Linux Mint": "Linux Mint", "LMDE": "Linux Mint"}.get(os_name)
+                if expected_brand:
+                    check(identity.get("tab_os_brand", {}).get("name") == expected_brand,
+                          "native tab branding disagrees with shell OS identity")
+                    check(bool(identity.get("tab_os_brand", {}).get("glyph")), "native OS logo missing")
                 capture("terminal")
 
                 key("ctrl+shift+p")
@@ -1053,6 +1161,10 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 tabbed = wait(lambda s: active(s).get("local_tab_count") == 2 and
                               integrated_ready(s), "native local tab failed")
                 check(active(tabbed).get("launch_program") == (None if MACOS and shell == "default" else program), "tab changed native shell")
+                if expected_brand:
+                    check(len(active(tabbed).get("local_tab_brands", [])) == 2 and
+                          all(brand == expected_brand for brand in active(tabbed)["local_tab_brands"]),
+                          "cloned local tabs lost native OS branding")
                 # Use the native key path for both distinct right-pane actions.
                 key("meta+d" if MACOS else "alt+shift+j")
                 wait(lambda s: s.get("panel_count") == 3 and integrated_ready(s),
@@ -1078,7 +1190,8 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 capture("resized")
                 return {"scenario": label, "renderer": expected, "scale": initial["scale_factor"],
                         "timing_kind": "diagnostic-polling-50ms-not-performance-baseline",
-                        "control_transport": "file-consumed-on-render-may-wait-for-idle-refresh",
+                        "control_transport": ("file-consumed-on-render-with-native-pointer-wake" if wayland else
+                                              "file-consumed-on-render-may-wait-for-idle-refresh"),
                         "startup_shell_ready_ms": ready_ms, "command_roundtrip_ms": command_samples,
                         "native_pixel_capture": not MACOS,
                         "display_server": "AppKit" if MACOS else display_server,
@@ -1113,6 +1226,34 @@ def native_failure_state(state: dict) -> dict:
         values = state.get(section) or {}
         result[section] = {key: values[key] for key in keys
                            if isinstance(values.get(key), (int, float)) and math.isfinite(values[key])}
+    appearance = state.get("appearance")
+    if isinstance(appearance, dict):
+        safe = {}
+        alpha = appearance.get("window_alpha")
+        if type(alpha) in (int, float) and math.isfinite(alpha) and 0 <= alpha <= 1:
+            safe["window_alpha"] = alpha
+        clear = appearance.get("clear")
+        if (isinstance(clear, list) and len(clear) == 4 and
+                all(type(v) in (int, float) and math.isfinite(v) and 0 <= v <= 1 for v in clear)):
+            safe["clear"] = clear
+        result["appearance"] = safe
+    settings = state.get("settings")
+    if isinstance(settings, dict):
+        result["settings"] = {key: settings[key] for key in
+                              ("open", "ready", "list_focused", "save_pending")
+                              if type(settings.get(key)) is bool}
+        result["settings"]["confirmation_visible"] = bool(settings.get("confirmation"))
+        editor = settings.get("color_editor")
+        if isinstance(editor, dict):
+            palette = editor.get("palette") or {}
+            focus = palette.get("focus")
+            # Fixed control identities only; never include draft hex or values.
+            if isinstance(focus, str) and (focus in (
+                    "Favorites", "Suggested", "FavoriteToggle", "Hex", "Apply", "Cancel")
+                    or re.fullmatch(r"Swatch\([0-9]{1,3}\)", focus)):
+                result["settings"]["color_focus"] = focus
+            if type(palette.get("browsing")) is bool:
+                result["settings"]["color_browsing"] = palette["browsing"]
     for key in ("scale_factor", "window_width", "window_height", "palette_enabled", "prompt_active"):
         value = state.get(key)
         if isinstance(value, (int, float)) and math.isfinite(value):

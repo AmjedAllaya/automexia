@@ -1,7 +1,8 @@
 [package]
 name = "rio-backend"
 publish = false
-version.workspace = true
+# Maintained Rio library identity, independent of the application release.
+version = "0.4.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

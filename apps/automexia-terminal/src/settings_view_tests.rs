@@ -351,6 +351,14 @@ fn settings_toggle_and_customizations_focus_share_one_catalog_without_cross_edit
         view.view.as_ref().unwrap().focused().unwrap().as_str(),
         COMMAND_OUTPUT_HIGHLIGHTING
     );
+    #[cfg(feature = "native-gui-test-hooks")]
+    {
+        let native = view.native_test_snapshot();
+        assert_eq!(native["focused_control"], COMMAND_OUTPUT_HIGHLIGHTING);
+        assert_eq!(native["list_focused"], true);
+        assert_eq!(native["ready"], false, "focus reveal has not been painted");
+        assert!(native["controls"].as_array().unwrap().is_empty());
+    }
     named(&mut view, NamedKey::Space);
     let edit = view.take_edit().unwrap();
     assert_eq!(edit.id.as_str(), COMMAND_OUTPUT_HIGHLIGHTING);
@@ -8631,6 +8639,29 @@ fn preview_shortcuts_do_not_replace_save_or_loading_feedback() {
             assert_package_notice_footer(&mut view, message);
         }
     }
+}
+
+#[cfg(feature = "native-gui-test-hooks")]
+#[test]
+fn native_confirmation_readiness_does_not_wait_for_obscured_page_reveal() {
+    let mut view = workflow_tag_view();
+    view.paint(&mut Raster::new(1.0), theme());
+    view.focus = Focus::Search;
+    named(&mut view, NamedKey::ArrowDown);
+    assert!(view.reveal_focus);
+    settings_letter(&mut view, "r");
+    assert!(view.confirmation.is_some());
+    assert_eq!(view.native_test_snapshot()["ready"], false);
+    view.paint(&mut Raster::new(1.0), theme());
+    let native = view.native_test_snapshot();
+    assert_eq!(native["ready"], true, "the visible confirmation is painted");
+    assert!(native["confirmation"]["accept"][2].as_f64().unwrap() > 0.0);
+    assert!(native["controls"].as_array().unwrap().is_empty());
+    assert!(native["targets"].as_array().unwrap().is_empty());
+    named(&mut view, NamedKey::Escape);
+    assert_eq!(view.native_test_snapshot()["ready"], false);
+    view.paint(&mut Raster::new(1.0), theme());
+    assert_eq!(view.native_test_snapshot()["ready"], true);
 }
 
 #[test]

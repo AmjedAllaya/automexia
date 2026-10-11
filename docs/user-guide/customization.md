@@ -330,6 +330,16 @@ identity.
 
 ### Shared and individual tag typography
 
+Tabs and OS tags share the detected operating system's logo and brand accent.
+Linux Mint and LMDE use Mint green; Ubuntu, Debian, Fedora, Arch, Manjaro,
+openSUSE, NixOS and other recognized distributions have their own branding.
+Windows and macOS retain their platform logos. Logos ship with Automexia, so no
+extra icon font is required. Unknown distributions retain their full accessible
+name and use a generic Linux logo. While detection is pending, new independent
+tabs inherit known display branding or show a neutral platform fallback; a Unix
+path or Bash title never implies Ubuntu. Explicit profile icons and custom tag
+or tab colors take precedence, and colors are adjusted for readable contrast.
+
 Open **Customizations → Workflow & Output → Information tags**. The **Shared typography**, **Shared colors** and **Shared spacing** sections set defaults for
 all tags. To style one tag, press **E** to edit the preview, choose a tag with the
 arrows and press **Enter** (or click it). Its **This tag** sections override only

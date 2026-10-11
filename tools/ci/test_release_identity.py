@@ -18,6 +18,30 @@ class ReleaseIdentityTests(unittest.TestCase):
         self.assertEqual(identity.release_tag("1.2.3"), "v1.2.3")
         self.assertEqual(identity.native_version("255.255.65535"), "255.255.65535")
 
+    def test_application_release_preserves_the_maintained_library_identities(self):
+        import tomllib
+        workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]
+        lock = tomllib.loads((ROOT / "Cargo.lock").read_text())["package"]
+        packages = {item["name"]: item for item in lock if "source" not in item}
+        self.assertEqual(packages["automexia-terminal"]["version"], workspace["package"]["version"])
+        for name in ("corcovado", "rio-backend", "rio-fonts", "rio-grapheme-width",
+                     "rio-graphics", "rio-notifier", "rio-vt", "rio-window",
+                     "sugarloaf", "teletypewriter"):
+            with self.subTest(library=name):
+                package = tomllib.loads((ROOT / name / "Cargo.toml").read_text())["package"]
+                self.assertEqual(package["version"], "0.4.0")
+                self.assertEqual(workspace["dependencies"][name]["version"], package["version"])
+                self.assertEqual(packages[name]["version"], package["version"])
+
+    def test_direct_library_consumers_keep_compatible_versions(self):
+        import tomllib
+        embedding = tomllib.loads((ROOT / "librio/Cargo.toml").read_text())
+        native = tomllib.loads((ROOT / "third-party/accesskit-windows/Cargo.toml").read_text())
+        for name, dependency in (("rio-vt", embedding["dependencies"]["rio-vt"]),
+                                 ("rio-window", native["target"]["cfg(windows)"]["dev-dependencies"]["winit"])):
+            package = tomllib.loads((ROOT / name / "Cargo.toml").read_text())["package"]
+            self.assertEqual(dependency["version"], package["version"])
+
     def test_rejects_ambiguous_injected_and_unrepresentable_versions(self):
         for value in ("0.0.1_alpha", "v0.0.1-alpha", "01.2.3", "1.2.3\n", "1.2.3;id",
                       "1.2", "1.2.3.4", "1.2.3+dev", "1.2.3-beta", "256.1.1", "1.256.1", "1.2.65536"):

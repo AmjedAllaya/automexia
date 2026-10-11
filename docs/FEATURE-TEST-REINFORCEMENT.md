@@ -728,7 +728,12 @@ unlisted distribution names, macOS/BSD fallbacks, malformed and oversized
 os-release files, non-execution of assignments, cached shell publishers and both
 installed/source layouts. Preserve separate WSL launch identity, optional framed
 metadata, nested-shell clearing, remote isolation and accessible full names.
-Native UI scenarios must assert the OS label, not merely any painted tag.
+Native UI scenarios must assert the OS label, not merely any painted tag. Both tab strips and prompt tags must
+use the same distro logo/color inventory, never infer Ubuntu from POSIX titles,
+and preserve user overrides. Cover Mint/LMDE, versioned WSL aliases, unknown
+names, per-route history, pending metadata and rapid clone chains. Raster every
+bundled logo at 100–300% scale and check contrast on light/dark backgrounds;
+measure bounded lookup separately from native frame latency.
 Measure the settings roster label against its actual column at 100–200% scale
 and larger interface fonts; use a single column when two would clip the text.
 

@@ -24,9 +24,10 @@ clipboard queries and rejection at the unfinished-image transfer limit, using
 bounded synthetic payloads. Run it with
 `cargo bench --locked -p rio-vt --bench vt_input -- native_untrusted_output`.
 The existing `teletypewriter` `pty_io` benchmark measures native spawn through
-first output/clean exit and sustained output. Its reader now sleeps only when
-no bytes arrive; older results with a delay after every successful read are a
-different workload and must not be used as a performance baseline.
+first output/clean exit and sustained output. Its reader drains available bytes
+then waits on native PTY readiness. Timer-polled results (including older runs
+with a delay after every successful read) are different workloads and must not
+be used as a performance baseline for this reader.
 Keep raw data and machine identity;
 these local operations do not establish application input-to-present latency.
 

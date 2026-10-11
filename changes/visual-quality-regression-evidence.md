@@ -36,5 +36,12 @@ Changed
   - Recognize both native retired-object replies during AT-SPI subtree changes;
     retain the original deadline and reject unrelated or malformed provider errors.
   - Add independently reviewed Windows, Linux, Apple Silicon and Intel Mac
-    reference sets: 431 scenes per platform, with exact pixels, font identities
+    reference sets: 456 scenes per platform, with exact pixels, font identities
     and deduplicated lossless image storage.
+  - Review the settings provenance/layout and Full Settings captures separately
+    on Apple Silicon and Intel, retaining unchanged receipts and all deliberate
+    defect rejection checks. Native input oracles wait for painted scroll targets
+    and the private Wayland control transport wakes without changing the idle
+    refresh interval of production windows.
+  - Keep reset-confirmation readiness independent of a hidden page's pending
+    keyboard scroll, hiding underlying test targets until the dialog closes.

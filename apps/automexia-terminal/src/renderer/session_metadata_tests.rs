@@ -1164,6 +1164,10 @@ fn metadata_readiness_clone_caller_uses_owned_launch_while_metadata_is_incomplet
             sync_session_metadata(&mut source.renderable_content, &terminal);
         }
         let pending = manager.test_create_cloned_context(0).unwrap();
+        assert!(
+            pending.renderable_content.initial_os_brand.is_none(),
+            "retained child metadata must not brand a clone of the original launch"
+        );
         assert_eq!(pending.launch_descriptor.program(), Some("fixture-shell"));
         assert_eq!(pending.launch_descriptor.args(), ["--fixture"]);
         assert_eq!(
@@ -1454,4 +1458,79 @@ fn native_os_identity_is_atomic_optional_bounded_and_never_a_wsl_launch_hint() {
             MetadataReadiness::Unavailable
         );
     }
+}
+
+#[test]
+fn os_branding_remains_stable_through_rapid_clones_and_shell_title_changes() {
+    use crate::context::launch::SessionLaunchDescriptor;
+    use automexia_ui_model::os_brand::{FEDORA, MINT};
+    let mut manager = crate::context::ContextManager::start_with_capacity(
+        4,
+        VoidListener {},
+        WindowId::from(0),
+    )
+    .unwrap();
+    manager.current_mut().launch_descriptor = SessionLaunchDescriptor::new(
+        Some("fixture-shell".into()),
+        vec!["--fixture".into()],
+        Vec::new(),
+        Some("fixture-profile".into()),
+        None,
+    );
+    let mut processor = Processor::default();
+    {
+        let source = manager.current_mut();
+        let mut terminal = source.terminal.lock();
+        let mut values = base().to_vec();
+        values.push(("automexia_os_name", "Linux Mint"));
+        frame(&mut processor, &mut terminal, "bash", &values);
+        sync_session_metadata(&mut source.renderable_content, &terminal);
+    }
+    for index in 0..32 {
+        assert_eq!(manager.tab_os_brand(0), Some(MINT), "clone {index}");
+        assert_eq!(
+            manager.tab_profile_identity(0).as_deref(),
+            Some("Linux Mint")
+        );
+        let item = manager.current_grid().current_item().unwrap();
+        let _guard = item.val.terminal.lock_unfair();
+        assert_eq!(
+            item.tab_title(item.active_tab_index()).as_deref(),
+            Some("Linux Mint")
+        );
+        assert_eq!(manager.tab_os_brand(0), Some(MINT));
+        drop(_guard);
+        let mut cloned = manager.test_create_cloned_context(0).unwrap();
+        assert_eq!(cloned.launch_descriptor.program(), Some("fixture-shell"));
+        {
+            let mut terminal = cloned.terminal.lock();
+            assert!(
+                terminal.user_vars.is_empty(),
+                "clone must own fresh protocol state"
+            );
+            write(
+                &mut Processor::default(),
+                &mut terminal,
+                "automexia_env_pending",
+                "1",
+            );
+            sync_session_metadata(&mut cloned.renderable_content, &terminal);
+        }
+        assert_ne!(
+            cloned.renderable_content.session_metadata.readiness(),
+            MetadataReadiness::Complete
+        );
+        *manager.current_mut() = cloned;
+        manager.current_mut().title.content = "someone@ubuntu:/tmp".into();
+    }
+    // A new validated identity wins over inherited display state without
+    // changing older panes, recipes, or granting launch metadata readiness.
+    let content = &mut manager.current_mut().renderable_content;
+    content.shell_os_name = Some("Fedora Linux".into());
+    content.shell_integration = true;
+    assert_eq!(manager.tab_os_brand(0), Some(FEDORA));
+    assert_eq!(
+        manager.tab_profile_identity(0).as_deref(),
+        Some("Fedora Linux")
+    );
 }

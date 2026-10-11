@@ -1325,7 +1325,7 @@ accessibility or native presentation evidence.
 | Header, tabs, title buttons, active/inactive states, footer | `renderer/island.rs`, `renderer/session_footer.rs` | Geometry and hit bounds, contrast matrices, native theme/opacity/window checks |
 | Panes, separators, viewport padding and background | `layout/`, `screen/mod.rs`, `renderer/mod.rs` | Layout/resize tests, settings raster, native pane/opacity checks |
 | Command colors, timestamps, tags, inline tables and suggestions | `renderer/command_input.rs`, `renderer/command_info.rs`, `renderer/command_results.rs`, `renderer/devops_status.rs`, `renderer/inline_tables.rs`, `renderer/suggestions.rs` | Actual grid snapshots, narrow/scaled ink tests, shell boundary regressions, customization raster |
-| Settings, themes, fonts, shared color picker and extension settings | `settings_view.rs`, `settings_catalog.rs` | Every catalog control and dependency tests, keyboard/IME/focus tests, 16-surface raster matrix, native preview/save/cancel checks |
+| Settings, themes, fonts, shared color picker and extension settings | `settings_view.rs`, `settings_catalog.rs` | Every catalog control and dependency tests, keyboard/IME/focus tests, 17-surface raster matrix, native preview/save/cancel checks |
 | Palette, menu categories, marketplace, shortcuts and last-command actions | `renderer/command_palette.rs`, `renderer/command_palette/` | Navigation/geometry/contrast and key-label pixel tests, native category navigation |
 | Connections, credentials, profiles and workflow review | `renderer/connection_hub.rs`, `renderer/connection_hub/` | Bounded forms, focus/scroll and modal-isolation tests, native connection workflows |
 | Search and scrollbars | `renderer/search.rs`, `renderer/scrollbar.rs` | Geometry snapshots, search/input owner tests, native search and scroll scenarios |
@@ -1359,7 +1359,7 @@ The report binds the binary digest, commit and local source fingerprint and
 rejects source changes during capture.
 
 The matrix covers five built-in themes and 100/125/150/175/200% scale, including
-a narrow layout. It includes 16 settings surfaces, ANSI/truecolor, font styles,
+a narrow layout. It includes 17 settings surfaces, ANSI/truecolor, font styles,
 ligatures, combining marks, CJK/RTL logical cells, native emoji fallback,
 Powerline/Nerd symbols, box drawing, selection and cursor pixels. Terminal cells
 retain application order; these fixtures do not introduce paragraph bidi.

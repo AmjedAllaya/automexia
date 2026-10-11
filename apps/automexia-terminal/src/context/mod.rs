@@ -212,6 +212,97 @@ impl<T: rio_backend::event::EventListener> Drop for Context<T> {
 }
 
 impl<T: EventListener> Context<T> {
+    /// Both tab strips consume the same route-owned snapshot, never OSC titles
+    /// or a blocking terminal lock. Shell startup text is not OS identity.
+    pub fn tab_profile_identity(&self) -> Option<String> {
+        let content = &self.renderable_content;
+        // Scope transitions can precede the next render snapshot. Observe
+        // them immediately when available, but never wait for the PTY lock.
+        if let Some(terminal) = self.terminal.try_lock_unfair() {
+            if terminal.integration_scope_active() {
+                return Some(
+                    terminal
+                        .integration_scope()
+                        .filter(|scope| scope.shell != "unknown")
+                        .map_or_else(
+                            || "SSH".to_owned(),
+                            |scope| format!("SSH · {}", scope.shell),
+                        ),
+                );
+            }
+        } else if content.remote_session.active() {
+            return Some(content.remote_session.presentation().map_or_else(
+                || "SSH".to_owned(),
+                |remote| format!("SSH · {}", remote.shell),
+            ));
+        }
+        let os_name = content.shell_os_name.as_deref().filter(|name| {
+            content.shell_integration
+                && automexia_extension_api::valid_os_name(name)
+                && !name.eq_ignore_ascii_case("Windows")
+        });
+        let seed_name = content
+            .initial_os_brand
+            .filter(|brand| *brand != automexia_ui_model::os_brand::WINDOWS)
+            .map(|brand| brand.name);
+        [
+            os_name,
+            content.shell_distro.as_deref(),
+            content.shell_name.as_deref(),
+            seed_name,
+            self.launch_descriptor.wsl_distro(),
+            self.launch_descriptor.profile_identity(),
+            self.launch_descriptor.program(),
+        ]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+    }
+
+    pub fn tab_os_brand(&self) -> Option<automexia_ui_model::os_brand::OsBrand> {
+        use automexia_ui_model::os_brand::OsBrand;
+        let content = &self.renderable_content;
+        let program = self.launch_descriptor.program().unwrap_or_default();
+        let executable = program.rsplit(['/', '\\']).next().unwrap_or(program);
+        let remote = self.terminal.try_lock_unfair().map_or_else(
+            || content.remote_session.active(),
+            |terminal| terminal.integration_scope_active(),
+        );
+        if remote
+            || executable.eq_ignore_ascii_case("ssh")
+            || executable.eq_ignore_ascii_case("ssh.exe")
+        {
+            return None;
+        }
+        if !content.session_context_rejected {
+            if let Some(name) = content.shell_os_name.as_deref().filter(|name| {
+                content.shell_integration && automexia_extension_api::valid_os_name(name)
+            }) {
+                return Some(OsBrand::from_name(name));
+            }
+            if let Some(distro) = content.shell_distro.as_deref() {
+                return Some(OsBrand::from_name(distro));
+            }
+            if let Some(brand) = content.initial_os_brand {
+                return Some(brand);
+            }
+        }
+        Some(self.launch_descriptor.wsl_distro().map_or_else(
+            || {
+                if executable.eq_ignore_ascii_case("wsl")
+                    || executable.eq_ignore_ascii_case("wsl.exe")
+                {
+                    automexia_ui_model::os_brand::LINUX
+                } else {
+                    OsBrand::host()
+                }
+            },
+            OsBrand::from_name,
+        ))
+    }
+
     /// Ask this context's PTY worker to terminate exactly once.
     ///
     /// Returning whether this call won the request race lets aggregate owners
@@ -1552,33 +1643,14 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     /// shell metadata wins once available (so entering CMD or WSL is reflected),
     /// followed by the immutable launch descriptor used to create the PTY.
     pub fn tab_profile_identity(&self, index: usize) -> Option<String> {
-        let context = self.contexts.get(index)?.current();
-        {
-            let terminal = context.terminal.lock();
-            if terminal.integration_scope_active() {
-                return Some(
-                    terminal
-                        .integration_scope()
-                        .filter(|scope| scope.shell != "unknown")
-                        .map_or_else(
-                            || "SSH".to_owned(),
-                            |scope| format!("SSH · {}", scope.shell),
-                        ),
-                );
-            }
-        }
-        [
-            context.renderable_content.shell_distro.as_deref(),
-            context.renderable_content.shell_name.as_deref(),
-            context.launch_descriptor.wsl_distro(),
-            context.launch_descriptor.profile_identity(),
-            context.launch_descriptor.program(),
-        ]
-        .into_iter()
-        .flatten()
-        .map(str::trim)
-        .find(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
+        self.contexts.get(index)?.current().tab_profile_identity()
+    }
+
+    pub fn tab_os_brand(
+        &self,
+        index: usize,
+    ) -> Option<automexia_ui_model::os_brand::OsBrand> {
+        self.contexts.get(index)?.current().tab_os_brand()
     }
 
     #[inline]
@@ -2240,7 +2312,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                             .map(|style| format!("{:?}",style.fg)),
                     })
                 }).collect::<Vec<_>>();
-                serde_json::json!({
+                let mut panel = serde_json::json!({
                     "route_id": context.route_id,
                     "active": context.route_id == active_route,
                     "layout_rect": item.layout_rect,
@@ -2282,7 +2354,12 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                     "visible_text": visible_text,
                     "source_row_visual_origins": source_row_visual_origins,
                     "row_render_facts": row_render_facts,
-                })
+                });
+                panel["tab_os_brand"] = serde_json::json!(context.tab_os_brand().map(|brand| serde_json::json!({
+                    "name": brand.name, "glyph": brand.glyph, "color": brand.color,
+                })));
+                panel["local_tab_brands"] = serde_json::json!(item.contexts().map(|tab| tab.tab_os_brand().map(|brand| brand.name)).collect::<Vec<_>>());
+                panel
             })
             .collect()
     }
@@ -2494,7 +2571,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     fn create_cloned_context(&self, rich_text_id: usize) -> Result<Context<T>, String> {
-        let (launch, cursor, blinking, dimension, seed, source_capsule_id) = {
+        let (launch, cursor, blinking, dimension, seed, brand, source_capsule_id) = {
             let source = self.current();
             if source.terminal.lock().integration_scope_active() {
                 return Err("This SSH session cannot be cloned automatically. Open a new terminal and connect explicitly.".to_owned());
@@ -2527,6 +2604,15 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                 source.renderable_content.has_blinking_enabled,
                 source.dimension,
                 source.renderable_content.session_metadata_seed(),
+                if source.renderable_content.session_metadata.readiness()
+                    == crate::renderer::session_metadata::MetadataReadiness::Complete
+                {
+                    source.tab_os_brand()
+                } else {
+                    // A pending nested shell may show retained child metadata,
+                    // but fresh_clone correctly uses the original launch owner.
+                    source.renderable_content.initial_os_brand
+                },
                 source.environment_capsule.session_id,
             )
         };
@@ -2558,6 +2644,9 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             &cloned_config,
         )
         .map_err(|error| format!("Could not create the independent session: {error}"))?;
+        // Display-only inheritance survives rapid clone chains without admitting
+        // incomplete shell metadata as launch, directory or credential authority.
+        new_context.renderable_content.initial_os_brand = brand;
         new_context.profile_colors = self.current().profile_colors;
         new_context.profile_icon = self.current().profile_icon.clone();
         // Seed chrome only; the terminal grid, scrollback and input queue stay

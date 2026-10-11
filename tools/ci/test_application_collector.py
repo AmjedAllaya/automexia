@@ -28,6 +28,98 @@ def unix_ui_probe():
 
 
 class CollectorTests(unittest.TestCase):
+    def test_native_wait_wakes_pending_frames_only_and_keeps_its_deadline(self):
+        probe = unix_ui_probe()
+        frames = iter([{"sequence": 1, "settings": {"ready": False}}, {"sequence": 2, "settings": {"ready": True}}])
+        wakes = []
+        with patch.object(probe.time, "monotonic", side_effect=[0.0, .01, .1]), \
+                patch.object(probe.time, "sleep"):
+            actual = probe.wait_for_native_state(lambda: next(frames),
+                lambda s: s["settings"]["ready"], "fixture wait", 1.0,
+                lambda: wakes.append(True))
+        self.assertTrue(actual["settings"]["ready"])
+        self.assertEqual(len(wakes), 1)
+        wakes.clear()
+        with patch.object(probe.time, "monotonic", side_effect=[0.0, .01, 1.0]), \
+                patch.object(probe.time, "sleep"), self.assertRaises(probe.Failure) as failure:
+            probe.wait_for_native_state(lambda: {"sequence": 1, "settings": {"ready": False}},
+                lambda s: s["settings"]["ready"], "fixture deadline", 1.0,
+                lambda: wakes.append(True))
+        self.assertEqual(len(wakes), 1)
+        self.assertFalse(failure.exception.observed["settings"]["ready"])
+
+    def test_native_startup_wait_does_not_wake_an_unmapped_window(self):
+        probe = unix_ui_probe()
+        for initial in ({}, {"sequence": 0}):
+            frames = iter([initial, {"sequence": 1}])
+            with patch.object(probe.time, "sleep"), patch.object(probe.time, "monotonic", side_effect=[0, .01, .1]):
+                def premature_wake():
+                    self.fail("pointer wake attempted before the first native frame")
+                state = probe.wait_for_native_state(lambda: next(frames),
+                    lambda s: s.get("sequence", 0) > 0, "startup", 30, premature_wake)
+            self.assertEqual(state["sequence"], 1)
+
+    def test_native_failure_state_keeps_modal_readiness_without_user_values(self):
+        import json
+        probe = unix_ui_probe()
+        state = probe.native_failure_state({"settings": {
+            "open": True, "ready": False, "list_focused": True,
+            "save_pending": "private path", "query": "private query",
+            "confirmation": {"title": "private title"}}})
+        self.assertEqual(state["settings"], {"open": True, "ready": False,
+                         "list_focused": True, "confirmation_visible": True})
+        self.assertNotIn("private", json.dumps(state))
+
+    def test_native_color_failure_keeps_only_fixed_focus_and_browsing(self):
+        import json
+        probe = unix_ui_probe()
+        for focus in ('Hex', 'Suggested', 'Swatch(0)', 'Swatch(128)', 'private text', 'Swatch(1234)'):
+            state = probe.native_failure_state({'settings': {'color_editor': {
+                'draft_color': 'private color', 'palette': {'focus': focus, 'browsing': True,
+                                                          'controls': ['private values']}}}})
+            self.assertEqual(state['settings']['color_browsing'], True)
+            if focus in ('private text', 'Swatch(1234)'):
+                self.assertNotIn('color_focus', state['settings'])
+            else:
+                self.assertEqual(state['settings']['color_focus'], focus)
+            self.assertNotIn('private', json.dumps(state))
+
+    def test_native_failure_appearance_rejects_private_or_nonfinite_values(self):
+        probe = unix_ui_probe()
+        source = {"appearance": {"window_alpha": 1.0, "clear": [0.1, 0.2, 0.3, 0.5], "path": "private"}}
+        self.assertEqual(probe.native_failure_state(source)["appearance"],
+                         {"window_alpha": 1.0, "clear": [0.1, 0.2, 0.3, 0.5]})
+        for clear in ([0, 0, 0, float("nan")], [0, 0, 0, "private"], [1, 2, 3], [0, 0, 0, True]):
+            self.assertEqual(probe.native_failure_state({"appearance": {
+                "window_alpha": "private", "clear": clear}})["appearance"], {})
+
+    def test_native_pixel_reader_converts_display_profile_before_sampling(self):
+        probe = unix_ui_probe()
+        tail = ['-crop', '1x1+80+60', '-depth', '8', 'rgb:-']
+        self.assertEqual(probe.native_pixel_args('magick', Path('fixture.png'), 80, 60, macos=False),
+                         ['magick', 'fixture.png'] + tail)
+        self.assertEqual(probe.native_pixel_args('magick', Path('fixture.png'), 80, 60, macos=True),
+                         ['magick', 'fixture.png', '-profile',
+                          '/System/Library/ColorSync/Profiles/sRGB Profile.icc'] + tail)
+
+    def test_presented_pixels_wait_for_compositor_without_accepting_persistent_errors(self):
+        probe = unix_ui_probe()
+        expected = [2, 11, 22]
+        frames = iter([[2, 6, 14], expected])
+        with patch.object(probe.time, 'monotonic', side_effect=[0.0, 0.1]), \
+                patch.object(probe.time, 'sleep') as sleep:
+            self.assertEqual(probe.presented_rgb(lambda: next(frames), expected, 6), expected)
+            sleep.assert_called_once_with(.05)
+        wrong = [22, 59, 83]
+        with patch.object(probe.time, 'monotonic', side_effect=[0.0, 0.1, 6.0]), \
+                patch.object(probe.time, 'sleep') as sleep:
+            self.assertEqual(probe.presented_rgb(lambda: wrong, expected, 6), wrong)
+            sleep.assert_called_once_with(.05)
+        with patch.object(probe.time, 'monotonic', return_value=0.0), \
+                patch.object(probe.time, 'sleep') as sleep:
+            self.assertEqual(probe.presented_rgb(lambda: expected, expected, 6), expected)
+            sleep.assert_not_called()
+
     def test_native_appearance_profile_isolation_and_cleanup_on_success_and_failure(self):
         probe = unix_ui_probe()
         with TemporaryDirectory() as parent:
@@ -273,6 +365,33 @@ class CollectorTests(unittest.TestCase):
             self.assertEqual(posted, [5] if mode == 'foreign-before-press' else [5, 1, 2])
             self.assertEqual(released, ['AXPosition', 'AXSize', 5, 1, 2])
 
+    def test_macos_click_acknowledges_motion_before_press_and_aborts_on_timeout(self):
+        from macos_driver import Point
+        driver = object.__new__(MacDriver)
+        driver.pointer_point = lambda x, y: Point(x, y)
+        driver.owned_window_number = lambda: 7
+        driver.check_pointer_owner = lambda point: None
+        for acknowledged in (True, False):
+            posted, released = [], []
+            driver.cf = SimpleNamespace(CFRelease=released.append)
+            driver.cg = SimpleNamespace(CGEventCreateMouseEvent=lambda source, kind, point, button: kind,
+                CGEventSetFlags=lambda event, flags: None,
+                CGEventSetIntegerValueField=lambda event, field, value: None,
+                CGEventPost=lambda tap, event: posted.append(event))
+            def wait_for_motion():
+                self.assertEqual(posted, [5])
+                if not acknowledged:
+                    raise BenchmarkError('pointer acknowledgement timed out')
+            with patch('macos_driver.time.sleep') as sleep:
+                if acknowledged:
+                    driver.click(40, 50, wait_for_motion=wait_for_motion)
+                else:
+                    with self.assertRaises(BenchmarkError):
+                        driver.click(40, 50, wait_for_motion=wait_for_motion)
+                sleep.assert_not_called()
+            self.assertEqual(posted, [5, 1, 2] if acknowledged else [5])
+            self.assertEqual(released, [5, 1, 2])
+
     def test_native_failure_report_excludes_content_and_nonfinite_geometry(self):
         probe = unix_ui_probe()
         report = probe.native_failure_state({'pointer': {'x': 12, 'y': float('nan'), 'text': 'private'},
@@ -345,6 +464,19 @@ class CollectorTests(unittest.TestCase):
             driver.window_size()
         self.assertEqual(len(released), 6)
 
+    def test_native_search_replacement_does_not_navigate_back_from_empty_query(self):
+        probe = unix_ui_probe()
+        for previous, value, expected in (
+            (0, "", []),
+            (0, "Text size", ['T', 'e', 'x', 't', 'space', 's', 'i', 'z', 'e']),
+            (9, "", ['ctrl+a', 'BackSpace']),
+            (9, "Inherit shared", ['ctrl+a', 'BackSpace', 'I', 'n', 'h', 'e', 'r', 'i', 't', 'space', 's', 'h', 'a', 'r', 'e', 'd']),
+        ):
+            keys = []
+            with self.subTest(previous=previous, value=value):
+                probe.replace_search_query(keys.append, previous, value)
+                self.assertEqual(keys, expected)
+
     def test_theme_probe_rejects_placeholder_or_incomplete_inventory(self):
         probe = unix_ui_probe()
         for state in [{}, {'settings': {}}, {'settings': {'gallery': None}}]:
@@ -392,6 +524,46 @@ class CollectorTests(unittest.TestCase):
                 with self.assertRaises(probe.Failure):
                     probe.WaylandDisplay.owned_window(invalid, 42, True)
 
+    def test_native_tag_inheritance_waits_for_saved_geometry(self):
+        probe = unix_ui_probe()
+        def frame(height, saving=False, ready=True, roster=False):
+            return {"settings": {"ready": ready, "save_pending": saving, "targets": [
+                {"id": "tags.slot.user.page", "bounds": [10, 20, 40, height], "roster": roster}]}}
+        for value in ({}, frame(10), frame(25, saving=True), frame(25, ready=False), frame(25, roster=True)):
+            self.assertFalse(probe.tag_geometry_saved(value, "tags.slot.user.page", 25))
+        self.assertTrue(probe.tag_geometry_saved(frame(25), "tags.slot.user.page", 25))
+
+    def test_wayland_click_waits_for_presented_pointer_before_pressing(self):
+        probe = unix_ui_probe()
+        display = object.__new__(probe.WaylandDisplay)
+        process = SimpleNamespace(pid=42, poll=lambda: None)
+        rect = {"x": 40, "y": 50, "width": 1200, "height": 800}
+        stale = {"scale_factor": 1.5, "window_width": 1800, "window_height": 1200,
+                 "pointer": {"x": 19.5, "y": 600}}
+        ready = dict(stale, pointer={"x": 900, "y": 450})
+        self.assertFalse(probe.native_pointer_ready(stale, 600, 300, (1200, 800)))
+        self.assertTrue(probe.native_pointer_ready(ready, 600, 300, (1200, 800)))
+        self.assertFalse(probe.native_pointer_ready(dict(ready, window_width=900), 600, 300, (1200, 800)))
+        frames, acknowledged = iter([stale, ready]), []
+        def read():
+            value = next(frames)
+            acknowledged.append(value is ready)
+            return value
+        def post(*args):
+            if "press" in args:
+                self.assertEqual(acknowledged, [False, True])
+        with patch.object(display, "window", return_value={"rect": rect}), \
+                patch.object(display, "ipc", side_effect=post) as ipc, patch.object(probe.time, "sleep"):
+            display.click(process, 600, 300, read)
+            self.assertEqual(ipc.call_args_list[-2].args, ("seat", "seat0", "cursor", "press", "button1"))
+            self.assertEqual(ipc.call_args_list[-1].args, ("seat", "seat0", "cursor", "release", "button1"))
+        with patch.object(display, "window", return_value={"rect": rect}), \
+                patch.object(display, "ipc") as ipc, patch.object(probe.time, "sleep"), \
+                patch.object(probe.time, "monotonic", side_effect=[0, .1, 5]):
+            with self.assertRaises(probe.Failure):
+                display.click(process, 600, 300, lambda: stale)
+            self.assertEqual(ipc.call_count, 1)  # Movement only; never click a stale target.
+
     def test_wayland_unsupported_inputs_never_post_keys(self):
         probe = unix_ui_probe()
         display = object.__new__(probe.WaylandDisplay)
@@ -406,6 +578,23 @@ class CollectorTests(unittest.TestCase):
                     display.resize(process, *size)
             run.assert_not_called()
 
+    def test_wayland_control_wake_is_owned_motion_without_clicks_or_pty_keys(self):
+        probe = unix_ui_probe()
+        display = object.__new__(probe.WaylandDisplay)
+        process = SimpleNamespace(pid=42, poll=lambda: None)
+        rect = {"x": 40, "y": 50, "width": 1200, "height": 800}
+        with patch.object(display, "window", return_value={"rect": rect}) as window, \
+                patch.object(display, "ipc") as ipc:
+            for sequence in (1, 2, 3):
+                display.wake_control(process, sequence)
+                window.assert_called_with(process, focused=True)
+                ipc.assert_called_with("seat", "seat0", "cursor", "set", str(52 + sequence % 2), "450")
+            self.assertEqual(ipc.call_count, 3)
+            window.side_effect = probe.Failure("owned window lost focus")
+            with self.assertRaises(probe.Failure):
+                display.wake_control(process, 4)
+            self.assertEqual(ipc.call_count, 3)
+
     def test_wayland_keys_use_owned_persistent_compositor_keyboard(self):
         probe = unix_ui_probe()
         display = object.__new__(probe.WaylandDisplay)
@@ -415,7 +604,8 @@ class CollectorTests(unittest.TestCase):
         process = SimpleNamespace(pid=42, poll=lambda: None)
         with patch.object(display, "window", return_value={"id": 7}) as window, \
              patch.object(probe.subprocess, "run") as run:
-            for chord in ["ctrl+shift+F1", "ctrl+shift+F3", "alt+j", "alt+shift+j", "x", "a", "F3", "Return", *"connect"]:
+            for chord in ["ctrl+shift+F1", "ctrl+shift+F3", "alt+j", "alt+shift+j", "x", "a", "F3", "Return",
+                          "BackSpace", "space", *"connectTextsizeInheritshared1250"]:
                 display.key(process, chord)
                 window.assert_called_with(process, focused=True)
                 run.assert_called_with(
@@ -618,6 +808,21 @@ class CollectorTests(unittest.TestCase):
         for key, code in zip("connect", (8, 31, 45, 45, 14, 8, 17)):
             with self.subTest(key=key):
                 self.assertEqual(MacDriver.key_spec(key), (code, 0, key))
+
+    def test_macos_tag_customization_supports_all_fixture_keys(self):
+        codes = {'t': 17, 'e': 14, 'x': 7, 's': 1, 'i': 34, 'z': 6,
+                 'n': 45, 'h': 4, 'r': 15, 'a': 0, 'd': 2,
+                 '1': 18, '2': 19, '5': 23, '0': 29, 'space': 49, 'BackSpace': 51}
+        for text in ('Text size', 'Inherit shared', '125', '50'):
+            for char in text:
+                key = 'space' if char == ' ' else char
+                base = key.lower() if len(key) == 1 else key
+                flags = (1 << 17) if char.isupper() else 0
+                self.assertEqual(MacDriver.key_spec(key), (codes[base], flags, base))
+        self.assertEqual(MacDriver.key_spec('BackSpace'), (51, 0, 'BackSpace'))
+        self.assertEqual(MacDriver.key_spec('shift+T'), (17, 1 << 17, 't'))
+        with self.assertRaises(BenchmarkError):
+            MacDriver.key_spec('shift+shift+T')
 
     def test_native_search_query_matches_the_actual_fixture_history(self):
         with TemporaryDirectory() as temporary:
