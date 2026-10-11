@@ -122,8 +122,10 @@ function Test-AutomexiaLiveInterface {
     }
     $script:testStage = 'physical interface fixture size'
     if (-not [AutomexiaResizeDriver]::MovePhysicalWindow($window, 20, 20, 1100, 680)) { throw 'Could not size the interface fixture' }
-    $null = Wait-Interface { param($s) $s.window_width -ge 1000 -and $s.window_width -lt 1450 }
-    $baseline = Read-AutomexiaSnapshot
+    # The initial window can already satisfy a broad width range. Capture the
+    # baseline only after the requested physical resize has been presented;
+    # otherwise its later reflow is incorrectly attributed to an opacity edit.
+    $baseline = Wait-Interface { param($s) $s.window_width -eq 1100 -and $s.window_height -eq 680 -and $s.rows -gt 0 -and $s.grid_height -gt 0 }
     $baseTop = [double]$baseline.grid_margin.top
     if ($OpacityChecks) {
         # Pump the backdrop on its own thread while the driver awaits snapshots.
@@ -218,7 +220,8 @@ public sealed class AutomexiaOpacityBackdrop : IDisposable {
                 foreach ($percent in @(20, 40, 60, 80, 100, 50, 100)) {
                     Interface-Number 'interface.background.opacity' ([string]$percent)
                     Assert-Opacity ($percent / 100.0) 'live edit'
-                    if ((Read-AutomexiaSnapshot).rows -ne $baseline.rows) { throw 'Opacity edit reflowed terminal rows' }
+                    $afterOpacity = Read-AutomexiaSnapshot
+                    if ($afterOpacity.rows -ne $baseline.rows) { throw "Opacity edit reflowed terminal rows: before=$($baseline.rows), after=$($afterOpacity.rows), size=$($afterOpacity.window_width)x$($afterOpacity.window_height)" }
                 }
                 $behind = @(192, 208, 224)
                 $backdrop.SetColor(192, 208, 224)
