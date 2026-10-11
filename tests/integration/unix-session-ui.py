@@ -79,6 +79,26 @@ def replace_search_query(key, previous_bytes: int, value: str) -> None:
         key("space" if char == " " else char)
 
 
+def native_pixel_args(converter: str, image: Path, x: int, y: int, *, macos: bool) -> list[str]:
+    args = [converter, str(image)]
+    if macos:
+        # screencapture embeds the display ICC profile. Raw device bytes from
+        # different hosted displays are not comparable to encoded theme sRGB.
+        args += ["-profile", "/System/Library/ColorSync/Profiles/sRGB Profile.icc"]
+    return args + ["-crop", f"1x1+{x}+{y}", "-depth", "8", "rgb:-"]
+
+
+def presented_rgb(sample, expected: list[int], tolerance: int) -> list[int]:
+    # The renderer snapshot can precede compositor presentation. Preserve the
+    # original color tolerance and fail on a persistent mismatch after a bound.
+    deadline = time.monotonic() + 6.0
+    while True:
+        actual = sample()
+        if max(abs(a-b) for a, b in zip(actual, expected)) <= tolerance or time.monotonic() >= deadline:
+            return actual
+        time.sleep(.05)
+
+
 def theme_gallery_ready(state: dict) -> bool:
     # A visible gallery can still contain only its initial configuration row.
     # Require all five bundled themes before testing keyboard preview/scrolling.
@@ -334,6 +354,15 @@ class WaylandDisplay:
         self.ipc("seat", "seat0", "cursor", "press", "button1")
         self.ipc("seat", "seat0", "cursor", "release", "button1")
 
+    def wake_control(self, process, sequence):
+        window = self.window(process, focused=True)
+        rect = window["rect"]
+        check(rect["width"] >= 320 and rect["height"] >= 240, "invalid owned Wayland fixture size")
+        # Stay in the empty left margin; no click, resize, or PTY input. Only a
+        # native-test-hooks build with the private transport redraws on this move.
+        self.ipc("seat", "seat0", "cursor", "set", str(round(rect["x"] + 12 + sequence % 2)),
+                 str(round(rect["y"] + rect["height"] / 2)))
+
     def capture(self, process, destination):
         window = self.window(process, focused=True)
         rect = window["rect"]
@@ -448,13 +477,15 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                             shell_pids.add(panel["shell_pid"])
                     return value
 
-                def wait(predicate, message: str, seconds: float = 15) -> dict:
+                def wait(predicate, message: str, seconds: float = 15, wake=None) -> dict:
                     end = time.monotonic() + seconds
                     value = {}
                     while time.monotonic() < end:
                         value = state()
                         if value and predicate(value):
                             return value
+                        if wake is not None:
+                            wake()
                         time.sleep(.05)
                     error = Failure(message)
                     error.observed = native_failure_state(value)
@@ -510,7 +541,13 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     pending = control.with_suffix(".next")
                     pending.write_text(command, encoding="utf-8")
                     pending.replace(control)
-                    return wait(lambda s: s.get("last_control") == command, "control not presented")
+                    wake_sequence = 0
+                    def wake():
+                        nonlocal wake_sequence
+                        wake_sequence += 1
+                        wayland.wake_control(process, wake_sequence)
+                    return wait(lambda s: s.get("last_control") == command, "control not presented",
+                                wake=wake if wayland else None)
 
                 def capture(name: str) -> None:
                     # Reject identifying shell output before publishing pixels.
@@ -574,8 +611,8 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                         capture(name)
                         size = state()
                         x, y = round(size["window_width"] * .80), round(size["window_height"] * .60)
-                        raw = subprocess.run([converter, str(output / f"{name}.png"), "-crop",
-                                              f"1x1+{x}+{y}", "-depth", "8", "rgb:-"],
+                        raw = subprocess.run(native_pixel_args(converter, output / f"{name}.png", x, y,
+                                                               macos=MACOS),
                                              capture_output=True, check=True, timeout=10).stdout
                         check(len(raw) == 3, "native pixel reader did not return RGB")
                         return list(raw)
@@ -589,12 +626,12 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                             for shade in (0, 255):
                                 wayland.ipc("output", "*", "bg", "#000000" if shade == 0 else "#ffffff", "solid_color")
                                 time.sleep(.15)
-                                actual = body_pixel(f"{name}-{shade}")
                                 expected_rgb = [round(v * alpha + shade * (1-alpha)) for v in rgb]
+                                actual = presented_rgb(lambda: body_pixel(f"{name}-{shade}"), expected_rgb, 4)
                                 check(max(abs(a-b) for a,b in zip(actual, expected_rgb)) <= 4,
                                       f"native body blend mismatch: {name}, alpha={alpha}, actual={actual}, expected={expected_rgb}")
                         elif alpha == 1.0:
-                            actual = body_pixel(name)
+                            actual = presented_rgb(lambda: body_pixel(name), rgb, 6)
                             check(max(abs(a-b) for a,b in zip(actual, rgb)) <= 6,
                                   f"opaque body pixel mismatch: {name}, actual={actual}, expected={rgb}")
 

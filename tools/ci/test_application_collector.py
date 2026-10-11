@@ -28,6 +28,33 @@ def unix_ui_probe():
 
 
 class CollectorTests(unittest.TestCase):
+    def test_native_pixel_reader_converts_display_profile_before_sampling(self):
+        probe = unix_ui_probe()
+        tail = ['-crop', '1x1+80+60', '-depth', '8', 'rgb:-']
+        self.assertEqual(probe.native_pixel_args('magick', Path('fixture.png'), 80, 60, macos=False),
+                         ['magick', 'fixture.png'] + tail)
+        self.assertEqual(probe.native_pixel_args('magick', Path('fixture.png'), 80, 60, macos=True),
+                         ['magick', 'fixture.png', '-profile',
+                          '/System/Library/ColorSync/Profiles/sRGB Profile.icc'] + tail)
+
+    def test_presented_pixels_wait_for_compositor_without_accepting_persistent_errors(self):
+        probe = unix_ui_probe()
+        expected = [2, 11, 22]
+        frames = iter([[2, 6, 14], expected])
+        with patch.object(probe.time, 'monotonic', side_effect=[0.0, 0.1]), \
+                patch.object(probe.time, 'sleep') as sleep:
+            self.assertEqual(probe.presented_rgb(lambda: next(frames), expected, 6), expected)
+            sleep.assert_called_once_with(.05)
+        wrong = [22, 59, 83]
+        with patch.object(probe.time, 'monotonic', side_effect=[0.0, 0.1, 6.0]), \
+                patch.object(probe.time, 'sleep') as sleep:
+            self.assertEqual(probe.presented_rgb(lambda: wrong, expected, 6), wrong)
+            sleep.assert_called_once_with(.05)
+        with patch.object(probe.time, 'monotonic', return_value=0.0), \
+                patch.object(probe.time, 'sleep') as sleep:
+            self.assertEqual(probe.presented_rgb(lambda: expected, expected, 6), expected)
+            sleep.assert_not_called()
+
     def test_native_appearance_profile_isolation_and_cleanup_on_success_and_failure(self):
         probe = unix_ui_probe()
         with TemporaryDirectory() as parent:
@@ -418,6 +445,23 @@ class CollectorTests(unittest.TestCase):
                 with self.assertRaises(probe.Failure):
                     display.resize(process, *size)
             run.assert_not_called()
+
+    def test_wayland_control_wake_is_owned_motion_without_clicks_or_pty_keys(self):
+        probe = unix_ui_probe()
+        display = object.__new__(probe.WaylandDisplay)
+        process = SimpleNamespace(pid=42, poll=lambda: None)
+        rect = {"x": 40, "y": 50, "width": 1200, "height": 800}
+        with patch.object(display, "window", return_value={"rect": rect}) as window, \
+                patch.object(display, "ipc") as ipc:
+            for sequence in (1, 2, 3):
+                display.wake_control(process, sequence)
+                window.assert_called_with(process, focused=True)
+                ipc.assert_called_with("seat", "seat0", "cursor", "set", str(52 + sequence % 2), "450")
+            self.assertEqual(ipc.call_count, 3)
+            window.side_effect = probe.Failure("owned window lost focus")
+            with self.assertRaises(probe.Failure):
+                display.wake_control(process, 4)
+            self.assertEqual(ipc.call_count, 3)
 
     def test_wayland_keys_use_owned_persistent_compositor_keyboard(self):
         probe = unix_ui_probe()

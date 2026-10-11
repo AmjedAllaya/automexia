@@ -351,6 +351,14 @@ fn settings_toggle_and_customizations_focus_share_one_catalog_without_cross_edit
         view.view.as_ref().unwrap().focused().unwrap().as_str(),
         COMMAND_OUTPUT_HIGHLIGHTING
     );
+    #[cfg(feature = "native-gui-test-hooks")]
+    {
+        let native = view.native_test_snapshot();
+        assert_eq!(native["focused_control"], COMMAND_OUTPUT_HIGHLIGHTING);
+        assert_eq!(native["list_focused"], true);
+        assert_eq!(native["ready"], false, "focus reveal has not been painted");
+        assert!(native["controls"].as_array().unwrap().is_empty());
+    }
     named(&mut view, NamedKey::Space);
     let edit = view.take_edit().unwrap();
     assert_eq!(edit.id.as_str(), COMMAND_OUTPUT_HIGHLIGHTING);

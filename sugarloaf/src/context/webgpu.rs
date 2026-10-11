@@ -54,9 +54,6 @@ impl<'a> WgpuContext<'a> {
 
         let surface_caps = surface.get_capabilities(&adapter);
 
-        #[cfg(target_os = "macos")]
-        let format = get_macos_texture_format(renderer_config.colorspace);
-        #[cfg(not(target_os = "macos"))]
         let format = find_best_texture_format(
             surface_caps.formats.as_slice(),
             renderer_config.colorspace,
@@ -230,7 +227,6 @@ impl<'a> WgpuContext<'a> {
 }
 
 #[inline]
-#[cfg(not(target_os = "macos"))]
 fn find_best_texture_format(
     formats: &[wgpu::TextureFormat],
     colorspace: Colorspace,
@@ -275,8 +271,8 @@ fn find_best_texture_format(
         .iter()
         .copied()
         .filter(|&x| {
-            // On non-macOS platforms, always avoid sRGB formats
-            // This maintains compatibility with existing Linux/Windows color handling
+            // Clear, grid and UI colors are already gamma-encoded on every
+            // platform. An sRGB attachment would encode them a second time.
             !wgpu::TextureFormat::is_srgb(&x) && !unsupported_formats.contains(&x)
         })
         .collect();
@@ -303,15 +299,6 @@ fn find_best_texture_format(
     );
 
     format
-}
-
-#[inline]
-#[cfg(target_os = "macos")]
-fn get_macos_texture_format(colorspace: Colorspace) -> wgpu::TextureFormat {
-    match colorspace {
-        Colorspace::Srgb => wgpu::TextureFormat::Bgra8UnormSrgb,
-        Colorspace::DisplayP3 | Colorspace::Rec2020 => wgpu::TextureFormat::Bgra8Unorm,
-    }
 }
 
 // Every draw pipeline accumulates premultiplied source-over color. Requesting
@@ -394,6 +381,23 @@ fn output_surface_color_space() -> wgpu::SurfaceColorSpace {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn encoded_palette_uses_unorm_surface_on_every_platform() {
+        use super::{find_best_texture_format, Colorspace};
+        use wgpu::TextureFormat::*;
+        for colorspace in [Colorspace::Srgb, Colorspace::DisplayP3, Colorspace::Rec2020] {
+            for formats in [[Bgra8UnormSrgb, Bgra8Unorm], [Bgra8Unorm, Bgra8UnormSrgb]] {
+                assert_eq!(find_best_texture_format(&formats, colorspace), Bgra8Unorm);
+            }
+            // The advertised channel order can differ on another backend;
+            // preserve encoded colors when the supported format is RGBA.
+            assert_eq!(
+                find_best_texture_format(&[Rgba8UnormSrgb, Rgba8Unorm], colorspace),
+                Rgba8Unorm
+            );
+        }
+    }
+
     #[test]
     fn backend_attempts_preserve_explicit_choices_and_bound_fallback() {
         use wgpu::Backends as B;

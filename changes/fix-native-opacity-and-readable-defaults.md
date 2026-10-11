@@ -14,3 +14,7 @@ successful and failed runs. Windows and macOS native CI retain their independent
 renderer checks.
 
 - Keep dim prompt text in every built-in dark theme above the existing text-contrast requirement.
+
+- Use the shared non-sRGB WGPU surface selection on macOS so already-encoded
+  theme colors are not brightened by a second transfer curve. Native appearance
+  scenarios continue to check actual default, reset and restart pixels.

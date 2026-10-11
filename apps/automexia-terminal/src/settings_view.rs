@@ -737,7 +737,9 @@ impl SettingsView {
     pub(crate) fn native_test_snapshot(&self) -> serde_json::Value {
         // Geometry and validated setting identities only; never saved values,
         // provider context, search queries or user-entered labels.
-        let ready = self.is_open() && !self.layout_dirty;
+        // Keyboard focus can request scrolling without invalidating measured
+        // row geometry. Do not publish old hit targets until reveal is painted.
+        let ready = self.is_open() && !self.layout_dirty && !self.reveal_focus;
         let recipe = self
             .customizations
             .as_ref()
@@ -777,6 +779,8 @@ impl SettingsView {
             "active_category": self.customizations.as_ref()
                 .and_then(|navigation| navigation.active_key.as_ref()).map(SettingId::as_str),
             "selected": self.preview_selected.as_ref().map(SettingId::as_str),
+            "focused_control": self.view.as_ref().and_then(|view| view.focused()).map(SettingId::as_str),
+            "list_focused": self.focus == Focus::List,
             "preview_edit_mode": self.preview_edit_mode,
             "confirmation": self.confirmation.as_ref().map(|confirmation| serde_json::json!({
                 "title": confirmation.title,
