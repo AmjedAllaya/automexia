@@ -311,7 +311,7 @@ def validate_inventory(cases: list[tuple[str, str, Path]]) -> None:
     if len(set(keys)) != len(keys):
         raise ValueError('duplicate captures')
     themes = ('aurora-night', 'solar-dusk', 'forest-operator', 'arctic-glass', 'arctic-day')
-    pages = ('header', 'footer', 'panes', 'background', 'window-controls', 'fonts', 'timestamps', 'tables',
+    pages = ('full-settings', 'header', 'footer', 'panes', 'background', 'window-controls', 'fonts', 'timestamps', 'tables',
              'tags', 'output', 'kubernetes', 'customizations', 'terminal-interface', 'theme-gallery', 'color-picker', 'font-picker')
     expected = {(f'terminal-{theme}-{scale}', 'correct') for theme in themes for scale in (100, 125, 150, 175, 200)}
     expected |= {(f'settings-{page}-{theme}-{scale}', 'correct') for page in pages for theme in themes for scale in (100, 125, 150, 175, 200)}

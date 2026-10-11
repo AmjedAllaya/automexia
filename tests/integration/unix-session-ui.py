@@ -69,6 +69,16 @@ def integrated_ready(state: dict) -> bool:
                 and panel.get("cursor_line_text") == expected_prompt)
 
 
+def replace_search_query(key, previous_bytes: int, value: str) -> None:
+    # Backspace on an empty search is the documented Back action. Do not
+    # accidentally leave the page when clearing a query that is already empty.
+    if previous_bytes:
+        key("ctrl+a")
+        key("BackSpace")
+    for char in value:
+        key("space" if char == " " else char)
+
+
 def theme_gallery_ready(state: dict) -> bool:
     # A visible gallery can still contain only its initial configuration row.
     # Require all five bundled themes before testing keyboard preview/scrolling.
@@ -768,10 +778,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     current = wait(lambda s: s.get("settings", {}).get("ready"), "tag page not ready")
                     x,y,w,h = current["settings"]["search_button"]
                     click(x+w/2,y+h/2)
-                    key("ctrl+a")
-                    key("BackSpace")
-                    for char in value:
-                        key("space" if char == " " else char)
+                    replace_search_query(key, current["settings"]["search_bytes"], value)
                     wait(lambda s: s.get("settings", {}).get("search_bytes") == len(value), "tag search did not update")
 
                 def tag_size(identity, value):
@@ -791,18 +798,37 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     return next((t["bounds"] for t in s.get("settings", {}).get("targets", [])
                                  if t["id"] == identity and not t["roster"]), None)
 
+                def reveal_tag_sample(identity):
+                    current = wait(lambda s: s.get("settings", {}).get("ready"), "tag preview not ready")
+                    if not current["settings"].get("preview_edit_mode"):
+                        x, y, w, h = current["settings"]["edit_button"]
+                        click(x+w/2, y+h/2)
+                        current = wait(lambda s: s.get("settings", {}).get("ready") and
+                                       s["settings"].get("preview_edit_mode"), "tag editing did not start")
+                    # At fractional DPI the sample is scrollable. Use the real
+                    # keyboard selection/reveal path instead of assuming the
+                    # last User tag is in the initial viewport.
+                    for _ in range(32):
+                        selected = current["settings"].get("selected")
+                        if selected == identity:
+                            return wait(lambda s: s.get("settings", {}).get("ready") and
+                                        sample_tag(s, identity) is not None, "selected tag sample was not revealed")
+                        key("Down")
+                        current = wait(lambda s: s.get("settings", {}).get("ready") and
+                                       s["settings"].get("selected") != selected,
+                                       "tag preview selection did not advance")
+                    raise Failure("tag preview traversal exceeded its bounded inventory")
+
                 tag_control("tags.enabled")
                 wait(lambda s: s.get("settings", {}).get("active_category") == "tags.enabled", "information tags did not open")
-                before_style = wait(lambda s: sample_tag(s,"tags.slot.user.page") is not None, "user tag sample absent")
+                before_style = reveal_tag_sample("tags.slot.user.page")
                 before_height = sample_tag(before_style,"tags.slot.user.page")[3]
                 tag_size("tags.shared.size", 125)
+                reveal_tag_sample("tags.slot.user.page")
                 shared_style = wait(lambda s: sample_tag(s,"tags.slot.user.page") is not None and
                                     sample_tag(s,"tags.slot.user.page")[3] > before_height,
                                     "shared tag size did not change live preview")
-                x,y,w,h = shared_style["settings"]["edit_button"]
-                click(x+w/2,y+h/2)
-                edit_style = wait(lambda s: s.get("settings", {}).get("preview_edit_mode"), "tag editing did not start")
-                x,y,w,h = sample_tag(edit_style,"tags.slot.user.page")
+                x,y,w,h = sample_tag(shared_style,"tags.slot.user.page")
                 click(x+w/2,y+h/2)
                 wait(lambda s: s.get("settings", {}).get("active_slot") == "tags.slot.user.page", "individual tag did not open")
                 tag_size("tags.slot.user.style.size", 50)

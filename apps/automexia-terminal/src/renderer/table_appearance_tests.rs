@@ -57,6 +57,7 @@ fn inherited_table_text_stays_readable_on_custom_backgrounds() {
 #[test]
 fn table_glyphs_follow_the_terminal_baseline_with_dense_borders() {
     use rio_backend::config::presentation::TableBorderWeight;
+    use sugarloaf::text::{TextCellAnchor, TextCellLayout};
     let content = content(&mut terminal(
         "HHH   VALUE\r\njpqy  123\r\n\r\nprompt ",
         80,
@@ -92,14 +93,32 @@ fn table_glyphs_follow_the_terminal_baseline_with_dense_borders() {
                 .instances()
                 .first()
                 .expect("visible header glyph");
-            let bottom = (glyph.pos[1]
-                + f32::from(glyph.bearings[1])
-                + glyph.glyph_size[1] as f32)
-                / scale;
-            assert!(
-                (bottom - 30.0).abs() <= 1.0,
-                "capital must sit on the canonical baseline: {bottom}"
+            // Native rasterizers can include antialiased ink below a capital's
+            // baseline. Compare table placement to a plain cell at the known
+            // terminal baseline, independently of table padding/border math.
+            // The Text owner's tests verify this API against top-origin shaping.
+            let mut reference = RasterCanvas::new(scale);
+            reference.text.draw_cells_baseline_clipped(
+                8.0,
+                30.0,
+                "H",
+                &DrawOpts {
+                    font_size: 20.0,
+                    ..Default::default()
+                },
+                TextCellLayout {
+                    cell_width: 14.0,
+                    anchors: &[TextCellAnchor {
+                        byte_offset: 0,
+                        column: 0,
+                    }],
+                },
+                [0.0, 0.0, 100.0, 42.0],
             );
+            let expected = reference.text.instances().first().unwrap();
+            assert_eq!(glyph.pos[1], expected.pos[1], "canonical baseline");
+            assert_eq!(glyph.bearings[1], expected.bearings[1], "uncut capital");
+            assert_eq!(glyph.glyph_size[1], expected.glyph_size[1], "complete ink");
         }
     }
 }

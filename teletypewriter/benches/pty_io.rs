@@ -91,7 +91,7 @@ fn drain_to_exit(mut pty: Pty, expected_bytes: usize) -> usize {
 
     assert!(
         exited,
-        "PTY benchmark child did not exit before its deadline"
+        "PTY benchmark child did not exit before its deadline: received={received}, expected={expected_bytes}, marker={marker_seen}, read_closed={read_closed}"
     );
     assert!(marker_seen, "PTY benchmark completion marker was lost");
     assert!(

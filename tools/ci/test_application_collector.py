@@ -345,6 +345,19 @@ class CollectorTests(unittest.TestCase):
             driver.window_size()
         self.assertEqual(len(released), 6)
 
+    def test_native_search_replacement_does_not_navigate_back_from_empty_query(self):
+        probe = unix_ui_probe()
+        for previous, value, expected in (
+            (0, "", []),
+            (0, "Text size", ['T', 'e', 'x', 't', 'space', 's', 'i', 'z', 'e']),
+            (9, "", ['ctrl+a', 'BackSpace']),
+            (9, "Inherit shared", ['ctrl+a', 'BackSpace', 'I', 'n', 'h', 'e', 'r', 'i', 't', 'space', 's', 'h', 'a', 'r', 'e', 'd']),
+        ):
+            keys = []
+            with self.subTest(previous=previous, value=value):
+                probe.replace_search_query(keys.append, previous, value)
+                self.assertEqual(keys, expected)
+
     def test_theme_probe_rejects_placeholder_or_incomplete_inventory(self):
         probe = unix_ui_probe()
         for state in [{}, {'settings': {}}, {'settings': {'gallery': None}}]:

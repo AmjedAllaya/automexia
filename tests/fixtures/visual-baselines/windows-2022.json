@@ -94,9 +94,9 @@
         "theme": "arctic-day",
         "width": 960
       },
-      "image_sha256": "eb3f3955ba75266f9729e3a0850e7ddf91697a65595f95e253ff3e2321cc65df",
+      "image_sha256": "d5d817026199d784a56597ef376eed70fe1ac4f424ddf65ab686efb310763973",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-arctic-day-125": {
@@ -148,9 +148,9 @@
         "theme": "arctic-day",
         "width": 1200
       },
-      "image_sha256": "cb53ae120f28166098abc21a8402a5fb7edbbff29428db26d7841b7ee6bed2e2",
+      "image_sha256": "d40cf570a43c1def9a1fc2623b9ee5b9fbaeb2f1197b330728d9b89e06ebd277",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-arctic-day-150": {
@@ -202,9 +202,9 @@
         "theme": "arctic-day",
         "width": 1440
       },
-      "image_sha256": "a0b8df51ff217d30eff870a0667ae72f21d272e2a8f677db9ad1ca6acde72d7d",
+      "image_sha256": "441fba8f8f33c9f0c0438366a379b51aec07089e0d6541aa595c3f536a69791d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-arctic-day-175": {
@@ -256,9 +256,9 @@
         "theme": "arctic-day",
         "width": 840
       },
-      "image_sha256": "73be1adb047538eac2699a152cd25695df7a3ea7d2ef7b43fb109a470c6363f3",
+      "image_sha256": "67f0dabdc8c035fe912b13676d8e75ff23b70c0468fcd0d0d866fa4bea6e546f",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-arctic-day-200": {
@@ -310,9 +310,9 @@
         "theme": "arctic-day",
         "width": 1920
       },
-      "image_sha256": "e97c1eddf0b17d6fcd04cef5fcd2730e7152c47d03eace5fb4c62ba6e86cf6b8",
+      "image_sha256": "1ce7604461b9b70608921c84427c63b1c9039bd3f93f81957605af0ad0729602",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-arctic-glass-100": {
@@ -364,9 +364,9 @@
         "theme": "arctic-glass",
         "width": 960
       },
-      "image_sha256": "d131b5344c9d7b37f7dd36acfa39dc59664ad1ec207ce1224ff5b81da6ab1d1f",
+      "image_sha256": "5e0d3d3ff96a3a57f64c3b2343a608a19819e2e16188f73d2ef5f3ab5e68317f",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-arctic-glass-125": {
@@ -418,9 +418,9 @@
         "theme": "arctic-glass",
         "width": 1200
       },
-      "image_sha256": "45879b2622610c71c768cc77594b2539170ee883bc18a33663918a0dafac1db0",
+      "image_sha256": "58810d18e2c2bf11c4032693420abdd1a9e1f48ba08f93c301c07aef96451f59",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-arctic-glass-150": {
@@ -472,9 +472,9 @@
         "theme": "arctic-glass",
         "width": 1440
       },
-      "image_sha256": "7c2ceb8b4a7acbb42a8d19ae547330cdbb4a43e1bbdb244d9f71ad9262f23f81",
+      "image_sha256": "7b97af81420aaddc32e1e4a81cefca92ad07b352bae0dac0bede3dd0edda249d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-arctic-glass-175": {
@@ -526,9 +526,9 @@
         "theme": "arctic-glass",
         "width": 840
       },
-      "image_sha256": "da8379b564add724ec684ed587caa0ddaa722e035ea76be507254b55ce8c7c4e",
+      "image_sha256": "dbd8d3eb47396cba82e320830b3819e313413a757cc4ce4eb608cbc2c4546d49",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-arctic-glass-200": {
@@ -580,9 +580,9 @@
         "theme": "arctic-glass",
         "width": 1920
       },
-      "image_sha256": "c79a233ea548fc51d17bf0a1bd48e983ce0d16535924a0509e0243df1b75f29f",
+      "image_sha256": "64ebc5cfca7628742f420e08c7955cc3a1aa76727613c5a02926b088a0dd6ecc",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-aurora-night-100": {
@@ -634,9 +634,9 @@
         "theme": "aurora-night",
         "width": 960
       },
-      "image_sha256": "bfe34ef75ee5d2c4ec2c8be09753bb993cb6f3fe347716195ea5cc7700cc3946",
+      "image_sha256": "8988bd2a434e11be129f168d0d8eb8d499e66dbcbbad913c863335fd69093ecb",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-aurora-night-125": {
@@ -688,9 +688,9 @@
         "theme": "aurora-night",
         "width": 1200
       },
-      "image_sha256": "294aac78433cc821e40e65bc74a279b839d45228a1610ab3ffec747568657ef2",
+      "image_sha256": "d215ce7dca96926891efe4cf42e8b93aec9a4ec3ed75d94514394e7a9613ef40",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-aurora-night-150": {
@@ -742,9 +742,9 @@
         "theme": "aurora-night",
         "width": 1440
       },
-      "image_sha256": "87a078f762ee50120ff19bff4c0d295cd9620f7d8c822f5b320b67ef086fef5e",
+      "image_sha256": "bfa7f5dc0a85a3e0d103597d081861410f99658b53840b1fa2241c7df4f88603",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-aurora-night-175": {
@@ -796,9 +796,9 @@
         "theme": "aurora-night",
         "width": 840
       },
-      "image_sha256": "558a30670f4391d114ae59450809f001d4eee4e8c5a5b419482bc718b63a51b5",
+      "image_sha256": "40603d844c9797b6cfa46dc8c926a0a920468882164df10711d86abc62ec47eb",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-aurora-night-200": {
@@ -850,9 +850,9 @@
         "theme": "aurora-night",
         "width": 1920
       },
-      "image_sha256": "b88922dcee5d2e725606b6bce202b87ae920d1d6eca57172b6d6f6797fdab57b",
+      "image_sha256": "150f5926c92174765814f539cf8772f3fe0daa3437ef3678f02f3eb86126d081",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-forest-operator-100": {
@@ -904,9 +904,9 @@
         "theme": "forest-operator",
         "width": 960
       },
-      "image_sha256": "a0a4a082fe35ba48e598e7c4787b4e24fb9d65fb2da5c83b3b1fe7f3671dfb24",
+      "image_sha256": "c797bf4733c21e829230d0787cd1816af376bd831043b8f09bb626144ec6179b",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-forest-operator-125": {
@@ -958,9 +958,9 @@
         "theme": "forest-operator",
         "width": 1200
       },
-      "image_sha256": "a71f8062d8e5391faf49d79db299a8482eb5c521dbb34f64c0f500064026362f",
+      "image_sha256": "67e98c4354b2bfcb8933cdcc3099d30549e7c785d61111b935f6f7fd64e3fe99",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-forest-operator-150": {
@@ -1012,9 +1012,9 @@
         "theme": "forest-operator",
         "width": 1440
       },
-      "image_sha256": "79c266f7399193b146ba9d1a6eb99de86edf0df6b0a63bab37ea951dac30d570",
+      "image_sha256": "7f5243ba4fd6c88b040e11ea276c0ae2222d363cc500bd10968a8186176281f2",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-forest-operator-175": {
@@ -1066,9 +1066,9 @@
         "theme": "forest-operator",
         "width": 840
       },
-      "image_sha256": "7f0c3702b4216898f9c58a19f7521fec2d355a5bff907e768cbeaf117621a35e",
+      "image_sha256": "b98297f662157739d97d2ebaa04f914c1f74dbd6181593abc868de936f7f38e9",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-forest-operator-200": {
@@ -1120,9 +1120,9 @@
         "theme": "forest-operator",
         "width": 1920
       },
-      "image_sha256": "c8ca88872406fcd40bcb167c0cf0c322e49f354f76441cc53a111f325db6d2c2",
+      "image_sha256": "76a5bc08d256789eceaf058ffc4edd6aefd6f648a75e5452d03058a4f7450a46",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-solar-dusk-100": {
@@ -1174,9 +1174,9 @@
         "theme": "solar-dusk",
         "width": 960
       },
-      "image_sha256": "1d9f1551f4044059e90c3aa418513593fb7fd9a571c2d5a7fd6baa847ca1826f",
+      "image_sha256": "44e0355f69510deb438b672cc25bd95d12ac0d1e71978a796153aff73e87c4db",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-solar-dusk-125": {
@@ -1228,9 +1228,9 @@
         "theme": "solar-dusk",
         "width": 1200
       },
-      "image_sha256": "eedb6348775eb43eb33466d1ceab285151468d41e594c87ddabcc4c132ae971f",
+      "image_sha256": "d6c2d7541c92f776d9012e0e8810798cae2b86a5a1cd9be30ac9e419d0846a5b",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-solar-dusk-150": {
@@ -1282,9 +1282,9 @@
         "theme": "solar-dusk",
         "width": 1440
       },
-      "image_sha256": "de114b3ca3e868951d64e2d5de5899169084923aa0cac3e915dfbb189522e05d",
+      "image_sha256": "d04e45c85d269a7301cad6e92e8c9726c84295278c894e320b532df98225bcfc",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-solar-dusk-175": {
@@ -1336,9 +1336,9 @@
         "theme": "solar-dusk",
         "width": 840
       },
-      "image_sha256": "af8bc92e1a9074b883a82b7a565b7608bb60ee6c0cc37fc0eff1ecdc5e7583d1",
+      "image_sha256": "6b1020c206b2916a31256304a87e9f2ae7e0295ced39ba70386df5f76fb1d878",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-background-solar-dusk-200": {
@@ -1390,9 +1390,9 @@
         "theme": "solar-dusk",
         "width": 1920
       },
-      "image_sha256": "b5b513a988bd35a63494cb36cb7221824f97ad328429afbd66ad7ac4aa99c789",
+      "image_sha256": "47702932fbbf1c342535b04a0ea3c73928ac470e4e5f21dbe0d009eef75e6769",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-color-picker-arctic-day-100": {
@@ -5519,9 +5519,9 @@
         "theme": "arctic-day",
         "width": 960
       },
-      "image_sha256": "a9acc0de8b2d2c0890ead7b2b774bd2859e80c82ad021acc90099f8b9b0ba5f3",
+      "image_sha256": "86144fed666b8085804303fa0ca1c9208c2d21bdbb733743ee43e233b125f021",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-arctic-day-125": {
@@ -5573,9 +5573,9 @@
         "theme": "arctic-day",
         "width": 1200
       },
-      "image_sha256": "028c836169e6453963eeb84c43f2c9014c0941720b2b46973b49bca35260c377",
+      "image_sha256": "056f840ff56b930118aa677273fedb8e1c7d61f6efe33c4643b4dc3f90d97db4",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-arctic-day-150": {
@@ -5627,9 +5627,9 @@
         "theme": "arctic-day",
         "width": 1440
       },
-      "image_sha256": "07f2aa2dddf3c7cabef6f858a39b09d55ec3b0c37a3fbc9edd0795d674eb45f1",
+      "image_sha256": "c114585d34eb718c449bcb6c1eba976cc3c1887000bac0a3a8ec4385733a0aa4",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-arctic-day-175": {
@@ -5681,9 +5681,9 @@
         "theme": "arctic-day",
         "width": 840
       },
-      "image_sha256": "5e830600171c1b1daf67138de2f7968485b2b5a63e0abc9ace21965bec13109b",
+      "image_sha256": "e94a10ae78304d97662a6c054a855b5dcc7388d86c052bc068d3bac7194f0f5b",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-arctic-day-200": {
@@ -5735,9 +5735,9 @@
         "theme": "arctic-day",
         "width": 1920
       },
-      "image_sha256": "087636553fbff2242b25b24e529ba588aa10bca8df4ead38c7bc63e83b71998e",
+      "image_sha256": "617907b79974b491d45a4531189742da5d70e0505d93639c61f4b97cd0de2b48",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-arctic-glass-100": {
@@ -5789,9 +5789,9 @@
         "theme": "arctic-glass",
         "width": 960
       },
-      "image_sha256": "6538e8cd2089914acd4152e553d90fd148106e723ee98c50b38a8c898d5f84f4",
+      "image_sha256": "90fa742798f2d21dc41bf80412b16e7c524b92301798c16d84409969b84a70a9",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-arctic-glass-125": {
@@ -5843,9 +5843,9 @@
         "theme": "arctic-glass",
         "width": 1200
       },
-      "image_sha256": "9221167ecebcfadf44276150153af4245277a91e3bbb9b0373f650c4a0f2e09b",
+      "image_sha256": "2676ec6893927a079ce3674b8b03eb47a53b8c1d3b120b9fa9c62f7e6ce97da1",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-arctic-glass-150": {
@@ -5897,9 +5897,9 @@
         "theme": "arctic-glass",
         "width": 1440
       },
-      "image_sha256": "8cd88f399d451bda467ac2cf610e451c9082b04ef86c805d3f886294af6a5ba8",
+      "image_sha256": "867a13e7df68afa78f3a4dcecf6b2362053096a042d9aa57e6ca1f8750b9fcea",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-arctic-glass-175": {
@@ -5951,9 +5951,9 @@
         "theme": "arctic-glass",
         "width": 840
       },
-      "image_sha256": "4f25f4cc1d7f47fb9602d9020c30acd62e64366ec94d7f485d0a2f8a918df6ac",
+      "image_sha256": "dffb9e3e81892e824b37868830639dcf99cfbb5b3e279989eb0c4f312cc9621f",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-arctic-glass-200": {
@@ -6005,9 +6005,9 @@
         "theme": "arctic-glass",
         "width": 1920
       },
-      "image_sha256": "25f7c8657179e3f607ff2cb11788212b804c350eaa547819572a8fde85847663",
+      "image_sha256": "1f148eb6f5b2e58db5a1b8c7e3b3a049123ec338576e8aae8315dcec882d0616",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-aurora-night-100": {
@@ -6059,9 +6059,9 @@
         "theme": "aurora-night",
         "width": 960
       },
-      "image_sha256": "19ab259f055b0d6bda038394adc9d3fdb83cbb71c9b33e1308fb3e772528b024",
+      "image_sha256": "d3f54b03ddd2428effa5d9ece588c7d1a1be3c8c8f0cc87fa9df654ed073f7b2",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-aurora-night-125": {
@@ -6113,9 +6113,9 @@
         "theme": "aurora-night",
         "width": 1200
       },
-      "image_sha256": "6db70e38c090f0f20d538752b3913051e8110b0b1e7fd3148a5a99698549f8c2",
+      "image_sha256": "b6d3d01d5a5d0464a6fd650321530ac5cdfdc49772b9f441730aa6caee32966c",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-aurora-night-150": {
@@ -6167,9 +6167,9 @@
         "theme": "aurora-night",
         "width": 1440
       },
-      "image_sha256": "8fbddb1d8a80649f5aeba5ffdfc060a58149f84c92fc1533eb3ce9a37b46be56",
+      "image_sha256": "2a6f7259aaf5f3c44c79105be14d1929081a27c56f0c4d4cae9c2bc26c053b6d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-aurora-night-175": {
@@ -6221,9 +6221,9 @@
         "theme": "aurora-night",
         "width": 840
       },
-      "image_sha256": "9466cc707cd706087224f437c4f4abad231a75da4bc767b27cc0d4eabdc4c41e",
+      "image_sha256": "583b23caac4397b31e0d3b9e4898826117297f59b6e38b36127c9964452f944c",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-aurora-night-200": {
@@ -6275,9 +6275,9 @@
         "theme": "aurora-night",
         "width": 1920
       },
-      "image_sha256": "c269cad61bdfa19447fe414bb2d233989a476f8e93683b739575645eab6d123b",
+      "image_sha256": "865c955ab3d15eb31a0b1a7f97f12204c72ce0e500ac31f2d8efd9ae2bb6e941",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-forest-operator-100": {
@@ -6329,9 +6329,9 @@
         "theme": "forest-operator",
         "width": 960
       },
-      "image_sha256": "160f0dd912e5f08965e7bb314e49d7609908e35c010e5d501585e6ba5de21de3",
+      "image_sha256": "85a96763128b421216e939e29873aeececc6f63e222acdf1eb0891655dd7aca6",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-forest-operator-125": {
@@ -6383,9 +6383,9 @@
         "theme": "forest-operator",
         "width": 1200
       },
-      "image_sha256": "1a06043b055741e9d756654031831cb03801c46b6c51eca85fd75fd688a0d016",
+      "image_sha256": "63738c379f394e17b38ff898e63baf3f523d6f5405badb47b738ddddb6374765",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-forest-operator-150": {
@@ -6437,9 +6437,9 @@
         "theme": "forest-operator",
         "width": 1440
       },
-      "image_sha256": "0d0813c2ecdbf07fe71bcb02b97cc92682a9b5b30927bd1c1b0c1a65ad19cf1f",
+      "image_sha256": "a94fcf381dff3a01d16ad8f0ca43f6c0004fb44b74c1d1a26f1e4105ed207428",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-forest-operator-175": {
@@ -6491,9 +6491,9 @@
         "theme": "forest-operator",
         "width": 840
       },
-      "image_sha256": "d2edb44c1b839d0028810e31c909f7ca938ebbe693ecbe6ccf48e96fd5e559d6",
+      "image_sha256": "cf96fd216d0981f42238c44b08a312e62aad753c5833a47325b91aba2143400f",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-forest-operator-200": {
@@ -6545,9 +6545,9 @@
         "theme": "forest-operator",
         "width": 1920
       },
-      "image_sha256": "8d568ee3a4904fac510a52dcc5eca7b879c3b1c8f716c7b96a606ba2fa631293",
+      "image_sha256": "0fdfcfd2af5d1147c56ff9563f2654cd1d90909e77e5d3373766df064c357482",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-solar-dusk-100": {
@@ -6599,9 +6599,9 @@
         "theme": "solar-dusk",
         "width": 960
       },
-      "image_sha256": "ffb595bac1e1bfcf9ad1cc0b8f6092cb3b9f10a6e23213c37e563833226086b2",
+      "image_sha256": "58d9c4db47f614682bbfb3c97e29b3e23fc4f21b0fc55fd3cf43c28a64ca1d24",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-solar-dusk-125": {
@@ -6653,9 +6653,9 @@
         "theme": "solar-dusk",
         "width": 1200
       },
-      "image_sha256": "13ad71c21203d4ae44ae27da8aa1a206d088dde99746d634033ce10e5d61b24c",
+      "image_sha256": "ada099c3cbb4dd3ade1c47e9e070427eda3582cd84a5352d1735871f83c5884f",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-solar-dusk-150": {
@@ -6707,9 +6707,9 @@
         "theme": "solar-dusk",
         "width": 1440
       },
-      "image_sha256": "c765dc7bf1885249a2f7a4ff5a393a78b78cb86101855081b83572ed311c0683",
+      "image_sha256": "aa77e8ef0e4f420994cad70fc03f8455b3b30c4a52042574b9f681493b737cf0",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-solar-dusk-175": {
@@ -6761,9 +6761,9 @@
         "theme": "solar-dusk",
         "width": 840
       },
-      "image_sha256": "f47b040665dba23170ad8733714a77e58ce0437285ddc6f9e5fd20f44d38e96b",
+      "image_sha256": "eec8f2154932448892dd0e73259e12a6136bba6941518954b8e0af0a5d43da0a",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-fonts-solar-dusk-200": {
@@ -6815,9 +6815,9 @@
         "theme": "solar-dusk",
         "width": 1920
       },
-      "image_sha256": "8f5667c502bda70c4a6013f7a8f0a2ea8050af25aad3819d3f37520e533455bd",
+      "image_sha256": "8a36245f4f1af111a4438af326ce95314c2cc7bddc099ee03a5472d7751497b9",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-arctic-day-100": {
@@ -6869,9 +6869,9 @@
         "theme": "arctic-day",
         "width": 960
       },
-      "image_sha256": "0f47a4f8199fdb7792657d75b2107acba40c397e73aa5dc3b911817af9cd2402",
+      "image_sha256": "fcac254716ecc861f7e3b6b325ad94c37bcf4471983005d86fd98947ae46ba06",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-arctic-day-125": {
@@ -6923,9 +6923,9 @@
         "theme": "arctic-day",
         "width": 1200
       },
-      "image_sha256": "e3ded47975b59207ff941db71c27c7056784e997374a27458a968751413d3c0b",
+      "image_sha256": "a4c58a8e92fb3ea42f3bb817318243301093e519eeba0309a5890a4e219f3772",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-arctic-day-150": {
@@ -6977,9 +6977,9 @@
         "theme": "arctic-day",
         "width": 1440
       },
-      "image_sha256": "cc3abba99bb8f009b90c9bcd8065ca0f51f940a8aa3780d8c905522dac06f62c",
+      "image_sha256": "b1c87ebe79393320b055a40fe52735c5e499aa4b768d7b3b0aae28d04e36d6b2",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-arctic-day-175": {
@@ -7031,9 +7031,9 @@
         "theme": "arctic-day",
         "width": 840
       },
-      "image_sha256": "8b6f03c59155ae4ee9fb11d89530b53aad13ba49d81a008ae1c0c68f4837dd81",
+      "image_sha256": "7ba03040494982965d75a5d993eb0c10b028a13e301dc25941046a89b3abe2cc",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-arctic-day-200": {
@@ -7085,9 +7085,9 @@
         "theme": "arctic-day",
         "width": 1920
       },
-      "image_sha256": "35f42d9d5773386c6f9620311377715f32aad94d3ce1bc97915adc1759ca417f",
+      "image_sha256": "7da1c314834681faed994ebed33e200be584a28758924cb821e800975cdee046",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-arctic-glass-100": {
@@ -7139,9 +7139,9 @@
         "theme": "arctic-glass",
         "width": 960
       },
-      "image_sha256": "46bf39594b32b355c6d327064b8798164c4313950a19843693930031ab097dd4",
+      "image_sha256": "20f7da46f52b444a7ed7c5677e958efa2cff0c386f6c05ed7211e06daf08dcd4",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-arctic-glass-125": {
@@ -7193,9 +7193,9 @@
         "theme": "arctic-glass",
         "width": 1200
       },
-      "image_sha256": "e87541fcf13241f9bf8679277674aa6da7c62e9b33cf5b82b0fe022ee9c7f263",
+      "image_sha256": "0d7854276d9b5110491f444a3e4036ceb69dd2b3850568d729ef3904f6e91e3f",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-arctic-glass-150": {
@@ -7247,9 +7247,9 @@
         "theme": "arctic-glass",
         "width": 1440
       },
-      "image_sha256": "55f73c359894110413ab7cb9f8026dcded7c8addc252e0e725f316e1fec6230f",
+      "image_sha256": "23adb0a3fef8122e03039f08acb76327db06dd66e5b87b2e0285b289361d6a1c",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-arctic-glass-175": {
@@ -7301,9 +7301,9 @@
         "theme": "arctic-glass",
         "width": 840
       },
-      "image_sha256": "72fd9653e172adb9d19eb84b630ed350f8a26480494c5c613d7ca61731be69ec",
+      "image_sha256": "8d938ae64747df9b452020817044df2ff8e5f83c0c934f0117ad57e94a56342f",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-arctic-glass-200": {
@@ -7355,9 +7355,9 @@
         "theme": "arctic-glass",
         "width": 1920
       },
-      "image_sha256": "b4a4c2fc91043fd8857626d0b7c0daa9d98fe504411077c1afaba1abe3105a16",
+      "image_sha256": "e69e00e647d09509d2d9d7ae3158a04ade9af0291ae29f86d4aa32482f8f1c7e",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-aurora-night-100": {
@@ -7409,9 +7409,9 @@
         "theme": "aurora-night",
         "width": 960
       },
-      "image_sha256": "07e5deec1b1f562bd69f643cc0d7a2eb7fbaaf898e3f9b9dc3fb3a13c7b5fb94",
+      "image_sha256": "233e970d4462a90590d50f028e0e28989bf00fba2efb9ca83632dffa98c7d388",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-aurora-night-125": {
@@ -7463,9 +7463,9 @@
         "theme": "aurora-night",
         "width": 1200
       },
-      "image_sha256": "34b7056f658dfc2d1fabf13d07fb163260657c19ff52cec56a5a1a34a803d3a7",
+      "image_sha256": "727c4387c2a8a292654d30c6d7b37e70df83c9eb3d30a0adcb35e08d61767bea",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-aurora-night-150": {
@@ -7517,9 +7517,9 @@
         "theme": "aurora-night",
         "width": 1440
       },
-      "image_sha256": "a680974f2cf0430088e264e8ff3ce4151f56e5d5b03c1148ccda7854a78d3536",
+      "image_sha256": "0edc6698587a3300ffdc5ade032002e45510a43b80035960765bb0c8b36fea1a",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-aurora-night-175": {
@@ -7571,9 +7571,9 @@
         "theme": "aurora-night",
         "width": 840
       },
-      "image_sha256": "d79d71733b6083948623820467c1ea544506fae9f2d51b69b226c1af920d64f6",
+      "image_sha256": "7f678bb79def0a86348af0043f60735bcb95140638e9faf7314dbb2504db970c",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-aurora-night-200": {
@@ -7625,9 +7625,9 @@
         "theme": "aurora-night",
         "width": 1920
       },
-      "image_sha256": "2d19278dcc1d5fefd8b05e3add97dd0aecf7d5dadc81301b8c52a5eccac84b19",
+      "image_sha256": "a235b4e38171e638cc0c0b7ca4b14d823f7e6c534bd0f287bfba1d47a953ea63",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-forest-operator-100": {
@@ -7679,9 +7679,9 @@
         "theme": "forest-operator",
         "width": 960
       },
-      "image_sha256": "e3aab70d0aed84e2f063fc8451d4f73ea3aeb454f34715c578f1ac07ff84d51a",
+      "image_sha256": "4ca3b32f499e2ad269d958403e52a5b6c292efb6827e7d1146034bc6798f2210",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-forest-operator-125": {
@@ -7733,9 +7733,9 @@
         "theme": "forest-operator",
         "width": 1200
       },
-      "image_sha256": "d81064804ec05e538da09ea9703c8be774a270e3d48616116211e0be1667b9ff",
+      "image_sha256": "7f00094eeb110079ebff1353aa5db7680735f903837887c248e4d86e78df71f5",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-forest-operator-150": {
@@ -7787,9 +7787,9 @@
         "theme": "forest-operator",
         "width": 1440
       },
-      "image_sha256": "eeb95ca38f637940b831dc412a5e753a610c2717b637040223fa7399679e752e",
+      "image_sha256": "94969d1839c3886f19d904f7beadc2df0ee3d84e0d528fda01986b59da186321",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-forest-operator-175": {
@@ -7841,9 +7841,9 @@
         "theme": "forest-operator",
         "width": 840
       },
-      "image_sha256": "daa704dbd06e308847932c80f5e325084f7a777168b3ac7902b99e0e6bc0d07d",
+      "image_sha256": "ed891848a67869ec878c56479f0c6b6e8a1a6ceefd92958265606638de2f35fe",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-forest-operator-200": {
@@ -7895,9 +7895,9 @@
         "theme": "forest-operator",
         "width": 1920
       },
-      "image_sha256": "c1117559bef7fc82c4f37a1b2fbe098138989ba342ed0339720200ea7c322e06",
+      "image_sha256": "19bcf763cb3bec491a386e1130a8d2c940038d88f52cffdc269b7d1b2d5c3258",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-solar-dusk-100": {
@@ -7949,9 +7949,9 @@
         "theme": "solar-dusk",
         "width": 960
       },
-      "image_sha256": "88e39eeeec44f506f1c634ad83d0abdcef99f93ebc5c8ce59b8c12fec85fd3c4",
+      "image_sha256": "872f91d20e5c9dd40eec989f5973f240d5f9fcfcbb2bd9d66287cc9123327bf4",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-solar-dusk-125": {
@@ -8003,9 +8003,9 @@
         "theme": "solar-dusk",
         "width": 1200
       },
-      "image_sha256": "c5f99917490e1497443924bdb3c7949134ddf958ed454274d50b70e52836ac3c",
+      "image_sha256": "7139f2703847e022997d4b6902f27e3b54732dbbefab12dc0e8c3f05780d138e",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-solar-dusk-150": {
@@ -8057,9 +8057,9 @@
         "theme": "solar-dusk",
         "width": 1440
       },
-      "image_sha256": "f95b429d3cf4533ace500d0032b689e6980669e1ff3e1baf10c558b7075d62aa",
+      "image_sha256": "b4dc167357c41b76777d5c5cd4b1c7b8428257af2ea77cf89ccb5d06f4e3a8ea",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-solar-dusk-175": {
@@ -8111,9 +8111,9 @@
         "theme": "solar-dusk",
         "width": 840
       },
-      "image_sha256": "398fcbd32e83b2154a530f7b6f94bb434aa37b78ebc4f5510413f817ff4cfcdf",
+      "image_sha256": "222118a85b94bb9f1771103177996e75495443141fb389c3905f9af5d411764d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-footer-solar-dusk-200": {
@@ -8165,9 +8165,1359 @@
         "theme": "solar-dusk",
         "width": 1920
       },
-      "image_sha256": "136f94dfd8c300b6190bd8ff63936325873ec96b7983542c4b773731d1558170",
+      "image_sha256": "738038f996d976d5b89c15c4739e70ceaa7a2c7bf038f736537c9cf10b95962b",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-arctic-day-100": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            16000,
+            16000,
+            928000,
+            708000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            960000,
+            740000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "11f202b717408714002dc4231764bfd6652e082f57a4aa9bda945aee2f19baba",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 740,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1000,
+        "scenario": "settings-full-settings-arctic-day-100",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "arctic-day",
+        "width": 960
+      },
+      "image_sha256": "d43420edf3e4002fb061215afd2afc45ed0dbfca85fcf41b193be19293c5e28f",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-arctic-day-125": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            20000,
+            20000,
+            1160000,
+            885000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            1200000,
+            925000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "1251e6031ee78a7e544c5a7c1f8308677cf3cae2886c7fd5ba76f696eed32250",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 925,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1250,
+        "scenario": "settings-full-settings-arctic-day-125",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "arctic-day",
+        "width": 1200
+      },
+      "image_sha256": "48c4d66f84c6293baf7f872f4c62c7f6015a799e46a7bc43e60aed289694e483",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-arctic-day-150": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            24000,
+            24000,
+            1392000,
+            1062000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            1440000,
+            1110000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "c93f30c9f5efa21de01d246d21466b7ba7b91b19e39ea22f7cae495eb864a449",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 1110,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1500,
+        "scenario": "settings-full-settings-arctic-day-150",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "arctic-day",
+        "width": 1440
+      },
+      "image_sha256": "ca15e62fd7f477b9d1cd35b1eb7543c811a0be0bd80ee9f50a40f5f62ddcdea2",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-arctic-day-175": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            28000,
+            28000,
+            784000,
+            1064000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            840000,
+            1120000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "9f869c4a943420bb4e8e13a498a8a53d28d4a9d30fe39befed29739b09fc83a3",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 1120,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1750,
+        "scenario": "settings-full-settings-arctic-day-175",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "arctic-day",
+        "width": 840
+      },
+      "image_sha256": "ef584b01fcd78ed0c5396678cf18227e7c54137a417e16e20f5beed6f90523f3",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-arctic-day-200": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            32000,
+            32000,
+            1856000,
+            1416000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            1920000,
+            1480000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "9ed81d1bfc060b55bf9b859814ae8083b18e1070d0184c81ccc1099f61648a0f",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 1480,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 2000,
+        "scenario": "settings-full-settings-arctic-day-200",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "arctic-day",
+        "width": 1920
+      },
+      "image_sha256": "171b16a36025b8698174b408f6dd3a7b3bfc603ba11cd79b29765edc5c8a670a",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-arctic-glass-100": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            16000,
+            16000,
+            928000,
+            708000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            960000,
+            740000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "0197e7cbabfc2739d1ea8c382d7b7dfb04aa14629a8a9c750758e192c379d149",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 740,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1000,
+        "scenario": "settings-full-settings-arctic-glass-100",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "arctic-glass",
+        "width": 960
+      },
+      "image_sha256": "85434f2f0146b6b2f0ffdcf68d1e650e2166c749719244b3b24efaf55802839e",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-arctic-glass-125": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            20000,
+            20000,
+            1160000,
+            885000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            1200000,
+            925000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "d9b7f3550ecc54f566d8d6e22ef7df510916d009a89c9ef2f6c406e3328ba1ed",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 925,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1250,
+        "scenario": "settings-full-settings-arctic-glass-125",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "arctic-glass",
+        "width": 1200
+      },
+      "image_sha256": "beb05634d39dfc7473145e88de5eba6f902fdabd5e8808ae4f26d6e2b7744f80",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-arctic-glass-150": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            24000,
+            24000,
+            1392000,
+            1062000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            1440000,
+            1110000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "fdb1973ef8c98aabcb26e65d8fd9e5e12f67c15495033c534214a8eb31544043",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 1110,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1500,
+        "scenario": "settings-full-settings-arctic-glass-150",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "arctic-glass",
+        "width": 1440
+      },
+      "image_sha256": "e3639b324f6d584c2e4ad2e638ea4d6d85b5a6759cc65da1b1450a4c1dd2f870",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-arctic-glass-175": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            28000,
+            28000,
+            784000,
+            1064000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            840000,
+            1120000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "df45cd15c648fbc140aee36c27d127ad8d2c6017b8482c784ca23a1f9d286f91",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 1120,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1750,
+        "scenario": "settings-full-settings-arctic-glass-175",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "arctic-glass",
+        "width": 840
+      },
+      "image_sha256": "c6ceccf02a7de6f9929e3574a2d402ba586e6e23a2d6c362303df20630bb04e7",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-arctic-glass-200": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            32000,
+            32000,
+            1856000,
+            1416000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            1920000,
+            1480000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "07ba7df39810cea65daf8524c1fa1fc58e3d40510f6c1972921f380d01727b87",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 1480,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 2000,
+        "scenario": "settings-full-settings-arctic-glass-200",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "arctic-glass",
+        "width": 1920
+      },
+      "image_sha256": "9e9e5e9d80bc836b50d485a30f18de496e946059e850a47890084c0b1bd1e5cf",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-aurora-night-100": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            16000,
+            16000,
+            928000,
+            708000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            960000,
+            740000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "6da42af9616e0c76d3f6dd262f69e0d805c13dc4a4f87b248ea912b2e07480cf",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 740,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1000,
+        "scenario": "settings-full-settings-aurora-night-100",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "aurora-night",
+        "width": 960
+      },
+      "image_sha256": "14be145550ca10ef03647e893ecc65dfd66104bf697cb477b6b33bc8e4141edd",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-aurora-night-125": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            20000,
+            20000,
+            1160000,
+            885000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            1200000,
+            925000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "afe9ddd1c57bc54e3e4e9fcad82f99c59f5196e3541053d02755976cc598101d",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 925,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1250,
+        "scenario": "settings-full-settings-aurora-night-125",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "aurora-night",
+        "width": 1200
+      },
+      "image_sha256": "b229b19388d1b2c38310cf3f48775760895c0f2c24d1ddfe3de80fb4ab3627a4",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-aurora-night-150": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            24000,
+            24000,
+            1392000,
+            1062000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            1440000,
+            1110000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "49cb8dfdc3462670049694377ff3d1088dbea02a3279b21954962a923231a632",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 1110,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1500,
+        "scenario": "settings-full-settings-aurora-night-150",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "aurora-night",
+        "width": 1440
+      },
+      "image_sha256": "d1562e375fc5a864aed5e9d363525f1bcccf44f8b962495cd20e52404227bec5",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-aurora-night-175": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            28000,
+            28000,
+            784000,
+            1064000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            840000,
+            1120000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "4aded5dd1cad41cb721c10d1e2f02699111c2a8ad533f9fdfddc5345792c3136",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 1120,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1750,
+        "scenario": "settings-full-settings-aurora-night-175",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "aurora-night",
+        "width": 840
+      },
+      "image_sha256": "3f4cd5ce88cab9db065f178b8b0044003e148cb89d84d800de9d27e9fc889fa6",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-aurora-night-200": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            32000,
+            32000,
+            1856000,
+            1416000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            1920000,
+            1480000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "d3e1e2c067d8ae9686c7290c843c71e8da2a2e844a26f2c0219673b987cad0cf",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 1480,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 2000,
+        "scenario": "settings-full-settings-aurora-night-200",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "aurora-night",
+        "width": 1920
+      },
+      "image_sha256": "e86edc5b4c597839a9be9a847e71cb0de36d606caafabf04abb2a285264b1ec1",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-forest-operator-100": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            16000,
+            16000,
+            928000,
+            708000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            960000,
+            740000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "081a499d01914ac4a86ba0ffe2ff07af29f8a1838469349766ecd3b43b642042",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 740,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1000,
+        "scenario": "settings-full-settings-forest-operator-100",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "forest-operator",
+        "width": 960
+      },
+      "image_sha256": "8a9d11a61b6d449b2b69169444c43729389fc36794b19009b7f0e73d0c960cb4",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-forest-operator-125": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            20000,
+            20000,
+            1160000,
+            885000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            1200000,
+            925000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "876fe8248ee8a92adebd42adf9d227d0656129e27fd2e72e7da75f7b79c35afa",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 925,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1250,
+        "scenario": "settings-full-settings-forest-operator-125",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "forest-operator",
+        "width": 1200
+      },
+      "image_sha256": "a7e2936469b5d58b2f81f3f295ec8f0546d6fbfd1a41a2773d53834bfa096fc7",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-forest-operator-150": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            24000,
+            24000,
+            1392000,
+            1062000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            1440000,
+            1110000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "b164401f6539b31659f710a36004e6fb3be6610b6a6a986b9414222c8ef20625",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 1110,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1500,
+        "scenario": "settings-full-settings-forest-operator-150",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "forest-operator",
+        "width": 1440
+      },
+      "image_sha256": "3efbc708ba83b22d846b2a2bd5d882d98b008b24be2daa234f196b7990ceda5e",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-forest-operator-175": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            28000,
+            28000,
+            784000,
+            1064000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            840000,
+            1120000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "b9051b62325a192385d26c1250ea0cd0c6d42cdcbda2479c8b2e356c55cb341e",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 1120,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1750,
+        "scenario": "settings-full-settings-forest-operator-175",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "forest-operator",
+        "width": 840
+      },
+      "image_sha256": "162eff7cc838c185fa55916a8362e5aba837764832565f4797701e91bb8e2a77",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-forest-operator-200": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            32000,
+            32000,
+            1856000,
+            1416000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            1920000,
+            1480000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "84566ae5f5cffcbba383aa8dcd134e11ed2056c0c509771d2ecb188dbc809053",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 1480,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 2000,
+        "scenario": "settings-full-settings-forest-operator-200",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "forest-operator",
+        "width": 1920
+      },
+      "image_sha256": "da5ef3bef4db2256c8e5875be9168438cc9f4bee1d194fbb8f04091f794022f9",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-solar-dusk-100": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            16000,
+            16000,
+            928000,
+            708000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            960000,
+            740000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "6a8de514bf3f7785d9f137aff8abf2076e0403823b5c00ce020c52b0f9a61d1d",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 740,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1000,
+        "scenario": "settings-full-settings-solar-dusk-100",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "solar-dusk",
+        "width": 960
+      },
+      "image_sha256": "49003c7ff770436108913b4fb3a02c5e25af703a3e0c5443a9531ac60d9158a5",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-solar-dusk-125": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            20000,
+            20000,
+            1160000,
+            885000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            1200000,
+            925000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "93e09b3e5b01cde4f5396e2736f57d265759d15d0ea66695141172a9bd7888dd",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 925,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1250,
+        "scenario": "settings-full-settings-solar-dusk-125",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "solar-dusk",
+        "width": 1200
+      },
+      "image_sha256": "8309ef87c8da762b2f731f4d0422aec524e5527fe7da7168ce05a5a9bec02f15",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-solar-dusk-150": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            24000,
+            24000,
+            1392000,
+            1062000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            1440000,
+            1110000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "e02a87da50fd4d7d62bcd269c2b8919b75a5d3e1cf6e06030000f23c89d7f1bf",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 1110,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1500,
+        "scenario": "settings-full-settings-solar-dusk-150",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "solar-dusk",
+        "width": 1440
+      },
+      "image_sha256": "cc4e310cf708973f40cb152d73b09b7871532ba532071e79174182fb5abd7f31",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-solar-dusk-175": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            28000,
+            28000,
+            784000,
+            1064000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            840000,
+            1120000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "21804cc0394126db02f22dffe0daed598ece77be941e59c9e044d702859f37d1",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 1120,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 1750,
+        "scenario": "settings-full-settings-solar-dusk-175",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "solar-dusk",
+        "width": 840
+      },
+      "image_sha256": "fa7df80a2b0766281af8feea5783e8e38139fb18bf0af7e5ad6e66915f988fd3",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
+      "source_dirty": false
+    },
+    "settings-full-settings-solar-dusk-200": {
+      "frame_generation": 1,
+      "geometry": [
+        {
+          "id": "card",
+          "rect_milli": [
+            32000,
+            32000,
+            1856000,
+            1416000
+          ]
+        },
+        {
+          "id": "viewport",
+          "rect_milli": [
+            0,
+            0,
+            1920000,
+            1480000
+          ]
+        }
+      ],
+      "identity": {
+        "architecture": "x86_64",
+        "configuration_sha256": "a0e0fbfdd1098cb63d0b90b5079f72df8d2c3abb3c28fb998d8328da06374b17",
+        "display_server": "controlled",
+        "driver": "cpu-v1",
+        "evidence_kind": "controlled-raster",
+        "fixture": "visual-quality-v1",
+        "font_hashes": [
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e",
+          "16d00fae9fc289cda8c9ee4c578ccb4d410f3fa54ec0e5a3901c059b0248a970",
+          "95fb04b5aaae44c4cb698cfd1b62bddc44e899845f3c494c342d2b0bbf19572e"
+        ],
+        "font_size_milli": 16000,
+        "gpu": "software",
+        "height": 1480,
+        "locale": "fixed-fixture",
+        "os_version": "10.0.20348",
+        "platform": "windows",
+        "renderer": "cpu",
+        "scale_milli": 2000,
+        "scenario": "settings-full-settings-solar-dusk-200",
+        "shell": "fixture",
+        "shell_version": "1",
+        "theme": "solar-dusk",
+        "width": 1920
+      },
+      "image_sha256": "5710123e8353fd5acece70360cbf5be7a8a56c1babfff15538b676381bb6036b",
+      "schema": 1,
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-arctic-day-100": {
@@ -8219,9 +9569,9 @@
         "theme": "arctic-day",
         "width": 960
       },
-      "image_sha256": "1eaec0576112b692075281bd9f3c48651188eee81eb6e44583d6f8961a59b2d9",
+      "image_sha256": "a39636b2426427fda442717626c69d150b507fdfcdb8688bf6c25a2ac7ef79f6",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-arctic-day-125": {
@@ -8273,9 +9623,9 @@
         "theme": "arctic-day",
         "width": 1200
       },
-      "image_sha256": "8081e1c60cff58200e9e5ce646a1c8c89932cc689c453a9116c980a592b044e1",
+      "image_sha256": "02afbf3d6ef9b29911db4c4c2ca700958c080fa1d1a82c15f0981c93088e03b9",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-arctic-day-150": {
@@ -8327,9 +9677,9 @@
         "theme": "arctic-day",
         "width": 1440
       },
-      "image_sha256": "050e0956dbb4ad93cb8bb610af479725f3d7b87853bc41216b1ffdc0345e5c9e",
+      "image_sha256": "1ff0d2bec120cf2f0573dd45d99b9d1a0eac3d21de240d55d57e2739c3151611",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-arctic-day-175": {
@@ -8381,9 +9731,9 @@
         "theme": "arctic-day",
         "width": 840
       },
-      "image_sha256": "6684ab3c291b37c2e376bcf0c4f02557c4b0a4a889a012685debc138bac9675b",
+      "image_sha256": "cc7f1b8c022a6347960bd8343e3ade99bc0c05ea9b62a66b5d06005e2bcb1ca5",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-arctic-day-200": {
@@ -8435,9 +9785,9 @@
         "theme": "arctic-day",
         "width": 1920
       },
-      "image_sha256": "2e6f11ac7634f14d7aebfa4922f6a9ebc5f8e92e4f676d6f63daf27c9649570c",
+      "image_sha256": "53249863e542ff16910e4e151bfb40104871e1da767cf527e7f99856efba3793",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-arctic-glass-100": {
@@ -8489,9 +9839,9 @@
         "theme": "arctic-glass",
         "width": 960
       },
-      "image_sha256": "a9801f3fc49f61d1be1c9e6427b0dbaba90c6e5b074e8efe728b3d9efae7ad80",
+      "image_sha256": "4b1ffaf1e8c0754e43ed5f2a18c6a495550c3242eb3c00059c47ca0b901f6c7e",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-arctic-glass-125": {
@@ -8543,9 +9893,9 @@
         "theme": "arctic-glass",
         "width": 1200
       },
-      "image_sha256": "23b0aa0fabc38b62db99670b18e2286695783315bf21be8284922b9294843edf",
+      "image_sha256": "44dd10bfba9f7d892c21ea49152d61e8835d44d6c39fcae34abd904b055fae2b",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-arctic-glass-150": {
@@ -8597,9 +9947,9 @@
         "theme": "arctic-glass",
         "width": 1440
       },
-      "image_sha256": "ba319894c18a4c82ee208b51a48502a903ec07cfa22222457da7362fd840e7c0",
+      "image_sha256": "6d16e37af66204611f3393148365edf500287bf854d21940bad5e0b694963eb4",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-arctic-glass-175": {
@@ -8651,9 +10001,9 @@
         "theme": "arctic-glass",
         "width": 840
       },
-      "image_sha256": "f6c80cf870d957a9dd869a9e5c03d7615bd268ab1a56a68a2cad013ba7c5324d",
+      "image_sha256": "beeb8056046c28e1560504aad51019986ac7fc921415337738095e20a5bd5729",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-arctic-glass-200": {
@@ -8705,9 +10055,9 @@
         "theme": "arctic-glass",
         "width": 1920
       },
-      "image_sha256": "88a3d453d6015d6494ecbb9d1835d73d15f888068c4aba0bdf8e8b798ad61c5d",
+      "image_sha256": "b8180758884b2d50af5f37b6215532caf560efffa6e601a94ef84833a6f9e6f1",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-aurora-night-100": {
@@ -8759,9 +10109,9 @@
         "theme": "aurora-night",
         "width": 960
       },
-      "image_sha256": "eb9520f4b74145d9a02652c8fed110b9ac43687d033a2ec671637eb1313798bb",
+      "image_sha256": "d639e1aff0929922ad772b817f03df81fb58a6239e25d6f0d58079716e7ff7c7",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-aurora-night-125": {
@@ -8813,9 +10163,9 @@
         "theme": "aurora-night",
         "width": 1200
       },
-      "image_sha256": "3939a79f8ce74f227ad3482e3049a40b5e1bebced3b004726154e148b46ae980",
+      "image_sha256": "bb36df92882177fce0a3f67487bbf782537ccf8bd7ed4305ad5f84c62bb2d5f3",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-aurora-night-150": {
@@ -8867,9 +10217,9 @@
         "theme": "aurora-night",
         "width": 1440
       },
-      "image_sha256": "4f95e715cc139666d88eea31fc48460be2de944875da6a7f1a323cf4dc979ad5",
+      "image_sha256": "41c45fc87d2f774742e8e5abc62333f6c7e7112048400d4cc6c552fb42e2e637",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-aurora-night-175": {
@@ -8921,9 +10271,9 @@
         "theme": "aurora-night",
         "width": 840
       },
-      "image_sha256": "a50e5766d3de7d1d1dade71bf9a6c7513cde441fdb0001a557cb91a413a155c6",
+      "image_sha256": "c9862a7f66dd87696ec74420d4c4e43b6aff58eecff457b491427ed89d124eb2",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-aurora-night-200": {
@@ -8975,9 +10325,9 @@
         "theme": "aurora-night",
         "width": 1920
       },
-      "image_sha256": "34e3a3d59da9c485c476fa34ee940b7a6cb79d99fc0acbb274499a2ad53a0f80",
+      "image_sha256": "5dfaca584fdb2a5c021808ce495299b9f5037bf27ee4fa8c36bc96b109970ff3",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-forest-operator-100": {
@@ -9029,9 +10379,9 @@
         "theme": "forest-operator",
         "width": 960
       },
-      "image_sha256": "b7cac92e82941060ad3a9312933215e75dfa519d5b34f247334b99c35e37705c",
+      "image_sha256": "7b509e58a2212b06ad84e7f0ae45ade9db175cb7c344345f3bbfd04495e5e28a",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-forest-operator-125": {
@@ -9083,9 +10433,9 @@
         "theme": "forest-operator",
         "width": 1200
       },
-      "image_sha256": "6a1e0ec27fd469e618a38f91c64037179b35cb652ed016d5e9df2ee4749bfd4f",
+      "image_sha256": "a3549945f57964648f5243af654b0d044c27c38b955f7ee219fb9d14d8e0ff64",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-forest-operator-150": {
@@ -9137,9 +10487,9 @@
         "theme": "forest-operator",
         "width": 1440
       },
-      "image_sha256": "c0f3889fa71f63e90a90d9c2fbf4e72c9ecbdf7add2334a5cd458e39d8c05c6a",
+      "image_sha256": "937d2fde3fb3c55311769784fb992a6d18d2f4782a1a3a7637005e894ce9ff8d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-forest-operator-175": {
@@ -9191,9 +10541,9 @@
         "theme": "forest-operator",
         "width": 840
       },
-      "image_sha256": "91acab1c817ba3f9d51465b4c682e4d52a294d382c80b0ab0f35fe75a694564f",
+      "image_sha256": "ca2b216c873260b7b07a079159eb25e404ca50881eafc081623e52b014ebfc91",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-forest-operator-200": {
@@ -9245,9 +10595,9 @@
         "theme": "forest-operator",
         "width": 1920
       },
-      "image_sha256": "b29ed7a073a3ba9c55a07411773e13e8b93dbb73038135a9191fb507a07d245c",
+      "image_sha256": "4d753cde3deb8620192dbe283e2a536e60057354106ccf98fd0670dc197d3020",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-solar-dusk-100": {
@@ -9299,9 +10649,9 @@
         "theme": "solar-dusk",
         "width": 960
       },
-      "image_sha256": "11ee2e9b7ca04f24e163651cb8117cf613976058cda185347cc7895e728783dc",
+      "image_sha256": "60eeb5ed4e5e499afde39abe389e04e62de19062b453114fe437e9d7456d0b76",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-solar-dusk-125": {
@@ -9353,9 +10703,9 @@
         "theme": "solar-dusk",
         "width": 1200
       },
-      "image_sha256": "bf8b23c660a3f2c1db7820beea171666d44f2c5d7b54f1260bcd3288f57c9ac9",
+      "image_sha256": "979de93d9fdbbce6d7251dada374824c7604f427bb8e0d3e797f3c78e5253406",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-solar-dusk-150": {
@@ -9407,9 +10757,9 @@
         "theme": "solar-dusk",
         "width": 1440
       },
-      "image_sha256": "432f64434dba6d258495024a05f983e42ff36ee653cf11f089aed0a8ba3b5505",
+      "image_sha256": "173f458a074fb4bfee595314e586e51464d50c1bad83c045afacc47e18a2d481",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-solar-dusk-175": {
@@ -9461,9 +10811,9 @@
         "theme": "solar-dusk",
         "width": 840
       },
-      "image_sha256": "d21526037df8390afab6c4c6d99f723e9da7ef165bd94aee0fc8e1734058db9f",
+      "image_sha256": "623461818e69ea6361526630b5667da0c1cda00c6769fe330c0e0bf3a4c2b685",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-header-solar-dusk-200": {
@@ -9515,9 +10865,9 @@
         "theme": "solar-dusk",
         "width": 1920
       },
-      "image_sha256": "49e76c6081dbe90008b7ea971a28405ebc56cb98863cc1dab9edf285c57b4cfa",
+      "image_sha256": "cca211e47ace43f97ac3a5617601d4aae7bf1b448a3b94f0f1e91682e3459100",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-arctic-day-100": {
@@ -9569,9 +10919,9 @@
         "theme": "arctic-day",
         "width": 960
       },
-      "image_sha256": "454f481ce821f080fcdba79f3b44d4398c36f906c0b9d35a5c6e1775a1c498fa",
+      "image_sha256": "e248e35b286b956229ffe6e444bd6069cf9336042de870e8cb4da820cf2c70c3",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-arctic-day-125": {
@@ -9623,9 +10973,9 @@
         "theme": "arctic-day",
         "width": 1200
       },
-      "image_sha256": "c0f732871a84dfc54dcc0e169e3baec2cf5bad66ee2de77ffd47f4c991910982",
+      "image_sha256": "60dee4f8c49da04729c3119e7ff9f8861a72f382e41d8295cc9c9567e17f3bbe",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-arctic-day-150": {
@@ -9677,9 +11027,9 @@
         "theme": "arctic-day",
         "width": 1440
       },
-      "image_sha256": "1ea0b19134971dc2552cb7dc551a61afc9e9a4c569beed88cf9e20c64019d017",
+      "image_sha256": "dbec6d870985f3cb5a89cbaa50fcc7e32679c73c5acff6f1b2a984f55892a399",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-arctic-day-175": {
@@ -9731,9 +11081,9 @@
         "theme": "arctic-day",
         "width": 840
       },
-      "image_sha256": "075de519d6f752e1dfb1381658d7a3598f0e190d206a1842112ae88ec1ac022b",
+      "image_sha256": "13109ff60a1742892601bfb8715bf62b5a1ba16d64dc8467a6ae2c655d6ce8aa",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-arctic-day-200": {
@@ -9785,9 +11135,9 @@
         "theme": "arctic-day",
         "width": 1920
       },
-      "image_sha256": "ae7e52a73c2a4f4d8dc880859f295f48e8d0537c3106187c11a3a657f06bb04c",
+      "image_sha256": "5919202d2017379e2e02e55899e14d033dceb568c9f1923a1d5dd7c33c047f63",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-arctic-glass-100": {
@@ -9839,9 +11189,9 @@
         "theme": "arctic-glass",
         "width": 960
       },
-      "image_sha256": "36522bf9a166f2b660066a52101c50eea332ba4af9eb793d4f22c85bb703baca",
+      "image_sha256": "03f34049a377f3a9e12c405fac6b376ee7b636c3fb0e7acd1c26b7f8a3651f88",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-arctic-glass-125": {
@@ -9893,9 +11243,9 @@
         "theme": "arctic-glass",
         "width": 1200
       },
-      "image_sha256": "979772ee44478387b1acb678b6528e0cb5a7fc140d75ebcc2489fe478886d618",
+      "image_sha256": "7e54b0cac0ff147a7f1c8c12030647cce32e47f6fdeeac2e866d944058843b86",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-arctic-glass-150": {
@@ -9947,9 +11297,9 @@
         "theme": "arctic-glass",
         "width": 1440
       },
-      "image_sha256": "a2010ebd98049fe95bc67c92271d6374771daaec1c245d8c1484bd066c165212",
+      "image_sha256": "3247ad55c0de5a3c904f07bf1048c7debfaa353d8a8c5b2eee46d3aa199013bb",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-arctic-glass-175": {
@@ -10001,9 +11351,9 @@
         "theme": "arctic-glass",
         "width": 840
       },
-      "image_sha256": "675a53b97f21c848eee80fbee0c129c5effd1a64d20c3e785ca65950cce041a0",
+      "image_sha256": "b7be2073fbb569cc92858c9337a4ee11d1ca9cc61ace86d04c2099eaef3e629f",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-arctic-glass-200": {
@@ -10055,9 +11405,9 @@
         "theme": "arctic-glass",
         "width": 1920
       },
-      "image_sha256": "b19512fd1c5d6a573703784058258c039e6555828a6b883e1a58872e8de8cdfb",
+      "image_sha256": "16918ba3cbc24a64598ce099b4f12973c9f8462c79dea02a0b6335f6385180aa",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-aurora-night-100": {
@@ -10109,9 +11459,9 @@
         "theme": "aurora-night",
         "width": 960
       },
-      "image_sha256": "35ac0249f4e91da4fc0fd8e841e0f8d0b0f99bfecd28657e7924fa9fa465d1d6",
+      "image_sha256": "39a56c659956bddc8e0f6fcbba7984a41ba50b9724ef15eae025eef17ad46c98",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-aurora-night-125": {
@@ -10163,9 +11513,9 @@
         "theme": "aurora-night",
         "width": 1200
       },
-      "image_sha256": "18f865c62677af8f0883f10c2274b00b4aba5905599d7b3afcdec869b54706fa",
+      "image_sha256": "778118defa9234dd8f65c38ecac43d7783ff4262a2f7342b17b1e5fe542b005e",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-aurora-night-150": {
@@ -10217,9 +11567,9 @@
         "theme": "aurora-night",
         "width": 1440
       },
-      "image_sha256": "aff693cb437c1b1283a6291fd908aed1f0c0f7fc2e6e0e9996b8f051c2da0936",
+      "image_sha256": "14c84fea141e15ed0fb294c98c68d34dd8259b5c29bde5d95f2426e106ee9f3e",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-aurora-night-175": {
@@ -10271,9 +11621,9 @@
         "theme": "aurora-night",
         "width": 840
       },
-      "image_sha256": "6ab2e3b07a6c6926366d3433b6dbb6530672aaae9cad4fe6d7b41099f7b51616",
+      "image_sha256": "216d39519d893f85bbcbc7992ffd9e7619d8780f581574a9bad383009f175190",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-aurora-night-200": {
@@ -10325,9 +11675,9 @@
         "theme": "aurora-night",
         "width": 1920
       },
-      "image_sha256": "c35135319d7c429615fbf043323b338675c3c121185fb67110c26259cf829d2f",
+      "image_sha256": "34995fb2325be6cee339786fd8659ff64de1ea33e12a30a26e884c1375bdfe0d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-forest-operator-100": {
@@ -10379,9 +11729,9 @@
         "theme": "forest-operator",
         "width": 960
       },
-      "image_sha256": "ac8b45235b4034bc9732bb6abc4b3c777098f03dbc79c5573fd92f0dde380c30",
+      "image_sha256": "af9cae09bc3e7c6fb824419041c28ac2324ac90dbbfc59e99da985a9c9784ffd",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-forest-operator-125": {
@@ -10433,9 +11783,9 @@
         "theme": "forest-operator",
         "width": 1200
       },
-      "image_sha256": "80eeb47af62ffbd01350f5a50824dc3160f7ad16aae09a59c9b38ce4409f454f",
+      "image_sha256": "583043edccc3e4924164be521bb394f42e3b2503267f0000d0c0b5d58db6c90d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-forest-operator-150": {
@@ -10487,9 +11837,9 @@
         "theme": "forest-operator",
         "width": 1440
       },
-      "image_sha256": "b873c2eb2160505f4e32d0dbdf2a7c602bc9627c024a026b2cbaf412528031ae",
+      "image_sha256": "c33b35ff76f03652e375598c89d9f6e92b57da98babe9074c8c8af5600147ab6",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-forest-operator-175": {
@@ -10541,9 +11891,9 @@
         "theme": "forest-operator",
         "width": 840
       },
-      "image_sha256": "2b84613a83f4e9630d0e2c9e748c3a952e07783aff9bcd37e43ebe8f0a0aa11a",
+      "image_sha256": "39d758fe095c51841f1d4a2266be8ddb72aa4bd4d70247d8efd4bcd9d67efa8c",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-forest-operator-200": {
@@ -10595,9 +11945,9 @@
         "theme": "forest-operator",
         "width": 1920
       },
-      "image_sha256": "1da312550c0800ef681e40d98d48989cab436a13e4c224d97cc804c6401648d0",
+      "image_sha256": "848c5aefe12179853613072bbddc57cc2cea6bfa6022e02845565353735c29a9",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-solar-dusk-100": {
@@ -10649,9 +11999,9 @@
         "theme": "solar-dusk",
         "width": 960
       },
-      "image_sha256": "9577a975269e4bb7f83691e11d4e9a81a46f070c85cafcd9b1446eabc4b26061",
+      "image_sha256": "3d211562ea1c18b65189fe0154a7c17c3b207b7f93019d3318e9d21dff43755b",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-solar-dusk-125": {
@@ -10703,9 +12053,9 @@
         "theme": "solar-dusk",
         "width": 1200
       },
-      "image_sha256": "39cd10dc239c26e577ef290695ffb1fce1cf2e0765fd6009955af4bf694073ec",
+      "image_sha256": "9d7cc211be5a63fd554c842146023ad42903d1572778cdd3c8957c5467649209",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-solar-dusk-150": {
@@ -10757,9 +12107,9 @@
         "theme": "solar-dusk",
         "width": 1440
       },
-      "image_sha256": "f8cba31b74ea844225e855695f5eae2aeed3e4a44d1a4318842a29483ad5517a",
+      "image_sha256": "8b3280202562528cbccac60b3badd7d7b0530bec646e39617074393578aee062",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-solar-dusk-175": {
@@ -10811,9 +12161,9 @@
         "theme": "solar-dusk",
         "width": 840
       },
-      "image_sha256": "58ab8d16e0764c3d29b411a3b1f8d7900dd8a3cbdd836d89a2b40363b6efd00d",
+      "image_sha256": "8d16bb015f20db1e8ff9acb95fce23622cd71832605a7c6842c8877eefa6aa87",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-kubernetes-solar-dusk-200": {
@@ -10865,9 +12215,9 @@
         "theme": "solar-dusk",
         "width": 1920
       },
-      "image_sha256": "18e2cd983e71f4ce9b863533b05b8dc56fc993f1fffd45267d7dfc65084ec187",
+      "image_sha256": "650ed752afae98996fcb35ac877dcf01dda10d89dd2bb3b6be09a5fcb9e7fd02",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-arctic-day-100": {
@@ -10919,9 +12269,9 @@
         "theme": "arctic-day",
         "width": 960
       },
-      "image_sha256": "068749e10043637677210a5331ff5401e3a409d3d6700d29fa9341e238eeb411",
+      "image_sha256": "b11371dc55a87e7fdd04fd14111d77c35470927f4c049c0135d3c13245cc231f",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-arctic-day-125": {
@@ -10973,9 +12323,9 @@
         "theme": "arctic-day",
         "width": 1200
       },
-      "image_sha256": "d7014be897faf6ab788aad229d22ee2d81fb6d9deb2066585af8ece35933307f",
+      "image_sha256": "6f7b81c7b1f26530672cf264e26ae66076923182550ae6bb120042e50a8e3d23",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-arctic-day-150": {
@@ -11027,9 +12377,9 @@
         "theme": "arctic-day",
         "width": 1440
       },
-      "image_sha256": "fe709bc1977e24c12b4bc4d2f7f8aff524f37d7671af4125d8c8407324b8f0f8",
+      "image_sha256": "b7263ffae447081d31c038ad4989af2476a0c15fa33269311748e9e0fd59086c",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-arctic-day-175": {
@@ -11081,9 +12431,9 @@
         "theme": "arctic-day",
         "width": 840
       },
-      "image_sha256": "dff651efa62d9df7805cab30b14e7cd52bf016a20783c8f4f89a0a289efca51c",
+      "image_sha256": "3bad75b65050ca77c0a07048ec9881510924e5a93ca3970f78dbd7cc3c372366",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-arctic-day-200": {
@@ -11135,9 +12485,9 @@
         "theme": "arctic-day",
         "width": 1920
       },
-      "image_sha256": "b463b7484980aa28098742e414e35523d01ed0e86151397c1dff3ef916612354",
+      "image_sha256": "478be99fcb92bd570e86170ffd4985a4733f655d89daa04ff12b9abf9209ffc5",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-arctic-glass-100": {
@@ -11189,9 +12539,9 @@
         "theme": "arctic-glass",
         "width": 960
       },
-      "image_sha256": "f713ff1b789daf3e7a544942bf6a909bdef8f2a7c39891d793f9a149e74ee724",
+      "image_sha256": "2edc7d595a442646a613ba66b8b038317c4ee76b8271ed857bc1ed81283ef122",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-arctic-glass-125": {
@@ -11243,9 +12593,9 @@
         "theme": "arctic-glass",
         "width": 1200
       },
-      "image_sha256": "12328a2dc604bc6784fcbb366fbfa51bb5940814431a6388e2217685a3b9149f",
+      "image_sha256": "8f78f9d8cfd615ddd4985e836381816a6661d33abfebd8549bdd24cd5db37374",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-arctic-glass-150": {
@@ -11297,9 +12647,9 @@
         "theme": "arctic-glass",
         "width": 1440
       },
-      "image_sha256": "9368799a8329ba553882cbcb881f345556c852cdfd8244e197eb91b7be2cea5f",
+      "image_sha256": "53d64d4e57e81e0118a5cb88d205df209a260f8cd5e97238184f01655be097c9",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-arctic-glass-175": {
@@ -11351,9 +12701,9 @@
         "theme": "arctic-glass",
         "width": 840
       },
-      "image_sha256": "8bfbb445cf9ac88502ece99a315a9b6c245bb76516f5b8cbb96e3b54bfd524ad",
+      "image_sha256": "b045a8fd082181adbec472a47a65adb7a2e716be274ae878f2ee6ccf2e84871e",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-arctic-glass-200": {
@@ -11405,9 +12755,9 @@
         "theme": "arctic-glass",
         "width": 1920
       },
-      "image_sha256": "f309641442a4291a45c618095a81a3240baf60b8663d76094f13688d34ff31bf",
+      "image_sha256": "47abbec1c18907f06137eebc8e27b061969a24b31fabd65a885c8ac686bd88dd",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-aurora-night-100": {
@@ -11459,9 +12809,9 @@
         "theme": "aurora-night",
         "width": 960
       },
-      "image_sha256": "95320c4cf9ddc596e27fbacaa6c0f857f5f4460a6c39e7096841df88f579fb69",
+      "image_sha256": "b40f436711bd6aa6b8004322b4d4972f1eca12da6f5ca8c7d0f0fa8ee18be9ee",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-aurora-night-125": {
@@ -11513,9 +12863,9 @@
         "theme": "aurora-night",
         "width": 1200
       },
-      "image_sha256": "456766cd0b6d28d3cdcf4aa71f5145be17e6c70b6c00d72aedf259c4c4f3f954",
+      "image_sha256": "b5118247d919c87bb4bbaebc0b6de5347c5f1415df0b2ce2a1dcad22f1ce6327",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-aurora-night-150": {
@@ -11567,9 +12917,9 @@
         "theme": "aurora-night",
         "width": 1440
       },
-      "image_sha256": "ee7765707d48ea18e4f8a2fd19ae55f33258943e2d4a86ea4829a71d8edba231",
+      "image_sha256": "260158869841fed6441c993a8f5adf2051310588678266028e6c31f8e2fe4e41",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-aurora-night-175": {
@@ -11621,9 +12971,9 @@
         "theme": "aurora-night",
         "width": 840
       },
-      "image_sha256": "8a0993f9dbb99e2d8ddcbac373e2106c099d77c1d065691cbfef232a953fc733",
+      "image_sha256": "cf8f2141a857bf257f2b4cafcf1b58e5450155481a7b5a566480ac8fdcf1f795",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-aurora-night-200": {
@@ -11675,9 +13025,9 @@
         "theme": "aurora-night",
         "width": 1920
       },
-      "image_sha256": "7f6866464dfc6f4e95b251dde0622e29d472d894a67dfe65a49e90c0108beedf",
+      "image_sha256": "ed67222c7e148b5beb6948913841d70a72e3db5d3fe0ad1f5d92e5004fa8e062",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-forest-operator-100": {
@@ -11729,9 +13079,9 @@
         "theme": "forest-operator",
         "width": 960
       },
-      "image_sha256": "2d0eb68140b8eabd703f96a3eab0dcc872ba4cdd69e2f37a041a28f0232c0d37",
+      "image_sha256": "39baa00a739ede1c1ea2211c11f14ee7f37fbfcaaf1189ee90caea140630a1cf",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-forest-operator-125": {
@@ -11783,9 +13133,9 @@
         "theme": "forest-operator",
         "width": 1200
       },
-      "image_sha256": "dd6021b63aca0d99998df1be583040385e881ab4b403a702b4766778d8e2bbce",
+      "image_sha256": "2ed83f201a6cace0fbaf9016b02b7acab5c4da48891af8d68ba3e4f389fc2e5d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-forest-operator-150": {
@@ -11837,9 +13187,9 @@
         "theme": "forest-operator",
         "width": 1440
       },
-      "image_sha256": "c6caa3bc6060765667d6fcb6d30cf9eb77f477b6ef6704f0446ab08d72aa2796",
+      "image_sha256": "2e2c8b6563383ec16e356195bca20e94d87070d85d37859fad9c70632d4d37de",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-forest-operator-175": {
@@ -11891,9 +13241,9 @@
         "theme": "forest-operator",
         "width": 840
       },
-      "image_sha256": "b8a7347a318d341de7bbecc1841827de16b35cab13e09d4f21b27addeeec6a2f",
+      "image_sha256": "3f0b00e167d7a65f1455311472616b76f5ff80430a3e369a153e94f990aef198",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-forest-operator-200": {
@@ -11945,9 +13295,9 @@
         "theme": "forest-operator",
         "width": 1920
       },
-      "image_sha256": "81489fec2ab6ae3e27229a544386fed53a7fe09d057331a6b6db3d1f6ce65755",
+      "image_sha256": "b4dbff667cc1c8803ec3b9c0473ac67a003fe3d7b593a998e9fa00e4c45cca4b",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-solar-dusk-100": {
@@ -11999,9 +13349,9 @@
         "theme": "solar-dusk",
         "width": 960
       },
-      "image_sha256": "21982dc9162dc812f0c0733412f6e3326f29361ce652173a895c952537a15468",
+      "image_sha256": "b2187c84aef2888639f1e8bad546b03fb8e06b2893048c55ae2076b0bca691f0",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-solar-dusk-125": {
@@ -12053,9 +13403,9 @@
         "theme": "solar-dusk",
         "width": 1200
       },
-      "image_sha256": "e75b29d363516d200fc896f438bec57e8295cbac330526d723d26d016757e55b",
+      "image_sha256": "da643380f2386a522175c34a33d29e202c61851722d78fbfdfc5114cb50fa1ce",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-solar-dusk-150": {
@@ -12107,9 +13457,9 @@
         "theme": "solar-dusk",
         "width": 1440
       },
-      "image_sha256": "ca80d4a47d4d4f1fefe383be5854df4817d18f69f878c62fcb43c15cff983d9d",
+      "image_sha256": "10f4af1e4328d4d9e6c0956e920f55884a2cbe33388ee7887d9dd5473e1fc124",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-solar-dusk-175": {
@@ -12161,9 +13511,9 @@
         "theme": "solar-dusk",
         "width": 840
       },
-      "image_sha256": "68e17badd268e7309fe8bec7fa9583b8048c59deb1b47a54d4a94efd6c700b41",
+      "image_sha256": "00850288c8802d28c9b1a6d928127fc42359db48c6c62ee07718bde489408808",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-output-solar-dusk-200": {
@@ -12215,9 +13565,9 @@
         "theme": "solar-dusk",
         "width": 1920
       },
-      "image_sha256": "8a821e2e646d3999ea5f749d325d21aa09423469df1f5a37efcf675bbfe38727",
+      "image_sha256": "3e341ad12dfd0489dff73dda77c6af41b1ab4d12bca7d8a55c6d78d717da523c",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-arctic-day-100": {
@@ -12269,9 +13619,9 @@
         "theme": "arctic-day",
         "width": 960
       },
-      "image_sha256": "334bd6b8e084f1aac958605a9b532a68b3c5ccab8f252ce32d66f7052fc83601",
+      "image_sha256": "8d558b5c9a751b5955562b0ccee8d53ea991f2ec89f3e9646d5057c113bdc3e8",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-arctic-day-125": {
@@ -12323,9 +13673,9 @@
         "theme": "arctic-day",
         "width": 1200
       },
-      "image_sha256": "b9617b2be4cc640b7ebba4f85fe3b1e96656bb770bb38376beeea0a585b3a20d",
+      "image_sha256": "e43f5aa5e3ead6a4b25110dedc2ef7b8bb6b635b2118e07fa2a74d2b26a0c46f",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-arctic-day-150": {
@@ -12377,9 +13727,9 @@
         "theme": "arctic-day",
         "width": 1440
       },
-      "image_sha256": "bd5db3165f0be320ee9733e9e44c1a8bacec9f4ce34e1825da7bdef4673ce14d",
+      "image_sha256": "5c123d2c5971ed91856eaf6c9b6478237bbd8aba1ebee37877d9c648254b2c15",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-arctic-day-175": {
@@ -12431,9 +13781,9 @@
         "theme": "arctic-day",
         "width": 840
       },
-      "image_sha256": "91199074629f4ceead0eb4798b5a501d61f5dc560cb6cc1d32672bdaf363faab",
+      "image_sha256": "444e731aaea94ee5f088e14ae483f1b14043a98d021929ac44f0b599a138052d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-arctic-day-200": {
@@ -12485,9 +13835,9 @@
         "theme": "arctic-day",
         "width": 1920
       },
-      "image_sha256": "ecb26c42910eccdc5591af6e8f71a9b8b1a2ad529de7a90a5038512719d31af9",
+      "image_sha256": "693d8b4bd7f34c490b46a44a8b78b3f6cd461cb17901d1104e47b2bc44a54872",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-arctic-glass-100": {
@@ -12539,9 +13889,9 @@
         "theme": "arctic-glass",
         "width": 960
       },
-      "image_sha256": "d1ebce394e5be34a77095113e9b60a72bf87369052fd91e4874fe79b6fecec47",
+      "image_sha256": "54468beb2530075296282b0d5ab2e7087b13e1bb0b1ee607e2c61b01d2e4818d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-arctic-glass-125": {
@@ -12593,9 +13943,9 @@
         "theme": "arctic-glass",
         "width": 1200
       },
-      "image_sha256": "c6a92d89649b83d73afe843bb7d60d56b67d2d6a06b7872becb9a7055dd655e1",
+      "image_sha256": "49c143dbe46d8bd6107b792c4478b9e163af024225522ebdfbdd4fb774a3c1d3",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-arctic-glass-150": {
@@ -12647,9 +13997,9 @@
         "theme": "arctic-glass",
         "width": 1440
       },
-      "image_sha256": "a5d6cf9ec71651ddf7bdca12e2b746ee41039e6474db46bb004d30974f8e0ced",
+      "image_sha256": "93e4ebb81e4574e571fccb7930d2f6b3dfd94fb057592dec64300d69a27217ef",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-arctic-glass-175": {
@@ -12701,9 +14051,9 @@
         "theme": "arctic-glass",
         "width": 840
       },
-      "image_sha256": "a0452151fc6bb704ceb78241605d59d7251c7e69dd9a829112c7227ed7f132d6",
+      "image_sha256": "eab78864e95876175e75d71c59f07025e27e8b3fc05743f211b2b84e2d2bf62e",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-arctic-glass-200": {
@@ -12755,9 +14105,9 @@
         "theme": "arctic-glass",
         "width": 1920
       },
-      "image_sha256": "30db5e80d6a1cfb962c7db4320ac68fc6142bd4a60caaca988b6bb44e70ef0d1",
+      "image_sha256": "70d8991946b2386e85d2cef4d0136eaa46b4cf62fe058931361634d25b4c1315",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-aurora-night-100": {
@@ -12809,9 +14159,9 @@
         "theme": "aurora-night",
         "width": 960
       },
-      "image_sha256": "d9f7b68d49430d4222ade9b26a608e53b1092eb9216a0bdee1d0d24bb2419c9f",
+      "image_sha256": "07821d3437863b0ac0ab7253deb8172e49ab3b6c582cd0745dadba7577104110",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-aurora-night-125": {
@@ -12863,9 +14213,9 @@
         "theme": "aurora-night",
         "width": 1200
       },
-      "image_sha256": "41ce50fe5fe43ada8d2cb98ae888b030156414ad64ce3fa100c9ec7d4b8c7b12",
+      "image_sha256": "f0d4daec9945c73ab9d27aeef9bca2628f3112b77b12cad2deae74a8559afd66",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-aurora-night-150": {
@@ -12917,9 +14267,9 @@
         "theme": "aurora-night",
         "width": 1440
       },
-      "image_sha256": "4281dbbe2de0e393479b180ddbf85871ecd4222ca0db3cf974f971b42c1a5713",
+      "image_sha256": "1148d452b7f8aba48bb678e28909362abf4efef8ce8bdea598573b8ae6797686",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-aurora-night-175": {
@@ -12971,9 +14321,9 @@
         "theme": "aurora-night",
         "width": 840
       },
-      "image_sha256": "7f41ab1c36bf0d89c7e8193265de9db61413a18baed0ef657fb52e3b30cf769d",
+      "image_sha256": "ed4f0e60e4596d40ba152f1a6a055424b38dbfedaa7cf8821d4aeecd2043a22b",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-aurora-night-200": {
@@ -13025,9 +14375,9 @@
         "theme": "aurora-night",
         "width": 1920
       },
-      "image_sha256": "e1fc974acadb5e141af2d927bd670dd128d0ed5b2bcdf0278854aa1fd829e8b2",
+      "image_sha256": "dd1f264cf32daea14612b0c6068f7e19feb64a0720d8213274bceada097cea40",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-forest-operator-100": {
@@ -13079,9 +14429,9 @@
         "theme": "forest-operator",
         "width": 960
       },
-      "image_sha256": "e298b219e7374c27e5f5f1d2660ef7f2a11317ac408546c72bc00a27654de336",
+      "image_sha256": "4fdbac89c071006b2e38a810245f0a8e5408941ad563605312bdf4753dbcd2b2",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-forest-operator-125": {
@@ -13133,9 +14483,9 @@
         "theme": "forest-operator",
         "width": 1200
       },
-      "image_sha256": "d28a095ea025902f49f8daac188c721e0c5a9afb65139bc5a3b1f982c97e31f3",
+      "image_sha256": "11683c787d3ba58541125545ee8ba29742e7114d9700cbc3160ad34b607819e7",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-forest-operator-150": {
@@ -13187,9 +14537,9 @@
         "theme": "forest-operator",
         "width": 1440
       },
-      "image_sha256": "f60c09b715932acf13c834951d061bfe25516f11a03f779bff1fa0244f1cf207",
+      "image_sha256": "fd05acefd3374dd104f18097591da56e44d58f468828e597b9f38e3b32942ecd",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-forest-operator-175": {
@@ -13241,9 +14591,9 @@
         "theme": "forest-operator",
         "width": 840
       },
-      "image_sha256": "1c6029264859bd97ff3e327f22cc991231a8335914a57ef2a0e836815c310d59",
+      "image_sha256": "7050ffc3131f48ccdcab1ea20f23c0f8c93a63f3e2cd46cf1f3d9c7eb36d63b3",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-forest-operator-200": {
@@ -13295,9 +14645,9 @@
         "theme": "forest-operator",
         "width": 1920
       },
-      "image_sha256": "a88027350ea5865b097a0924ab3df9461ca16d8bf8b316cc9776b98001307a6d",
+      "image_sha256": "492827827911d983f282cb0405b01160de4d13a3387544d21472c061bca04bc7",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-solar-dusk-100": {
@@ -13349,9 +14699,9 @@
         "theme": "solar-dusk",
         "width": 960
       },
-      "image_sha256": "54254527f5852ecb4cc0f92006fcb47b7ba840efd55d63ccd0925451e35a8883",
+      "image_sha256": "744da32b917fc253415895ded98c23679bd1d6c767271568e94dc93431d9c65a",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-solar-dusk-125": {
@@ -13403,9 +14753,9 @@
         "theme": "solar-dusk",
         "width": 1200
       },
-      "image_sha256": "81f5d78984e3f3ed62c971cc7fa82f3c2e3e96ca8be54eae063c11a252a5ad98",
+      "image_sha256": "5cd778a7727fe9ef4489f75a0db50dabf9bc027d292c66a7d9a8af3eb15d8921",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-solar-dusk-150": {
@@ -13457,9 +14807,9 @@
         "theme": "solar-dusk",
         "width": 1440
       },
-      "image_sha256": "b845eb681dfc188422014df213038416032fbbb6b9e2721f98314ed1a925607f",
+      "image_sha256": "f423e4ed1de28419af7fe398b856390c7268d1a4da18e316189778278297c9e8",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-solar-dusk-175": {
@@ -13511,9 +14861,9 @@
         "theme": "solar-dusk",
         "width": 840
       },
-      "image_sha256": "67894d3f10284b70f15ba6f00854831d6e4be812b83814240480b41dd83eabfe",
+      "image_sha256": "b8736d07bf11ae540dc491369703d56e9657f842d121b0c45e663fe9f0363a75",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-panes-solar-dusk-200": {
@@ -13565,9 +14915,9 @@
         "theme": "solar-dusk",
         "width": 1920
       },
-      "image_sha256": "45e496d54808551e1ab6464317e383d12138b2f5468663bd6df331e1f55985f3",
+      "image_sha256": "c12afc0e6a181b0eb9286bae8481bb9ff19a56bf117e68352bda728ffe11d166",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-arctic-day-100": {
@@ -13619,9 +14969,9 @@
         "theme": "arctic-day",
         "width": 960
       },
-      "image_sha256": "5ce33c1222ef3a7f1bdb153c3f43c6ff2b84fc8df549537b49077f74da8e447d",
+      "image_sha256": "102af185549deed8748f37725c0e712c072079a8441faaf1c28d8c5d3fa51dbb",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-arctic-day-125": {
@@ -13673,9 +15023,9 @@
         "theme": "arctic-day",
         "width": 1200
       },
-      "image_sha256": "5fff61b4dda2ba7b4a6c84127bc124de04b2fa9f741cd31a5b73342a21c60c41",
+      "image_sha256": "e015374688844f659cfd12491054279932164ca1c3cc43338809b6a92ee25eeb",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-arctic-day-150": {
@@ -13727,9 +15077,9 @@
         "theme": "arctic-day",
         "width": 1440
       },
-      "image_sha256": "779e4bb7f21dc6d1f0906302be007d8260ba51c502138d9cc276721fb84a5549",
+      "image_sha256": "a775d96b19e48716614476f9c215e3c5ababa31bf19a63c4c0f7af1d8ea7c359",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-arctic-day-175": {
@@ -13781,9 +15131,9 @@
         "theme": "arctic-day",
         "width": 840
       },
-      "image_sha256": "fd522d801f8a8dc76c131cf5a8dc234ced4231922633e1f03aeb95c071b32ab2",
+      "image_sha256": "3dd41c0cad12a453b35452b12fbc0db5971ae357455093d2b195bc665865b902",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-arctic-day-200": {
@@ -13835,9 +15185,9 @@
         "theme": "arctic-day",
         "width": 1920
       },
-      "image_sha256": "ef02e3b11aa360c87e03774f862e6d902c593f7e6c1288c9adc036a566681673",
+      "image_sha256": "9f1d419622f502bbb251cfeb72951766bea996a8a92875b2d31e994ef3071f0d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-arctic-glass-100": {
@@ -13889,9 +15239,9 @@
         "theme": "arctic-glass",
         "width": 960
       },
-      "image_sha256": "3af8dd3b46499de848b2b53c00e4dc603332f5e76c8c149687186c911bf7afbd",
+      "image_sha256": "5a7ee378e0b7baf37e86c75aea817b97023951f3462bec2cd08795d088c5406c",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-arctic-glass-125": {
@@ -13943,9 +15293,9 @@
         "theme": "arctic-glass",
         "width": 1200
       },
-      "image_sha256": "4259366df3c7f2024095828f07be4ce75f93e2f96859509b240e174a9f955867",
+      "image_sha256": "a16e7c7a90678232add3fca3d9ecb7dbc466734bec215a6a6a4cae8537d831fa",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-arctic-glass-150": {
@@ -13997,9 +15347,9 @@
         "theme": "arctic-glass",
         "width": 1440
       },
-      "image_sha256": "fd14ebd63fce28b38b9a91c6ee4efcbf4fe3848bac1a189271d626a5346a4274",
+      "image_sha256": "f62c8583f4dd19fe49d3278d034b1c99477c09827b29b547353b5fd1dffebb92",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-arctic-glass-175": {
@@ -14051,9 +15401,9 @@
         "theme": "arctic-glass",
         "width": 840
       },
-      "image_sha256": "54ab922e3c424afa8206202b6296287c82a7b8d2605c9b6095f005ea5f24fb62",
+      "image_sha256": "de58bf7908ae7e3365be9d04362ece8af273e896246ba5b00deaed9c37598395",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-arctic-glass-200": {
@@ -14105,9 +15455,9 @@
         "theme": "arctic-glass",
         "width": 1920
       },
-      "image_sha256": "b8701a9b39cb49c43fded0448d4a7b6b77a6f12457f42147199f8e47b607eba3",
+      "image_sha256": "7538acc4a897d99ef36d0d77331c87ab48b3483efe36d2b33080bf273f4f65d4",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-aurora-night-100": {
@@ -14159,9 +15509,9 @@
         "theme": "aurora-night",
         "width": 960
       },
-      "image_sha256": "f8236158640dc92fa9b76057bfbdf2254c860e6fd1fa2cd2dd08dc16f08629a5",
+      "image_sha256": "8f9799c166a747b0090725f3108ab794b44c4713290635b3914a559f39587c5f",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-aurora-night-125": {
@@ -14213,9 +15563,9 @@
         "theme": "aurora-night",
         "width": 1200
       },
-      "image_sha256": "6900560248bd07889c0f53e4437533be6a284ce718156bf780a8261936321740",
+      "image_sha256": "e1213295ab96c420603c6c51e91d920f60d89687fa64784de6df00b39f794c14",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-aurora-night-150": {
@@ -14267,9 +15617,9 @@
         "theme": "aurora-night",
         "width": 1440
       },
-      "image_sha256": "b5768d79ba52ff024f0123c8f9fe87f10772223a8a0d74094da3cdc1681f7a1c",
+      "image_sha256": "ae61050f75285694523f4c9cb117234507470f93ab285835343a2c5cba551622",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-aurora-night-175": {
@@ -14321,9 +15671,9 @@
         "theme": "aurora-night",
         "width": 840
       },
-      "image_sha256": "68ea3537a15128ea0239c189e9f99a2a524fda2da289743fe4d3fde912aee081",
+      "image_sha256": "2e2cdc76b5e16ed7c7800275667f7e1a4b1df3a1544e5bca58ca42610ed6fc89",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-aurora-night-200": {
@@ -14375,9 +15725,9 @@
         "theme": "aurora-night",
         "width": 1920
       },
-      "image_sha256": "aebc420bbbc1e4a0e3c48895cd92ef14288f9f42a46a541ef0652892fe2a3427",
+      "image_sha256": "ea46e91eb52ef033cdcdafd7f29cf27d5479120900698a6b7e057e1e825cb71c",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-forest-operator-100": {
@@ -14429,9 +15779,9 @@
         "theme": "forest-operator",
         "width": 960
       },
-      "image_sha256": "d2e7bd57f00511443e5363098b2fc2476fe2ce8f47ba2712da2d85e71922836a",
+      "image_sha256": "9b7de8c5740bad0117727b9568f7cfeea22fbb3fca73aa0cc38b3b9d53b69446",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-forest-operator-125": {
@@ -14483,9 +15833,9 @@
         "theme": "forest-operator",
         "width": 1200
       },
-      "image_sha256": "b92f391309d93bcc5901c654ad2da9a673c857fc215d8b8dbf9fc3646f85a1e9",
+      "image_sha256": "9845c08a53a24e94e511ee609bf457ed998b37ebd19dfe6c4f33c966c40b35ba",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-forest-operator-150": {
@@ -14537,9 +15887,9 @@
         "theme": "forest-operator",
         "width": 1440
       },
-      "image_sha256": "d18caa1a0ceb1127a13a105d5e3f3c82d34f14c08276ecd38c0157d01abc0b4a",
+      "image_sha256": "a2a5e7275fd39cd153917b59994be22d704fbd6357275caa76d882a97c17b025",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-forest-operator-175": {
@@ -14591,9 +15941,9 @@
         "theme": "forest-operator",
         "width": 840
       },
-      "image_sha256": "9e5abfd2751807f6519807866e8df9ab3ba030059fbeb219019aa7d9c709b43f",
+      "image_sha256": "0a8cb30ca8ec45ed6f91463c20600946380d55dc8e56b623953e373f35e89627",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-forest-operator-200": {
@@ -14645,9 +15995,9 @@
         "theme": "forest-operator",
         "width": 1920
       },
-      "image_sha256": "7ecb13b1e6b731f2b65657b2a24457a000fdcfabacf58d792cde74d2ea19447a",
+      "image_sha256": "68660cf5ce42eed0215a5225f7ec3d08fe66f43a8eb4b9b8eca1a8ccc5ca6378",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-solar-dusk-100": {
@@ -14699,9 +16049,9 @@
         "theme": "solar-dusk",
         "width": 960
       },
-      "image_sha256": "f989ffaad5140f38c7ee71fb4221f7b84212cc1a33a6c8f577ed276c7825161f",
+      "image_sha256": "f99fb89f08a98c5f5646680e4100f5e7f40be442dba77e581fe5ae99eb0bf05a",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-solar-dusk-125": {
@@ -14753,9 +16103,9 @@
         "theme": "solar-dusk",
         "width": 1200
       },
-      "image_sha256": "2918704a943ea8e7faa2f417449e7110d2b2040862a01bd8a0a05f49fbd55659",
+      "image_sha256": "6aa1d87d4a7affd279af2cfa9fa0327b1e1246f9204bacc450e727b4f42ff45c",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-solar-dusk-150": {
@@ -14807,9 +16157,9 @@
         "theme": "solar-dusk",
         "width": 1440
       },
-      "image_sha256": "f82cd2ccd65b067d97eae643090769d2d8953e0d561192a91274ccd09d92a8a2",
+      "image_sha256": "d1acfe247005bff3f4b322f6dc372d9a732b2d5b42b29465e97acfc7f06dc5a7",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-solar-dusk-175": {
@@ -14861,9 +16211,9 @@
         "theme": "solar-dusk",
         "width": 840
       },
-      "image_sha256": "33c225ae38c2943f0e0b7030b6a4be20706b2f9326301902c2c3aeb353694efa",
+      "image_sha256": "e371e5775c58bb3819d89e60dfb2b468b4145bf089c93fc5052637f69baef67e",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tables-solar-dusk-200": {
@@ -14915,9 +16265,9 @@
         "theme": "solar-dusk",
         "width": 1920
       },
-      "image_sha256": "877ff3a77333d5d59533dfaef0c1ac436dd3497a0442cf3f855531562812235d",
+      "image_sha256": "0f2c36c40aaa553128487ed59b4fa066aba7bd099733086f2242850384ca43c9",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-arctic-day-100": {
@@ -14969,9 +16319,9 @@
         "theme": "arctic-day",
         "width": 960
       },
-      "image_sha256": "a4b446ea37a38047fe53a73a38f5d7899deb3838a281241e1d18c239a3967fff",
+      "image_sha256": "717ecdd0417028491ff4d2e5a58f82cf980cdb9c6c5fe9655a90d55a830981fd",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-arctic-day-125": {
@@ -15023,9 +16373,9 @@
         "theme": "arctic-day",
         "width": 1200
       },
-      "image_sha256": "47139a3dea7a46832ac1b62abc2c324bc1a6ec87b5bd34066c6c7f02f1c0efb0",
+      "image_sha256": "19f23d40f6b848cd64b944c79fdcffbfee7d4f70eb564ef780a9137476eedd91",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-arctic-day-150": {
@@ -15077,9 +16427,9 @@
         "theme": "arctic-day",
         "width": 1440
       },
-      "image_sha256": "8d1120bbb5860a562f2145c312c095e57f4aa1791199529ff2253223f74ee1d6",
+      "image_sha256": "1f5cc1d2b516ca4647d55924df138f024b0d6743af9878fa91be0050623989bb",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-arctic-day-175": {
@@ -15131,9 +16481,9 @@
         "theme": "arctic-day",
         "width": 840
       },
-      "image_sha256": "656deccd2059b4a5de1b9a659eadda9ced18d128148cb80f26af44c630f31122",
+      "image_sha256": "8d6aed6d674818bb3491994b95adcbd6217c8f8f55960474d5b6baf7c746b205",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-arctic-day-200": {
@@ -15185,9 +16535,9 @@
         "theme": "arctic-day",
         "width": 1920
       },
-      "image_sha256": "a9f10d85fa4403f04d965623732ec1220d2e05c8fa48f799b4907d6c6794a38b",
+      "image_sha256": "486b56794903c28c8e9e15148527f5dea44467cadd2fbee412c3043ea385e10d",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-arctic-glass-100": {
@@ -15239,9 +16589,9 @@
         "theme": "arctic-glass",
         "width": 960
       },
-      "image_sha256": "a2c870bb25afa9ab7409761ad07b16f415639506cb759b48fa47e3df04117ba9",
+      "image_sha256": "1814cfefd6910bbba228ed5c6f664fa6ef8f377a34f5cf24ae8c237d0556be0d",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-arctic-glass-125": {
@@ -15293,9 +16643,9 @@
         "theme": "arctic-glass",
         "width": 1200
       },
-      "image_sha256": "b9f8efa164f7b7ccbd7d81cea05554f81a0213c2c1469de8a0e93f66496596cc",
+      "image_sha256": "1942dc8776cfbbb12ee6548573d9775d9e6293ed3b3c7d6a72602901eee987b0",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-arctic-glass-150": {
@@ -15347,9 +16697,9 @@
         "theme": "arctic-glass",
         "width": 1440
       },
-      "image_sha256": "f0c348a85a2f6827ddc62c06253a2ba4031fe76dc9f68c69e64f37037146f1e8",
+      "image_sha256": "8c072e813e0f0ffc49009098cdfc24539ad9d22713f210967d4f6c0c4cd6cd3f",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-arctic-glass-175": {
@@ -15401,9 +16751,9 @@
         "theme": "arctic-glass",
         "width": 840
       },
-      "image_sha256": "90709b9e7d2a3d18c06e292e97aa24628d80d3d3b5eac6372a6af3daf95fcabe",
+      "image_sha256": "9ba2781974ad3c64c071fe43859571c0a4c5231ef56a523e4f320b528cfc4229",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-arctic-glass-200": {
@@ -15455,9 +16805,9 @@
         "theme": "arctic-glass",
         "width": 1920
       },
-      "image_sha256": "f6c479a0cf8843a3031602c74c5fca3bdbe4ebb5f49493d4623f32765fef5658",
+      "image_sha256": "39250250c1143bdfb78092288cc9729e74840392e0822d3e6771d3b5d9008031",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-aurora-night-100": {
@@ -15509,9 +16859,9 @@
         "theme": "aurora-night",
         "width": 960
       },
-      "image_sha256": "9c63cea54561d6b7a9cdda628fa370e70025e9068c1c40d29985487763529588",
+      "image_sha256": "7284b42576680c443bec56d6fea0bc09558ba02d83daf17e14c1e70b9394274e",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-aurora-night-125": {
@@ -15563,9 +16913,9 @@
         "theme": "aurora-night",
         "width": 1200
       },
-      "image_sha256": "e0362dd934ab020120965505b2b1c90557238634000af272d4fa167f6e6a3fe0",
+      "image_sha256": "2f8ef8043328d5fbc20c7b5d7d5bc6cf030b1a2ac898593139a1e603d87dbef5",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-aurora-night-150": {
@@ -15617,9 +16967,9 @@
         "theme": "aurora-night",
         "width": 1440
       },
-      "image_sha256": "73086df49d2fba9e4f98c37cccd4120727cd02581b1b58a45bce164610c2b0e7",
+      "image_sha256": "b3bf2911da5883755ce1985a49535648cc9e55b4e919494f78fd137a68d7a233",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-aurora-night-175": {
@@ -15671,9 +17021,9 @@
         "theme": "aurora-night",
         "width": 840
       },
-      "image_sha256": "b81bd883a1dba1d68c9e496003a2976d0691f5f5175452f188e2193e2478c3f2",
+      "image_sha256": "d861c36b78485b511357f5a5a7455b523205e9fc69a01ff0841c3362ee112015",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-aurora-night-200": {
@@ -15725,9 +17075,9 @@
         "theme": "aurora-night",
         "width": 1920
       },
-      "image_sha256": "c5652e083d421256cc0c9b9f573586c9286eb2ba9c499b6e611c22ad9911a572",
+      "image_sha256": "d713fb31392e2c804b1082523eb654a0f8cf4926791be5f2f1ba08252c8bfcde",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-forest-operator-100": {
@@ -15779,9 +17129,9 @@
         "theme": "forest-operator",
         "width": 960
       },
-      "image_sha256": "785af4ecb4525f772812cabdf5b739641d935b249c4ccdcaaddd47c5b8313126",
+      "image_sha256": "f5d2e81858c39d574eea856bc02231c03734117cf0c01b42c357a7ca2909c581",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-forest-operator-125": {
@@ -15833,9 +17183,9 @@
         "theme": "forest-operator",
         "width": 1200
       },
-      "image_sha256": "8c4af5391fd21bfc731e01317382b394f78d53e610c3f94d28a97ddbee81d6e0",
+      "image_sha256": "558121857895aa12230ae2a1fb926ba56e2732bda7b2b2c122ae4aa7afd47713",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-forest-operator-150": {
@@ -15887,9 +17237,9 @@
         "theme": "forest-operator",
         "width": 1440
       },
-      "image_sha256": "32fc33c4914f995140f2cb74c90d98f354a1ba84c37bebb715b8ebef615bd609",
+      "image_sha256": "06716269253836bb6d2e0095699997845127905251581c8a87209e2f090735bf",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-forest-operator-175": {
@@ -15941,9 +17291,9 @@
         "theme": "forest-operator",
         "width": 840
       },
-      "image_sha256": "3b16f5c35cc99a5a25c2e20a72e8148cc5a97c4453bcec7daa833587c7a34782",
+      "image_sha256": "a9773e0bb50617eb0492c4dcd45eeee460516a7b6d49bd2dbfcec2e119d9e43a",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-forest-operator-200": {
@@ -15995,9 +17345,9 @@
         "theme": "forest-operator",
         "width": 1920
       },
-      "image_sha256": "e6bad2f97c3ed1528d0cd732c23d8f42a7d18431a9eee61aed6d766405c5228c",
+      "image_sha256": "fc7568bf1f9a1b5f3b5f519be001ba7e50469736735e12978e8ff1844a4f3057",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-solar-dusk-100": {
@@ -16049,9 +17399,9 @@
         "theme": "solar-dusk",
         "width": 960
       },
-      "image_sha256": "5d8b94f63c691f4872e6795e75ab306d3460ef8d0e461ac61c3d380b1efaf618",
+      "image_sha256": "9f63198a0d9497724e9b0c4ec459a31d22c50301bc21b5cc84eb41126af3e213",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-solar-dusk-125": {
@@ -16103,9 +17453,9 @@
         "theme": "solar-dusk",
         "width": 1200
       },
-      "image_sha256": "944f7a96f08354a29223385c7e5df3fbd208f89f0901ccf3db8d2c27ced6d3a5",
+      "image_sha256": "a1cef728e4b0bbf05efca42af3e6132a3022f1e77e4810a9cdebfeb0b8d92db7",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-solar-dusk-150": {
@@ -16157,9 +17507,9 @@
         "theme": "solar-dusk",
         "width": 1440
       },
-      "image_sha256": "c5f06b990d1bf5f01234ed41df206b9e91e11bded1edeaeac01496e81008edfd",
+      "image_sha256": "bb13c4ea799a32b50efb624e36e81c562e3d0088d6ae26169d8fc929c7d797d6",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-solar-dusk-175": {
@@ -16211,9 +17561,9 @@
         "theme": "solar-dusk",
         "width": 840
       },
-      "image_sha256": "ecef73b1369475fc7e2695f08f02a7343a58884bd4ef18b5aabec918d1118e03",
+      "image_sha256": "c4c85510367269901efae59c3fc1c2e80629407427447d250265b5348990cc1a",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-tags-solar-dusk-200": {
@@ -16265,9 +17615,9 @@
         "theme": "solar-dusk",
         "width": 1920
       },
-      "image_sha256": "8b1cf3c9101326d318d3f2032565b662abdc242cfd05a7bec6d350cecc9298bc",
+      "image_sha256": "8182825edc35fa41e5d8e1ef5f242af2ddbd3cd86f2909973e52723b9d292263",
       "schema": 1,
-      "source_commit": "2f3f56662b959adc8e7ab27cf9130b3ed043567e",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-terminal-interface-arctic-day-100": {
@@ -19019,9 +20369,9 @@
         "theme": "arctic-day",
         "width": 960
       },
-      "image_sha256": "2bc0196c69657345aa13a2f2a5d25d8ee22ee79d76f279b49732cf8dca78f3cc",
+      "image_sha256": "f319ba48833181c0c11d739d47e61b7a1ebcc2ab9955b6a2a213dac22ceca3e7",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-arctic-day-125": {
@@ -19073,9 +20423,9 @@
         "theme": "arctic-day",
         "width": 1200
       },
-      "image_sha256": "0b81697744ca42edcfa99915bd76949523a4cb635d9b61df47e45ccd0602b4ac",
+      "image_sha256": "7b584bb24541bedaa67959d44da029484234828e493e53388d15410682da435f",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-arctic-day-150": {
@@ -19127,9 +20477,9 @@
         "theme": "arctic-day",
         "width": 1440
       },
-      "image_sha256": "9fa9b251d9f31454b321648944c25c34b1ecfdb488089cb62e346b6b59564430",
+      "image_sha256": "82e8d3d36e01cd8f92fea9cec9e2b3b86b1659de80a30da72d1f55bd7da7d743",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-arctic-day-175": {
@@ -19181,9 +20531,9 @@
         "theme": "arctic-day",
         "width": 840
       },
-      "image_sha256": "6a0d56d7c93e556cb4d36513e05708864bd005291000b3c135fccd6bd28a68d4",
+      "image_sha256": "f1766965b07c75d997482a3555b1709d599cbafd02199548530cf39f76761627",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-arctic-day-200": {
@@ -19235,9 +20585,9 @@
         "theme": "arctic-day",
         "width": 1920
       },
-      "image_sha256": "34a2fc84dd3cd0febdeaa58c36ea754c5b0413fc0ff14c0faee6e59a30192908",
+      "image_sha256": "58f3b616b10a45519c53a78f0cd9685ca49ac8f61ab4a322406b9c85be2fa9e1",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-arctic-glass-100": {
@@ -19289,9 +20639,9 @@
         "theme": "arctic-glass",
         "width": 960
       },
-      "image_sha256": "19fd97a91fcb3b171e6b58e64e941724d575c055aff358c4a91c735f14ac9191",
+      "image_sha256": "1e1f35ceeb04c78200b7c0016bec32256b4c41d17aa4ef8661a89d11e24a9a2d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-arctic-glass-125": {
@@ -19343,9 +20693,9 @@
         "theme": "arctic-glass",
         "width": 1200
       },
-      "image_sha256": "a059412c8dc00c19ea96604ddcba10b0aecb3da2c386822be2a4cd33fed8c677",
+      "image_sha256": "0dc146e72bdfbd50200187ebe7bee5cee913da6d9d18f2b7829a0a1437d86783",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-arctic-glass-150": {
@@ -19397,9 +20747,9 @@
         "theme": "arctic-glass",
         "width": 1440
       },
-      "image_sha256": "e9a75fae30d8ef8b8545a076385e8c096aac5220adb97449a1ac422e45514971",
+      "image_sha256": "c956cd664c531e31e75086cba8f4139024650b39567452231ef8d61cb37e2de9",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-arctic-glass-175": {
@@ -19451,9 +20801,9 @@
         "theme": "arctic-glass",
         "width": 840
       },
-      "image_sha256": "2df88f721e9d36d1113a3f8c1b2df7d1bab01a36e40b00f1fe2196f05f0de868",
+      "image_sha256": "77a1d013e95e35dabd51d93f778eb8005337c938d330f7d2d64e7b392066b642",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-arctic-glass-200": {
@@ -19505,9 +20855,9 @@
         "theme": "arctic-glass",
         "width": 1920
       },
-      "image_sha256": "30699476c380b0f3849f89cccd248da5239078ed47870dadc53f65fe2faaf841",
+      "image_sha256": "8197b5e0c386bf46a167b3f8c902dabf4e1161024f7e2d288067d45c28ea94d5",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-aurora-night-100": {
@@ -19559,9 +20909,9 @@
         "theme": "aurora-night",
         "width": 960
       },
-      "image_sha256": "832ea95fddd4db25240a5c732b80ea5d12b0456c51098e0f7703e2e44b1a4d0c",
+      "image_sha256": "6c0f2d634e36606c5f17d13ed4b784cc775f5b6b442f6c1d5322bfd3ca98fc65",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-aurora-night-125": {
@@ -19613,9 +20963,9 @@
         "theme": "aurora-night",
         "width": 1200
       },
-      "image_sha256": "aa7c33e11c7515360ecd23e393dd5adb74af9f32afb5a72f111b528b26541533",
+      "image_sha256": "a45a22307b9b6f904781961cb9ca4ff1e69e641fdc6ea907278d7cedcd744e79",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-aurora-night-150": {
@@ -19667,9 +21017,9 @@
         "theme": "aurora-night",
         "width": 1440
       },
-      "image_sha256": "d470ba88cb8f80d6076b555af9ddec79995070021a2c66b9b463ea7c607989ee",
+      "image_sha256": "2960d071362ea827c842c66d9d7599c92a94ed97afc98c08a3cd7171613daceb",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-aurora-night-175": {
@@ -19721,9 +21071,9 @@
         "theme": "aurora-night",
         "width": 840
       },
-      "image_sha256": "7e98927ab385fea0978bf0251ccba173e9928914e89109b62661e82820a5e9f6",
+      "image_sha256": "04cdf0d3001c01d1e1be37188a8cf9e6b6f6fffb1798f940388ff6e72fe62573",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-aurora-night-200": {
@@ -19775,9 +21125,9 @@
         "theme": "aurora-night",
         "width": 1920
       },
-      "image_sha256": "86ef2996e382cce3cdce692ae6341a79abe552d134ce36b3d4614929e03b105c",
+      "image_sha256": "f35d2ddcb0093919628b8ead511e55e525d7c8a3291e9808ea3332d0a0f227f7",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-forest-operator-100": {
@@ -19829,9 +21179,9 @@
         "theme": "forest-operator",
         "width": 960
       },
-      "image_sha256": "a11b4fd9f666e6ed5aea8393a5358565cc99dc182742f9d966a4e2e660e4b8f0",
+      "image_sha256": "310f7e92502163399b4d256e5f736a656f71fab77e962777ea00ac08ae1ccb80",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-forest-operator-125": {
@@ -19883,9 +21233,9 @@
         "theme": "forest-operator",
         "width": 1200
       },
-      "image_sha256": "0ac444cc04bee319d07cdc52e79d924257bda23c6be0335fdc2c8893a67ba0eb",
+      "image_sha256": "11277d9ee39af3fe75d34ea074846e0a0fadbdedfc7fd4f1cb30fe90cc5346c7",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-forest-operator-150": {
@@ -19937,9 +21287,9 @@
         "theme": "forest-operator",
         "width": 1440
       },
-      "image_sha256": "480895f9f9bfd0f7dca5353e80097e1313703ae6aa7f265059ea582d391014cd",
+      "image_sha256": "1bb50764f6fa354a136a3487c6c6c855879dcaa544cb640765745f49d8ef2d76",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-forest-operator-175": {
@@ -19991,9 +21341,9 @@
         "theme": "forest-operator",
         "width": 840
       },
-      "image_sha256": "5adf65c909cc311fe720e5f7474058614c50a62cd684f25e0f5dd4c3a4c0a937",
+      "image_sha256": "15ccf1b10ff7bc3c588dc8a089eea01f0720697bdd2b917a1b5341cbb85b8f3d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-forest-operator-200": {
@@ -20045,9 +21395,9 @@
         "theme": "forest-operator",
         "width": 1920
       },
-      "image_sha256": "d05126ae50f4674825dfeb92913422a09e1210ca4d43f1391d6a0a09222746a3",
+      "image_sha256": "3635ea619a873bbb586160f3498f612ead3b3c0effb099062ebaf31d2deb1339",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-solar-dusk-100": {
@@ -20099,9 +21449,9 @@
         "theme": "solar-dusk",
         "width": 960
       },
-      "image_sha256": "8bcf9dd1119fa8e39b16e0a65304e1c640a9bdd8e22f2b1cf4b3d38e0c3158fb",
+      "image_sha256": "91b78597409bc56cc2f80f8cdf03c1f82b4393ef9e99491d72fddc6d69d0c308",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-solar-dusk-125": {
@@ -20153,9 +21503,9 @@
         "theme": "solar-dusk",
         "width": 1200
       },
-      "image_sha256": "cd882b9213624ec5256022e720afd4ced53b72b8d4263875a9dbfeba4a41f10b",
+      "image_sha256": "d3647b5f8c4a460057c579cfc4057d0694e1acc7cbd3d51a4c98924ab2962ef7",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-solar-dusk-150": {
@@ -20207,9 +21557,9 @@
         "theme": "solar-dusk",
         "width": 1440
       },
-      "image_sha256": "6362e6c1bfd8161489e6805940f410659c9976966810955c24bc8c3687999f15",
+      "image_sha256": "399897c6cc5a574e2ed77166a24677f436cfb0c2a0e86717feb48325759c7172",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-solar-dusk-175": {
@@ -20261,9 +21611,9 @@
         "theme": "solar-dusk",
         "width": 840
       },
-      "image_sha256": "c268ba1ad4906354da6a517865d2393539815452f9d761736a18ede937c9fb08",
+      "image_sha256": "76add96a158be897be4640937ebdf205a7902327fe72fdbb8fc55e7f90593d49",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-timestamps-solar-dusk-200": {
@@ -20315,9 +21665,9 @@
         "theme": "solar-dusk",
         "width": 1920
       },
-      "image_sha256": "8d1d8c31adfa6ced0633cf9df5da02bb150ff8d113c65bac86153076da839fdd",
+      "image_sha256": "e377ced538f1a43ffc9da07f1e117ef01e421b47e3a5336bf2a8880c51d5f8e7",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-arctic-day-100": {
@@ -20369,9 +21719,9 @@
         "theme": "arctic-day",
         "width": 960
       },
-      "image_sha256": "d6a5cdc949b3344247cdb91054ffbf8b43df417d948b2ae291fbc90a747ef405",
+      "image_sha256": "ec4bea7b822a3f2d889b9710cc643f71c73ec459a2291cf5d71e1d71ded3accb",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-arctic-day-125": {
@@ -20423,9 +21773,9 @@
         "theme": "arctic-day",
         "width": 1200
       },
-      "image_sha256": "6ef8781a86ef509d771502bc352ef4d9d6093b4452f2a9850ede3681e4886dca",
+      "image_sha256": "d2998a714243c70588f84054f6ac6386482dc70ca2bc8ee9a35a9d0d3732e420",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-arctic-day-150": {
@@ -20477,9 +21827,9 @@
         "theme": "arctic-day",
         "width": 1440
       },
-      "image_sha256": "0b46a00d790769e413d9be1ff54b78ddb9a43493a774277352dd201180dfaf11",
+      "image_sha256": "89adc558734c906e8aa1c5f5ec3352b3df770ebdade2730599e18833d3761f72",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-arctic-day-175": {
@@ -20531,9 +21881,9 @@
         "theme": "arctic-day",
         "width": 840
       },
-      "image_sha256": "d1d6e548f303990049a3bda9ab5467d9be9d92538bae29991f84e81e2c6b9c9e",
+      "image_sha256": "65a98959db6d93a272f5998b06f4c26e104b0f85721336bfa0d8d6a3c096d3ee",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-arctic-day-200": {
@@ -20585,9 +21935,9 @@
         "theme": "arctic-day",
         "width": 1920
       },
-      "image_sha256": "a5f1a7d8f85225908162854b845197f2d27e1f6d426e9ae0212b7170693f72f3",
+      "image_sha256": "51a13b055985239373b6218285000aa9cf1bc959e96fa457e812915cf7387aed",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-arctic-glass-100": {
@@ -20639,9 +21989,9 @@
         "theme": "arctic-glass",
         "width": 960
       },
-      "image_sha256": "4e9612a3276a6e2f73f6e7fcf63571cc36455b945c6b0d245bd404ac3b4b0d32",
+      "image_sha256": "05e42113b366e242c4c5e400b7cc2b6a508d1bceb0af65c75c1cf10a88e5fe8d",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-arctic-glass-125": {
@@ -20693,9 +22043,9 @@
         "theme": "arctic-glass",
         "width": 1200
       },
-      "image_sha256": "7fbcf8228b3163cb805ecb365b552d005652890af5373ca9a2c8cba178daa57c",
+      "image_sha256": "cb3a2a8c3d113bcfea115199f63e003d7736c2211f273408f992f98a0f702ffc",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-arctic-glass-150": {
@@ -20747,9 +22097,9 @@
         "theme": "arctic-glass",
         "width": 1440
       },
-      "image_sha256": "dfee824b7e2abfce24d80b91abf141718548d8e78b3b4f22621d39ec64c3b1cc",
+      "image_sha256": "61813bc34123a4dabe408d4c5103bf01cce8dc6fd2ee7d0a74db3e24a89e1e5a",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-arctic-glass-175": {
@@ -20801,9 +22151,9 @@
         "theme": "arctic-glass",
         "width": 840
       },
-      "image_sha256": "3cb8a23b5a34d77fafbd365f36b9f193a0cde2fc285ce5853617769b77e0d95f",
+      "image_sha256": "49133518397d3b366f987c851e6fd23bfd750828636b0fdc034e862bdcabf047",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-arctic-glass-200": {
@@ -20855,9 +22205,9 @@
         "theme": "arctic-glass",
         "width": 1920
       },
-      "image_sha256": "e97003a103ae935116112d076e5f08f6a92731effb85268d3c41f5efdc24ca52",
+      "image_sha256": "c2aadba5b45d760fc0866bf8759e74aa9f27bded99742edfff69a62bd9d94170",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-aurora-night-100": {
@@ -20909,9 +22259,9 @@
         "theme": "aurora-night",
         "width": 960
       },
-      "image_sha256": "21a65534c1b0d67723c730f64e633ceda558b316c5e1b2e3edb069fa085f1638",
+      "image_sha256": "5b9b77e3a0cac20e59516d8eae6ba42c42a015e6952b056298c6512e7d68ca5a",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-aurora-night-125": {
@@ -20963,9 +22313,9 @@
         "theme": "aurora-night",
         "width": 1200
       },
-      "image_sha256": "4dce6ac28111334567608c9fb502c048eb0ec3458608c052085b0cd1937c56bf",
+      "image_sha256": "3feef091d8c064c775ac208a544fd19c63c922bdbf6543c6a73d500f6e15ca9c",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-aurora-night-150": {
@@ -21017,9 +22367,9 @@
         "theme": "aurora-night",
         "width": 1440
       },
-      "image_sha256": "da8594e07f76e8d4f803433cf7a917064a7224e67feda787642f8b04c34135e7",
+      "image_sha256": "49f54edeff2b21662489fbefdb9834999f91e4d35d10c6415d18a96d3f820dfe",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-aurora-night-175": {
@@ -21071,9 +22421,9 @@
         "theme": "aurora-night",
         "width": 840
       },
-      "image_sha256": "5b5d2f5f808e2aa7cebbb0983de92e70ed7c7db3149836f59d481ea24161db29",
+      "image_sha256": "5ca4eee27c5f20c4f31c4bc0819324125b039dd32c1c93c7eae9530204474121",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-aurora-night-200": {
@@ -21125,9 +22475,9 @@
         "theme": "aurora-night",
         "width": 1920
       },
-      "image_sha256": "cb4c1f542efedf9c3e967d471b1c04d2370bc776eaf91a9a09bcc5e65dbae641",
+      "image_sha256": "94ff3566b6bbc7b3d183aa30a6061390dadc17dcfe93a3111a969828920a5fd4",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-forest-operator-100": {
@@ -21179,9 +22529,9 @@
         "theme": "forest-operator",
         "width": 960
       },
-      "image_sha256": "be69b76781ab2bfd15128396e5d4a6e7dc8f8c5626dc9ee60db93c64815139bc",
+      "image_sha256": "10a535afb50be400e7e2f37c49659191699790e430fc90bb66872bb3d7afe229",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-forest-operator-125": {
@@ -21233,9 +22583,9 @@
         "theme": "forest-operator",
         "width": 1200
       },
-      "image_sha256": "5b8956f04b2a1161db332d385abd95618330ca1fa95a4da3f4c024a1ca4b1aed",
+      "image_sha256": "0808f86b6915f58a5592596ddfe1f7d8ba14e6d0ec89d48445feb90621f42384",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-forest-operator-150": {
@@ -21287,9 +22637,9 @@
         "theme": "forest-operator",
         "width": 1440
       },
-      "image_sha256": "3d2c74dcdf1b170f79d20c4c07a822c8afb76cd6f453b224bb56601520550779",
+      "image_sha256": "dfa3d4204946a9606ef3a94e8e5c9d77570e4ac5d70af59fd32e7b22276193e2",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-forest-operator-175": {
@@ -21341,9 +22691,9 @@
         "theme": "forest-operator",
         "width": 840
       },
-      "image_sha256": "b612618601ade5c02c4a8a904e087ffdbe4563adf25711f0afe2c51789c62b54",
+      "image_sha256": "6291f344cd4ad8473f0d79f28154f08abf1ab094a3f69b2c3f299fbcf6437ef0",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-forest-operator-200": {
@@ -21395,9 +22745,9 @@
         "theme": "forest-operator",
         "width": 1920
       },
-      "image_sha256": "b33a16e8037b5bb4950d019e163e3cb2e6948a2a64f3a312edcca84f0054d309",
+      "image_sha256": "7208488b0066c25562acc951c9a7c99140ebeed1e0b9c93d33dfc61c9efdeb3f",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-solar-dusk-100": {
@@ -21449,9 +22799,9 @@
         "theme": "solar-dusk",
         "width": 960
       },
-      "image_sha256": "3c8c4ba30b8d940d16348578a7b12af3696baf361a935e484ebce50e76a1848f",
+      "image_sha256": "ad3ece95908a7264088a0c6265900af453690600de2dc854b9965611bba430fd",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-solar-dusk-125": {
@@ -21503,9 +22853,9 @@
         "theme": "solar-dusk",
         "width": 1200
       },
-      "image_sha256": "9c09bd0eb523ba5031ecc4f2fcc0faac9d096f370e35bc0c033582aa5b94a3d2",
+      "image_sha256": "f7ef339ce477f81c1201ee32bab639a1527ca5b35401e92106b0ff9f23d17362",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-solar-dusk-150": {
@@ -21557,9 +22907,9 @@
         "theme": "solar-dusk",
         "width": 1440
       },
-      "image_sha256": "e2847702900dfaf279b55258a30341e00ee1207742a21ada03616453ead913cb",
+      "image_sha256": "f31f8005ded99296b4bdddc3cd848398218c656bee9ff65dc9d4c141103a7a85",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-solar-dusk-175": {
@@ -21611,9 +22961,9 @@
         "theme": "solar-dusk",
         "width": 840
       },
-      "image_sha256": "a0470465c2d82e482e5d9c6266b4423a62dd9f58cbc367986713773a5f153f6f",
+      "image_sha256": "741fafabca2fb08b9a2984cf28856b0be145ef5b68e50db0200a8ef323a19acd",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "settings-window-controls-solar-dusk-200": {
@@ -21665,9 +23015,9 @@
         "theme": "solar-dusk",
         "width": 1920
       },
-      "image_sha256": "8375369801a7156680025693f83f9cc7ec554249dd3cf7a52d8f32ef396494b7",
+      "image_sha256": "737b328d6596adfd34bca94edd6a4b88c364db09bb00dcca04167d124f3931a5",
       "schema": 1,
-      "source_commit": "ecd38423ec3515a86c7262554a4429d13547851a",
+      "source_commit": "60787c86bd4ccfc33c472280e09d9e8b6ff9304b",
       "source_dirty": false
     },
     "terminal-arctic-day-100": {
