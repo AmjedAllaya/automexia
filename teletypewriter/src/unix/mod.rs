@@ -1,6 +1,6 @@
 #![cfg(unix)]
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", test))]
 mod macos;
 mod passwd;
 mod pty_name;
@@ -26,8 +26,10 @@ use std::io;
 use std::io::Error;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+use std::os::fd::FromRawFd;
 use std::os::fd::OwnedFd;
-use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
@@ -47,6 +49,7 @@ const TIOCSWINSZ: libc::c_ulong = 2148037735;
 
 #[link(name = "util")]
 extern "C" {
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     fn openpty(
         main: *mut libc::c_int,
         child: *mut libc::c_int,
@@ -581,32 +584,68 @@ fn macos_fork_arg0(shell: &str, args: &[String]) -> String {
     }
 }
 
-// Adopt both descriptors before any fallible setup. Each raw descriptor is
-// transferred exactly once and closes on every subsequent error path.
+// Preserve the existing bounded retry for transient native PTY admission
+// failures. Each failed attempt releases both endpoints before retrying.
 fn open_pty(winsize: &Winsize) -> io::Result<(OwnedFd, OwnedFd)> {
+    for attempt in 0..4 {
+        match open_pty_once(winsize) {
+            Ok(pair) => return Ok(pair),
+            Err(error) if attempt == 3 => return Err(error),
+            Err(_) => std::thread::sleep(Duration::from_millis(5)),
+        }
+    }
+    unreachable!("the final PTY attempt always returns")
+}
+
+// File::open/OpenOptions create close-on-exec descriptors atomically. Setting
+// FD_CLOEXEC after openpty would still race other threads spawning children.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn open_pty_once(winsize: &Winsize) -> io::Result<(OwnedFd, OwnedFd)> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let master = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(libc::O_NOCTTY)
+        .open("/dev/ptmx")?;
+    let fd = master.as_raw_fd();
+    // SAFETY: master owns a live native PTY descriptor. These native calls
+    // validate fd and do not retain pointers or transfer descriptor ownership.
+    if unsafe { libc::grantpt(fd) } == -1 || unsafe { libc::unlockpt(fd) } == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    let slave = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(libc::O_NOCTTY)
+        .open(pty_name::terminal_name(fd)?)?;
+    let term = create_termp(true);
+    // SAFETY: term/winsize are live correctly sized native ABI values. All
+    // descriptors remain RAII-owned through each fallible setup operation.
+    if unsafe { libc::tcsetattr(slave.as_raw_fd(), libc::TCSANOW, &term) } == -1
+        || unsafe { libc::ioctl(slave.as_raw_fd(), TIOCSWINSZ, winsize) } == -1
+    {
+        return Err(io::Error::last_os_error());
+    }
+    Ok((master.into(), slave.into()))
+}
+
+// Compatibility for other Unix targets. Linux/macOS use atomic descriptor
+// creation above; both raw descriptors are adopted before fallible setup here.
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn open_pty_once(winsize: &Winsize) -> io::Result<(OwnedFd, OwnedFd)> {
     let mut main = -1;
     let mut child = -1;
     let term = create_termp(true);
-    for attempt in 0..4 {
-        // SAFETY: all output and input pointers refer to live, correctly sized
-        // stack values; a null name buffer requests no name output. Successful
-        // openpty returns two distinct descriptors owned by this caller.
-        let status =
-            unsafe { openpty(&mut main, &mut child, ptr::null_mut(), &term, winsize) };
-        if status >= 0 {
-            // SAFETY: neither descriptor has another Rust owner. Construct
-            // both owners immediately, before allocations or fallible work.
-            return Ok(unsafe {
-                (OwnedFd::from_raw_fd(main), OwnedFd::from_raw_fd(child))
-            });
-        }
-        let error = Error::last_os_error();
-        if attempt == 3 {
-            return Err(error);
-        }
-        std::thread::sleep(Duration::from_millis(5));
+    // SAFETY: output and input pointers refer to live, correctly sized stack
+    // values; a null name requests no name output. Successful openpty returns
+    // two distinct descriptors owned by this caller.
+    let status =
+        unsafe { openpty(&mut main, &mut child, ptr::null_mut(), &term, winsize) };
+    if status < 0 {
+        return Err(Error::last_os_error());
     }
-    unreachable!("the final openpty attempt always returns")
+    // SAFETY: neither endpoint has another Rust owner. Adopt both immediately.
+    Ok(unsafe { (OwnedFd::from_raw_fd(main), OwnedFd::from_raw_fd(child)) })
 }
 
 #[allow(clippy::too_many_arguments)]

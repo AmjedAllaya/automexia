@@ -35,7 +35,7 @@ use crate::layout::SpanStyle;
 use crate::SugarloafErrors;
 use dashmap::DashMap;
 use parking_lot::RwLock;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
@@ -194,6 +194,34 @@ fn cluster_covered(
     }
 }
 
+/// Coverage lookup for an already prepared UI face; never discovers a font.
+pub(crate) fn prepared_font_has_char(
+    library: &FontLibraryData,
+    id: usize,
+    ch: char,
+) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        library
+            .try_get(&id)
+            .and_then(|font| font.handle.as_ref())
+            .is_some_and(|handle| macos::font_has_char(handle, ch))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        library.get_data(&id).is_some_and(|(data, offset, key)| {
+            FontRef {
+                data: data.as_ref(),
+                offset,
+                key,
+            }
+            .charmap()
+            .map(ch)
+                != 0
+        })
+    }
+}
+
 pub fn lookup_for_font_match(
     cluster: &mut CharCluster,
     synth: &mut Synthesis,
@@ -224,6 +252,9 @@ pub fn lookup_for_font_match(
 
     let fonts_len: usize = library.inner.len();
     for font_id in 0..fonts_len {
+        if library.ui_only_faces.contains(&font_id) {
+            continue;
+        }
         // Skip alias slots — their charmap is identical to the
         // owning entry which we already walk under its own id.
         let font = match library.inner.get(&font_id) {
@@ -610,6 +641,8 @@ impl FontEntry {
 }
 
 pub struct FontLibraryData {
+    ui_only_faces: FxHashSet<usize>,
+    pub ui_families: FxHashMap<String, [usize; 4]>,
     // Standard is fallback for everything, it is also the inner number 0
     pub inner: FxHashMap<usize, FontEntry>,
     pub symbol_maps: Option<Vec<SymbolMap>>,
@@ -645,6 +678,8 @@ impl Default for FontLibraryData {
             symbol_maps: None,
             primary_metrics_cache: FxHashMap::default(),
             postscript_to_id: FxHashMap::default(),
+            ui_families: FxHashMap::default(),
+            ui_only_faces: FxHashSet::default(),
             glyph_registries: FxHashMap::default(),
         }
     }
@@ -1130,6 +1165,43 @@ impl FontLibraryData {
             }
 
             self.symbol_maps = Some(symbol_maps);
+        }
+
+        // The application validates at most 17 requested overlay families. Keep
+        // a defensive bound here too. Reuse this load's platform resolver/database.
+        for family in spec.ui_families.into_iter().take(17) {
+            if self.ui_families.contains_key(&family) {
+                continue;
+            }
+            let mut ids = [regular_index; 4];
+            for (index, slot, weight) in [
+                (0, Slot::Regular, 400),
+                (1, Slot::Bold, 700),
+                (2, Slot::Italic, 400),
+                (3, Slot::BoldItalic, 700),
+            ] {
+                let face = SugarloafFont {
+                    family: family.clone(),
+                    weight: Some(weight),
+                    style: fonts::FontStyle::default(),
+                };
+                match resolve(face, slot, false) {
+                    FindResult::Found(data) => {
+                        ids[index] = self.len();
+                        self.ui_only_faces.insert(ids[index]);
+                        self.insert(data);
+                    }
+                    FindResult::NotFound(spec) => {
+                        // Missing family rejects a UI transaction; missing style
+                        // inherits its regular face without inventing another font.
+                        if index == 0 {
+                            fonts_not_fount.push(spec);
+                        }
+                        ids[index] = ids[0];
+                    }
+                }
+            }
+            self.ui_families.insert(family, ids);
         }
 
         if spec.disable_warnings_not_found {

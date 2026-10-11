@@ -6,59 +6,59 @@ signed package has been published. See [platform status](docs/PLATFORMS.md) for
 available packages and [native release targets](.github/RELEASE-PLATFORMS.md) for
 the runner and artifact matrix.
 
-## Separate Linux Early Access lane
+## In-repository releases
 
-Linux Early Access has a separate zero-cost public binary lane. An internal
-`release/linux/X.Y.Z` pull request activates `.github/workflows/linux-early-access.yml`
-after merge. It publishes only the exact six Linux packages and public evidence
-to `AmjedAllaya/automexia-releases`; it does not create a stable multi-platform
-release or enable the website. The complete contract, App permissions,
-activation handoff, and rollback procedure are in
-[`docs/PUBLIC-RELEASE-DISTRIBUTION.md`](docs/PUBLIC-RELEASE-DISTRIBUTION.md) and
-[ADR 0037](docs/adr/0037-public-binary-release-distribution.md).
+Publish to `AmjedAllaya/automexia` only. Users download all platforms from
+[this repository's Releases](https://github.com/AmjedAllaya/automexia/releases).
+The previous `.github/workflows/linux-early-access.yml` publisher is disabled;
+its retained source and [distribution record](docs/PUBLIC-RELEASE-DISTRIBUTION.md)
+describe historical releases, not an alternative active publication path.
+No distribution App credential is used by the new publication job.
 
-For this Linux lane, [ADR 0040](docs/adr/0040-owner-authorized-linux-releases.md)
-authorizes `AmjedAllaya` alone to author and merge the release PR. No second
-reviewer is required. The workflow checks both original and rerun actors,
-the merged event, repository boundaries and exact current-main commit before
-enabling publication; the signing and native quality gates remain mandatory.
+The first public multi-platform tag is **`0.0.1_alpha`**, a GitHub prerelease
+that does not replace the stable “Latest” release. Its Cargo/application version
+is `0.0.1-alpha`; Windows MSI and Apple's numeric bundle fields use `0.0.1`.
+Apple's additional `AutomexiaReleaseVersion` field preserves the full version.
+Later stable versions use `vX.Y.Z`. Other prerelease spellings are rejected.
 
-The owner also approved solo-maintainer PRs in the public metadata archive under
-ADR 0040. Its validator still requires signed linear squash history, resolved
-discussions, no rule bypasses, and protected immutable release tags/assets.
-Before changing public guides, run the bounded offline metadata checker described
-in [public distribution](docs/PUBLIC-RELEASE-DISTRIBUTION.md), verify anonymous
-links and rendered pages, and preserve the existing package identities.
+`.github/workflows/release.yml` starts when an approved internal
+`release/0.0.1-alpha` (or stable `release/X.Y.Z`) PR merges into protected `main`.
+Pushing a tag alone does not publish. Merge release infrastructure changes
+separately first: the release PR gate rejects changes to workflows, packaging,
+release helpers and shell integration. Native OS gates, required independent
+review, source provenance and signing remain mandatory for this alpha.
 
-The current Linux assembler keeps full scanner SBOMs private, including after
-bounded semantic/privacy validation. Reviewed copies remain private workflow
-evidence for seven days; neither format enters the public upload bundle.
-Public schema 2 contains six packages and eight verification/user-document
-assets. Exact document review hashes and privacy checks precede signing.
-Run `python tools/ci/test_public_distribution.py` and
-`python tools/ci/test_release_trust.py` after changing this boundary. This
-correction is source-verified, not a replacement of the immutable first release;
-see the [SBOM privacy contract](docs/PUBLIC-RELEASE-DISTRIBUTION.md#sbom-privacy-boundary-in-current-source).
+All eleven packages must be present: four Windows assets, six Linux assets and
+one universal macOS DMG. Final verifiers download only their own platform's
+artifacts. Native accessibility, shell and rendering QA must also pass; a
+missing/skipped required platform blocks publication. Publication signs the
+manifest/checksum bundle and verifies GitHub's immutable release and each asset
+after upload. Raw scanner paths stay private; validated SPDX/CycloneDX documents
+include the application version, shared dependency inventory and ConPTY inputs.
 
-Before release credentials exist, manually dispatch the Linux workflow from an
-exact candidate ref with the Cargo version to obtain the private, unsigned
-native-package rehearsal. The rehearsal is visibly marked as not distributable
-and cannot sign, publish, tag, or activate the website. A real publication also
-requires GitHub release-level and per-asset attestation verification after
-immutable publication and before the activation handoff.
+Reproducibility compares all four unsigned executables from two cold builds on
+each of the six native targets and against the exact inputs selected for
+packaging. Portable archives normalize ordering, ownership, permissions and
+timestamps; DEB/RPM assembly receives the commit's `SOURCE_DATE_EPOCH`.
+Timestamped Authenticode/Developer ID signatures, notarization tickets, MSI
+package identifiers and DMG filesystem metadata are outside byte-for-byte
+reproducibility claims; verify final package digests/signatures instead. These
+CI gates require actual native runs and do not turn local fixtures into native
+Windows/macOS evidence.
 
-## Cross-platform stable release workflow
+Normal launch is identical across package formats: open Automexia to start a
+terminal. There is no first-run installer wizard or background updater that
+executes during terminal input. Upgrades are an explicit package download and
+install. `0.0.1-alpha` sorts below the historical separate `0.4.0` Linux build;
+package managers can therefore require an explicit downgrade choice. Back up
+configuration first and never force a downgrade or delete preferences for users.
 
-`.github/workflows/release.yml` starts after an approved `release/X.Y.Z` pull
-request is merged into protected `main`; the separate `release/linux/` lane is
-excluded. It validates the merged commit and creates the annotated version tag
-only after the release gates pass. Pushing a tag alone does not start this
-workflow.
+## Release preparation
 
 For local release preparation, run the helper with the workspace version:
 
 ```text
-cargo xtask release --version 0.4.0
+cargo xtask release --version 0.0.1-alpha
 ```
 
 On its first invocation for a version, this command assembles reviewed

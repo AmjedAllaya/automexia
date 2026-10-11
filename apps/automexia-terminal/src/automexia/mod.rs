@@ -20,6 +20,8 @@ pub mod editor;
 pub mod export;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod font_preferences;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod general_preferences;
 pub mod ghostty_migration;
 pub mod google;
 #[doc(hidden)]

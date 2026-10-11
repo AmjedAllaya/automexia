@@ -973,8 +973,45 @@ fn pane_close_repaint(c: &mut Criterion) {
     });
 }
 
+fn native_untrusted_output(c: &mut Criterion) {
+    use rio_vt::ansi::kitty_graphics_protocol::{parse, KittyGraphicsState};
+    let mut group = c.benchmark_group("native_untrusted_output");
+    group.bench_function("full_image_budget_rejection", |b| {
+        b.iter_batched(
+            || {
+                let mut state = KittyGraphicsState::default();
+                for id in 1..=8 {
+                    let control = format!("a=t,m=1,i={id}");
+                    assert!(
+                        parse(&[b"G", control.as_bytes(), b"AAAA"], &mut state)
+                            .unwrap()
+                            .incomplete
+                    );
+                }
+                state
+            },
+            |mut state| {
+                let response =
+                    parse(&[b"G", b"a=t,m=1,i=9", b"AAAA"], &mut state).unwrap();
+                assert!(!response.incomplete);
+                std::hint::black_box(response);
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+    let mut terminal = term();
+    let mut parser = Processor::default();
+    group.bench_function("clipboard_request_denied", |b| {
+        b.iter(|| {
+            parser.advance(&mut terminal, std::hint::black_box(b"\x1b]52;c;?\x07"));
+        })
+    });
+    group.finish();
+}
+
 criterion_group!(
     benches,
+    native_untrusted_output,
     color_setup,
     fragmented_utf8,
     bench,

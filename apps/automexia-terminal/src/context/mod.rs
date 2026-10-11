@@ -2068,6 +2068,33 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    /// Update core runtime state and defaults for future PTYs independently.
+    /// Existing launch descriptors, history, processes and routes remain owned
+    /// by their current contexts. Cursor updates occur only for cursor edits.
+    pub(crate) fn update_core_preferences(
+        &mut self,
+        config: &rio_backend::config::Config,
+        cursor_changed: bool,
+    ) {
+        self.config.keyboard = config.keyboard.clone();
+        self.config.cwd = config.navigation.current_working_directory;
+        self.config.scrollback_history_limit = config.scrollback_history_limit;
+        if cursor_changed {
+            for grid in self.contexts_mut() {
+                for item in grid.contexts_mut().values_mut() {
+                    let context = item.context_mut();
+                    context
+                        .renderable_content
+                        .update_cursor_config(&config.cursor);
+                    let mut terminal = context.terminal.lock();
+                    terminal.cursor_shape = config.cursor.shape;
+                    terminal.default_cursor_shape = config.cursor.shape;
+                    terminal.blinking_cursor = config.cursor.blinking;
+                }
+            }
+        }
+    }
+
     pub fn current_mut(&mut self) -> &mut Context<T> {
         self.contexts[self.current_index].current_mut()
     }
@@ -3499,6 +3526,47 @@ pub mod test {
             ContextManager::start_with_capacity(5, VoidListener {}, window_id).unwrap();
         context_manager.increase_capacity(3);
         assert_eq!(context_manager.capacity, 8);
+    }
+
+    #[test]
+    fn core_settings_update_live_cursor_and_future_defaults_without_replacing_sessions() {
+        let mut manager =
+            ContextManager::start_with_capacity(3, VoidListener {}, WindowId::from(0))
+                .unwrap();
+        manager.add_context(true, 1);
+        let routes = manager.route_ids();
+        let descriptor = manager.current().launch_descriptor.clone();
+        let mut config = rio_backend::config::Config {
+            scrollback_history_limit: 4321,
+            ..Default::default()
+        };
+        config.navigation.current_working_directory = false;
+        config.keyboard.ime_cursor_positioning = false;
+        config.cursor.shape = rio_backend::ansi::CursorShape::Underline;
+        config.cursor.blinking = true;
+        manager.update_core_preferences(&config, true);
+        assert_eq!(manager.route_ids(), routes);
+        assert_eq!(manager.current().launch_descriptor, descriptor);
+        assert_eq!(manager.config.scrollback_history_limit, 4321);
+        assert!(!manager.config.cwd);
+        assert!(!manager.config.keyboard.ime_cursor_positioning);
+        for grid in &manager.contexts {
+            for item in grid.contexts().values() {
+                let terminal = item.context().terminal.lock();
+                assert_eq!(terminal.cursor_shape, config.cursor.shape);
+                assert!(terminal.blinking_cursor);
+            }
+        }
+        manager.current().terminal.lock().cursor_shape =
+            rio_backend::ansi::CursorShape::Beam;
+        manager.update_core_preferences(&config, false);
+        assert_eq!(
+            manager.current().terminal.lock().cursor_shape,
+            rio_backend::ansi::CursorShape::Beam
+        );
+        manager.add_context(true, 2);
+        assert_eq!(manager.len(), 3);
+        assert_eq!(manager.config.scrollback_history_limit, 4321);
     }
 
     #[test]

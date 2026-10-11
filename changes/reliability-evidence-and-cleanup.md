@@ -1,4 +1,4 @@
-### Fixed
+Fixed
 
 - Retain private provider-file cleanup ownership when deletion fails, allowing a
   later revoke or shutdown to retry instead of losing track of the file.

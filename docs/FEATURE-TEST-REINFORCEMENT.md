@@ -74,6 +74,8 @@ fixtures or reports.
 
 ### terminal-protocols-grid-history
 
+Actual OSC 52 queries, writes and clears across routes, selectors, BEL and ST cannot emit privileged clipboard events; explicit user copy/paste keeps its existing owner and terminal reset releases unfinished images.
+
 Live table regressions must consume incremental parser damage before any resize.
 Cover offscreen and wrapped headers, source/style offsets, newly arriving sparse
 blocks, and tall panes whose visible rows cannot be displaced by prefix recovery.
@@ -167,6 +169,8 @@ compare stable IDs, timestamps, boundaries, visible rows, and unchanged PTY
 bytes after each transition.
 
 ### pty-scheduler-process-lifecycle
+
+Linux/macOS PTY descriptors are atomically close-on-exec; real unrelated child executions cannot inherit sibling PTYs. Native process paths preserve non-UTF-8 bytes and bounded C-string lifetimes; macOS Foundation locale getters survive autorelease pools without releasing borrowed objects.
 
 The pinned ConPTY package uses the existing DLL loader and PTY lifecycle owner.
 Prepare the DLL for the application architecture and both kernel-specific hosts
@@ -329,6 +333,12 @@ new extent and DPI. Native sibling output, process identities,
 resource ceilings and pixels remain independent of these model-path checks.
 
 ### renderer-fonts-responsive-ui
+
+Full Settings extends the shared catalog and preference owner. Verify category and
+owner search, explicit default-valued config, profile palette provenance, v16
+migration/restart, reset inheritance, stale TOML exports, live cursor updates that
+preserve PTYs, full-catalog controlled raster and the isolated Windows keyboard
+entry. Native platform and assistive-technology proof remains separate.
 
 Menu shortcut hints use one themed text painter with wrapping and clipped bounds. Compare literal key glyph colours, first-control visibility, page movement and narrow/high-DPI layouts; native Windows CPU/WGPU checks cover the actual menu and customization return path.
 
@@ -870,11 +880,13 @@ screen-reader, compositor, clipboard, provider or sustained RSS evidence.
 
 ### image-protocols-local-preview
 
+Aggregate unfinished Kitty uploads cover eight-transfer admission, retained capacity accounting, completion/rejection recovery, empty keepalives, exact ten-second expiry, real worker cleanup without further output, reset cleanup and PNG header limits before pixel decoding; retain bounded-rejection microbenchmarks.
+
 Kitty size declarations cannot allocate unreceived bytes. Test pre-decode
 rejection, exact/over-limit actual payload accumulation, checked length overflow,
 transfer isolation, inherited quiet/identifier replies and recovery after
-rejection. Test graphics-enabled and minimal feature configurations. These
-per-transfer tests do not certify aggregate retention or decoder peak memory.
+rejection. Test graphics-enabled and minimal feature configurations. Retain decoder peak-memory measurements as separate evidence; admission tests
+do not measure process RSS.
 
 Inline image quads use the same command-row projection and crop texture slices
 around inserted rows. Regressions check exact coordinates and UV preservation;
@@ -1055,6 +1067,8 @@ they reach local or hosted logs. CMD identity fixtures must use stable fictional
 values rather than contributor account or executable-path data.
 
 ### packaging-release-provenance
+
+Linux DEB/RPM manifests include the complete shell-integration resource tree including hidden Zsh startup files; installed-prefix discovery works without environment overrides and rejects incomplete payloads. Package construction and native installed-artifact evidence remain separate.
 
 Windows packages must retain the pinned Microsoft DLL and both kernel hosts in
 the same layout as local and native GUI builds. Missing assets fail before

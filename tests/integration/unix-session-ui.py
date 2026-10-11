@@ -23,6 +23,7 @@ import sys
 import subprocess
 import tempfile
 import time
+import tomllib
 
 
 MACOS = sys.platform == "darwin"
@@ -133,7 +134,7 @@ def pid_exists(pid: int) -> bool:
 @contextmanager
 def fixture_workspace():
     temporary = tempfile.TemporaryDirectory(prefix="automexia-unix-native-")
-    diagnostics = {"retries": 0}
+    diagnostics = {"retries": 0, "removed": False}
     try:
         yield temporary.name, diagnostics
     finally:
@@ -144,6 +145,8 @@ def fixture_workspace():
         for attempt in range(5):
             try:
                 temporary.cleanup()
+                check(not Path(temporary.name).exists(), "owned test profile survived cleanup")
+                diagnostics["removed"] = True
                 break
             except OSError as error:
                 if error.errno != errno.ENOTEMPTY or attempt == 4:
@@ -304,7 +307,7 @@ class WaylandDisplay:
     def key(self, process, chord):
         self.window(process, focused=True)
         check(chord in ("ctrl+shift+p", "Escape", "Down", "ctrl+shift+F1", "ctrl+shift+F3",
-                        "alt+j", "alt+shift+j", "x", "a", "F3", "Return", *"connect"),
+                        "alt+j", "alt+shift+j", "x", "a", "r", "0", "1", "5", "ctrl+a", "F3", "Return", *"connect"),
               "unsupported Wayland fixture key")
         subprocess.run(
             [self.tools["xdotool"], "windowfocus", self.input_window, "key", "--clearmodifiers", chord],
@@ -328,11 +331,32 @@ class WaylandDisplay:
                        check=True, capture_output=True, timeout=5)
 
 
+def fixture_environment(home, config, program, control, snapshot, scale):
+    # Keep display/toolchain capabilities only. Inherited Automexia, legacy
+    # profile, benchmark and shell startup variables must never redirect a test.
+    keys = ("PATH", "DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
+            "VK_ICD_FILENAMES", "LIBGL_ALWAYS_SOFTWARE", "LANG", "LC_ALL")
+    env = {name: os.environ[name] for name in keys if name in os.environ}
+    env.update(HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
+               XDG_DATA_HOME=str(home / ".local/share"), XDG_CACHE_HOME=str(home / ".cache"),
+               XDG_STATE_HOME=str(home / ".local/state"), RIO_CONFIG_HOME=str(home / "legacy-config"),
+               USERPROFILE=str(home), LOCALAPPDATA=str(home), APPDATA=str(home),
+               TMPDIR=str(home), TMP=str(home), TEMP=str(home),
+               AUTOMEXIA_CONFIG_HOME=str(config), AUTOMEXIA_NATIVE_TEST_CONTROL=str(control),
+               AUTOMEXIA_RESIZE_SNAPSHOT=str(snapshot), WINIT_UNIX_BACKEND="x11",
+               WINIT_X11_SCALE_FACTOR=str(scale or 1), SHELL=program, HISTFILE="/dev/null", RUST_LOG="error",
+               AUTOMEXIA_SHELL_INTEGRATION="1", AUTOMEXIA_CONTEXT_PATH_HINTS="0",
+               PATH="/usr/local/bin:/usr/bin:/bin", USERNAME="fixture", LOGNAME="fixture")
+    return env
+
+
 def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: float | None, launch_mode: str,
-             display_server: str = "x11") -> dict:
+             display_server: str = "x11", appearance_theme: str | None = None) -> dict:
     label = f"{backend}-{shell}-{scale if scale is not None else 'native'}-{launch_mode}"
     if display_server == "wayland":
         label = "wayland-" + label
+    if appearance_theme is not None:
+        label = f"appearance-{appearance_theme}-" + label
     output = captures / label
     output.mkdir(parents=True, exist_ok=True)
     with fixture_workspace() as (temporary, cleanup_diagnostics), ExitStack() as stack:
@@ -358,21 +382,22 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
         # Exercise the platform default and, on macOS, optional fork mode.
         # Profile env and CWD must reach the same validated launch owner.
         fork_config = "use-fork = true\n" if launch_mode == "fork" else ""
+        theme_config = ""
+        if appearance_theme not in (None, "default"):
+            source = Path(__file__).resolve().parents[2] / "themes" / f"{appearance_theme}.toml"
+            check(source.is_file() and source.parent.name == "themes", "unknown fixture theme")
+            (config / "themes").mkdir()
+            shutil.copyfile(source, config / "themes" / source.name)
+            theme_config = f"theme = {json.dumps(appearance_theme)}\n"
         (config / "config.toml").write_text(
-            'confirm-before-quit = false\n'
+            theme_config + 'confirm-before-quit = false\n'
             'env-vars = ["AMX_NATIVE_PROFILE=PROFILE_LOADED"]\n'
             + fork_config + shell_config +
             f'[renderer]\n{renderer}\n[cursor]\nblinking = false\n'
             '[session-recovery]\nenabled = false\n', encoding="utf-8")
         control, snapshot = home / "control", home / "snapshot.json"
         control.write_text("", encoding="utf-8")
-        env = dict(os.environ, HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
-                   XDG_DATA_HOME=str(home / ".local/share"), XDG_CACHE_HOME=str(home / ".cache"),
-                   AUTOMEXIA_CONFIG_HOME=str(config), AUTOMEXIA_NATIVE_TEST_CONTROL=str(control),
-                   AUTOMEXIA_RESIZE_SNAPSHOT=str(snapshot), WINIT_UNIX_BACKEND="x11",
-                   WINIT_X11_SCALE_FACTOR=str(scale or 1), SHELL=program, HISTFILE="/dev/null", RUST_LOG="error",
-                   AUTOMEXIA_SHELL_INTEGRATION="1", AUTOMEXIA_CONTEXT_PATH_HINTS="0",
-                   PATH="/usr/local/bin:/usr/bin:/bin", USERNAME="fixture", LOGNAME="fixture")
+        env = fixture_environment(home, config, program, control, snapshot, scale)
         for key in ("WAYLAND_DISPLAY", "ZDOTDIR", "AUTOMEXIA_ORIGINAL_ZDOTDIR", "AUTOMEXIA_ORIGINAL_ZDOTDIR_SET",
                     "AUTOMEXIA_VISUAL_TEST_FIXTURE"):
             env.pop(key, None)
@@ -424,24 +449,27 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     error.observed = native_failure_state(value)
                     raise error
 
-                wait(lambda s: s.get("sequence", 0) > 0, "no presented frame", 30)
-                if MACOS:
-                    driver = MacDriver(process)
-                    driver.resize(1200, 800)
-                elif wayland:
-                    wayland.prepare(process)
-                else:
-                    end = time.monotonic() + 10
-                    while time.monotonic() < end and handle is None:
-                        found = subprocess.run(["xdotool", "search", "--pid", str(process.pid)],
-                                               capture_output=True, text=True, timeout=5).stdout.split()
-                        if len(found) == 1:
-                            handle = found[0]
-                        else:
-                            time.sleep(.1)
-                    check(handle is not None, "no unique owned X11 window")
-                    call("xdotool", "windowsize", handle, "1200", "800")
-                    call("xdotool", "windowfocus", handle)
+                def attach_window():
+                    nonlocal driver, handle
+                    wait(lambda s: s.get("sequence", 0) > 0, "no presented frame", 30)
+                    if MACOS:
+                        driver = MacDriver(process)
+                        driver.resize(1200, 800)
+                    elif wayland:
+                        wayland.prepare(process)
+                    else:
+                        end = time.monotonic() + 10
+                        while time.monotonic() < end and handle is None:
+                            found = subprocess.run(["xdotool", "search", "--pid", str(process.pid)],
+                                                   capture_output=True, text=True, timeout=5).stdout.split()
+                            if len(found) == 1:
+                                handle = found[0]
+                            else:
+                                time.sleep(.1)
+                        check(handle is not None, "no unique owned X11 window")
+                        call("xdotool", "windowsize", handle, "1200", "800")
+                        call("xdotool", "windowfocus", handle)
+                attach_window()
 
                 def key(chord: str) -> None:
                     if driver:
@@ -484,6 +512,9 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                         wayland.capture(process, output / f"{name}.png")
                     elif not MACOS:
                         call("import", "-window", handle, str(output / f"{name}.png"))
+                    elif appearance_theme is not None:
+                        call("/usr/sbin/screencapture", "-x", "-o", "-l", str(driver.owned_window_number()),
+                             str(output / f"{name}.png"))
 
                 def command(text: str) -> dict:
                     previous = wait(integrated_ready, "shell input prompt not fully presented")
@@ -518,6 +549,146 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                       "caption controls do not occupy their visible window edge")
                 check(chrome.get("left_margin", 1000) <= 52, "unused native traffic-light inset retained")
                 check(active(initial).get("current_directory") == str(home), "launch CWD discarded")
+                if appearance_theme is not None:
+                    converter = shutil.which("magick") or shutil.which("convert")
+                    check(converter is not None, "native appearance pixel reader missing")
+                    clear = initial.get("appearance", {}).get("clear")
+                    check(clear is not None and clear[3] == 1.0, "clean startup did not clear opaque")
+                    rgb = [round(channel * 255) for channel in clear[:3]]
+
+                    def body_pixel(name):
+                        # An empty area below the prompt, away from the cursor,
+                        # status, border, and scroll bar. Native PNGs are bounded
+                        # fixture output, read by the existing image test tool.
+                        capture(name)
+                        size = state()
+                        x, y = round(size["window_width"] * .80), round(size["window_height"] * .60)
+                        raw = subprocess.run([converter, str(output / f"{name}.png"), "-crop",
+                                              f"1x1+{x}+{y}", "-depth", "8", "rgb:-"],
+                                             capture_output=True, check=True, timeout=10).stdout
+                        check(len(raw) == 3, "native pixel reader did not return RGB")
+                        return list(raw)
+
+                    def assert_body(name, alpha):
+                        check(abs(state().get("appearance", {}).get("window_alpha", -1) - alpha) < .01,
+                              "native clear alpha does not match resolved setting")
+                        if wayland:
+                            # Real compositor oracle. A golden captured against
+                            # one wallpaper cannot tell transparency from colour.
+                            for shade in (0, 255):
+                                wayland.ipc("output", "*", "bg", "#000000" if shade == 0 else "#ffffff", "solid_color")
+                                time.sleep(.15)
+                                actual = body_pixel(f"{name}-{shade}")
+                                expected_rgb = [round(v * alpha + shade * (1-alpha)) for v in rgb]
+                                check(max(abs(a-b) for a,b in zip(actual, expected_rgb)) <= 4,
+                                      f"native body blend mismatch: {name}, alpha={alpha}, actual={actual}, expected={expected_rgb}")
+                        elif alpha == 1.0:
+                            actual = body_pixel(name)
+                            check(max(abs(a-b) for a,b in zip(actual, rgb)) <= 6,
+                                  f"opaque body pixel mismatch: {name}, actual={actual}, expected={rgb}")
+
+                    def setting_row(identity):
+                        current = wait(lambda s: s.get("settings", {}).get("ready") and
+                                       any(r["id"] == identity for r in s["settings"].get("controls", [])),
+                                       "appearance row unavailable")
+                        bounds = next(r["bounds"] for r in current["settings"]["controls"] if r["id"] == identity)
+                        click(bounds[0]+bounds[2]/2, bounds[1]+bounds[3]/2)
+
+                    def restart():
+                        nonlocal process, driver, handle
+                        if driver:
+                            driver.dispose()
+                            driver = None
+                        os.killpg(process.pid, signal.SIGTERM)
+                        process.wait(timeout=5)
+                        control.write_text("", encoding="utf-8")
+                        snapshot.unlink(missing_ok=True)
+                        handle = None
+                        process = subprocess.Popen([str(binary), "--working-dir", str(home)], cwd=home, env=env,
+                                                   stdout=subprocess.DEVNULL, stderr=log, start_new_session=True)
+                        attach_window()
+                        wait(integrated_ready, "restarted session not ready")
+
+                    assert_body("clean-startup", 1.0)
+                    cell_rgb = None
+                    if wayland and backend != "cpu" and appearance_theme == "default":
+                        # Record the renderer's opaque ANSI colour first: existing
+                        # output-colour policy may resolve ANSI against the theme.
+                        command(r"printf '\033[48;2;255;0;0m\033[2J\033[Hcell blend\033[0m\n'")
+                        cell_rgb = body_pixel("opaque-cell")
+                        check(cell_rgb[0] > 150 and cell_rgb[0] > cell_rgb[1]*2,
+                              "opaque ANSI cell fixture missing")
+                        restart()
+                    if backend != "cpu":
+                        send("open-terminal-appearance")
+                        setting_row("interface.background.opacity")
+                        wait(lambda s: s.get("settings", {}).get("active_category") == "interface.background.opacity",
+                             "background customization did not open")
+                        setting_row("interface.background.opacity")
+                        wait(lambda s: (s.get("settings", {}).get("numeric_editor") or {}).get("id") == "interface.background.opacity",
+                             "opacity editor did not open")
+                        key("ctrl+a")
+                        key("5")
+                        key("0")
+                        key("Return")
+                        wait(lambda s: s.get("appearance", {}).get("window_alpha") == .5 and
+                             not s.get("settings", {}).get("save_pending"), "opacity did not apply and save")
+                        key("Escape")
+                        key("Escape")
+                        wait(lambda s: not s.get("settings", {}).get("open"), "settings did not close")
+                        assert_body("half-opacity", .5)
+                        restart()
+                        wait(lambda s: s.get("appearance", {}).get("window_alpha") == .5, "saved opacity lost after restart")
+                        assert_body("saved-restart", .5)
+                        if wayland and appearance_theme == "default":
+                            send("open-terminal-appearance")
+                            setting_row("interface.background.opacity")
+                            setting_row("interface.background.opacity-cells")
+                            key("Escape")
+                            key("Escape")
+                            wait(lambda s: not s.get("settings", {}).get("open"), "cell settings did not close")
+                            # Explicit ANSI backgrounds use the same source-over
+                            # equation as the clear, without multiplying alpha twice.
+                            command(r"printf '\033[48;2;255;0;0m\033[2J\033[Hcell blend\033[0m\n'")
+                            for shade in (0, 255):
+                                wayland.ipc("output", "*", "bg", "#000000" if shade == 0 else "#ffffff", "solid_color")
+                                time.sleep(.15)
+                                actual = body_pixel(f"cell-opacity-{shade}")
+                                cell_alpha = 128/255
+                                expected_rgb = [round(c*cell_alpha + (v*.5 + shade*.5)*(1-cell_alpha))
+                                                for c,v in zip(cell_rgb, rgb)]
+                                check(max(abs(a-b) for a,b in zip(actual, expected_rgb)) <= 4,
+                                      f"native ANSI cell blend mismatch: actual={actual}, expected={expected_rgb}")
+                            restart()
+                        send("open-terminal-appearance")
+                        wait(lambda s: s.get("settings", {}).get("ready"), "settings did not reopen")
+                        # Leave search focus without editing it, then use the
+                        # same reset confirmation as a keyboard user.
+                        key("Down")
+                        key("r")
+                        confirmation = wait(lambda s: s.get("settings", {}).get("ready") and
+                                            (s["settings"].get("confirmation") or {}).get("accept", [0,0,0,0])[2] > 0,
+                                            "reset confirmation absent")
+                        bounds = confirmation["settings"]["confirmation"]["accept"]
+                        click(bounds[0]+bounds[2]/2, bounds[1]+bounds[3]/2)
+                        wait(lambda s: s.get("appearance", {}).get("window_alpha") == 1 and
+                             not s.get("settings", {}).get("save_pending"), "reset did not restore opaque default")
+                        key("Escape")
+                        wait(lambda s: not s.get("settings", {}).get("open"), "reset settings did not close")
+                        assert_body("reset", 1.0)
+                        restart()
+                        assert_body("reset-restart", 1.0)
+                    # Config remains the test-owned source; no UI save rewrites it.
+                    saved = config / "state/user-preferences-v16.toml"
+                    if saved.exists():
+                        preferences = tomllib.loads(saved.read_text(encoding="utf-8"))
+                        check("opacity" not in preferences.get("visual", {}).get("interface", {}),
+                              "reset persisted a replacement for inherited opacity")
+                    return {"scenario": label, "renderer": expected, "scale": initial["scale_factor"],
+                            "appearance": True, "clean_default": True, "native_pixels": True,
+                            "saved_restart_reset": backend != "cpu", "compositor_blend": bool(wayland),
+                            "fixture_cleanup": cleanup_diagnostics}
+
                 result = command("printenv AMX_NATIVE_RC; printenv AMX_NATIVE_PROFILE")
                 text = active(result).get("visible_text", "")
                 check("RC_LOADED" in text and "PROFILE_LOADED" in text, "startup/profile environment lost")
@@ -579,6 +750,80 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                 wait(lambda s: s.get("settings", {}).get("active_category") is None, "table category did not close")
                 key("Escape")
                 wait(lambda s: not s.get("settings", {}).get("open"), "customizations did not close")
+                # Real shared/per-tag edits must update the existing preview and
+                # terminal without another command. This uses only the isolated
+                # HOME/state owned by this scenario, on Linux and macOS alike.
+                send("open-customizations")
+
+                def tag_control(identity):
+                    current = wait(lambda s: s.get("settings", {}).get("ready") and
+                                   not s["settings"].get("save_pending") and any(
+                                       c["id"] == identity for c in s["settings"].get("controls", [])),
+                                   f"tag control unavailable: {identity}")
+                    x, y, w, h = next(c["bounds"] for c in current["settings"]["controls"] if c["id"] == identity)
+                    click(x+w/2, y+h/2)
+
+                def tag_search(value):
+                    current = wait(lambda s: s.get("settings", {}).get("ready"), "tag page not ready")
+                    x,y,w,h = current["settings"]["search_button"]
+                    click(x+w/2,y+h/2)
+                    key("ctrl+a")
+                    key("BackSpace")
+                    for char in value:
+                        key("space" if char == " " else char)
+                    wait(lambda s: s.get("settings", {}).get("search_bytes") == len(value), "tag search did not update")
+
+                def tag_size(identity, value):
+                    tag_search("Text size")
+                    tag_control(identity)
+                    wait(lambda s: (s.get("settings", {}).get("numeric_editor") or {}).get("id") == identity,
+                         "tag size editor did not open")
+                    key("ctrl+a")
+                    for digit in str(value):
+                        key(digit)
+                    key("Return")
+                    wait(lambda s: not s.get("settings", {}).get("numeric_editor") and
+                         not s.get("settings", {}).get("save_pending"), "tag size did not save")
+                    tag_search("")
+
+                def sample_tag(s, identity):
+                    return next((t["bounds"] for t in s.get("settings", {}).get("targets", [])
+                                 if t["id"] == identity and not t["roster"]), None)
+
+                tag_control("tags.enabled")
+                wait(lambda s: s.get("settings", {}).get("active_category") == "tags.enabled", "information tags did not open")
+                before_style = wait(lambda s: sample_tag(s,"tags.slot.user.page") is not None, "user tag sample absent")
+                before_height = sample_tag(before_style,"tags.slot.user.page")[3]
+                tag_size("tags.shared.size", 125)
+                shared_style = wait(lambda s: sample_tag(s,"tags.slot.user.page") is not None and
+                                    sample_tag(s,"tags.slot.user.page")[3] > before_height,
+                                    "shared tag size did not change live preview")
+                x,y,w,h = shared_style["settings"]["edit_button"]
+                click(x+w/2,y+h/2)
+                edit_style = wait(lambda s: s.get("settings", {}).get("preview_edit_mode"), "tag editing did not start")
+                x,y,w,h = sample_tag(edit_style,"tags.slot.user.page")
+                click(x+w/2,y+h/2)
+                wait(lambda s: s.get("settings", {}).get("active_slot") == "tags.slot.user.page", "individual tag did not open")
+                tag_size("tags.slot.user.style.size", 50)
+                wait(lambda s: sample_tag(s,"tags.slot.user.page") is not None and
+                     sample_tag(s,"tags.slot.user.page")[3] < before_height, "individual tag override did not preview")
+                capture("tag-typography")
+                tag_search("Inherit shared")
+                tag_control("tags.slot.user.style.inherit")
+                wait(lambda s: not s.get("settings", {}).get("save_pending"), "tag inheritance did not save")
+                tag_search("")
+                wait(lambda s: sample_tag(s,"tags.slot.user.page") is not None and
+                     sample_tag(s,"tags.slot.user.page")[3] == sample_tag(shared_style,"tags.slot.user.page")[3],
+                     "inherit did not restore shared geometry")
+                saved_tags = tomllib.loads((config / "state/user-preferences-v16.toml").read_text(encoding="utf-8"))["visual"]["information-bar"]["styles"]
+                check(saved_tags["shared"]["size"] == 125 and "user" not in saved_tags.get("tags", {}),
+                      "tag styles did not persist through their existing preference owner")
+                for _ in range(3):
+                    key("Escape")
+                    time.sleep(.1)
+                wait(lambda s: not s.get("settings", {}).get("open"), "tag customizations did not close")
+                check(active(state()).get("visible_text") == unchanged_text and state().get("latest_prompt_id") == unchanged_prompt,
+                      "tag styling changed source text or reran a command")
                 if backend == "cpu" and shell == "default" and scale == 1.0 and launch_mode == "default":
                     # A route change must not republish stale presentation defaults.
                     send("open-customizations")
@@ -902,11 +1147,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--captures", type=Path, required=True)
-    parser.add_argument("--backend", choices=("cpu", "vulkan", "webgpu"), action="append")
+    parser.add_argument("--backend", choices=("cpu", "vulkan", "webgpu", "metal"), action="append")
     parser.add_argument("--shell", choices=("default", "bash", "zsh", "fish"), action="append")
     parser.add_argument("--scale", type=float, action="append")
     parser.add_argument("--launch-mode", choices=("default", "fork"), action="append")
     parser.add_argument("--display-server", choices=("x11", "wayland"), default="x11")
+    parser.add_argument("--appearance-only", action="store_true")
     parser.add_argument("--timeout", type=int, default=480)
     args = parser.parse_args()
     if not 1 <= args.timeout <= 1800:
@@ -920,6 +1166,8 @@ def main() -> int:
     results = []
     if MACOS and args.display_server != "x11":
         parser.error("Wayland scenarios require Linux")
+    if not MACOS and "metal" in (args.backend or []):
+        parser.error("Metal requires macOS")
     if MACOS and args.scale:
         parser.error("macOS records its real display scale; controlled raster tests cover synthetic scales")
     for backend in args.backend or (["cpu", "webgpu"] if MACOS else ["cpu", "vulkan"]):
@@ -927,7 +1175,12 @@ def main() -> int:
             for scale in args.scale or ([None] if MACOS else [1.0, 1.5]):
                 for launch_mode in args.launch_mode or (["default", "fork"] if MACOS else ["default"]):
                     try:
-                        result = run_case(args.binary.resolve(), captures, backend, shell, scale, launch_mode, args.display_server)
+                        themes = ["default", "aurora-night", "solar-dusk", "forest-operator", "arctic-glass", "arctic-day"] if args.appearance_only else [None]
+                        for theme in themes:
+                            result = run_case(args.binary.resolve(), captures, backend, shell, scale, launch_mode, args.display_server, theme)
+                            if theme != themes[-1]:
+                                results.append(result)
+                                print(json.dumps(result), flush=True)
                     except (Failure, subprocess.SubprocessError, OSError, ValueError) as error:
                         result = {"scenario": ("wayland-" if args.display_server == "wayland" else "") + f"{backend}-{shell}-{scale if scale is not None else 'native'}-{launch_mode}",
                                   **failure_details(error)}

@@ -7,9 +7,11 @@ use automexia_extension_api::{DetailsAction, Freshness, IconKind, SegmentRole};
 use serde::{Deserialize, Serialize};
 
 mod shapes;
+mod typography;
 pub use shapes::{
     connected_tag_geometry, tag_join_overlap, ConnectedTagGeometry, TagShapePosition,
 };
+pub use typography::{styled_tag_join_overlap, TagPaint, TagStyles, TagTypography};
 
 use crate::Segment;
 
@@ -505,6 +507,9 @@ const fn default_enabled() -> bool {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct BarRecipe {
+    /// Derived from versioned host preferences, never duplicated in recipe storage.
+    #[serde(skip)]
+    pub styles: TagStyles,
     pub visual: BarVisualStyle,
     pub arrangement: BarArrangement,
     /// Percentage of the selected format's native gap between adjacent tags.
@@ -608,6 +613,7 @@ pub enum BarRecipeError {
 /// semantics. A fixed icon never changes the text source's identity or action.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedBarItem {
+    pub style: TagTypography,
     pub slot_id: String,
     pub value: String,
     pub icon_only: bool,
@@ -774,6 +780,7 @@ pub fn preset_recipe(preset: InformationBarPreset) -> BarRecipe {
         })
         .collect();
     BarRecipe {
+        styles: TagStyles::default(),
         visual,
         arrangement,
         spacing_percent: default_bar_spacing_percent(),
@@ -988,6 +995,7 @@ pub fn resolve_recipe(
             BarIconSource::None => None,
         };
         resolved.push(ResolvedBarItem {
+            style: recipe.styles.resolve(&slot.id),
             slot_id: slot.id.clone(),
             value,
             icon_only: matches!(slot.text, BarTextSource::None),
@@ -1276,6 +1284,7 @@ mod tests {
 
     fn recipe(slots: Vec<BarSlot>) -> BarRecipe {
         BarRecipe {
+            styles: TagStyles::default(),
             visual: BarVisualStyle::Capsule,
             arrangement: BarArrangement::Flow,
             spacing_percent: default_bar_spacing_percent(),

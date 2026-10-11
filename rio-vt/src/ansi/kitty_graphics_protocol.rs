@@ -14,6 +14,10 @@ const MAX_DIMENSION: u32 = 10_000;
 /// ghostty / upstream kitty. Guards against runaway base64 blobs filling
 /// memory before `create_graphic_data` validates them.
 const MAX_SIZE: usize = 400 * 1024 * 1024;
+// Independently bound unfinished uploads, including allocated spare capacity.
+// This budget is separate from the completed-image store.
+const MAX_PENDING_TRANSFERS: usize = 8;
+const MAX_PENDING_BYTES: usize = 64 * 1024 * 1024;
 
 /// How long an in-progress chunked upload may sit idle before the
 /// accumulator drops it. Prevents `incomplete_images` from growing
@@ -44,6 +48,36 @@ pub struct KittyGraphicsState {
 }
 
 impl KittyGraphicsState {
+    pub(crate) fn pending_deadline(&self) -> Option<Instant> {
+        self.incomplete_images
+            .values()
+            .map(|cmd| cmd.last_touched + CHUNK_STALE_TIMEOUT)
+            .min()
+    }
+
+    pub(crate) fn expire_incomplete(&mut self, now: Instant) {
+        self.incomplete_images.retain(|_, cmd| {
+            now.saturating_duration_since(cmd.last_touched) < CHUNK_STALE_TIMEOUT
+        });
+        if !self
+            .incomplete_images
+            .contains_key(&self.current_transmission_key)
+        {
+            self.current_transmission_key = 0;
+        }
+    }
+
+    fn available_payload_capacity(&self, key: u32) -> usize {
+        let others = self
+            .incomplete_images
+            .iter()
+            .filter(|(id, _)| **id != key)
+            .fold(0usize, |sum, (_, cmd)| {
+                sum.saturating_add(cmd.payload.capacity())
+            });
+        MAX_PENDING_BYTES.saturating_sub(others)
+    }
+
     /// Allocate a fresh image_id for an implicit transmission.
     fn allocate_image_id(&mut self) -> u32 {
         if self.next_auto_image_id < 0x80000000 {
@@ -573,6 +607,15 @@ pub fn parse(
     // once per APC — O(n) with n bounded by concurrent uploads.
     evict_stale_chunks(state);
 
+    let capacity_budget = state.available_payload_capacity(image_key);
+    if cmd.more
+        && !state.incomplete_images.contains_key(&image_key)
+        && (state.incomplete_images.len() >= MAX_PENDING_TRANSFERS
+            || cmd.payload.capacity() > capacity_budget)
+    {
+        return Some(reject_transfer(state, &cmd, GraphicError::TooLarge));
+    }
+
     if cmd.more {
         // Store chunk for later - preserve all metadata from first chunk.
         // Payload is already base64-decoded at this point, so subsequent
@@ -596,7 +639,7 @@ pub fn parse(
                 // the accumulated size would exceed our cap.
                 let stored_cmd = e.get_mut();
                 if let Err(error) =
-                    append_payload(&mut stored_cmd.payload, &cmd.payload, MAX_SIZE)
+                    append_payload(&mut stored_cmd.payload, &cmd.payload, capacity_budget)
                 {
                     let rejected = e.remove();
                     if state.current_transmission_key == image_key {
@@ -604,7 +647,10 @@ pub fn parse(
                     }
                     return Some(transfer_error_response(&rejected, error));
                 }
-                stored_cmd.last_touched = Instant::now();
+                // An empty keepalive cannot prolong retained allocations.
+                if !cmd.payload.is_empty() {
+                    stored_cmd.last_touched = Instant::now();
+                }
                 debug!(
                     "Appended chunk for image key {}: {} bytes accumulated",
                     image_key,
@@ -626,7 +672,7 @@ pub fn parse(
             // Final chunk: append this chunk's decoded bytes to the
             // already-accumulated stored payload.
             if let Err(error) =
-                append_payload(&mut stored_cmd.payload, &cmd.payload, MAX_SIZE)
+                append_payload(&mut stored_cmd.payload, &cmd.payload, capacity_budget)
             {
                 if state.current_transmission_key == image_key {
                     state.current_transmission_key = 0;
@@ -1009,30 +1055,7 @@ fn parse_compression(value: &str) -> Compression {
 /// chunk within `CHUNK_STALE_TIMEOUT`. Prevents unbounded growth when
 /// clients abandon chunked uploads.
 fn evict_stale_chunks(state: &mut KittyGraphicsState) {
-    if state.incomplete_images.is_empty() {
-        return;
-    }
-    let now = Instant::now();
-    let before = state.incomplete_images.len();
-    state
-        .incomplete_images
-        .retain(|_, cmd| now.duration_since(cmd.last_touched) < CHUNK_STALE_TIMEOUT);
-    let after = state.incomplete_images.len();
-    if after < before {
-        debug!(
-            "Evicted {} stale chunked uploads (>{}s idle)",
-            before - after,
-            CHUNK_STALE_TIMEOUT.as_secs()
-        );
-        // If the pinned transmission key was evicted, clear it so that a
-        // new chunkless command can't accidentally resume it.
-        if !state
-            .incomplete_images
-            .contains_key(&state.current_transmission_key)
-        {
-            state.current_transmission_key = 0;
-        }
-    }
+    state.expire_incomplete(Instant::now());
 }
 
 /// Decode a single APC command's base64 payload.
@@ -1115,16 +1138,15 @@ fn create_graphic_data(cmd: &KittyGraphicsCommand) -> Result<GraphicData, Graphi
     if cmd.payload.len() > MAX_SIZE {
         return Err(GraphicError::TooLarge);
     }
-    let raw_data = cmd.payload.to_vec();
-
+    // Borrow direct input; only compressed input needs a second payload buffer.
     // Decompress if needed
     let pixel_data = match cmd.compression {
-        Compression::None => raw_data,
+        Compression::None => std::borrow::Cow::Borrowed(cmd.payload.as_slice()),
         Compression::Zlib => {
             use flate2::read::ZlibDecoder;
             use std::io::Read;
 
-            let decoder = ZlibDecoder::new(&raw_data[..]);
+            let decoder = ZlibDecoder::new(cmd.payload.as_slice());
             // Cap decompressed output so zip bombs can't wedge the
             // terminal. `Take` passes the limit through the decoder; we
             // then check the size we actually got.
@@ -1136,7 +1158,7 @@ fn create_graphic_data(cmd: &KittyGraphicsCommand) -> Result<GraphicData, Graphi
             if decompressed.len() > MAX_SIZE {
                 return Err(GraphicError::TooLarge);
             }
-            decompressed
+            std::borrow::Cow::Owned(decompressed)
         }
     };
 
@@ -1155,10 +1177,16 @@ fn create_graphic_data(cmd: &KittyGraphicsCommand) -> Result<GraphicData, Graphi
                 use image_rs::ImageFormat;
 
                 debug!("Decoding PNG, pixel_data length: {}", pixel_data.len());
-                let img = match image_rs::load_from_memory_with_format(
-                    &pixel_data,
+                let mut reader = image_rs::ImageReader::with_format(
+                    std::io::Cursor::new(pixel_data.as_ref()),
                     ImageFormat::Png,
-                ) {
+                );
+                let mut limits = image_rs::Limits::default();
+                limits.max_image_width = Some(MAX_DIMENSION);
+                limits.max_image_height = Some(MAX_DIMENSION);
+                limits.max_alloc = Some(MAX_SIZE as u64);
+                reader.limits(limits);
+                let img = match reader.decode() {
                     Ok(img) => {
                         debug!(
                             "PNG decoded successfully: {}x{}",
@@ -1167,17 +1195,22 @@ fn create_graphic_data(cmd: &KittyGraphicsCommand) -> Result<GraphicData, Graphi
                         );
                         img
                     }
-                    Err(e) => {
-                        debug!("PNG decode failed: {:?}", e);
-                        return Err(GraphicError::InvalidData);
+                    Err(image_rs::ImageError::Limits(error)) => {
+                        return Err(match error.kind() {
+                            image_rs::error::LimitErrorKind::DimensionError => {
+                                GraphicError::DimensionsTooLarge
+                            }
+                            _ => GraphicError::TooLarge,
+                        });
                     }
+                    Err(_) => return Err(GraphicError::InvalidData),
                 };
                 // PNG dimensions come from the decoded header — now enforce
                 // the cap we couldn't check up front.
                 if img.width() > MAX_DIMENSION || img.height() > MAX_DIMENSION {
                     return Err(GraphicError::DimensionsTooLarge);
                 }
-                let rgba_img = img.to_rgba8();
+                let rgba_img = img.into_rgba8();
                 let (width, height) =
                     (rgba_img.width() as usize, rgba_img.height() as usize);
                 let pixels = rgba_img.into_raw();
@@ -1254,7 +1287,7 @@ fn create_graphic_data(cmd: &KittyGraphicsCommand) -> Result<GraphicData, Graphi
             let pixel_data = if pixel_data.len() > expected_size {
                 pixel_data[..expected_size].to_vec()
             } else {
-                pixel_data
+                pixel_data.into_owned()
             };
 
             // Convert all formats to RGBA (GPU only supports RGBA)
@@ -1629,6 +1662,115 @@ mod tests {
         // "G" with empty control data: same path
         let result = parse(&[b"G", b""], &mut state);
         assert!(result.is_some());
+    }
+
+    #[cfg(feature = "graphics")]
+    #[test]
+    fn native_png_dimensions_are_rejected_before_pixel_decoding() {
+        // A valid oversized IHDR followed by too few pixel bytes. Dimension
+        // admission must precede decoding/allocation, not fail on pixels first.
+        let png: &[u8] = &[
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 39, 17,
+            0, 0, 0, 1, 8, 6, 0, 0, 0, 151, 28, 223, 53, 0, 0, 0, 13, 73, 68, 65, 84,
+            120, 156, 99, 96, 96, 96, 248, 15, 0, 1, 4, 1, 0, 95, 229, 195, 75, 0, 0, 0,
+            0, 73, 69, 78, 68, 174, 66, 96, 130,
+        ];
+        let cmd = KittyGraphicsCommand {
+            format: Format::Png,
+            payload: SmallVec::from_slice(png),
+            ..Default::default()
+        };
+        assert!(matches!(
+            create_graphic_data(&cmd),
+            Err(GraphicError::DimensionsTooLarge)
+        ));
+    }
+
+    #[test]
+    fn native_pending_image_count_is_bounded() {
+        let mut state = KittyGraphicsState::default();
+        for id in 1..=8 {
+            let control = format!("a=t,m=1,i={id}");
+            assert!(
+                parse(&[b"G", control.as_bytes(), b"AAAA"], &mut state)
+                    .unwrap()
+                    .incomplete
+            );
+        }
+        let response = parse(&[b"G", b"a=t,m=1,i=9", b"AAAA"], &mut state).unwrap();
+        assert!(
+            !response.incomplete,
+            "ninth unfinished transfer must be refused"
+        );
+        assert_eq!(state.incomplete_images.len(), 8);
+    }
+
+    #[test]
+    fn native_pending_budget_counts_capacity_and_recovers_on_expiry() {
+        let mut state = KittyGraphicsState::default();
+        let now = Instant::now();
+        for id in 1..=8 {
+            let control = format!("a=t,m=1,i={id}");
+            assert!(
+                parse(&[b"G", control.as_bytes(), b"AAAA"], &mut state)
+                    .unwrap()
+                    .incomplete
+            );
+            let cmd = state.incomplete_images.get_mut(&id).unwrap();
+            cmd.last_touched = now;
+            cmd.payload
+                .try_reserve_exact(129 - cmd.payload.len())
+                .unwrap();
+        }
+        assert_eq!(
+            state.available_payload_capacity(9),
+            64 * 1024 * 1024 - 8 * 129
+        );
+        assert_eq!(
+            state.available_payload_capacity(1),
+            64 * 1024 * 1024 - 7 * 129
+        );
+        assert_eq!(
+            state.pending_deadline(),
+            Some(now + Duration::from_secs(10))
+        );
+        state.expire_incomplete(now + Duration::from_secs(10) - Duration::from_nanos(1));
+        assert_eq!(state.incomplete_images.len(), 8);
+        state.expire_incomplete(now + Duration::from_secs(10));
+        assert!(state.incomplete_images.is_empty());
+        assert_eq!(state.current_transmission_key, 0);
+        assert_eq!(state.pending_deadline(), None);
+        assert_eq!(state.available_payload_capacity(9), 64 * 1024 * 1024);
+        assert!(
+            parse(&[b"G", b"a=t,m=1,i=9", b"AAAA"], &mut state)
+                .unwrap()
+                .incomplete
+        );
+    }
+
+    #[test]
+    fn native_empty_continuations_do_not_extend_retention_and_completion_releases_it() {
+        let mut state = KittyGraphicsState::default();
+        assert!(
+            parse(&[b"G", b"a=t,f=32,s=1,v=1,m=1,i=11", b"/wAA"], &mut state)
+                .unwrap()
+                .incomplete
+        );
+        let earlier = Instant::now() - Duration::from_secs(2);
+        state.incomplete_images.get_mut(&11).unwrap().last_touched = earlier;
+        assert!(
+            parse(&[b"G", b"m=1,i=11", b""], &mut state)
+                .unwrap()
+                .incomplete
+        );
+        assert_eq!(
+            state.pending_deadline(),
+            Some(earlier + Duration::from_secs(10))
+        );
+        let completed = parse(&[b"G", b"m=0,i=11", b"/w=="], &mut state).unwrap();
+        assert!(completed.graphic_data.is_some());
+        assert_eq!(state.pending_deadline(), None);
+        assert_eq!(state.available_payload_capacity(11), 64 * 1024 * 1024);
     }
 
     #[test]

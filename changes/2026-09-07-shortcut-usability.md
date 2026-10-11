@@ -1,4 +1,4 @@
-## Fixed
+Fixed
 
 - Replace both command-palette Back icons with a clear left arrow.
 - Use Alt+R/D to clone right/down and Alt+Shift+R/D for fresh panes on

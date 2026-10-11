@@ -34,6 +34,7 @@ param(
     [switch]$ThemeGalleryOnly,
     [switch]$ResetCustomizationsOnly,
     [switch]$NamedProfilesOnly,
+    [switch]$FullSettingsOnly,
     [switch]$TagShapesOnly,
     [switch]$OutputColorsOnly,
     [switch]$CommandInputColorsOnly,
@@ -1795,6 +1796,11 @@ $wallpaperConfig
         return
     }
 
+    if ($FullSettingsOnly) {
+        . (Join-Path $PSScriptRoot 'full-settings-windows.ps1')
+        Test-AutomexiaFullSettings
+        return
+    }
     if ($NamedProfilesOnly) {
         . (Join-Path $PSScriptRoot 'named-profiles-windows.ps1')
         Test-AutomexiaNamedProfiles

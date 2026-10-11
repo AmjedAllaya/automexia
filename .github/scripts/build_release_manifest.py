@@ -14,7 +14,8 @@ import stat
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools/ci"))
-from release_trust import ReleaseTrustError, validate_vendor_sboms
+from release_trust import ReleaseTrustError, load_policy, validate_sboms, validate_vendor_sboms
+from release_identity import release_tag
 
 
 PACKAGE_SUFFIXES = (".msi", ".zip", ".dmg", ".deb", ".rpm", ".tar.gz", ".tgz")
@@ -135,7 +136,7 @@ def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]
     return result
 
 
-def _validate_sboms(paths: list[Path]) -> None:
+def _validate_sboms(paths: list[Path], version: str) -> None:
     names = {path.name for path in paths}
     if names != SBOM_NAMES:
         raise ReleaseManifestError(
@@ -162,6 +163,8 @@ def _validate_sboms(paths: list[Path]) -> None:
     try:
         validate_vendor_sboms(documents["automexia-terminal.spdx.json"],
                               documents["automexia-terminal.cdx.json"])
+        validate_sboms(documents["automexia-terminal.spdx.json"],
+                       documents["automexia-terminal.cdx.json"], version, load_policy())
     except ReleaseTrustError as error:
         raise ReleaseManifestError(str(error)) from error
 
@@ -171,6 +174,7 @@ def _scan_artifacts(
     *,
     recursive: bool,
     include_sbom: bool,
+    version: str,
     max_artifacts: int,
     max_artifact_bytes: int,
     max_total_bytes: int,
@@ -202,7 +206,7 @@ def _scan_artifacts(
         if any(path.name.endswith(suffix) for suffix in PACKAGE_SUFFIXES)
     ]
     if include_sbom:
-        _validate_sboms([path for path in candidates if path.name not in {p.name for p in packages}])
+        _validate_sboms([path for path in candidates if path.name not in {p.name for p in packages}], version)
     return candidates, records
 
 
@@ -242,8 +246,10 @@ def build_release_manifest(
     max_artifact_bytes: int = MAX_ARTIFACT_BYTES,
     max_total_bytes: int = MAX_TOTAL_BYTES,
 ) -> dict[str, object]:
-    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
-        raise ReleaseManifestError("version must be stable SemVer X.Y.Z")
+    try:
+        tag = release_tag(version)
+    except ValueError as error:
+        raise ReleaseManifestError(str(error)) from error
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ReleaseManifestError("commit must be a lowercase 40-character Git SHA")
     if include_sbom and copy_packages:
@@ -259,6 +265,7 @@ def build_release_manifest(
             source,
             recursive=True,
             include_sbom=False,
+            version=version,
             max_artifacts=max_artifacts,
             max_artifact_bytes=max_artifact_bytes,
             max_total_bytes=max_total_bytes,
@@ -299,6 +306,7 @@ def build_release_manifest(
         output,
         recursive=False,
         include_sbom=include_sbom,
+        version=version,
         max_artifacts=max_artifacts,
         max_artifact_bytes=max_artifact_bytes,
         max_total_bytes=max_total_bytes,
@@ -311,13 +319,14 @@ def build_release_manifest(
     _validate_exact_packages(packages, version)
     if include_sbom:
         sboms = [path for path in final_paths if path.name in SBOM_NAMES or path.name.endswith((".spdx.json", ".cdx.json"))]
-        _validate_sboms(sboms)
+        _validate_sboms(sboms, version)
     manifest: dict[str, object] = {
         "schema": 1,
         "project": "automexia-terminal",
         "version": version,
-        "tag": f"v{version}",
+        "tag": tag,
         "source_commit": commit,
+        "source_repository": "https://github.com/AmjedAllaya/automexia",
         "artifacts": [
             {"file": path.name, "sha256": final_records[path][0], "size": final_records[path][1]}
             for path in sorted(final_paths, key=lambda item: item.name)
@@ -338,8 +347,25 @@ def main() -> int:
     parser.add_argument("--commit", required=True)
     parser.add_argument("--copy-packages", action="store_true")
     parser.add_argument("--include-sbom", action="store_true")
+    parser.add_argument("--prepare-sbom", action="store_true")
+    parser.add_argument("--scan-root", type=Path)
     arguments = parser.parse_args()
     try:
+        if arguments.prepare_sbom:
+            if arguments.scan_root is None or arguments.copy_packages or arguments.include_sbom:
+                raise ReleaseManifestError("SBOM preparation requires scan-root and its own stage")
+            from public_distribution import DistributionError, prepare_public_sboms
+            manifest = build_release_manifest(arguments.output, arguments.output, arguments.version, arguments.commit)
+            allowed = frozenset(["Cargo.lock", *["packages/" + entry["file"] for entry in manifest["artifacts"]]])
+            from release_trust import add_vendor_sbom
+            add_vendor_sbom(arguments.source, load_policy(), package_directory=arguments.output)
+            try:
+                prepare_public_sboms(arguments.source, arguments.output, arguments.scan_root,
+                                     arguments.version, allowed_inputs=allowed)
+            except DistributionError as error:
+                raise ReleaseManifestError(str(error)) from error
+            print("Prepared both semantically validated, privacy-checked public SBOMs")
+            return 0
         manifest = build_release_manifest(
             arguments.source,
             arguments.output,
@@ -348,7 +374,7 @@ def main() -> int:
             copy_packages=arguments.copy_packages,
             include_sbom=arguments.include_sbom,
         )
-    except (ReleaseManifestError, OSError, UnicodeError) as error:
+    except (ReleaseManifestError, ReleaseTrustError, OSError, UnicodeError) as error:
         print(f"release manifest validation failed: {error}", file=sys.stderr)
         return 1
     print(

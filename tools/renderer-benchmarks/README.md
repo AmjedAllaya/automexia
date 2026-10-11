@@ -19,6 +19,17 @@ work. A microbenchmark improvement is not proof of faster terminal interaction.
 Retain Criterion's raw output, compiler identity and selected features. Its
 compilation boundary is documented in [ADR 0047](../../docs/adr/0047-private-renderer-benchmark-boundary.md).
 
+The VT owner's `native_untrusted_output` Criterion group measures denial of
+clipboard queries and rejection at the unfinished-image transfer limit, using
+bounded synthetic payloads. Run it with
+`cargo bench --locked -p rio-vt --bench vt_input -- native_untrusted_output`.
+The existing `teletypewriter` `pty_io` benchmark measures native spawn through
+first output/clean exit and sustained output. Its reader now sleeps only when
+no bytes arrive; older results with a delay after every successful read are a
+different workload and must not be used as a performance baseline.
+Keep raw data and machine identity;
+these local operations do not establish application input-to-present latency.
+
 ## Application measurements
 
 `application/benchmark.py` launches the real application with an isolated config,
@@ -166,3 +177,9 @@ baselines. The macOS native workflow runs renderer microbenchmarks and retains
 raw Criterion samples separately for each runner architecture. Shared hosted
 hardware numbers must not be compared across machines or used for performance
 claims. Use the pinned application profiles above for regression decisions.
+
+When investigating idle cost, inspect the application's presentation trace as
+well as CPU/RSS samples. Optional prompt discovery must not keep repainting a
+terminal with no visible ready local prompt. A visible footer clock wakes at its
+next local minute boundary; hidden clocks and frozen visual fixtures do not add
+clock wakeups. Retain source/artifact identities before and after any change.

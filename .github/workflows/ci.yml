@@ -243,6 +243,10 @@ jobs:
           # Includes persisted color-picker keyboard/pointer scenarios in all 16 cases.
           # This is a bounded functional driver, not a performance threshold.
           timeout --signal=TERM --kill-after=20s 600s python3 tests/integration/unix-session-ui.py --binary target/debug/automexia --display-server wayland --captures artifacts/native-wayland-sessions --timeout 580
+      - name: Native Linux defaults, saved opacity, reset and restart
+        run: |
+          timeout --signal=TERM --kill-after=20s 360s xvfb-run -a -s '-screen 0 1600x1200x24 -nolisten tcp' python3 tests/integration/unix-session-ui.py --binary target/debug/automexia --appearance-only --shell bash --scale 1 --captures artifacts/native-x11-appearance --timeout 340
+          timeout --signal=TERM --kill-after=20s 360s python3 tests/integration/unix-session-ui.py --binary target/debug/automexia --appearance-only --shell bash --scale 1 --display-server wayland --captures artifacts/native-wayland-appearance --timeout 340
 
       - name: Report compiler cache statistics
         if: ${{ always() && steps.sccache.outcome == 'success' }}
@@ -262,6 +266,8 @@ jobs:
             artifacts/visual-quality/summary.json
             artifacts/native-linux-sessions
             artifacts/native-wayland-sessions
+            artifacts/native-x11-appearance
+            artifacts/native-wayland-appearance
             artifacts/visual-quality/controlled-tests.log
             artifacts/visual-quality/captures/*.json
             artifacts/visual-quality/captures/*--*.png
@@ -381,8 +387,9 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$HEAD_REPO" == "$GITHUB_REPOSITORY" ]] || { echo 'Release PRs must originate from this repository, never a fork.' >&2; exit 1; }
-          [[ "$HEAD_BRANCH" =~ ^release/([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || { echo 'Release branch must be exactly release/X.Y.Z.' >&2; exit 1; }
+          [[ "$HEAD_BRANCH" == release/* ]] || { echo 'Release branch prefix is required.' >&2; exit 1; }
           version="${HEAD_BRANCH#release/}"
+          tag="$(python3 tools/ci/release_identity.py tag "$version")"
           rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
           python tools/ci/rust_toolchain.py verify --kind development
           actual="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "automexia-terminal") | .version' | head -1)"
@@ -393,8 +400,8 @@ jobs:
             cat "$RUNNER_TEMP/release-files.txt" >&2
             exit 1
           fi
-          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null 2>&1; then
-            echo "Tag v$version already exists." >&2
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists." >&2
             exit 1
           fi
 

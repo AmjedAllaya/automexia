@@ -37,6 +37,15 @@ pub struct ConnectedTagGeometry {
 }
 
 impl ConnectedTagGeometry {
+    pub(super) fn set_stroke(&mut self, stroke: f32, width: f32, height: f32) {
+        let half = stroke * 0.5;
+        for point in &mut self.points[..self.len] {
+            point.0 = point.0.clamp(half, (width - half).max(half));
+            point.1 = point.1.clamp(half, (height - half).max(half));
+        }
+        self.stroke = stroke;
+    }
+
     pub fn points(&self) -> &[Point] {
         &self.points[..self.len]
     }

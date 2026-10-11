@@ -154,6 +154,11 @@ const SHORTCUT_PREV_PANE: &str = "Cmd+[";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_PREV_PANE: &str = "Shift+F6";
 #[cfg(target_os = "macos")]
+const SHORTCUT_FULL_SETTINGS: &str = "Cmd+Shift+S";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_FULL_SETTINGS: &str = "Ctrl+Shift+S";
+
+#[cfg(target_os = "macos")]
 const SHORTCUT_SETTINGS: &str = "Cmd+,";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_SETTINGS: &str = "Ctrl+,";
@@ -274,6 +279,7 @@ enum CommandIcon {
     FocusDown,
     Close,
     Settings,
+    Profiles,
     Customizations,
     TerminalAppearance,
     Toolbox,
@@ -392,7 +398,11 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             icon: CommandIcon::FocusDown,
             accent: UiAccent::Cyan,
         },
-        OpenSettings | OpenProfiles => RowPresentation {
+        OpenProfiles => RowPresentation {
+            icon: CommandIcon::Profiles,
+            accent: UiAccent::Warning,
+        },
+        OpenSettings => RowPresentation {
             icon: CommandIcon::Settings,
             accent: UiAccent::Warning,
         },
@@ -668,6 +678,11 @@ const COMMANDS: &[Command] = &[
         title: "Terminal Appearance",
         shortcut: "Enter",
         action: PaletteAction::OpenTerminalAppearance,
+    },
+    Command {
+        title: "Settings",
+        shortcut: SHORTCUT_FULL_SETTINGS,
+        action: PaletteAction::OpenSettings,
     },
     Command {
         title: "Edit Configuration File",
@@ -1335,6 +1350,13 @@ fn draw_command_icon(
         CommandIcon::Close => {
             canvas.outline(3.5, 3.5, 15.0, 15.0, 7.5);
             canvas.line(7.0, 11.0, 15.0, 11.0);
+        }
+        CommandIcon::Profiles => {
+            canvas.outline(2.0, 3.0, 18.0, 16.0, 2.0);
+            canvas.outline(5.0, 6.0, 5.0, 5.0, 2.5);
+            canvas.line(4.0, 15.0, 11.0, 15.0);
+            canvas.line(13.0, 7.0, 17.0, 7.0);
+            canvas.line(13.0, 11.0, 17.0, 11.0);
         }
         CommandIcon::Settings => {
             canvas.line(2.5, 5.0, 19.5, 5.0);
@@ -3550,10 +3572,22 @@ mod tests {
     }
 
     #[test]
-    fn visual_preferences_have_one_palette_entry_and_keep_text_editor_accessible() {
-        assert!(!COMMANDS
-            .iter()
-            .any(|command| command.action == PaletteAction::OpenSettings));
+    fn full_settings_and_visual_customizations_are_discoverable_with_one_action_each() {
+        assert_eq!(
+            COMMANDS
+                .iter()
+                .filter(|command| command.action == PaletteAction::OpenSettings)
+                .count(),
+            1
+        );
+        assert_eq!(
+            COMMANDS
+                .iter()
+                .find(|command| command.action == PaletteAction::OpenSettings)
+                .unwrap()
+                .title,
+            "Settings"
+        );
         assert!(COMMANDS
             .iter()
             .any(|command| command.action == PaletteAction::OpenCustomizations));

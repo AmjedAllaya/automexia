@@ -44,7 +44,6 @@ use crate::ansi::{
     mode::Mode as AnsiMode, ClearMode, CursorShape, KeyboardModes,
     KeyboardModesApplyBehavior, LineClearMode, TabulationClearMode,
 };
-use crate::clipboard::ClipboardType;
 use crate::config::colors::{self, ColorRgb};
 use crate::crosswords::colors::term::TermColors;
 use crate::crosswords::grid::{Dimensions, Grid, Scroll};
@@ -57,9 +56,7 @@ use crate::performer::handler::{
 };
 use crate::performer::parser::Params;
 use crate::selection::{Selection, SelectionRange, SelectionType};
-use crate::simd_utf8;
 use attr::*;
-use base64::{engine::general_purpose, Engine as _};
 use bitflags::bitflags;
 use grid::row::Row;
 use pos::{
@@ -5372,24 +5369,10 @@ impl<U: EventListener> Handler for Crosswords<U> {
         self.mode.remove(Mode::APP_KEYPAD);
     }
 
-    /// Store data into clipboard.
+    // OSC 52 originates in untrusted terminal output, including remote jobs.
+    // Only explicit user copy/paste actions may access the desktop clipboard.
     #[inline]
-    fn clipboard_store(&mut self, clipboard: u8, base64: &[u8]) {
-        let clipboard_type = match clipboard {
-            b'c' => ClipboardType::Clipboard,
-            b'p' | b's' => ClipboardType::Selection,
-            _ => return,
-        };
-
-        if let Some(bytes) = crate::simd_base64::decode(base64) {
-            if let Ok(text) = simd_utf8::from_utf8_to_string(&bytes) {
-                self.event_proxy.send_event(
-                    RioEvent::ClipboardStore(clipboard_type, text),
-                    self.window_id,
-                );
-            }
-        }
-    }
+    fn clipboard_store(&mut self, _clipboard: u8, _base64: &[u8]) {}
 
     #[inline]
     fn configure_charset(
@@ -6197,26 +6180,8 @@ impl<U: EventListener> Handler for Crosswords<U> {
     }
 
     #[inline]
-    fn clipboard_load(&mut self, clipboard: u8, terminator: &str) {
-        let clipboard_type = match clipboard {
-            b'c' => ClipboardType::Clipboard,
-            b'p' | b's' => ClipboardType::Selection,
-            _ => return,
-        };
-
-        let terminator = terminator.to_owned();
-
-        self.event_proxy.send_event(
-            RioEvent::ClipboardLoad(
-                self.route_id,
-                clipboard_type,
-                Arc::new(move |text| {
-                    let base64 = general_purpose::STANDARD.encode(text);
-                    format!("\x1b]52;{};{}{}", clipboard as char, base64, terminator)
-                }),
-            ),
-            self.window_id,
-        );
+    fn clipboard_load(&mut self, _clipboard: u8, _terminator: &str) {
+        // No read or reply is authorized by output or window focus alone.
     }
 
     #[inline]
@@ -12362,6 +12327,73 @@ mod tests {
         let expected_idx = (0_usize.wrapping_sub(1)) % KEYBOARD_MODE_STACK_MAX_DEPTH;
         assert_eq!(term.keyboard_mode_idx, expected_idx);
         assert_eq!(term.keyboard_mode_stack[0], KeyboardModes::NO_MODE.bits()); // Should be cleared
+    }
+
+    #[test]
+    fn terminal_reset_retires_unfinished_image_allocations() {
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(10, 10),
+            CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            10,
+        );
+        let mut parser = crate::performer::handler::Processor::default();
+        parser.advance(&mut terminal, b"\x1b_Ga=t,m=1,i=11;AAAA\x1b\\");
+        assert!(terminal
+            .graphics
+            .kitty_chunking_state
+            .pending_deadline()
+            .is_some());
+        parser.advance(&mut terminal, b"\x1bc");
+        assert_eq!(
+            terminal.graphics.kitty_chunking_state.pending_deadline(),
+            None
+        );
+    }
+
+    #[test]
+    fn terminal_output_cannot_acquire_clipboard_authority() {
+        use std::{cell::RefCell, rc::Rc};
+        #[derive(Clone)]
+        struct Capture(Rc<RefCell<Vec<RioEvent>>>);
+        impl EventListener for Capture {
+            fn send_event(&self, event: RioEvent, _: WindowId) {
+                self.0.borrow_mut().push(event);
+            }
+        }
+        for route in [0, 42] {
+            for selector in ["c", "p", "s"] {
+                for terminator in ["\x07", "\x1b\\"] {
+                    for payload in ["?", "c3ludGhldGlj", ""] {
+                        let events = Rc::new(RefCell::new(Vec::new()));
+                        let mut terminal = Crosswords::new(
+                            CrosswordsSize::new(10, 10),
+                            CursorShape::Block,
+                            Capture(events.clone()),
+                            WindowId::from(0),
+                            route,
+                            10,
+                        );
+                        let mut parser = crate::performer::handler::Processor::default();
+                        parser.advance(
+                            &mut terminal,
+                            format!("\x1b]52;{selector};{payload}{terminator}")
+                                .as_bytes(),
+                        );
+                        assert!(
+                            events.borrow().iter().all(|event| !matches!(
+                                event,
+                                RioEvent::ClipboardLoad(..)
+                                    | RioEvent::ClipboardStore(..)
+                            )),
+                            "terminal output must not emit privileged clipboard requests"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]

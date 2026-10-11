@@ -33,7 +33,13 @@ fn wrapper_preserves_config_fields_and_existing_serialization_policy() {
     let source = "line-height = 1.7\nenv-vars = ['A=b=c']\n[colors]\nred = '#123456'\n";
     let original =
         Config::decode_with_default_colors(source, defaults::unified_colors()).unwrap();
-    let baseline = toml::from_str::<Config>(source).unwrap();
+    let mut baseline = toml::from_str::<Config>(source).unwrap();
+    // The validated loader additionally records ownership; serialized settings remain identical.
+    assert!(original.setting_sources.configured("line-height"));
+    assert!(original.setting_sources.configured("env-vars"));
+    assert!(original.setting_sources.configured("colors.red"));
+    assert!(!baseline.setting_sources.configured("line-height"));
+    baseline.setting_sources = original.setting_sources.clone();
     assert_eq!(original, baseline);
     let serialized = original.to_string().unwrap();
     assert!(!serialized.contains("[colors]"));

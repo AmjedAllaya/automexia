@@ -1,1 +1,3 @@
-Keep verification and disposable fuzz intermediate artifacts inside their actual cleanup owner even when Cargo configuration or inherited environment selects another build directory. Reuse the existing Cargo command adapter, retain bounded fuzz execution and logical diagnostics, and add command-environment and WSL script regressions.
+Changed
+
+- Keep verification and disposable fuzz intermediate artifacts inside their actual cleanup owner even when Cargo configuration or inherited environment selects another build directory. Reuse the existing Cargo command adapter, retain bounded fuzz execution and logical diagnostics, and add command-environment and WSL script regressions.

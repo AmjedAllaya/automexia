@@ -212,10 +212,58 @@ fn shaped_fitting(c: &mut Criterion) {
     assert!(pixels.iter().any(|pixel| *pixel != 0x00112233));
 }
 
+fn information_tag_text(c: &mut Criterion) {
+    use rio_backend::sugarloaf::{
+        font::{constants, FontData, FontLibrary, FontLibraryData},
+        text::{DrawOpts, Text},
+    };
+    use std::sync::Arc;
+    let mut library = FontLibraryData::default();
+    library
+        .insert(FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap());
+    for _ in 0..4 {
+        library.insert_alias(0);
+    }
+    library.ui_families.insert("Tag fixture".into(), [4; 4]);
+    let fonts = FontLibrary {
+        inner: Arc::new(parking_lot::RwLock::new(library)),
+    };
+    let mut text = Text::new(&fonts);
+    text.init_cpu();
+    let mut group = c.benchmark_group("information_tag_text");
+    for (name, preferred) in [("inherited", None), ("individual", Some(4))] {
+        let options = DrawOpts {
+            font_size: 13.,
+            preferred_font_id: preferred,
+            ..Default::default()
+        };
+        let labels = [
+            "Ubuntu",
+            "main",
+            "work",
+            "user",
+            "e\u{301}quipe",
+            "中文",
+            "👩\u{200d}💻",
+        ];
+        for label in labels {
+            assert!(text.measure(label, &options).is_finite());
+        }
+        group.bench_function(name, |b| {
+            b.iter(|| {
+                for label in labels {
+                    black_box(text.measure(black_box(label), &options));
+                }
+            })
+        });
+    }
+    group.finish();
+}
+
 criterion_group! {
     name = benches;
     config = Criterion::default().sample_size(30)
         .warm_up_time(Duration::from_secs(1)).measurement_time(Duration::from_secs(2));
-    targets = fitting, shaped_fitting, output_row_surfaces, command_boundary_marker
+    targets = fitting, shaped_fitting, output_row_surfaces, command_boundary_marker, information_tag_text
 }
 criterion_main!(benches);

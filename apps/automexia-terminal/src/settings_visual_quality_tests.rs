@@ -22,7 +22,10 @@ impl ActualCanvas {
         }
     }
     fn pixels(&mut self, size: [u32; 2]) -> Vec<u32> {
-        let mut pixels = vec![0x00112233; (size[0] * size[1]) as usize];
+        self.pixels_on(size, 0x00112233)
+    }
+    fn pixels_on(&mut self, size: [u32; 2], backdrop: u32) -> Vec<u32> {
+        let mut pixels = vec![backdrop; (size[0] * size[1]) as usize];
         self.renderer
             .capture_cpu_primitives(&mut pixels, size[0], size[1], &self.text)
             .unwrap();
@@ -133,6 +136,20 @@ fn settings_golden_page(page: &str, name: &str) {
             };
             let size = [(width * scale) as u32, (height * scale) as u32];
             let mut view = match page {
+                "full-settings" => {
+                    let mut view = SettingsView::default();
+                    view.open(
+                        crate::settings_catalog::full_catalog_with_palette(
+                            1,
+                            &base,
+                            &Default::default(),
+                            &[],
+                            &colors,
+                        )
+                        .unwrap(),
+                    );
+                    view
+                }
                 "color" => {
                     let mut view = opened_color(true);
                     view.set_color_favorites(&[[35, 120, 180, 255], [180, 70, 90, 255]]);
@@ -195,6 +212,33 @@ fn settings_golden_page(page: &str, name: &str) {
                 view.geometry.card
             };
             let bounds = [card.x, card.y, card.width, card.height].map(|v| v * scale);
+            // Independent opacity oracle: a readable card must not reveal a
+            // different terminal or desktop underneath. Golden equality alone
+            // could bless an already-transparent baseline. Exclude only the
+            // rounded exterior, never controls or text inside the card.
+            if scale == 1.0 {
+                let mut dark = ActualCanvas::new(scale);
+                let mut light = ActualCanvas::new(scale);
+                view.paint(&mut dark, theme);
+                view.paint(&mut light, theme);
+                let dark = dark.pixels_on(size, 0);
+                let light = light.pixels_on(size, 0x00ffffff);
+                let inset = 16.0 * scale;
+                for y in (bounds[1] + inset).ceil() as u32
+                    ..(bounds[1] + bounds[3] - inset).floor() as u32
+                {
+                    for x in (bounds[0] + inset).ceil() as u32
+                        ..(bounds[0] + bounds[2] - inset).floor() as u32
+                    {
+                        let i = (y * size[0] + x) as usize;
+                        assert_eq!(
+                            dark[i], light[i],
+                            "{name}/{theme_name}: translucent card at {x},{y}"
+                        );
+                    }
+                }
+            }
+
             // A card must not silently grow a full-window backdrop. Test real
             // pixels wholly outside its measured bounds. A physical pixel
             // intersecting a fractional edge is allowed antialias coverage;
@@ -239,6 +283,7 @@ macro_rules! settings_cases {
     )+};
 }
 settings_cases! {
+    visual_quality_settings_full => ("full-settings", "full-settings"),
     visual_quality_settings_header => ("interface.header.background", "header"),
     visual_quality_settings_footer => ("interface.footer.visible", "footer"),
     visual_quality_settings_panes => ("interface.panes.padding", "panes"),

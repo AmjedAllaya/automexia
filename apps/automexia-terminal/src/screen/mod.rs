@@ -499,6 +499,7 @@ fn claim_native_test_control(control: &str) -> bool {
 
 #[cfg(feature = "native-gui-test-hooks")]
 struct NativeWindowSnapshot {
+    appearance: serde_json::Value,
     chrome: serde_json::Value,
     window_width: f32,
     window_height: f32,
@@ -743,6 +744,7 @@ fn write_native_resize_snapshot(
     snapshot["window_tab_titles"] = serde_json::json!(window.window_tab_titles);
     snapshot["tab_appearance_open"] = serde_json::json!(window.tab_appearance_open);
     snapshot["semantic_rows"] = serde_json::json!(semantic_rows);
+    snapshot["appearance"] = window.appearance;
     snapshot["renderer_backend"] = serde_json::json!(window.renderer_backend);
     snapshot["renderer_grid_count"] = serde_json::json!(window.renderer_grid_count);
     snapshot["owned_route_count"] = serde_json::json!(window.owned_route_count);
@@ -1884,8 +1886,8 @@ impl Screen<'_> {
         self.mouse
             .set_multiplier_and_divider(config.scroll.multiplier, config.scroll.divider);
 
-        // Update keyboard config in context manager
-        self.context_manager.config.keyboard = config.keyboard.clone();
+        // Publish future-session defaults without changing existing PTYs/history.
+        self.context_manager.update_core_preferences(config, false);
         self.fit_settings_view();
         self.last_ime_cursor_pos = None;
 
@@ -6827,6 +6829,10 @@ impl Screen<'_> {
                 &self.context_manager.current().renderable_content,
                 panels,
                 NativeWindowSnapshot {
+                    appearance: serde_json::json!({
+                        "window_alpha": self.renderer.window_bg_alpha,
+                        "clear": self.sugarloaf.background_color.map(|c| [c.r, c.g, c.b, c.a]),
+                    }),
                     chrome: self.renderer.island.as_ref().map_or(serde_json::Value::Null, |island| {
                         island.native_test_chrome(window_size.width, window_size.height, self.sugarloaf.scale_factor(), self.context_manager.len())
                     }),

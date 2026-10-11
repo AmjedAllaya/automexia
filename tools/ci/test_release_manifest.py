@@ -8,6 +8,8 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
 import unittest
 
 
@@ -46,7 +48,41 @@ def write_packages(root: Path) -> None:
         path.write_bytes(f"fixture-{index}\n".encode())
 
 
+def write_application_sboms(root: Path, version: str) -> None:
+    components = [("automexia-terminal", version), *[(f"dependency-{n}", "1.0.0") for n in range(9)]]
+    spdx = {
+        "spdxVersion": "SPDX-2.3", "SPDXID": "SPDXRef-DOCUMENT", "dataLicense": "CC0-1.0",
+        "documentNamespace": "https://example.invalid/sbom/fixture",
+        "creationInfo": {"created": "2026-10-11T00:00:00Z", "creators": ["Tool: fixture"]},
+        "packages": [{"name": name, "versionInfo": value, "SPDXID": f"SPDXRef-Package-{index}",
+                      "externalRefs": [{"referenceType": "purl", "referenceLocator": f"pkg:cargo/{name}@{value}"}]}
+                     for index, (name, value) in enumerate(components)],
+    }
+    cdx = {
+        "bomFormat": "CycloneDX", "specVersion": "1.6", "serialNumber": "urn:uuid:12345678-1234-1234-1234-123456789abc",
+        "version": 1, "metadata": {},
+        "components": [{"type": "library", "name": name, "version": value, "bom-ref": f"component-{index}",
+                        "purl": f"pkg:cargo/{name}@{value}"} for index, (name, value) in enumerate(components)],
+    }
+    (root / "automexia-terminal.spdx.json").write_text(json.dumps(spdx))
+    (root / "automexia-terminal.cdx.json").write_text(json.dumps(cdx))
+
+
 class ReleaseManifestTests(unittest.TestCase):
+    def test_first_alpha_retains_exact_public_tag_and_complete_package_set(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "downloads"
+            source.mkdir()
+            for name in package_names():
+                (source / name.replace(VERSION, "0.0.1-alpha")).write_bytes(b"alpha fixture\n")
+            manifest = MANIFEST.build_release_manifest(
+                source, root / "release", "0.0.1-alpha", COMMIT, copy_packages=True
+            )
+            self.assertEqual(manifest["tag"], "0.0.1_alpha")
+            self.assertEqual(manifest["version"], "0.0.1-alpha")
+            self.assertEqual(len(manifest["artifacts"]), 11)
+
     def test_canonical_copy_and_sbom_finalization_are_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -61,12 +97,7 @@ class ReleaseManifestTests(unittest.TestCase):
             self.assertEqual(len(first["artifacts"]), 11)
             # Publication is deliberately two-stage: packages are consolidated
             # before independently generated SBOMs finalize the same directory.
-            (output / "automexia-terminal.spdx.json").write_text(
-                '{"spdxVersion":"SPDX-2.3","packages":[]}\n', encoding="utf-8"
-            )
-            (output / "automexia-terminal.cdx.json").write_text(
-                '{"bomFormat":"CycloneDX","components":[]}\n', encoding="utf-8"
-            )
+            write_application_sboms(output, VERSION)
             with self.assertRaisesRegex(MANIFEST.ReleaseManifestError, "ConPTY"):
                 MANIFEST.build_release_manifest(output, output, VERSION, COMMIT, include_sbom=True)
             import release_trust
@@ -115,6 +146,58 @@ class ReleaseManifestTests(unittest.TestCase):
                 MANIFEST.build_release_manifest(
                     source, root / "out-extra", VERSION, COMMIT, copy_packages=True
                 )
+
+    def test_public_alpha_sboms_project_locations_and_reject_private_data(self) -> None:
+        import hashlib
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output, raw, scan = (root / name for name in ("release", "raw", "scan"))
+            for directory in (output, raw, scan):
+                directory.mkdir()
+            version = "0.0.1-alpha"
+            for name in package_names():
+                (output / name.replace(VERSION, version)).write_bytes(b"package fixture")
+            write_application_sboms(raw, version)
+            lock = scan / "Cargo.lock"
+            lock.write_bytes(b"lockfile fixture")
+            checksum = hashlib.sha256(lock.read_bytes()).hexdigest()
+            spdx_path = raw / "automexia-terminal.spdx.json"
+            cdx_path = raw / "automexia-terminal.cdx.json"
+            spdx, cdx = (json.loads(path.read_text()) for path in (spdx_path, cdx_path))
+            spdx["files"] = [{"SPDXID": "SPDXRef-File-lock", "fileName": lock.as_posix(),
+                               "checksums": [{"algorithm": "SHA256", "checksumValue": checksum}]}]
+            cdx["components"].append({"type": "file", "name": lock.as_posix(), "bom-ref": "file-lock",
+                                      "hashes": [{"alg": "SHA-256", "content": checksum}]})
+            spdx_path.write_text(json.dumps(spdx))
+            cdx_path.write_text(json.dumps(cdx))
+            command = [sys.executable, str(MODULE_PATH), "--prepare-sbom", "--source", str(raw),
+                       "--output", str(output), "--scan-root", str(scan), "--version", version, "--commit", COMMIT]
+            result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            final = MANIFEST.build_release_manifest(output, output, version, COMMIT, include_sbom=True)
+            self.assertEqual(len(final["artifacts"]), 13)
+            saved = (output / spdx_path.name).read_bytes()
+            self.assertNotIn(str(root).encode(), saved)
+            self.assertEqual(json.loads(saved)["files"][0]["fileName"], "Cargo.lock")
+            spdx = json.loads(spdx_path.read_text())
+            spdx["packages"][0]["comment"] = "private path /home/private-user/credentials"
+            spdx_path.write_text(json.dumps(spdx))
+            result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual((output / spdx_path.name).read_bytes(), saved)
+
+    def test_vendor_only_sboms_cannot_impersonate_application_inventory(self) -> None:
+        import release_trust
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for name in package_names():
+                (root / name).write_bytes(b"package fixture")
+            paths = [root / "automexia-terminal.spdx.json", root / "automexia-terminal.cdx.json"]
+            paths[0].write_text('{"spdxVersion":"SPDX-2.3","packages":[]}')
+            paths[1].write_text('{"bomFormat":"CycloneDX","components":[]}')
+            release_trust.add_vendor_sbom(root, release_trust.load_policy())
+            with self.assertRaises(MANIFEST.ReleaseManifestError):
+                MANIFEST._validate_sboms(paths, VERSION)
 
     def test_sbom_names_are_exact_and_complete(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

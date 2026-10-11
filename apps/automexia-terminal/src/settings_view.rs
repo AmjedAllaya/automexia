@@ -17,8 +17,8 @@ use automexia_ui_model::information_bar::{
     BarArrangement, BarVisualStyle, TagSurfaceGeometry,
 };
 use automexia_ui_model::settings::{
-    Catalog, Change, Edit, FocusMove, Section, SettingDescriptor, SettingId, SettingKind,
-    SettingValue, ValueOrigin, ViewState, MAX_QUERY_BYTES,
+    Catalog, Change, ChangeScope, Edit, FocusMove, Section, SettingDescriptor, SettingId,
+    SettingKind, SettingValue, ValueOrigin, ViewState, MAX_QUERY_BYTES,
 };
 use rio_backend::config::colors::{ColorBuilder, Format};
 use rio_backend::sugarloaf::{
@@ -105,6 +105,8 @@ struct Row {
     control: Rect,
     label: Rect,
     help: Rect,
+    ownership: Rect,
+    ownership_lines: usize,
     navigation: bool,
     lines: Vec<String>,
     label_lines: usize,
@@ -556,6 +558,10 @@ impl SettingsView {
         })
     }
 
+    pub(crate) fn is_customization_view(&self) -> bool {
+        self.customizations.is_some()
+    }
+
     #[cfg(test)]
     pub(crate) fn open_customizations(
         &mut self,
@@ -756,6 +762,8 @@ impl SettingsView {
                 Some(serde_json::json!({
                     "id": row.id.as_str(),
                     "bounds": row.control.intersect(self.geometry.body)?.array(),
+                    "origin": self.catalog.as_ref()?.get(&row.id)?.origin.label(),
+                    "scope": self.catalog.as_ref()?.get(&row.id)?.scope.label(),
                 }))
             })
             .collect();
@@ -2234,6 +2242,11 @@ impl SettingsView {
                 .and_then(|catalog| catalog.get(&editor.id))
                 .map_or("Value", |entry| entry.label.as_str());
             let valid = editor_value(editor).is_some();
+            if editor.text_limits.is_some()
+                && editor.id.as_str().starts_with("configuration.")
+            {
+                return format!("Edit TOML patch. {name}. Draft: {}. Enter exports a validated patch to the clipboard. Merge it in config.toml; no file is changed automatically. Tab: controls. Escape: cancel.", editor.draft);
+            }
             if editor.text_limits.is_some() {
                 return format!("Edit text. {name}. Draft: {}. {}. Tab changes focus between text, Apply, Cancel and Reset. Escape cancels the draft.", editor.draft,
                     if valid { "Ready to apply" } else { "Invalid text; Apply unavailable" });
@@ -2248,11 +2261,12 @@ impl SettingsView {
         );
         if let Some(entry) = self.focused_entry() {
             text.push_str(&format!(
-                " {}. {}. {}. {}.",
+                " {}. {}. {}. {}. {}.",
                 entry.section.label(),
                 entry.label,
                 display_value(entry),
-                entry.description
+                entry.description,
+                entry.ownership_summary()
             ));
             if let Some(reason) = entry.availability.reason() {
                 text.push_str(reason);
@@ -2681,8 +2695,12 @@ impl SettingsView {
             self.ask_confirmation(
                 ConfirmedSettingsAction::Setting(edit),
                 format!("Reset {}?", entry.label),
-                "Restore this setting to its configured default.",
-                "Reset",
+                if entry.scope == ChangeScope::ConfigOnly {
+                    "Export instructions for removing these configuration fields. No file will be changed."
+                } else {
+                    "Remove this UI override and inherit the current configuration."
+                },
+                if entry.scope == ChangeScope::ConfigOnly { "Export instructions" } else { "Reset" },
             );
         }
     }
@@ -3028,7 +3046,7 @@ impl SettingsView {
         self.ask_confirmation(
             ConfirmedSettingsAction::Customization(intent),
             format!("Reset {}?", self.title()),
-            "Save defaults for this section. You can keep customizing or undo with Restore saved.",
+            "Remove this section's UI overrides and inherit configuration. You can keep customizing or undo with Restore saved.",
             "Reset",
         );
     }
@@ -3062,7 +3080,7 @@ impl SettingsView {
         let Some(entry) = self.focused_entry() else {
             return;
         };
-        if entry.id.as_str() == "fonts.family" {
+        if crate::settings_catalog::is_font_family_setting(entry.id.as_str()) {
             self.open_font_picker();
             return;
         }
@@ -3967,15 +3985,46 @@ impl SettingsView {
                 let value_lines = wrapped(&value, value_width, text, &opts);
                 let control_h = (value_lines.len().max(1) as f32 * line + 8.0).max(32.0);
                 let help_lines = lines.len().saturating_sub(label_lines);
-                let text_height =
-                    label_lines as f32 * line + 4.0 + help_lines as f32 * help_line;
-                let height = if inline {
-                    text_height.max(control_h) + pad * 2.0
+                let label_height = label_lines as f32 * line;
+                let text_height = label_height + 4.0 + help_lines as f32 * help_line;
+                let ownership_lines = if matches!(entry.kind, SettingKind::Action)
+                    && entry.scope
+                        != automexia_ui_model::settings::ChangeScope::ConfigOnly
+                {
+                    Vec::new()
                 } else {
-                    text_height + control_h + pad * 3.0
+                    let badge = format!(
+                        "{} · {}",
+                        entry.origin.label(),
+                        entry.scope.compact_label()
+                    );
+                    wrapped(&badge, control_width - 8.0, text, &help_opts)
                 };
+                let ownership_count = ownership_lines.len();
+                lines.extend(ownership_lines);
+                let ownership_height = ownership_count as f32 * help_line;
+                let ownership_extra = if ownership_count == 0 {
+                    0.0
+                } else {
+                    ownership_height + 4.0
+                };
+                let block_height = if inline {
+                    text_height.max(control_h + ownership_extra)
+                } else {
+                    // Keep the input and ownership ahead of secondary prose.
+                    text_height + control_h + pad + ownership_extra
+                };
+                let height = block_height + pad * 2.0;
                 let group = if grouped_header {
                     crate::settings_catalog::interface_control_section(id.as_str())
+                } else if self.customizations.is_none()
+                    && self.profiles.is_none()
+                    && catalog
+                        .entries()
+                        .iter()
+                        .any(|entry| entry.id.as_str().starts_with("general."))
+                {
+                    Some(entry.section.label())
                 } else {
                     None
                 };
@@ -4011,7 +4060,7 @@ impl SettingsView {
                         y: if inline {
                             top + pad
                         } else {
-                            top + pad * 2.0 + text_height
+                            top + pad * 2.0 + label_height
                         },
                         width: control_width,
                         height: control_h,
@@ -4024,10 +4073,33 @@ impl SettingsView {
                     },
                     help: Rect {
                         x: body.x + pad,
-                        y: top + pad + label_lines as f32 * line + 4.0,
+                        y: top
+                            + pad
+                            + label_height
+                            + 4.0
+                            + if inline {
+                                0.0
+                            } else {
+                                pad + control_h + ownership_extra
+                            },
                         width: text_width,
                         height: help_lines as f32 * help_line,
                     },
+                    ownership: Rect {
+                        x: if inline {
+                            body.x + body.width - pad - control_width
+                        } else {
+                            body.x + pad
+                        },
+                        y: top
+                            + pad
+                            + control_h
+                            + 4.0
+                            + if inline { 0.0 } else { pad + label_height },
+                        width: control_width,
+                        height: ownership_height,
+                    },
+                    ownership_lines: ownership_count,
                     navigation,
                     lines,
                     label_lines,
@@ -4046,17 +4118,23 @@ impl SettingsView {
                 // Reveal the label, help and row padding as well as the input.
                 // A short inline control must not leave the rest of its row
                 // behind the footer. Oversized rows prioritize the control.
+                let control_bottom = row.control.y + row.control.height;
+                let ownership_bottom = row.ownership.y + row.ownership.height;
+                let focus_bottom = if ownership_bottom - row.control.y <= body.height {
+                    control_bottom.max(ownership_bottom)
+                } else {
+                    control_bottom
+                };
                 let reveal_bottom = if row.bounds.height <= body.height {
                     row.bounds.y + row.bounds.height
                 } else {
-                    row.control.y + row.control.height
+                    focus_bottom
                 };
-                let reveal_top =
-                    if row.control.y + row.control.height - row.bounds.y <= body.height {
-                        row.bounds.y
-                    } else {
-                        row.control.y
-                    };
+                let reveal_top = if focus_bottom - row.bounds.y <= body.height {
+                    row.bounds.y
+                } else {
+                    row.control.y
+                };
                 if reveal_top < self.scroll {
                     self.scroll = reveal_top;
                 }
@@ -4074,6 +4152,7 @@ impl SettingsView {
             row.control.y += body.y - self.scroll;
             row.label.y += body.y - self.scroll;
             row.help.y += body.y - self.scroll;
+            row.ownership.y += body.y - self.scroll;
         }
         self.rows = rows;
         self.layout_dirty = false;
@@ -4315,12 +4394,25 @@ impl SettingsView {
             }
             for (index, value) in row.lines.iter().enumerate() {
                 let heading = index < row.label_lines;
-                let area = if heading { row.label } else { row.help };
+                let ownership_start = row.lines.len() - row.ownership_lines;
+                let is_ownership = index >= ownership_start;
+                let area = if heading {
+                    row.label
+                } else if is_ownership {
+                    row.ownership
+                } else {
+                    row.help
+                };
                 let bounds = Rect {
                     y: if heading {
                         area.y + index as f32 * line
                     } else {
-                        area.y + (index - row.label_lines) as f32 * row.help_line
+                        let start = if is_ownership {
+                            ownership_start
+                        } else {
+                            row.label_lines
+                        };
+                        area.y + (index - start) as f32 * row.help_line
                     },
                     height: if heading { line } else { row.help_line },
                     ..area
@@ -4600,7 +4692,7 @@ impl SettingsView {
                         "Reset tag"
                     }
                 } else {
-                    "Reset default"
+                    "Reset to inherit"
                 },
                 "R",
             ),
@@ -5145,16 +5237,6 @@ impl SettingsView {
         rect(canvas, sample, terminal_background, sample);
         let row_height = (self.font * 1.8).clamp(18.0, 30.0);
         let metrics = prompt_tag_metrics(row_height);
-        let top_inset = automexia_ui_model::prompt_context_top_inset(
-            row_height,
-            metrics.height,
-            true,
-        )
-        .unwrap_or(0.0);
-        let opts = DrawOpts {
-            font_size: metrics.font_size,
-            ..DrawOpts::default()
-        };
         // Fictional context uses the same visibility projection as terminal
         // bands; toggling discovery never changes the saved recipe.
         let segments = preview_segments();
@@ -5172,13 +5254,18 @@ impl SettingsView {
             bar_layout_hints(&recipe, &items, metrics, available_width);
         let labels: Vec<_> = items
             .iter()
-            .map(|item| Label {
-                text: &item.value,
-                leading: item
-                    .icon
-                    .map_or(0.0, |_| metrics.icon_slot + metrics.icon_gap),
-                padding,
-                align_end: false,
+            .map(|item| {
+                let m = item.style.metrics(row_height);
+                Label {
+                    text: &item.value,
+                    leading: item.icon.map_or(0.0, |_| m.icon_slot + m.icon_gap),
+                    padding: item.style.layout_padding(
+                        recipe.visual,
+                        row_height,
+                        padding,
+                    ),
+                    align_end: false,
+                }
             })
             .collect();
         let Some(band) = pack_with_tag_joins(
@@ -5187,12 +5274,21 @@ impl SettingsView {
             gap,
             &break_before,
             trailing_start,
-            automexia_ui_model::information_bar::tag_join_overlap(
+            automexia_ui_model::information_bar::styled_tag_join_overlap(
                 recipe.visual,
-                metrics.height,
+                &items,
+                row_height,
                 available_width,
             ),
-            |_, value| canvas.text().measure(value, &opts),
+            |index, value| {
+                let item = &items[index];
+                let opts = crate::automexia::presentation::tag_text_options(
+                    canvas.text(),
+                    &item.style,
+                    item.style.metrics(row_height).font_size,
+                );
+                canvas.text().measure(value, &opts)
+            },
         ) else {
             return;
         };
@@ -5237,6 +5333,13 @@ impl SettingsView {
             let Some(item) = items.get(fragment.item) else {
                 continue;
             };
+            let metrics = item.style.metrics(row_height);
+            let top_inset = automexia_ui_model::prompt_context_top_inset(
+                row_height,
+                metrics.height,
+                true,
+            )
+            .unwrap_or(0.0);
             let bounds = Rect {
                 x: sample.x + 2.0 + fragment.x,
                 y: sample.y
@@ -5277,21 +5380,31 @@ impl SettingsView {
                     crate::automexia::presentation::tag_anchor(&appearance, role)
                 })
             });
-            let color = Self::paint_sample_tag(
+            let paint = item.style.paint_with_background(
+                terminal_background,
+                anchor,
+                appearance.opacity.get(),
+                appearance.style != rio_backend::config::presentation::TagStyle::Plain
+                    && recipe.visual != BarVisualStyle::Underline,
+            );
+            let color = paint.colors.foreground;
+            paint_sample_tag_surface_styled(
                 canvas,
                 bounds,
-                anchor,
                 recipe.visual,
-                &appearance,
-                terminal_background,
+                automexia_ui_model::ContextTagColors {
+                    foreground: paint.border,
+                    ..paint.colors
+                },
                 fragment.shape_position,
+                &item.style,
             );
             if fragment.leading > 0.0 {
                 if let Some(icon) = item.icon {
                     let glyph = automexia_ui_model::icon_glyph(icon);
                     let icon_opts = DrawOpts {
                         font_size: metrics.icon_size,
-                        color: color_u8(color),
+                        color: color_u8(paint.icon),
                         ..DrawOpts::default()
                     };
                     canvas.text().draw_clipped(
@@ -5308,11 +5421,12 @@ impl SettingsView {
                 .get(fragment.bytes.clone())
                 .filter(|_| !item.icon_only)
             {
-                let text_opts = DrawOpts {
-                    font_size: metrics.font_size * fragment.text_scale,
-                    color: color_u8(color),
-                    ..DrawOpts::default()
-                };
+                let mut text_opts = crate::automexia::presentation::tag_text_options(
+                    canvas.text(),
+                    &item.style,
+                    metrics.font_size * fragment.text_scale,
+                );
+                text_opts.color = color_u8(color);
                 canvas.text().draw_clipped(
                     bounds.x + fragment.padding + fragment.leading,
                     bounds.y + (metrics.height - text_opts.font_size) * 0.5 - 1.0,
@@ -5320,6 +5434,21 @@ impl SettingsView {
                     &text_opts,
                     bounds.array(),
                 );
+                for line in item
+                    .style
+                    .decoration_lines(
+                        bounds.x + fragment.padding + fragment.leading,
+                        bounds.y + (metrics.height - text_opts.font_size) * 0.5 - 1.0,
+                        (bounds.width - fragment.padding * 2.0 - fragment.leading)
+                            .max(0.0),
+                        text_opts.font_size,
+                        text_opts.font_size,
+                    )
+                    .into_iter()
+                    .flatten()
+                {
+                    canvas.rect(line, color);
+                }
             }
             count += 1;
         }
@@ -5341,29 +5470,6 @@ impl SettingsView {
                 sample,
             );
         }
-    }
-
-    fn paint_sample_tag(
-        canvas: &mut impl Canvas,
-        bounds: Rect,
-        anchor: [u8; 3],
-        style: BarVisualStyle,
-        appearance: &rio_backend::config::presentation::TagAppearance,
-        terminal_background: [f32; 4],
-        position: automexia_ui_model::information_bar::TagShapePosition,
-    ) -> [f32; 4] {
-        let opacity = if appearance.style
-            == rio_backend::config::presentation::TagStyle::Plain
-            || style == BarVisualStyle::Underline
-        {
-            0
-        } else {
-            appearance.opacity.get()
-        };
-        let colors =
-            automexia_ui_model::context_tag_colors(terminal_background, anchor, opacity);
-        paint_sample_tag_surface_in_run(canvas, bounds, style, colors, position);
-        colors.foreground
     }
 
     fn preview_output_colors(
@@ -6049,17 +6155,36 @@ fn paint_sample_tag_surface_in_run(
     paint: automexia_ui_model::ContextTagColors,
     position: automexia_ui_model::information_bar::TagShapePosition,
 ) {
-    let Some(geometry) = automexia_ui_model::information_bar::tag_fragment_geometry(
+    paint_sample_tag_surface_styled(
+        canvas,
+        bounds,
         style,
-        bounds.width,
-        bounds.height,
+        paint,
         position,
-    ) else {
+        &Default::default(),
+    );
+}
+fn paint_sample_tag_surface_styled(
+    canvas: &mut impl Canvas,
+    bounds: Rect,
+    style: BarVisualStyle,
+    paint: automexia_ui_model::ContextTagColors,
+    position: automexia_ui_model::information_bar::TagShapePosition,
+    typography: &automexia_ui_model::information_bar::TagTypography,
+) {
+    let Some(geometry) = typography.surface(style, bounds.width, bounds.height, position)
+    else {
         return;
     };
     let layers = tag_surface_paint_layers(style, paint.background[3]);
     let mut outline = paint.foreground;
-    outline[3] = 0.45;
+    outline[3] = if typography.border_color.is_some() {
+        1.0
+    } else {
+        0.45
+    };
+    let outline_enabled = typography.border_width != Some(0);
+    let custom_border = typography.border_width.is_some_and(|v| v > 0);
     match geometry {
         TagSurfaceGeometry::Connected(shape) => {
             let offset = |p: (f32, f32)| (bounds.x + p.0, bounds.y + p.1);
@@ -6067,7 +6192,8 @@ fn paint_sample_tag_surface_in_run(
                 for triangle in shape.triangles() {
                     canvas.polygon(&triangle.map(offset), paint.background);
                 }
-            } else {
+            }
+            if outline_enabled && (!layers.fill || custom_border) {
                 for (a, b) in shape
                     .points()
                     .iter()
@@ -6091,14 +6217,16 @@ fn paint_sample_tag_surface_in_run(
         TagSurfaceGeometry::Capsule { radius, stroke } => {
             if layers.fill {
                 canvas.rounded_rect(bounds.array(), radius, paint.background);
-            } else {
+            }
+            if outline_enabled && (!layers.fill || custom_border) {
                 preview_rounded_outline(canvas, bounds, radius, stroke, outline);
             }
         }
         TagSurfaceGeometry::Flat { stroke } => {
             if layers.fill {
                 canvas.rect(bounds.array(), paint.background);
-            } else {
+            }
+            if outline_enabled && (!layers.fill || custom_border) {
                 preview_rect_outline(canvas, bounds, stroke, outline);
             }
         }
@@ -6107,7 +6235,8 @@ fn paint_sample_tag_surface_in_run(
             let points = points.map(|(x, y)| (bounds.x + x, bounds.y + y));
             if layers.fill {
                 canvas.polygon(&points, paint.background);
-            } else {
+            }
+            if outline_enabled && (!layers.fill || custom_border) {
                 for index in 0..points.len() {
                     canvas.line(
                         points[index],
@@ -6122,9 +6251,14 @@ fn paint_sample_tag_surface_in_run(
             if layers.fill {
                 canvas.rounded_rect(bounds.array(), radius, paint.background);
             }
-            preview_rounded_outline(canvas, bounds, radius, stroke, outline);
+            if outline_enabled {
+                preview_rounded_outline(canvas, bounds, radius, stroke, outline);
+            }
         }
         TagSurfaceGeometry::Underline { baseline_y, stroke } => {
+            if !outline_enabled {
+                return;
+            }
             canvas.line(
                 (bounds.x + stroke * 0.5, bounds.y + baseline_y),
                 (
@@ -6303,6 +6437,9 @@ fn detail_catalog_with_slots(
         return detail_catalog(full, group);
     };
     let page = match group.key.as_str() {
+        "tags.enabled" => {
+            crate::settings_catalog::information_tag_page_catalog(full, snapshot)
+        }
         key if key.starts_with("interface.") => {
             crate::settings_catalog::interface_page_catalog(full, snapshot, key)
         }
@@ -6434,6 +6571,11 @@ fn tag_color_graphic_name(id: &str) -> String {
         .unwrap_or_else(|| role_id.unwrap_or("Custom").replace(['-', '_'], " "))
 }
 fn display_value(entry: &SettingDescriptor) -> String {
+    if entry.id.as_str().starts_with("configuration.")
+        && matches!(entry.kind, SettingKind::Text { .. })
+    {
+        return "Edit TOML".into();
+    }
     match &entry.value {
         SettingValue::Boolean(value) => if *value { "On" } else { "Off" }.into(),
         SettingValue::Choice(value) => {
@@ -6723,7 +6865,9 @@ fn action_button(
     };
     if canvas.text().measure(caption, &caption_opts) + 8.0 > caption_width {
         caption = match caption {
-            "Reset all" | "Reset default" | "Reset tag" | "Reset colors" => "Reset",
+            "Reset all" | "Reset default" | "Reset to inherit" | "Reset tag"
+            | "Reset colors" => "Reset",
+            "Export patch" => "Export",
             "Restore saved" => "Restore",
             other => other,
         };

@@ -234,7 +234,8 @@ def validate_ci(workflow: dict[str, Any]) -> None:
     candidate_commands = commands(release_candidate)
     for fragment in (
         "Release PRs must originate from this repository, never a fork.",
-        "Release branch must be exactly release/X.Y.Z.",
+        'tag="$(python3 tools/ci/release_identity.py tag "$version")"',
+        '"$HEAD_BRANCH" == release/*',
     ):
         require(
             fragment in candidate_commands,
@@ -677,6 +678,8 @@ def validate_release(workflow: dict[str, Any]) -> None:
             "verify-macos-final",
             "verify-linux-final",
             "reproducibility-linux",
+            "reproducibility-desktop",
+            "native-platform-qa",
             "hardware-smoke",
         }.issubset({str(item) for item in final_gate.get("needs", [])}),
         "release final gate must depend on every native verification, reproducibility, and controlled hardware smoke",
@@ -712,6 +715,33 @@ def validate_release(workflow: dict[str, Any]) -> None:
             for step in reproducibility_uploads
         ),
         "release reproducibility must retain a per-architecture cold-build receipt",
+    )
+
+    desktop_reproducibility = job(workflow, "reproducibility-desktop", "release.yml")
+    require(
+        {("windows-2025", "x86_64-pc-windows-msvc"),
+         ("windows-11-arm", "aarch64-pc-windows-msvc"),
+         ("macos-26-intel", "x86_64-apple-darwin"),
+         ("macos-26", "aarch64-apple-darwin")}
+        == matrix_pairs(desktop_reproducibility, "runner", "target")
+        and "reproducible_build.py" in commands(desktop_reproducibility),
+        "desktop reproducibility must cover both native Windows and macOS architectures",
+    )
+    for native_repro in (reproducibility, desktop_reproducibility):
+        require(
+            "build" in native_repro.get("needs", [])
+            and 'reference/${{ matrix.artifact }}' in commands(native_repro)
+            and not native_repro.get("continue-on-error", False)
+            and any("actions/download-artifact@" in str(step.get("uses", ""))
+                    and step.get("with", {}).get("name") == "${{ matrix.artifact }}"
+                    and step.get("with", {}).get("path") == "reference"
+                    for step in steps(native_repro)),
+            "native reproducibility must compare the exact unsigned package inputs",
+        )
+    require(
+        job(workflow, "native-platform-qa", "release.yml").get("uses")
+        == "./.github/workflows/accessibility-native.yml",
+        "release native QA must use the shared native accessibility and rendering workflow",
     )
 
     publish = job(workflow, "publish", "release.yml")

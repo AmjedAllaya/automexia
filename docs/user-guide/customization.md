@@ -328,6 +328,40 @@ colors, visibility and layouts are preserved. Reopen a shell after a distributio
 upgrade to refresh its label; previously displayed prompt tags keep their original
 identity.
 
+### Shared and individual tag typography
+
+Open **Customizations → Workflow & Output → Information tags**. The **Shared typography**, **Shared colors** and **Shared spacing** sections set defaults for
+all tags. To style one tag, press **E** to edit the preview, choose a tag with the
+arrows and press **Enter** (or click it). Its **This tag** sections override only
+that tag; all other fields continue to inherit. The preview and existing terminal
+prompt bars update as you edit; commands are never rerun.
+
+| Control | Behavior |
+|---|---|
+| Text size | 50–150% of the automatic tag size; constrained to the prompt row so commands remain unobscured. |
+| Font family | Search installed fonts, browse with arrows for a temporary preview, Enter to apply, Escape to cancel. Tag fonts leave terminal output and menu fonts unchanged. |
+| Bold, Italic, Underline, Strike through | Shared defaults or individual On/Off overrides. An individual Off overrides a shared On. |
+| Text, Background, Icon and Border colors | Use the shared color picker, suggestions and favorites. Reset inherits the shared or semantic tag color. Contrast correction preserves readable text and icons. |
+| Background opacity | The existing shared context-background control affects all tags; each tag can override it from 0–100%. Text stays opaque. Hidden backgrounds hide these controls. |
+| Border width | 0–3 logical pixels; zero removes the border. Reset follows the chosen shape. |
+| Horizontal / Vertical padding | Extra room inside tags, up to 16 / 8 logical pixels. Shape connectors keep their reserved room; vertical padding fits the prompt row. |
+| Icon size / Icon-to-text spacing | 50–150% of tag text size and 0–16 logical pixels of spacing. Hidden icons hide their related controls. |
+
+An unmodified field says it inherits. **Inherit shared styling** removes all
+appearance overrides for the selected tag (including its accent color), while
+keeping its text, icon, order, side and visibility. A field's **Reset** removes
+only that field's override. The tag page's **Reset default** also resets its
+content/layout customization, so use **Inherit shared styling** to retain those.
+Changing a layout preset keeps shared and individual styles. Removing a custom
+tag removes its style; uninstalling an extension hides its tags without erasing
+saved styling needed after reinstall.
+
+Different-sized tags remain separate where their outlines cannot join cleanly.
+Long labels retain the existing wrapping and clipping rules. Font preparation
+runs in the background; unavailable fonts and cancelled previews preserve the
+last working choice. Installed-font availability depends on the machine running
+the renderer, including when its terminal connects to WSL or SSH.
+
 Turning Information tags off hides their prompt badges while retaining
 context detection and the saved tag colors. The **Layout** control
 offers twelve layouts; changing the format updates open terminal
@@ -619,7 +653,7 @@ press Escape instead of Apply.
 For manual recovery when the UI is unavailable, first close every Automexia instance. Back up
 and move only these snapshots out of the configuration root's `state/` directory:
 
-- `user-preferences-v14.toml` and `user-preferences-v14.previous.toml`;
+- `user-preferences-v16.toml` and `user-preferences-v16.previous.toml`;
 - any retained `user-preferences-v13.toml`, `user-preferences-v12.toml`, `user-preferences-v11.toml`, `user-preferences-v10.toml`, `user-preferences-v9.toml`, `user-preferences-v8.toml`, `user-preferences-v7.toml`, `user-preferences-v6.toml`, `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
   `user-preferences-v1.toml`, and their matching `.previous.toml` files.
 
@@ -711,3 +745,23 @@ off. Header/footer colors, opacity, borders and status items apply immediately
 while the settings panel remains open. Geometry changes resize existing panes;
 color-only changes leave their PTYs at the same size. The terminal remains visible
 around the opaque settings panel.
+
+
+## General Settings and inheritance
+
+Use the palette's **Settings** entry or **Ctrl+Shift+S** (**Cmd+Shift+S** on macOS)
+for Appearance, Terminal, Keyboard, Window, Profiles, Shell and Advanced. Search
+by setting name, configuration key, owner or application timing. The owner below
+each value distinguishes a built-in default, config.toml, a profile and a saved
+UI override. Profile launch fields remain in the existing Profiles editor.
+
+Choose **Reset to inherit** to remove an override. A later config.toml change will
+then supply the value. New-terminal, new-window and restart labels identify
+changes that do not affect existing sessions. The visual customization routes
+still offer detailed previews through the same preference owner.
+
+For a control marked **TOML**, edit the fragment and choose **Export patch**.
+Review the copied fragment before merging it into config.toml. Automexia does not
+rewrite the file or its comments. Secret-capable and advanced optional fields
+open the existing editor. See [coverage and ownership](../CONFIGURATION.md#settings-coverage-and-ownership)
+for precedence, migration, reset and stale-draft behavior.

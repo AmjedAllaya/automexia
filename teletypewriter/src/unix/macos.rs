@@ -1,10 +1,13 @@
 // From: https://github.com/alacritty/alacritty/blob/04ea367e3baa7e51933e9a595da793b4c8a4aa8f/alacritty/src/macos/proc.rs
 
-use std::ffi::{CStr, CString, IntoStringError};
+use std::ffi::CStr;
 use std::fmt::{self, Display, Formatter};
 use std::io;
+#[cfg(target_os = "macos")]
 use std::mem::MaybeUninit;
+#[cfg(target_os = "macos")]
 use std::os::raw::c_int;
+use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 
 /// Error during working directory retrieval.
@@ -12,19 +15,17 @@ use std::path::PathBuf;
 pub enum Error {
     Io(io::Error),
 
-    /// Error converting into utf8 string.
-    IntoString(IntoStringError),
-
     /// Expected return size didn't match libproc's.
+    #[cfg(target_os = "macos")]
     InvalidSize,
 }
 
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            #[cfg(target_os = "macos")]
             Error::InvalidSize => None,
             Error::Io(err) => err.source(),
-            Error::IntoString(err) => err.source(),
         }
     }
 }
@@ -32,12 +33,10 @@ impl std::error::Error for Error {
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            #[cfg(target_os = "macos")]
             Error::InvalidSize => write!(f, "Invalid proc_pidinfo return size"),
             Error::Io(err) => {
                 write!(f, "Error getting current working directory: {err}")
-            }
-            Error::IntoString(err) => {
-                write!(f, "Error when parsing current working directory: {err}")
             }
         }
     }
@@ -49,13 +48,8 @@ impl From<io::Error> for Error {
     }
 }
 
-impl From<IntoStringError> for Error {
-    fn from(val: IntoStringError) -> Self {
-        Error::IntoString(val)
-    }
-}
-
 /// Bindings for libproc.
+#[cfg(target_os = "macos")]
 #[allow(non_camel_case_types)]
 mod sys {
     use std::os::raw::{c_char, c_int, c_longlong, c_void};
@@ -137,80 +131,107 @@ mod sys {
     }
 }
 
+#[cfg(target_os = "macos")]
 pub fn macos_process_name(pid: libc::c_int) -> String {
-    let mut name = String::new();
-
-    if pid >= 0 {
-        let proc_path = get_proc_path(pid);
-        name = std::path::Path::new(&proc_path)
-            .file_name()
-            .unwrap_or(std::ffi::OsStr::new(""))
-            .to_str()
-            .unwrap_or("")
-            .to_string();
-    }
-
-    //     // proc_name truncates the name to 16 bytes.
-    //     let mut name_buf: Vec<u8> = Vec::with_capacity(16);    // MAXCOMLEN (max command name remembered)
-    //     let mut var_int_t = 0 as usize;
-    //     unsafe {
-    //         var_int_t = sys::proc_name(pid, name_buf.as_mut_ptr() as *mut libc::c_void, 16) as usize;
-    //         name_buf.set_len(var_int_t);
-    //     };
-    //     name = String::from_utf8(name_buf).unwrap_or("".to_string());
-
-    name
+    get_proc_path(pid)
+        .and_then(|path| {
+            path.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .unwrap_or_default()
 }
 
-fn get_proc_path(pid: i32) -> String {
-    let mut pathbuf: Vec<u8> = Vec::with_capacity(4 * 1024); // 4 * MAXPATHLEN
-    #[allow(unused)]
-    let mut ret: i32 = 0;
-    let mut out = String::new();
-
-    unsafe {
-        ret = sys::proc_pidpath(
-            pid,
-            pathbuf.as_mut_ptr() as *mut libc::c_void,
-            pathbuf.capacity() as u32,
-        );
+#[cfg(target_os = "macos")]
+fn get_proc_path(pid: i32) -> Option<PathBuf> {
+    if pid <= 0 {
+        return None;
+    }
+    let mut buffer = [0_u8; 4 * 1024];
+    // SAFETY: libproc receives initialized caller-owned storage and its exact
+    // capacity. No uninitialized Vec length or foreign reference escapes.
+    let length = unsafe {
+        sys::proc_pidpath(pid, buffer.as_mut_ptr().cast(), buffer.len() as u32)
     };
-
-    if ret > 0 {
-        unsafe {
-            pathbuf.set_len(ret as usize);
-        }
-        out = String::from_utf8(pathbuf)
-            .unwrap_or("An error occurred while retrieving process path".to_string())
+    if length <= 0 || length as usize > buffer.len() {
+        return None;
     }
-    out
+    decode_native_path(&buffer).ok()
 }
 
+#[cfg(target_os = "macos")]
 pub fn macos_cwd(pid: libc::c_int) -> Result<PathBuf, Error> {
     let mut info = MaybeUninit::<sys::proc_vnodepathinfo>::uninit();
     let info_ptr = info.as_mut_ptr() as *mut libc::c_void;
     let size = std::mem::size_of::<sys::proc_vnodepathinfo>() as c_int;
 
-    let c_str = unsafe {
-        let pidinfo_size =
-            sys::proc_pidinfo(pid, sys::PROC_PIDVNODEPATHINFO, 0, info_ptr, size);
-        match pidinfo_size {
-            c if c < 0 => return Err(io::Error::last_os_error().into()),
-            s if s != size => return Err(Error::InvalidSize),
-            _ => CStr::from_ptr(info.assume_init().pvi_cdir.vip_path.as_ptr()),
-        }
-    };
+    // SAFETY: libproc writes the complete repr(C) record into this storage.
+    // Only a full-size response permits initialization; the named record stays
+    // alive while its bounded path bytes are copied into an owned PathBuf.
+    let count =
+        unsafe { sys::proc_pidinfo(pid, sys::PROC_PIDVNODEPATHINFO, 0, info_ptr, size) };
+    if count <= 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    if count != size {
+        return Err(Error::InvalidSize);
+    }
+    let record = unsafe { info.assume_init() };
+    let bytes = record.pvi_cdir.vip_path.map(|byte| byte as u8);
+    decode_native_path(&bytes)
+}
 
-    Ok(CString::from(c_str).into_string().map(PathBuf::from)?)
+fn decode_native_path(buffer: &[u8]) -> Result<PathBuf, Error> {
+    let value = CStr::from_bytes_until_nul(buffer).map_err(|_| {
+        io::Error::new(io::ErrorKind::InvalidData, "invalid process path")
+    })?;
+    Ok(PathBuf::from(std::ffi::OsStr::from_bytes(value.to_bytes())))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[test]
+    fn native_process_path_preserves_unix_bytes() {
+        use std::os::unix::ffi::OsStrExt;
+        let input = b"/tmp/native-\xff\0ignored";
+        assert_eq!(
+            decode_native_path(input).unwrap().as_os_str().as_bytes(),
+            b"/tmp/native-\xff"
+        );
+    }
+
+    #[test]
+    fn native_process_path_requires_a_bounded_terminator() {
+        assert!(decode_native_path(b"unterminated").is_err());
+        assert!(decode_native_path(&[]).is_err());
+        assert_eq!(
+            decode_native_path(b"/tmp/\xe9\xa1\xb9\xe7\x9b\xae\0").unwrap(),
+            PathBuf::from("/tmp/项目")
+        );
+    }
+
+    #[cfg(target_os = "macos")]
     use std::{env, process};
 
     #[test]
+    #[cfg(target_os = "macos")]
+    fn native_process_metadata_owns_results_and_handles_unavailable_processes() {
+        let executable = std::env::current_exe().unwrap();
+        for _ in 0..64 {
+            let path = get_proc_path(process::id() as i32).expect("current process path");
+            assert_eq!(
+                std::fs::canonicalize(path).unwrap(),
+                std::fs::canonicalize(&executable).unwrap()
+            );
+        }
+        assert!(get_proc_path(-1).is_none());
+        assert!(macos_process_name(-1).is_empty());
+        assert!(macos_cwd(-1).is_err());
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
     fn cwd_matches_current_dir() {
         assert_eq!(
             macos_cwd(process::id() as i32).ok(),

@@ -866,6 +866,7 @@ impl Graphics {
 
     /// Clear all kitty graphics state on both screens. Used by full reset.
     pub fn clear_all_kitty_state(&mut self) {
+        self.kitty_chunking_state = Default::default();
         // Subtract bytes from the inactive screen before dropping it,
         // since total_bytes is the *global* counter.
         let inactive_bytes: usize = self

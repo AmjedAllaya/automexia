@@ -1304,7 +1304,11 @@ impl SettingsView {
             (
                 g.apply,
                 ColorFocus::Apply,
-                "Apply",
+                if editor.id.as_str().starts_with("configuration.") {
+                    "Export patch"
+                } else {
+                    "Apply"
+                },
                 if editor.palette_browsing {
                     "Esc→A"
                 } else {

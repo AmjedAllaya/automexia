@@ -55,6 +55,31 @@ pub(super) fn descriptors(
                 visual_origin($over, $configured, ValueOrigin::Default),
             )?;
             row.description = $help.into();
+            let field = match row.id.as_str() {
+                "interface.header.tab-width" => Some("navigation.max-tab-width"),
+                "interface.panes.padding" => Some("panel.padding"),
+                "interface.panes.margin" => Some("panel.margin"),
+                "interface.panes.row-gap" => Some("panel.row-gap"),
+                "interface.panes.column-gap" => Some("panel.column-gap"),
+                "interface.panes.border-width" => Some("panel.border-width"),
+                "interface.panes.inactive-opacity" => {
+                    Some("navigation.unfocused-split-opacity")
+                }
+                "interface.background.opacity" => Some("window.opacity"),
+                "interface.background.opacity-cells" => Some("window.opacity-cells"),
+                "interface.panes.border-color" => Some("colors.split"),
+                "interface.background.blur" => Some("window.blur"),
+                id if id.starts_with("interface.background.padding-") => Some("margin"),
+                _ => None,
+            };
+            if let Some(field) = field {
+                row.origin = setting_origin(&base.setting_sources, field, $over);
+            }
+            if row.origin == ValueOrigin::Default
+                && matches!(row.kind, settings::SettingKind::Color { .. })
+            {
+                row.origin = palette_origin(base, prefs);
+            }
             rows.push(row);
         }};
     }
@@ -562,8 +587,8 @@ pub(super) fn descriptors(
         opacity,
         "interface.background.opacity",
         "Window opacity (%)",
-        (base.window.opacity * 100.0).round(),
-        (current.window.opacity * 100.0).round(),
+        (base.window.effective_opacity() * 100.0).round(),
+        (current.window.effective_opacity() * 100.0).round(),
         20.0,
         100.0,
         "Background transparency; 100% is opaque. Text stays opaque."
@@ -648,6 +673,9 @@ pub(super) fn descriptors(
                     color.origin == ValueOrigin::Configuration,
                     "Surface opacity; 100% is opaque. Window transparency is separate."
                 );
+                if let Some(row) = rows.last_mut() {
+                    row.origin = color.origin;
+                }
             }
         }
     }

@@ -1,4 +1,4 @@
-# SSH picker review
+Fixed
 
 - Add Connect… (SSH) to the command palette with recent-first public host search,
   independent filters, and visible system OpenSSH ownership.

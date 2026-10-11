@@ -8,10 +8,11 @@ packaging, and accessibility APIs.
 
 Build and run all three desktop platforms from the [same source workflow](INSTALLATION.md).
 
-Separately published packages: [v0.4.0 Linux Early Access](https://github.com/AmjedAllaya/automexia-releases/releases/tag/v0.4.0)
-for x64 and Arm64, in DEB, RPM and portable formats. Windows and macOS stable
-installers are not published. The matrix below describes implementation and
-release-gate ownership, not a claim that every listed package is available.
+Public packages belong to **[Automexia Releases](https://github.com/AmjedAllaya/automexia/releases)**.
+The first release prepared by this workflow is `0.0.1_alpha`. The matrix below
+specifies package targets and verification ownership; only assets actually
+published on that page have completed release publication. The old separate
+Linux binary repository is no longer a publication destination.
 
 ## Support matrix
 
@@ -59,7 +60,7 @@ host-provided.
 
 Unix PTY, shell, and X11 code paths may compile on BSD and documentation uses
 Linux/BSD where the behavior is shared. BSD is currently best-effort: it has no
-required CI runner or v0.4 artifact and is not included in the machine-declared
+required CI runner or release artifact and is not included in the machine-declared
 supported platform set. A future support claim requires a native job, package
 ownership, shell tests, and release policy rather than an inferred Linux pass.
 

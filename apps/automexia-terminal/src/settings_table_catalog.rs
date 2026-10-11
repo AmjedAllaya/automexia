@@ -314,7 +314,7 @@ mod tests {
         assert_eq!(prefs.visual.highlight, original.visual.highlight);
         assert_eq!(prefs.presentation, original.presentation);
         let mut expected = original;
-        expected.presentation.inline_tables = Some(true);
+        expected.presentation.inline_tables = None;
         assert_eq!(
             reset_customizations(
                 &prefs,

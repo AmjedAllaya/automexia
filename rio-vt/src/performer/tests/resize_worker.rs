@@ -811,3 +811,71 @@ fn partial_writes_finish_before_resize_but_shutdown_bypasses_blocked_input() {
     assert_eq!(machine.pty.sizes, [(40, 12)]);
     assert_eq!(machine.pty.output, b"abcd");
 }
+
+#[test]
+fn native_abandoned_image_upload_expires_without_further_output() {
+    abandoned_image_upload_expires(b"\x1b_Ga=t,m=1,i=11;AAAA\x1b\\");
+}
+
+#[test]
+fn native_synchronized_image_upload_expires_without_further_output() {
+    abandoned_image_upload_expires(b"\x1b[?2026h\x1b_Ga=t,m=1,i=11;AAAA\x1b\\");
+}
+
+fn abandoned_image_upload_expires(output: &[u8]) {
+    let mut machine = machine();
+    if let Some(rest) = output.strip_prefix(b"\x1b[?2026h") {
+        machine.pty.reader.final_bytes = Some(b"\x1b[?2026h".to_vec());
+        machine.pty.reader.tail_chunks.push_back(rest.to_vec());
+    } else {
+        machine.pty.reader.final_bytes = Some(output.to_vec());
+    }
+    machine.pty.writable_bytes = 128;
+    let terminal = machine.terminal.clone();
+    let sender = machine.channel();
+    // A normal paste drains available PTY output before writing, then the
+    // recording PTY has no readiness events. Only the worker's expiry timer
+    // can release the retained upload; no test-driven parser call does so.
+    sender
+        .send(Msg::Paste(PasteRequest::new("x", true).unwrap()))
+        .unwrap();
+    let mut worker = machine.spawn();
+    let admitted_by = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    let mut admitted = false;
+    while std::time::Instant::now() < admitted_by {
+        admitted = terminal
+            .lock()
+            .graphics
+            .kitty_chunking_state
+            .pending_deadline()
+            .is_some();
+        if admitted {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let expires_by = std::time::Instant::now() + std::time::Duration::from_secs(12);
+    let mut retired = false;
+    while admitted && std::time::Instant::now() < expires_by {
+        retired = terminal
+            .lock()
+            .graphics
+            .kitty_chunking_state
+            .pending_deadline()
+            .is_none();
+        if retired {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    sender.send(Msg::Shutdown).unwrap();
+    assert!(
+        worker.join_timeout(std::time::Duration::from_secs(3)),
+        "owned worker cleanup"
+    );
+    assert!(admitted, "fixture reached the production upload path");
+    assert!(
+        retired,
+        "idle worker must release abandoned upload without new input"
+    );
+}

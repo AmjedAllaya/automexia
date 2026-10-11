@@ -133,7 +133,7 @@ impl SessionFooter {
     pub fn render<T>(
         &self,
         sugarloaf: &mut Sugarloaf,
-        context_manager: &ContextManager<T>,
+        context_manager: &mut ContextManager<T>,
         theme: &UiTheme,
         suppressed_route: Option<usize>,
     ) where
@@ -152,11 +152,7 @@ impl SessionFooter {
         if !grid.footer_appearance.is_visible() {
             return;
         }
-        let clock = if grid.footer_appearance.show_clock.unwrap_or(true) {
-            current_clock_label()
-        } else {
-            String::new()
-        };
+        let clock = footer_clock(grid.footer_appearance, current_clock_reading);
 
         for (pane_index, key) in ordered.into_iter().enumerate() {
             let Some(item) = grid.contexts().get(&key) else {
@@ -186,7 +182,7 @@ impl SessionFooter {
                 display_offset: history_indicator_offset(rc),
                 has_selection: rc.selection_range.is_some(),
                 line_ending: line_ending_for_shell(rc.shell_name.as_deref()),
-                clock: &clock,
+                clock: &clock.label,
                 is_active,
                 compatibility: self.compatibility.get(&context.route_id),
             };
@@ -197,6 +193,11 @@ impl SessionFooter {
                 theme,
                 grid.footer_appearance,
             );
+        }
+        if let Some(delay) = clock.next_update_ms {
+            // Share the existing earliest-deadline route scheduler. The clock
+            // stays live with optional context disabled, without a polling loop.
+            context_manager.schedule_render_on_route(delay);
         }
     }
 }
@@ -713,53 +714,101 @@ fn format_clock(hour: u16, minute: u16) -> String {
     format!("{:02}:{:02}", hour % 24, minute % 60)
 }
 
-#[cfg(target_os = "windows")]
-fn current_clock_label() -> String {
+#[derive(Default)]
+struct ClockReading {
+    label: String,
+    next_update_ms: Option<u64>,
+}
+
+fn footer_clock(
+    appearance: FooterAppearance,
+    read: impl FnOnce() -> ClockReading,
+) -> ClockReading {
+    if appearance.is_visible() && appearance.show_clock.unwrap_or(true) {
+        read()
+    } else {
+        ClockReading::default()
+    }
+}
+
+fn next_clock_minute_delay_ms(second: u16, millisecond: u16) -> u64 {
+    // A native leap second still advances within one second. Clamp native
+    // fields defensively and never schedule a zero-delay redraw loop.
+    60_000 - u64::from(second.min(59)) * 1000 - u64::from(millisecond.min(999))
+}
+
+fn clock_reading(hour: u16, minute: u16, second: u16, millisecond: u16) -> ClockReading {
+    ClockReading {
+        label: format_clock(hour, minute),
+        next_update_ms: Some(next_clock_minute_delay_ms(second, millisecond)),
+    }
+}
+
+fn current_clock_reading() -> ClockReading {
     #[cfg(feature = "visual-test-hooks")]
     if let Some(label) = crate::automexia::visual_test_hooks::frozen_clock_label() {
-        return label.to_owned();
+        return ClockReading {
+            label: label.to_owned(),
+            next_update_ms: None,
+        };
     }
+    native_clock_reading()
+}
+
+#[cfg(target_os = "windows")]
+fn native_clock_reading() -> ClockReading {
     use windows_sys::Win32::Foundation::SYSTEMTIME;
     use windows_sys::Win32::System::SystemInformation::GetLocalTime;
-
-    // SAFETY: SYSTEMTIME is a plain Windows ABI data structure whose all-zero
-    // state is valid before GetLocalTime initializes every field.
+    // SAFETY: GetLocalTime initializes this valid, uniquely borrowed ABI value.
     let mut local: SYSTEMTIME = unsafe { std::mem::zeroed() };
-    // SAFETY: `local` is a valid, uniquely borrowed SYSTEMTIME output buffer.
     unsafe { GetLocalTime(&mut local) };
-    format_clock(local.wHour, local.wMinute)
+    clock_reading(
+        local.wHour,
+        local.wMinute,
+        local.wSecond,
+        local.wMilliseconds,
+    )
 }
 
 #[cfg(all(not(target_os = "windows"), not(target_arch = "wasm32")))]
-fn current_clock_label() -> String {
-    #[cfg(feature = "visual-test-hooks")]
-    if let Some(label) = crate::automexia::visual_test_hooks::frozen_clock_label() {
-        return label.to_owned();
-    }
-    let seconds = std::time::SystemTime::now()
+fn native_clock_reading() -> ClockReading {
+    let elapsed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs()) as libc::time_t;
-    // SAFETY: libc::tm is a C data structure and localtime_r initializes it
-    // through the valid output pointer supplied below.
+        .unwrap_or_default();
+    let seconds = elapsed.as_secs() as libc::time_t;
+    // SAFETY: localtime_r initializes the valid output struct synchronously.
+    // Keep the local seconds field: POSIX timezones may have second offsets.
     let mut local: libc::tm = unsafe { std::mem::zeroed() };
-    // SAFETY: both pointers remain valid for the duration of this call.
     let result = unsafe { libc::localtime_r(&seconds, &mut local) };
     if result.is_null() {
-        return utc_clock_label(seconds as u64);
+        return utc_clock_reading(elapsed);
     }
-    format_clock(local.tm_hour as u16, local.tm_min as u16)
+    clock_reading(
+        local.tm_hour as u16,
+        local.tm_min as u16,
+        local.tm_sec as u16,
+        elapsed.subsec_millis() as u16,
+    )
 }
 
 #[cfg(target_arch = "wasm32")]
-fn current_clock_label() -> String {
-    #[cfg(feature = "visual-test-hooks")]
-    if let Some(label) = crate::automexia::visual_test_hooks::frozen_clock_label() {
-        return label.to_owned();
+fn native_clock_reading() -> ClockReading {
+    utc_clock_reading(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default(),
+    )
+}
+
+#[cfg(not(target_os = "windows"))]
+fn utc_clock_reading(elapsed: std::time::Duration) -> ClockReading {
+    ClockReading {
+        label: utc_clock_label(elapsed.as_secs()),
+        next_update_ms: Some(next_clock_minute_delay_ms(
+            (elapsed.as_secs() % 60) as u16,
+            elapsed.subsec_millis() as u16,
+        )),
     }
-    let seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs());
-    utc_clock_label(seconds)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -774,6 +823,51 @@ mod tests {
     use crate::context::ContextManager;
     use crate::event::VoidListener;
     use rio_backend::event::WindowId;
+
+    #[test]
+    fn native_footer_clock_wakes_at_the_next_local_minute_without_busy_polling() {
+        for (second, millis, wait) in [
+            (0, 0, 60_000),
+            (17, 250, 42_750),
+            (59, 999, 1),
+            (60, 0, 1000),
+        ] {
+            let clock = clock_reading(23, 59, second, millis);
+            assert_eq!(clock.label, "23:59");
+            assert_eq!(clock.next_update_ms, Some(wait));
+        }
+        for second in 0..=60 {
+            for millis in [0, 1, 500, 999] {
+                assert!(
+                    (1..=60_000).contains(&next_clock_minute_delay_ms(second, millis))
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn native_hidden_footer_or_clock_performs_no_clock_read_and_schedules_no_wake() {
+        for appearance in [
+            FooterAppearance {
+                visible: Some(false),
+                ..Default::default()
+            },
+            FooterAppearance {
+                show_clock: Some(false),
+                ..Default::default()
+            },
+        ] {
+            let clock = footer_clock(appearance, || {
+                panic!("hidden clock must not consult the OS")
+            });
+            assert!(clock.label.is_empty());
+            assert_eq!(clock.next_update_ms, None);
+        }
+        let clock =
+            footer_clock(FooterAppearance::default(), || clock_reading(12, 30, 30, 0));
+        assert_eq!(clock.label, "12:30");
+        assert_eq!(clock.next_update_ms, Some(30_000));
+    }
 
     #[test]
     fn interface_footer_custom_colors_remain_readable_over_translucent_surfaces() {

@@ -7,7 +7,7 @@ use std::os::raw::c_char;
 use std::{env, slice, str};
 
 use libc::{setlocale, LC_ALL, LC_CTYPE};
-use objc::runtime::{Class, Object};
+use objc::runtime::{Class, Object, BOOL, YES};
 use objc::{msg_send, sel, sel_impl};
 use tracing::debug;
 const FALLBACK_LOCALE: &str = "UTF-8";
@@ -26,75 +26,92 @@ pub fn set_locale_environment() {
     }
 
     let system_locale = system_locale();
-
-    // Set locale to system locale.
-    let system_locale_c =
-        CString::new(system_locale.clone()).expect("nul byte in system locale");
-    let lc_all = unsafe { setlocale(LC_ALL, system_locale_c.as_ptr()) };
-
-    // Check if system locale was valid or not.
-    if lc_all.is_null() {
-        // Use fallback locale.
-        debug!("Using fallback locale: {}", FALLBACK_LOCALE);
-
-        let fallback_locale_c = CString::new(FALLBACK_LOCALE).unwrap();
-        unsafe { setlocale(LC_CTYPE, fallback_locale_c.as_ptr()) };
-
-        env::set_var("LC_CTYPE", FALLBACK_LOCALE);
+    let accepted = system_locale.as_deref().and_then(|locale| {
+        let value = CString::new(locale).ok()?;
+        // SAFETY: locale initialization runs before application worker startup;
+        // value is a live NUL-terminated string for this synchronous native call.
+        (!unsafe { setlocale(LC_ALL, value.as_ptr()) }.is_null()).then_some(locale)
+    });
+    if let Some(locale) = accepted {
+        env::set_var("LC_ALL", locale);
     } else {
-        // Use system locale.
-        debug!("Using system locale: {}", system_locale);
-
-        env::set_var("LC_ALL", system_locale);
+        debug!("Using UTF-8 fallback locale");
+        let fallback = c"UTF-8";
+        // SAFETY: static valid locale string; initialization is single-threaded.
+        unsafe { setlocale(LC_CTYPE, fallback.as_ptr()) };
+        env::set_var("LC_CTYPE", FALLBACK_LOCALE);
     }
 }
 
 /// Determine system locale based on language and country code.
-fn system_locale() -> String {
-    unsafe {
-        let locale_class = Class::get("NSLocale").unwrap();
-        let locale: *const Object = msg_send![locale_class, currentLocale];
-        let _: () = msg_send![locale_class, release];
-
-        // `localeIdentifier` returns extra metadata with the locale (including currency and
-        // collator) on newer versions of macOS. This is not a valid locale, so we use
-        // `languageCode` and `countryCode`, if they're available (macOS 10.12+):
-        //
-        // https://developer.apple.com/documentation/foundation/nslocale/1416263-localeidentifier?language=objc
-        // https://developer.apple.com/documentation/foundation/nslocale/1643060-countrycode?language=objc
-        // https://developer.apple.com/documentation/foundation/nslocale/1643026-languagecode?language=objc
-        let is_language_code_supported: bool =
-            msg_send![locale, respondsToSelector: sel!(languageCode)];
-        let is_country_code_supported: bool =
-            msg_send![locale, respondsToSelector: sel!(countryCode)];
-        let locale_id = if is_language_code_supported && is_country_code_supported {
-            let language_code: *const Object = msg_send![locale, languageCode];
-            let language_code_str = nsstring_as_str(language_code).to_owned();
-            let _: () = msg_send![language_code, release];
-
-            let country_code: *const Object = msg_send![locale, countryCode];
-            let country_code_str = nsstring_as_str(country_code).to_owned();
-            let _: () = msg_send![country_code, release];
-
-            format!("{}_{}.UTF-8", &language_code_str, &country_code_str)
-        } else {
-            let identifier: *const Object = msg_send![locale, localeIdentifier];
-            let identifier_str = nsstring_as_str(identifier).to_owned();
-            let _: () = msg_send![identifier, release];
-
-            identifier_str + ".UTF-8"
-        };
-
-        let _: () = msg_send![locale, release];
-
-        locale_id
-    }
+fn system_locale() -> Option<String> {
+    objc::rc::autoreleasepool(|| {
+        // SAFETY: Foundation getters return borrowed objects retained for this
+        // autorelease pool. Copy their text before draining; never release a
+        // class object or a +0 getter result that we did not retain.
+        unsafe {
+            let class = Class::get("NSLocale")?;
+            let locale: *const Object = msg_send![class, currentLocale];
+            if locale.is_null() {
+                return None;
+            }
+            let language_supported: BOOL =
+                msg_send![locale, respondsToSelector: sel!(languageCode)];
+            let country_supported: BOOL =
+                msg_send![locale, respondsToSelector: sel!(countryCode)];
+            if language_supported == YES && country_supported == YES {
+                let language: *const Object = msg_send![locale, languageCode];
+                let country: *const Object = msg_send![locale, countryCode];
+                let language = nsstring_owned(language)?;
+                let country = nsstring_owned(country).unwrap_or_default();
+                Some(if country.is_empty() {
+                    format!("{language}.UTF-8")
+                } else {
+                    format!("{language}_{country}.UTF-8")
+                })
+            } else {
+                let identifier: *const Object = msg_send![locale, localeIdentifier];
+                nsstring_owned(identifier).map(|value| value + ".UTF-8")
+            }
+        }
+    })
 }
 
 const UTF8_ENCODING: usize = 4;
+const MAX_LOCALE_BYTES: usize = 256;
 
-unsafe fn nsstring_as_str<'a>(nsstring: *const Object) -> &'a str {
-    let cstr: *const c_char = msg_send![nsstring, UTF8String];
-    let len: usize = msg_send![nsstring, lengthOfBytesUsingEncoding: UTF8_ENCODING];
-    str::from_utf8(slice::from_raw_parts(cstr as *const u8, len)).unwrap()
+/// Copy a nullable Foundation locale string while its owner is still alive.
+unsafe fn nsstring_owned(value: *const Object) -> Option<String> {
+    if value.is_null() {
+        return None;
+    }
+    let pointer: *const c_char = msg_send![value, UTF8String];
+    let length: usize = msg_send![value, lengthOfBytesUsingEncoding: UTF8_ENCODING];
+    if pointer.is_null() || length == 0 || length > MAX_LOCALE_BYTES {
+        return None;
+    }
+    str::from_utf8(slice::from_raw_parts(pointer.cast(), length))
+        .ok()
+        .filter(|value| !value.contains('\0'))
+        .map(str::to_owned)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_locale_nil_is_unavailable() {
+        assert!(unsafe { nsstring_owned(std::ptr::null()) }.is_none());
+    }
+
+    #[test]
+    fn native_locale_is_owned_across_autorelease_pools() {
+        let first = system_locale().expect("native Foundation locale must be readable");
+        for _ in 0..64 {
+            assert_eq!(system_locale().as_ref(), Some(&first));
+        }
+        assert!(first.ends_with(".UTF-8"));
+        assert!(!first.contains('\0'));
+    }
 }

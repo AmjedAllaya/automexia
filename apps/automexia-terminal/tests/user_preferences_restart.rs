@@ -48,6 +48,7 @@ fn custom_information_bar() -> InformationBarPreferences {
         },
     );
     InformationBarPreferences {
+        styles: Default::default(),
         preset: Some(preset),
         custom_recipe: Some(recipe),
         use_custom: true,
@@ -86,6 +87,12 @@ fn preference_child_write() {
                 )
                 .unwrap(),
             }],
+            general: automexia_terminal::automexia::general_preferences::GeneralPreferences {
+                copy_on_select: Some(true),
+                history_limit: Some(4321),
+                window_width: Some(1100),
+                ..Default::default()
+            },
             presentation: PresentationPreferences {
                 inline_tables: Some(false),
                 output_highlighting: Some(false),
@@ -347,6 +354,9 @@ fn saved_preferences_survive_real_process_restart_and_reset_without_config_mutat
             .extension_feature_enabled(DEVOPS_CONTEXT_STATUS_ID),
         Some(false)
     );
+    assert!(effective.copy_on_select);
+    assert_eq!(effective.scrollback_history_limit, 4321);
+    assert_eq!(effective.window.width, 1100);
     assert_eq!(effective.bindings.ui_shortcuts.len(), 1);
     assert_eq!(restarted.preferences.package_overrides.len(), 1);
     assert_eq!(
@@ -387,7 +397,7 @@ fn legacy_v4_import_survives_restart_and_keeps_kubernetes_independent() {
     // Create fixture permissions through the real private writer, then retain
     // only fields supported by the predecessor. This is test data, not migration.
     write_to_root(root.path(), &legacy).unwrap();
-    let current = root.path().join("state/user-preferences-v14.toml");
+    let current = root.path().join("state/user-preferences-v16.toml");
     let previous = root.path().join("state/user-preferences-v4.toml");
     let mut fixture: toml::Value =
         toml::from_str(&std::fs::read_to_string(&current).unwrap()).unwrap();

@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import os
+import plistlib
+import gzip
 from pathlib import Path
 import shutil
 import subprocess
@@ -65,6 +67,9 @@ class ReleaseRuntimeTests(unittest.TestCase):
         if bash is None:
             self.skipTest("Bash unavailable for workflow package fixture")
         script = workflow_step("release.yml", name)["run"]
+        identity_tool = root / "tools/ci/release_identity.py"
+        identity_tool.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / "tools/ci/release_identity.py", identity_tool)
         script = script.replace("${{ matrix.target }}", "fixture-target").replace("${{ matrix.artifact }}", "fixture-artifact")
         # The workflow executes unchanged apart from its matrix values. Only
         # external build/validation tools are replaced by bounded fixture scripts.
@@ -98,6 +103,87 @@ class ReleaseRuntimeTests(unittest.TestCase):
                 binaries -= {"LICENSE", "NOTICE.md", "THIRD_PARTY_NOTICES.md", "README.md"}
             return result, binaries
 
+    def test_linux_packages_ship_the_discoverable_complete_shell_resource_tree(self) -> None:
+        manifest = yaml.safe_load((ROOT / "packaging/linux/nfpm.yaml").read_text())
+        resources = [item for item in manifest["contents"]
+                     if item["dst"] == "/usr/share/automexia/shell-integration"]
+        self.assertEqual(len(resources), 1, "DEB/RPM must carry their session integration")
+        resource = resources[0]
+        self.assertEqual(resource.get("type"), "tree")
+        source = ROOT / resource["src"]
+        self.assertEqual(source.resolve(), (ROOT / "shell-integration").resolve())
+        # Include hidden Zsh startup files; a shell wildcard omits them.
+        for name in (*SHELL_ASSETS, "bash/session.bash", "bash/login-session.bash",
+                     "zsh/session/.zshenv"):
+            self.assertTrue((source / name).is_file(), name)
+
+    def test_native_linux_package_payload_contains_session_resources(self) -> None:
+        nfpm, dpkg, rpm, rpm2archive = (shutil.which(name) for name in ("nfpm", "dpkg-deb", "rpm", "rpm2archive"))
+        if not all((nfpm, dpkg, rpm, rpm2archive)):
+            self.skipTest("native DEB/RPM tools unavailable; manifest contract still runs")
+        with tempfile.TemporaryDirectory(prefix="automexia-nfpm-") as directory:
+            root = Path(directory)
+            binary = root / "fixture-binary"
+            binary.write_bytes(b"package fixture, not a release executable\n")
+            compressed = root / "fixture.gz"
+            compressed.write_bytes(gzip.compress(b"fixture\n", mtime=0))
+            terminfo = root / "terminfo"
+            terminfo.mkdir()
+            (terminfo / "fixture").write_bytes(b"fixture")
+            env = {**os.environ, "NFPM_ARCH": "amd64", "AUTOMEXIA_VERSION": "0.4.0",
+                   "AUTOMEXIA_TERMINFO_ROOT": str(terminfo)}
+            for key in ("AUTOMEXIA_BINARY", "AUTOMEXIA_CLI_BINARY",
+                        "AUTOMEXIA_SUGGESTION_HELPER_BINARY", "AUTOMEXIA_SSH_HELPER_BINARY"):
+                env[key] = str(binary)
+            for key in ("AUTOMEXIA_MANPAGE", "AUTOMEXIA_CHANGELOG", "AUTOMEXIA_DEBIAN_CHANGELOG"):
+                env[key] = str(compressed)
+            for kind, listing, version in ((kind, listing, version)
+                    for version in ("0.4.0", "0.0.1-alpha")
+                    for kind, listing in (("deb", [dpkg, "--contents"]), ("rpm", [rpm, "-qpl"]))):
+                env["AUTOMEXIA_VERSION"] = version
+                env["SOURCE_DATE_EPOCH"] = "1700000000"
+                package = root / ("fixture." + kind)
+                result = subprocess.run([nfpm, "package", "--config", "packaging/linux/nfpm.yaml",
+                                         "--packager", kind, "--target", str(package)],
+                                        cwd=ROOT, env=env, capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                result = subprocess.run([*listing, str(package)], capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                for name in (*SHELL_ASSETS, "bash/session.bash", "bash/login-session.bash", "zsh/session/.zshenv"):
+                    self.assertIn("/usr/share/automexia/shell-integration/" + name, result.stdout)
+                query = [dpkg, "-f", str(package), "Version"] if kind == "deb" else [rpm, "-qp", "--queryformat", "%{VERSION}-%{RELEASE}", str(package)]
+                actual_version = subprocess.check_output(query, text=True, timeout=30).strip()
+                self.assertEqual(actual_version, version.replace("-", "~") + "-1")
+                if version == "0.0.1-alpha":
+                    self.assertIn("(" + actual_version + ")", (ROOT / "packaging/linux/changelog.Debian").read_text().splitlines()[0])
+                before = package.read_bytes()
+                result = subprocess.run([nfpm, "package", "--config", "packaging/linux/nfpm.yaml",
+                                         "--packager", kind, "--target", str(package)],
+                                        cwd=ROOT, env=env, capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(package.read_bytes(), before, "native package bytes must be reproducible")
+                with tempfile.TemporaryDirectory(prefix="extracted-", dir=root) as extracted:
+                    destination = Path(extracted)
+                    if kind == "deb":
+                        subprocess.run([dpkg, "--extract", str(package), str(destination)],
+                                       check=True, capture_output=True, timeout=30)
+                    else:
+                        subprocess.run([rpm, "--checksig", "--nosignature", str(package)],
+                                       check=True, capture_output=True, timeout=30)
+                        payload = root / "payload.tar"
+                        # rpm2cpio can return failure after emitting a complete
+                        # payload on Ubuntu; use RPM's maintained archive converter.
+                        with package.open("rb") as source, payload.open("wb") as output:
+                            subprocess.run([rpm2archive, "-n", "-"], stdin=source, stdout=output,
+                                           stderr=subprocess.PIPE, check=True, timeout=30)
+                        with tarfile.open(payload) as archive:
+                            archive.extractall(destination, filter="data")
+                    for name in RUNTIMES:
+                        self.assertEqual((destination / "usr/bin" / name).read_bytes(), binary.read_bytes())
+                    for name in (*SHELL_ASSETS, "bash/session.bash", "zsh/session/.zshenv"):
+                        self.assertEqual((destination / "usr/share/automexia/shell-integration" / name).read_bytes(),
+                                         (ROOT / "shell-integration" / name).read_bytes())
+
     def test_portable_staging_preserves_all_runtime_binaries_on_every_os(self) -> None:
         for platform in ("Windows", "Linux", "macOS"):
             with self.subTest(platform=platform):
@@ -112,6 +198,18 @@ class ReleaseRuntimeTests(unittest.TestCase):
                 with self.subTest(platform=platform, missing=missing):
                     result, _ = self.stage_fixture(platform, missing)
                     self.assertNotEqual(result.returncode, 0, "incomplete release runtime was accepted")
+
+    def test_final_verifiers_download_only_their_own_platform_packages(self) -> None:
+        jobs = yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text())["jobs"]
+        for job, expected in (("verify-macos-final", "packages-macos-universal"),
+                              ("verify-linux-final", "${{ matrix.artifact }}"),
+                              ("verify-windows-final", "${{ matrix.artifact }}")):
+            with self.subTest(job=job):
+                downloads = [step for step in jobs[job]["steps"]
+                             if step.get("uses", "").startswith("actions/download-artifact@")]
+                self.assertEqual(len(downloads), 1)
+                self.assertEqual(downloads[0]["with"].get("name"), expected)
+                self.assertNotIn("pattern", downloads[0]["with"])
 
     def test_every_windows_runtime_crosses_each_signing_boundary(self) -> None:
         names = (
@@ -162,6 +260,7 @@ class ReleaseRuntimeTests(unittest.TestCase):
 [[ "$AUTOMEXIA_PACKAGE_SKIP_BUILD" == 1 ]]
 printf '%s\\n' "$*" >> "$FIXTURE_TRACE/cargo"
 ''')
+                write_fixture_script(root / "fixture-bin/git", "[[ \"$*\" == 'log -1 --format=%ct' ]]\nprintf '%s\\n' 1700000000\n")
                 for tool in ("desktop-file-validate", "appstreamcli", "lintian"):
                     write_fixture_script(root / "fixture-bin" / tool, f"printf '%s\\n' '{tool}' >> \"$FIXTURE_TRACE/validators\"\n")
                 result = self.run_fixture_step(root, "Build DEB, RPM, and portable archive")
@@ -207,7 +306,7 @@ test -x "$1"
 printf '%s: universal binary\\n' "$1"
 ''')
                 (root / "packaging/macos").mkdir(parents=True)
-                (root / "packaging/macos/Info.plist").write_text("version=@AUTOMEXIA_VERSION@\n", encoding="utf-8")
+                shutil.copyfile(ROOT / "packaging/macos/Info.plist", root / "packaging/macos/Info.plist")
                 (root / "assets/brand").mkdir(parents=True)
                 (root / "assets/brand/automexia-terminal.icns").write_bytes(b"fixture icon\n")
                 for document in ("LICENSE", "NOTICE.md", "THIRD_PARTY_NOTICES.md", "README.md"):
@@ -227,7 +326,10 @@ printf '%s: universal binary\\n' "$1"
                 self.assertEqual((root / "trace/lipo-verify").read_text().splitlines(), list(RUNTIMES))
                 self.assertEqual((root / "trace/cli").read_text().splitlines(), ["automexia", "amx"])
                 app = root / "dist/Automexia Terminal.app/Contents"
-                self.assertEqual((app / "Info.plist").read_text(), "version=0.4.0\n")
+                metadata = plistlib.loads((app / "Info.plist").read_bytes())
+                self.assertEqual(metadata["CFBundleShortVersionString"], "0.4.0")
+                self.assertEqual(metadata["CFBundleVersion"], "0.4.0")
+                self.assertEqual(metadata["AutomexiaReleaseVersion"], "0.4.0")
                 with tarfile.open(archive) as packaged:
                     files = {entry.name for entry in packaged.getmembers() if entry.isfile()}
                 prefix = "Automexia Terminal.app/Contents/"
@@ -276,8 +378,11 @@ printf '%s: universal binary\\n' "$1"
                 self.assertLess(source.index(f"Assert-ConPtyRuntime -Root {root}"),
                                 source.index(f"& (Join-Path {root} $runtime) --version"))
         sbom = workflow_step("release.yml", "Bind pinned Microsoft transport to both SBOM formats")
-        self.assertEqual(sbom["run"].strip(),
-                         "python3 tools/ci/release_trust.py --add-vendor-sbom release-assets")
+        for required in (".github/scripts/build_release_manifest.py", "--prepare-sbom",
+                         "--source sbom-raw", "--output release-assets", "--scan-root sbom-input"):
+            self.assertIn(required, sbom["run"])
+        # The manifest CLI's native fixture verifies the resulting vendor records,
+        # application identity and privacy projection in both public SBOM formats.
 
     def test_vendor_verifier_checks_hashes_before_each_native_signature(self) -> None:
         pwsh = shutil.which("pwsh")

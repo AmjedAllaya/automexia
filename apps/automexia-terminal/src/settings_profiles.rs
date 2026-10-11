@@ -40,14 +40,14 @@ fn row(
     Ok(SettingDescriptor {
         id: SettingId::new(format!("profiles.{id}"))?,
         owner: SettingOwner::Core,
-        section: Section::Sessions,
+        section: Section::Profiles,
         label: label.into(),
         description: description.into(),
         keywords: vec![],
         kind,
         value: value.clone(),
         default: value,
-        origin: ValueOrigin::User,
+        origin: ValueOrigin::Profile,
         availability: Availability::Available,
         scope: ChangeScope::NewSession,
     })

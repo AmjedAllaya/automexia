@@ -172,6 +172,16 @@ impl<'a> Visibility<'a> {
             if !self.enabled("tags.enabled") {
                 return false;
             }
+            if let Some(field) = id.strip_prefix("tags.shared.") {
+                return match field {
+                    "background" | "opacity" => {
+                        self.choice("tags.style", "tinted") != "plain"
+                            && self.choice("tags.bar-style", "capsule") != "underline"
+                    }
+                    "border-color" => number("tags.shared.border-width", 1.0) > 0.0,
+                    _ => true,
+                };
+            }
             if id == "tags.opacity" {
                 return self.choice("tags.style", "tinted") != "plain";
             }
@@ -202,6 +212,26 @@ impl<'a> Visibility<'a> {
                 }
                 if !self.enabled(&format!("tags.slot.{slot}.enabled")) {
                     return false;
+                }
+                if let Some(style) = field.strip_prefix("style.") {
+                    return match style {
+                        "size" | "family" | "bold" | "italic" | "underline"
+                        | "strike" | "foreground" => {
+                            self.choice(&format!("tags.slot.{slot}.text"), "") != "none"
+                        }
+                        "icon-color" | "icon-size" | "icon-gap" => {
+                            self.choice(&format!("tags.slot.{slot}.icon"), "") != "none"
+                        }
+                        "background" | "opacity" => {
+                            self.choice("tags.style", "tinted") != "plain"
+                                && self.choice("tags.bar-style", "capsule") != "underline"
+                        }
+                        "border-color" => {
+                            number(&format!("tags.slot.{slot}.style.border-width"), 1.0)
+                                > 0.0
+                        }
+                        _ => true,
+                    };
                 }
                 return match field {
                     "literal" => {

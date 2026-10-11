@@ -124,7 +124,16 @@ impl SettingsView {
                 true,
             );
             for (id, label, focus, rect) in [
-                (11, "Apply", ColorFocus::Apply, self.color_geometry.apply),
+                (
+                    11,
+                    if editor.id.as_str().starts_with("configuration.") {
+                        "Export TOML patch"
+                    } else {
+                        "Apply"
+                    },
+                    ColorFocus::Apply,
+                    self.color_geometry.apply,
+                ),
                 (12, "Cancel", ColorFocus::Cancel, self.color_geometry.cancel),
                 (
                     13,
@@ -254,8 +263,9 @@ impl SettingsView {
                 .filter(|editor| editor.id == row.id)
                 .map_or_else(|| display_value(entry), |editor| editor.draft.clone());
             let description = format!(
-                "{}. {}",
+                "{}. {}. {}",
                 entry.description,
+                entry.ownership_summary(),
                 entry.availability.reason().unwrap_or("")
             );
             add(

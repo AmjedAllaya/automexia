@@ -335,6 +335,14 @@ impl Screen<'_> {
         font_changed: bool,
         prepared: Option<&rio_backend::sugarloaf::font::FontLibrary>,
     ) {
+        let cursor_changed = self.profile_base_config.cursor != config.cursor;
+        self.context_manager
+            .update_core_preferences(config, cursor_changed);
+        self.mouse
+            .set_multiplier_and_divider(config.scroll.multiplier, config.scroll.divider);
+        if self.profile_base_config.keyboard != config.keyboard {
+            self.last_ime_cursor_pos = None;
+        }
         self.profile_base_config = config.clone();
         self.profile_theme_route = None;
         self.apply_profile_preferences(config, font_changed, prepared);

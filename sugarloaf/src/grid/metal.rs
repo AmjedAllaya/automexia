@@ -883,8 +883,9 @@ fn build_bg_pipeline(device: &Device) -> RenderPipelineState {
     // `sugarloaf/src/context/metal.rs:79`.
     color.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
     color.set_blending_enabled(true);
-    // Premultiplied-over blend, matching sugarloaf's rich-text pipeline.
-    color.set_source_rgb_blend_factor(MTLBlendFactor::SourceAlpha);
+    // grid_bg_fragment already premultiplies cell and cursor RGB by alpha.
+    // Use the same source-over contract as Vulkan/WebGPU, without a second fade.
+    color.set_source_rgb_blend_factor(MTLBlendFactor::One);
     color.set_destination_rgb_blend_factor(MTLBlendFactor::OneMinusSourceAlpha);
     color.set_rgb_blend_operation(MTLBlendOperation::Add);
     color.set_source_alpha_blend_factor(MTLBlendFactor::One);

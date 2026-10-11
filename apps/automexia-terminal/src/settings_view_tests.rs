@@ -3158,7 +3158,7 @@ fn selected_tag_controls_replace_the_left_half_while_the_live_tags_remain_clicka
         .unwrap()
         .entries()
         .iter()
-        .any(|entry| { entry.label.contains("This tag color") }));
+        .any(|entry| { entry.label.contains("Accent color") }));
     assert!(view
         .catalog
         .as_ref()
@@ -4818,7 +4818,7 @@ fn keyboard_reveal_exposes_entire_information_tag_row() {
     named(&mut view, NamedKey::End);
     view.paint(&mut raster, theme());
     let row = view.rows.last().unwrap();
-    assert_eq!(row.id.as_str(), "tags.opacity");
+    assert_eq!(row.id.as_str(), "tags.shared.icon-gap");
     assert!(row.bounds.height <= view.geometry.body.height);
     assert!(
         row.bounds.y + row.bounds.height
@@ -5823,7 +5823,7 @@ fn narrow_information_tag_slot_page_opens_by_keyboard_and_edits_text_by_mouse() 
     view.preview_selected = Some(page.clone());
     named(&mut view, NamedKey::Enter);
     assert_eq!(view.title(), "Tag slot: Windows");
-    assert_eq!(view.catalog.as_ref().unwrap().entries().len(), 9);
+    assert_eq!(view.catalog.as_ref().unwrap().entries().len(), 26);
     assert!(view
         .catalog
         .as_ref()
@@ -9649,5 +9649,396 @@ fn interface_header_tabs_sections_are_ordered_searchable_and_do_not_steal_focus(
         view.paint(&mut Raster::new(scale), theme());
         assert_eq!(view.title(), "Terminal Appearance");
         assert!(view.rows.iter().all(|row| row.section.is_none()));
+    }
+}
+
+#[test]
+fn tag_style_font_picker_is_keyboard_accessible_and_returns_to_owning_row() {
+    for single in [false, true] {
+        let mut view = workflow_tag_view();
+        view.fit(960.0, 620.0, 16.0);
+        if single {
+            view.enter_preview_item(SettingId::new("tags.slot.user.page").unwrap());
+        }
+        let id = if single {
+            "tags.slot.user.style.family"
+        } else {
+            "tags.shared.family"
+        };
+        assert!(view
+            .view
+            .as_mut()
+            .unwrap()
+            .focus(&SettingId::new(id).unwrap()));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::Enter);
+        assert_eq!(view.font_picker_setting(), Some(id));
+        assert!(matches!(
+            view.take_font_picker_intent(),
+            Some(FontPickerIntent::Load)
+        ));
+        view.font_picker_inventory(
+            vec!["Example Mono".into(), "Other Mono".into()],
+            false,
+        );
+        named(&mut view, NamedKey::ArrowDown);
+        assert!(matches!(
+            view.take_font_picker_intent(),
+            Some(FontPickerIntent::Preview(_))
+        ));
+        named(&mut view, NamedKey::Escape);
+        assert!(view.font_picker_session().is_none());
+        assert_eq!(view.focus, Focus::List);
+        assert_eq!(view.view.as_ref().unwrap().focused().unwrap().as_str(), id);
+        assert!(view.take_edit().is_none(), "preview/cancel must not save");
+    }
+}
+
+#[test]
+fn tag_style_shared_and_per_tag_preview_change_geometry_without_changing_peers() {
+    use crate::automexia::preferences::UserPreferences;
+    use automexia_ui_model::information_bar::TagTypography;
+    let base = rio_backend::config::Config::default();
+    let mut prefs = UserPreferences::default();
+    let mut view = workflow_tag_view();
+    view.fit(1200.0, 780.0, 16.0);
+    view.paint(&mut Raster::new(1.0), theme());
+    let tag = |view: &SettingsView, id: &str| {
+        view.preview_targets
+            .iter()
+            .find(|(key, r)| key.as_str() == id && r.y < view.preview_tag_list_area.y)
+            .unwrap()
+            .1
+    };
+    let user = tag(&view, "tags.slot.user.page");
+    let os = tag(&view, "tags.slot.windows.page");
+    prefs.visual.information_bar.styles.tags.insert(
+        "user".into(),
+        TagTypography {
+            size: Some(150),
+            padding_x: Some(12),
+            bold: Some(true),
+            ..Default::default()
+        },
+    );
+    view.refresh_with_resources(
+        crate::settings_catalog::catalog(
+            2,
+            &base,
+            &prefs,
+            &crate::settings_catalog::test_installed_extensions(),
+        )
+        .unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &prefs,
+            &prefs.apply_to(&base),
+        )),
+    );
+    view.paint(&mut Raster::new(1.0), theme());
+    let styled = tag(&view, "tags.slot.user.page");
+    let same = tag(&view, "tags.slot.windows.page");
+    assert!(styled.width > user.width);
+    assert!(styled.height > user.height);
+    assert_eq!(same.width, os.width);
+    assert_eq!(same.height, os.height);
+}
+
+#[test]
+fn tag_style_controls_hide_when_sources_or_background_are_not_visible() {
+    let base = rio_backend::config::Config::default();
+    let mut prefs = crate::automexia::preferences::UserPreferences::default();
+    let mut recipe = prefs.visual.information_bar.recipe();
+    let user = recipe.slots.iter_mut().find(|s| s.id == "user").unwrap();
+    user.text = automexia_ui_model::information_bar::BarTextSource::None;
+    user.icon = automexia_ui_model::information_bar::BarIconSource::Fixed(
+        automexia_extension_api::IconKind::User,
+    );
+    prefs.visual.information_bar.custom_recipe = Some(recipe);
+    prefs.visual.information_bar.use_custom = true;
+    prefs.visual.tags.style = Some(rio_backend::config::presentation::TagStyle::Plain);
+    let full = crate::settings_catalog::catalog(1, &base, &prefs, &[]).unwrap();
+    let snap =
+        crate::settings_catalog::slot_page_snapshot(&prefs, &prefs.apply_to(&base));
+    let page = crate::settings_catalog::visible_controls(
+        crate::settings_catalog::selected_tag_catalog(&full, &snap, "user").unwrap(),
+        &full,
+    )
+    .unwrap();
+    for field in ["family", "size", "bold", "background", "opacity"] {
+        assert!(page
+            .get(&SettingId::new(format!("tags.slot.user.style.{field}")).unwrap())
+            .is_none());
+    }
+    assert!(page
+        .get(&SettingId::new("tags.slot.user.style.icon-size").unwrap())
+        .is_some());
+}
+
+#[test]
+fn tag_style_every_row_reveals_at_narrow_and_fractional_sizes() {
+    for (width, height, scale) in [(360., 540., 1.), (960., 740., 1.5), (1500., 980., 2.)]
+    {
+        for single in [false, true] {
+            let mut view = workflow_tag_view();
+            if single {
+                view.enter_preview_item(SettingId::new("tags.slot.user.page").unwrap());
+            }
+            view.fit(width, height, 16.);
+            let ids = view.view.as_ref().unwrap().filtered_ids().to_vec();
+            for id in ids {
+                assert!(view.view.as_mut().unwrap().focus(&id));
+                view.focus = Focus::List;
+                view.reveal_focus = true;
+                view.layout_dirty = true;
+                view.paint(&mut Raster::new(scale), theme());
+                let row = view.rows.iter().find(|r| r.id == id).unwrap();
+                let body = view.geometry.body;
+                // Whole rows must be revealed whenever they fit. At the smallest
+                // supported height, long help text may exceed the entire viewport;
+                // the input and its owner must remain usable without losing preview.
+                let target = if row.bounds.height <= body.height {
+                    row.bounds
+                } else {
+                    row.control
+                };
+                assert!(target.y >= body.y - 0.01, "{} top", id.as_str());
+                assert!(
+                    target.y + target.height <= body.y + body.height + 0.01,
+                    "{} bottom",
+                    id.as_str()
+                );
+                if row.ownership.y + row.ownership.height - row.control.y <= body.height {
+                    assert!(
+                        row.ownership.y + row.ownership.height
+                            <= body.y + body.height + 0.01,
+                        "{} ownership hidden",
+                        id.as_str()
+                    );
+                }
+                assert!(view.geometry.preview.height > 0.0);
+                assert_eq!(view.view.as_ref().unwrap().focused(), Some(&id));
+            }
+        }
+    }
+}
+
+#[test]
+fn tag_style_preview_extremes_keep_targets_inside_the_sample_for_every_shape() {
+    use crate::automexia::preferences::UserPreferences;
+    use automexia_ui_model::information_bar::{BarVisualStyle, TagTypography};
+    let base = rio_backend::config::Config::default();
+    for visual in BarVisualStyle::ALL {
+        for (width, height, scale) in
+            [(600., 700., 1.), (1200., 780., 1.5), (1500., 980., 2.)]
+        {
+            for entry in crate::automexia::theme_gallery::builtins() {
+                let mut prefs = UserPreferences::default();
+                let mut recipe = prefs.visual.information_bar.recipe();
+                recipe.visual = visual;
+                prefs.visual.information_bar.custom_recipe = Some(recipe);
+                prefs.visual.information_bar.use_custom = true;
+                prefs.visual.information_bar.styles.shared = TagTypography {
+                    size: Some(150),
+                    padding_x: Some(0),
+                    border_width: Some(3),
+                    foreground: Some([128, 128, 128]),
+                    background: Some([128, 128, 128]),
+                    bold: Some(true),
+                    underline: Some(true),
+                    ..Default::default()
+                };
+                prefs.visual.information_bar.styles.tags.insert(
+                    "user".into(),
+                    TagTypography {
+                        size: Some(50),
+                        icon_size: Some(150),
+                        padding_y: Some(8),
+                        opacity: Some(0),
+                        italic: Some(true),
+                        strike: Some(true),
+                        ..Default::default()
+                    },
+                );
+                let mut view = workflow_tag_view();
+                view.fit(width, height, 16.);
+                view.refresh_with_resources(
+                    crate::settings_catalog::catalog(
+                        2,
+                        &base,
+                        &prefs,
+                        &crate::settings_catalog::test_installed_extensions(),
+                    )
+                    .unwrap(),
+                    None,
+                    Some(crate::settings_catalog::slot_page_snapshot(
+                        &prefs,
+                        &prefs.apply_to(&base),
+                    )),
+                );
+                view.paint(
+                    &mut Raster::new(scale),
+                    UiTheme::from_colors(&entry.theme.unwrap().colors),
+                );
+                let sample = view.geometry.preview;
+                let targets: Vec<_> = view
+                    .preview_targets
+                    .iter()
+                    .filter(|(_, r)| r.y < view.preview_tag_list_area.y)
+                    .collect();
+                assert!(!targets.is_empty(), "{visual:?} {width}");
+                for (_, r) in targets {
+                    assert!(
+                        r.x >= sample.x
+                            && r.y >= sample.y
+                            && r.x + r.width <= sample.x + sample.width + 0.01
+                            && r.y + r.height <= sample.y + sample.height + 0.01,
+                        "{visual:?}: {r:?} outside {sample:?}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn settings_ownership_is_visible_and_accessible_after_config_refresh() {
+    let mut rows = catalog(1).entries().to_vec();
+    rows[0].origin = ValueOrigin::Profile;
+    rows[0].scope = automexia_ui_model::settings::ChangeScope::NewSession;
+    let mut view = opened();
+    view.open(Catalog::new(2, rows.clone()).unwrap());
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    let visible: String = view
+        .rows
+        .iter()
+        .flat_map(|row| row.lines.iter())
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(visible.contains("Profile"));
+    assert!(visible.contains("New terminal"));
+    view.focus = Focus::List;
+    assert!(view.accessibility_summary().contains("Profile"));
+    assert!(view.accessibility_summary().contains("Launch only"));
+    rows[0].origin = ValueOrigin::Configuration;
+    view.refresh(Catalog::new(3, rows).unwrap());
+    view.paint(&mut raster, theme());
+    let visible: String = view
+        .rows
+        .iter()
+        .flat_map(|row| row.lines.iter())
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(visible.contains("config.toml"));
+    assert!(!visible.contains("Profile"));
+}
+
+#[test]
+fn full_settings_group_headers_and_toml_exports_keep_keyboard_and_accessibility_meaning()
+{
+    let base = rio_backend::config::Config::default();
+    let prefs = crate::automexia::preferences::UserPreferences::default();
+    let full = crate::settings_catalog::full_catalog_with_palette(
+        10,
+        &base,
+        &prefs,
+        &[],
+        &base.colors,
+    )
+    .unwrap();
+    for (width, height, scale) in [
+        (420.0, 600.0, 1.0),
+        (960.0, 740.0, 1.5),
+        (1280.0, 900.0, 2.0),
+    ] {
+        let mut view = SettingsView::default();
+        view.fit(width, height, 16.0);
+        view.open(full.clone());
+        let mut raster = Raster::new(scale);
+        view.paint(&mut raster, theme());
+        for section in [
+            "Appearance",
+            "Terminal & Output",
+            "Keyboard",
+            "Window",
+            "Profiles",
+            "Shell",
+            "Advanced",
+        ] {
+            assert!(
+                view.rows
+                    .iter()
+                    .any(|row| row.section.is_some_and(|(label, _)| label == section)),
+                "{section}"
+            );
+        }
+        let id = SettingId::new("configuration.renderer").unwrap();
+        assert!(view.view.as_mut().unwrap().focus(&id));
+        view.focus = Focus::List;
+        view.layout_dirty = true;
+        view.reveal_focus = true;
+        view.paint(&mut raster, theme());
+        assert_keyboard_reveal(&view);
+        named(&mut view, NamedKey::Enter);
+        view.paint(&mut raster, theme());
+        assert!(view.accessibility_summary().contains("Enter exports"));
+        let surface = view.accessibility_surface(
+            scale,
+            accesskit::Rect::new(
+                0.0,
+                0.0,
+                f64::from(width * scale),
+                f64::from(height * scale),
+            ),
+        );
+        assert!(surface
+            .elements
+            .iter()
+            .any(|element| element.node.label() == Some("Export TOML patch")));
+        named(&mut view, NamedKey::Escape);
+        assert!(view.color_editor.is_none());
+        assert!(view.take_edit().is_none());
+        assert_eq!(view.view.as_ref().unwrap().focused(), Some(&id));
+    }
+}
+
+#[test]
+fn full_settings_reset_confirmation_explains_inheritance_and_export_without_writing() {
+    let base = rio_backend::config::Config::default();
+    let full = crate::settings_catalog::full_catalog_with_palette(
+        10,
+        &base,
+        &Default::default(),
+        &[],
+        &base.colors,
+    )
+    .unwrap();
+    for (key, action, message) in [
+        (
+            "general.copy_on_select",
+            "Reset",
+            "inherit the current configuration",
+        ),
+        (
+            "configuration.renderer",
+            "Export instructions",
+            "No file will be changed",
+        ),
+    ] {
+        let mut view = SettingsView::default();
+        view.open(full.clone());
+        assert!(view
+            .view
+            .as_mut()
+            .unwrap()
+            .focus(&SettingId::new(key).unwrap()));
+        view.request_reset();
+        let confirmation = view.confirmation.as_ref().unwrap();
+        assert_eq!(confirmation.accept_label, action);
+        assert!(confirmation.description.contains(message));
+        assert!(view.take_edit().is_none());
     }
 }

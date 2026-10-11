@@ -1,6 +1,7 @@
 name: Native accessibility API assurance
 
 on:
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -77,7 +78,7 @@ jobs:
       - name: Install macOS shell scenario prerequisite
         if: runner.os == 'macOS'
         run: |
-          brew install fish bash
+          brew install fish bash imagemagick
           # GitHub's default shell can be a newer Homebrew Bash. Parse the
           # shipped adapters with the same system Bash used by native sessions.
           /bin/bash -n shell-integration/bash/automexia.bash
@@ -102,6 +103,7 @@ jobs:
           # resolves the already-built harness from Cargo's structured receipt.
           cargo test -p automexia-terminal --bin automexia --features visual-test-hooks --locked --no-run
           cargo test -p automexia-terminal --bin automexia --features visual-test-hooks --locked shared_color_picker
+          cargo test -p automexia-terminal --bin automexia --features visual-test-hooks --locked appearance_
           if [[ "$RUNNER_OS" == macOS ]]; then
             cargo test -p rio-window --lib --locked webkit_cursor_hotspot
             cargo test -p sugarloaf --lib --locked resolve_font_for_char_
@@ -131,6 +133,12 @@ jobs:
         run: |
           & tests/integration/resize-stress-windows.ps1 -Binary target/debug/automexia.exe -UseCpuRenderer -SharedColorPickerOnly
           & tests/integration/resize-stress-windows.ps1 -Binary target/debug/automexia.exe -SharedColorPickerOnly
+      - name: Native Windows opaque defaults and continuous compositor opacity
+        if: always() && !cancelled() && runner.os == 'Windows' && steps.visual.outcome != 'skipped'
+        shell: powershell
+        run: |
+          & tests/integration/resize-stress-windows.ps1 -Binary target/debug/automexia.exe -UseCpuRenderer -OpacityOnly -InitialWindowOpacity 0.5
+          & tests/integration/resize-stress-windows.ps1 -Binary target/debug/automexia.exe -OpacityOnly
       - name: Native Windows metadata output and cancellation
         if: always() && !cancelled() && runner.os == 'Windows' && steps.visual.outcome != 'skipped'
         shell: bash
@@ -150,6 +158,9 @@ jobs:
           cargo test -p automexia-terminal --lib --all-features --locked automexia::ssh_helper:: -- --nocapture
           cargo test -p automexia-terminal --bin automexia --all-features --locked bindings::
           cargo test -p teletypewriter --lib --locked
+          cargo test -p automexia-terminal --bin automexia --all-features --locked platform::macos::tests::native_locale_
+          cargo test -p automexia-terminal --bin automexia --all-features --locked renderer::prompt_visual_anchor_tests::native_
+          cargo test -p automexia-terminal --bin automexia --all-features --locked renderer::session_footer::tests::native_
           cargo build -p automexia-terminal --bin automexia-ssh-helper --all-features --locked
           cargo build -p automexia-ssh-integration --example export_helper_fixture --locked
           mkdir -p "$RUNNER_TEMP/helper-fixtures"
@@ -166,6 +177,7 @@ jobs:
           set -euo pipefail
           cargo build -p automexia-terminal --bin automexia --all-features --locked
           python tests/integration/unix-session-ui.py --binary target/debug/automexia --captures artifacts/visual-quality/native-macos --timeout 480
+          python tests/integration/unix-session-ui.py --binary target/debug/automexia --appearance-only --backend cpu --backend metal --backend webgpu --shell default --launch-mode default --captures artifacts/visual-quality/native-macos-appearance --timeout 480
           # Repeated isolated homes exercise the first Metal/default-shell
           # launch and teardown; failures remain fatal and retain redacted errno.
           for attempt in {1..12}; do
@@ -183,6 +195,7 @@ jobs:
           name: native-macos-session-${{ matrix.runner }}
           path: |
             artifacts/visual-quality/native-macos
+            artifacts/visual-quality/native-macos-appearance
             artifacts/native-helper-prompt-timings.json
           if-no-files-found: warn
           retention-days: 14
@@ -193,6 +206,8 @@ jobs:
           set -euo pipefail
           cargo bench -p automexia-renderer-benchmarks --bench text_fit --locked -- responsive_fitting --sample-size 10 --measurement-time 1 --warm-up-time 1
           cargo bench -p rio-vt --bench vt_input --locked -- 'prompt_(startup_resize|passthrough|native_markers)_snapshot' --sample-size 10 --measurement-time 1 --warm-up-time 1
+          cargo bench -p rio-vt --bench vt_input --locked -- native_untrusted_output --sample-size 10 --measurement-time 1 --warm-up-time 1
+          cargo bench -p teletypewriter --bench pty_io --locked -- --measurement-time 1 --warm-up-time 1
       - name: Retain macOS benchmark raw data
         if: always() && runner.os == 'macOS'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -203,6 +218,9 @@ jobs:
             target/criterion/unix_prompt_startup_resize_snapshot
             target/criterion/conpty_prompt_passthrough_snapshot
             target/criterion/fish_prompt_native_markers_snapshot
+            target/criterion/native_untrusted_output
+            target/criterion/pty_process
+            target/criterion/pty_output
           if-no-files-found: warn
           retention-days: 14
       - name: Preserve exact geometry, environment and mutation reports

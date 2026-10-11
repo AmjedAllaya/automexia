@@ -33,6 +33,7 @@ struct PromptPaint {
 
 /// Shared text emission for context and completion fragments. Geometry values
 /// are logical pixels: row height, font size, and tag height respectively.
+#[cfg(test)]
 pub(super) fn draw_fragment_text(
     engine: &mut rio_backend::sugarloaf::text::Text,
     value: &str,
@@ -260,44 +261,51 @@ fn prepare_with_recipe(
         let labels: Vec<_> = header
             .items
             .iter()
-            .map(|item| Label {
-                text: &item.value,
-                leading: item
-                    .icon
-                    .map_or(0.0, |_| metrics.icon_slot + metrics.icon_gap),
-                padding,
-                align_end: false,
+            .map(|item| {
+                let m = item.style.metrics(height);
+                Label {
+                    text: &item.value,
+                    leading: item.icon.map_or(0.0, |_| m.icon_slot + m.icon_gap),
+                    padding: item.style.layout_padding(recipe.visual, height, padding),
+                    align_end: false,
+                }
             })
             .collect();
-        let options = DrawOpts {
-            font_size: metrics.font_size,
-            ..DrawOpts::default()
-        };
+        let options: Vec<_> = header
+            .items
+            .iter()
+            .map(|item| {
+                crate::automexia::presentation::tag_text_options(
+                    text_engine,
+                    &item.style,
+                    item.style.metrics(height).font_size,
+                )
+            })
+            .collect();
         let timestamp_options = DrawOpts {
             font_size: metrics.font_size
                 * timestamp_appearance.size.unwrap_or_default().scale(),
             bold: timestamp_appearance.bold.unwrap_or(false),
             ..DrawOpts::default()
         };
-        if let Some(band) = header.completion.pack(
+        if let Some(band) = header.completion.pack_styled(
             &labels,
             available_width,
             gap,
             &break_before,
             trailing_start,
-            automexia_ui_model::information_bar::tag_join_overlap(
+            automexia_ui_model::information_bar::styled_tag_join_overlap(
                 recipe.visual,
-                metrics.height,
+                &header.items,
+                height,
                 available_width,
             ),
             |completion, text| {
                 text_engine.measure(
                     text,
-                    if completion {
-                        &timestamp_options
-                    } else {
-                        &options
-                    },
+                    completion
+                        .and_then(|index| options.get(index))
+                        .unwrap_or(&timestamp_options),
                 )
             },
         ) {

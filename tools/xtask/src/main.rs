@@ -1794,6 +1794,8 @@ fn complete_ci_gate() -> TaskResult {
     run_python("tools/ci/test_windows_conpty_runtime.py")?;
     run_python("tools/ci/test_package_contents.py")?;
     run_python("tools/ci/test_release_runtime.py")?;
+    run_python("tools/ci/test_release_identity.py")?;
+    run_python("tools/ci/test_release_manifest.py")?;
     with_verification_target(ci_in)?;
     run_command(
         cargo_deny_command(),
@@ -3539,7 +3541,10 @@ fn verify_architecture() -> TaskResult {
             && !session_footer.contains("FOOTER_INSET_Y")
             && session_footer.contains("\"UTF-8\"")
             && session_footer.contains("line_ending_for_shell")
-            && session_footer.contains("current_clock_label")
+            && session_footer.contains("current_clock_reading")
+            && session_footer.contains("footer_clock")
+            && session_footer.contains("native_footer_clock_wakes_at_the_next_local_minute_without_busy_polling")
+            && session_footer.contains("native_hidden_footer_or_clock_performs_no_clock_read_and_schedules_no_wake")
             && router.contains("route.window.screen.context_manager.update_titles();")
             && router.contains("route.request_redraw();")
             && !screen.contains("session_footer_action_hovered")
@@ -4570,7 +4575,7 @@ fn package_check() -> TaskResult {
             && linux_package.contains("libfontconfig1")
             && linux_copyright.contains("https://github.com/raphamorim/rio")
             && linux_copyright.contains("Permission is hereby granted")
-            && debian_changelog.contains(&format!("({}-1)", identity.version)),
+            && debian_changelog.contains(&format!("({}-1)", identity.version.replace('-', "~"))),
         "Linux packages must contain valid maintainer/description metadata, compressed docs, explicit non-executable modes, runtime dependencies, and attributed copyright",
     )?;
     require(
@@ -4746,27 +4751,7 @@ fn package_target(target: &str) -> TaskResult {
         if target == "aarch64-pc-windows-msvc" {
             package_windows_arm64(&identity, &binary, &output, target)?;
         } else {
-            let mut command = Command::new("cargo");
-            command.env("AUTOMEXIA_CONPTY_ROOT", runtime_root);
-            command.args([
-                "packager",
-                "--manifest-path",
-                "apps/automexia-terminal/Cargo.toml",
-                "--release",
-                "--no-build",
-                "--binaries-dir",
-                binary
-                    .parent()
-                    .and_then(Path::to_str)
-                    .ok_or("binary directory is not UTF-8")?,
-                "--out-dir",
-                output.to_str().ok_or("package path is not UTF-8")?,
-                "--target",
-                target,
-                "--formats",
-                "wix",
-            ]);
-            run_command(command, "Windows x64 package")?;
+            package_native_desktop(&identity, &binary, &output, target, "wix")?;
         }
         portable_archive(&identity, target, &binary, &output, "zip")?;
     } else if target.contains("apple-darwin") {
@@ -4774,27 +4759,7 @@ fn package_target(target: &str) -> TaskResult {
             cfg!(target_os = "macos"),
             "macOS packages must be produced on macOS",
         )?;
-        run(
-            "cargo",
-            &[
-                "packager",
-                "--manifest-path",
-                "apps/automexia-terminal/Cargo.toml",
-                "--release",
-                "--no-build",
-                "--binaries-dir",
-                binary
-                    .parent()
-                    .and_then(Path::to_str)
-                    .ok_or("binary directory is not UTF-8")?,
-                "--out-dir",
-                output.to_str().ok_or("package path is not UTF-8")?,
-                "--target",
-                target,
-                "--formats",
-                "app,dmg",
-            ],
-        )?;
+        package_native_desktop(&identity, &binary, &output, target, "app,dmg")?;
     } else if target.contains("linux") {
         require(
             cfg!(target_os = "linux"),
@@ -4806,6 +4771,58 @@ fn package_target(target: &str) -> TaskResult {
     }
     println!("PASS: packages staged in {}", output.display());
     Ok(())
+}
+
+fn package_native_desktop(
+    identity: &ProductIdentity,
+    binary: &Path,
+    output: &Path,
+    target: &str,
+    formats: &str,
+) -> TaskResult {
+    let binaries = binary.parent().ok_or("release binary has no parent")?;
+    let python = python_program().ok_or("Python 3 is required for native packaging")?;
+    let mut command = Command::new(python);
+    command
+        .arg("tools/ci/release_identity.py")
+        .arg("package")
+        .arg(&identity.version)
+        .arg("--binaries")
+        .arg(normalize_canonical_path(binaries.to_path_buf()))
+        .arg("--output")
+        .arg(normalize_canonical_path(output.to_path_buf()))
+        .args(["--target", target, "--formats", formats])
+        .env(
+            "AUTOMEXIA_CONPTY_ROOT",
+            normalize_canonical_path(binaries.to_path_buf()),
+        )
+        .current_dir(root());
+    run_command(command, "native desktop packaging")
+}
+
+fn windows_installer_version(version: &str) -> Result<&str, String> {
+    let numeric = if version == "0.0.1-alpha" {
+        "0.0.1"
+    } else {
+        version
+    };
+    let fields = numeric.split('.').collect::<Vec<_>>();
+    if fields.len() != 3
+        || fields.iter().any(|field| {
+            field.is_empty()
+                || field.len() > 5
+                || (field.len() > 1 && field.starts_with('0'))
+                || !field.bytes().all(|byte| byte.is_ascii_digit())
+        })
+    {
+        return Err("release version is not representable by Windows Installer".into());
+    }
+    for (field, maximum) in fields.iter().zip([255u32, 255, 65535]) {
+        if field.parse::<u32>().map_or(true, |value| value > maximum) {
+            return Err("release version exceeds Windows Installer limits".into());
+        }
+    }
+    Ok(numeric)
 }
 
 fn package_windows_arm64(
@@ -4856,7 +4873,13 @@ fn package_windows_arm64(
         "-intermediateFolder",
     ]);
     command.arg(&intermediate);
-    command.args(["-d", &format!("ProductVersion={}", identity.version)]);
+    command.args([
+        "-d",
+        &format!(
+            "ProductVersion={}",
+            windows_installer_version(&identity.version)?
+        ),
+    ]);
     command.args(["-d", &define("BinaryPath", &binary)]);
     command.args([
         "-d",
@@ -4975,16 +4998,19 @@ fn portable_archive(
         "{}-{}-{target}.{extension}",
         identity.package_name, identity.version
     ));
-    let flag = if extension == "zip" { "-acf" } else { "-czf" };
-    let mut command = Command::new("tar");
-    command
-        .args([flag])
-        .arg(&archive)
-        .args(["-C"])
-        .arg(&staging)
-        .arg(".")
-        .current_dir(root());
-    run_command(command, "portable archive")
+    run_python_args(
+        "tools/ci/reproducible_archive.py",
+        &[
+            "--source",
+            staging
+                .to_str()
+                .ok_or("archive staging path is not UTF-8")?,
+            "--output",
+            archive.to_str().ok_or("archive output path is not UTF-8")?,
+            "--format",
+            extension,
+        ],
+    )
 }
 
 fn copy_bounded_resource_tree(
@@ -5125,7 +5151,10 @@ fn package_linux(
             format,
             "--target",
         ])
-        .arg(output)
+        .arg(output.join(format!(
+            "automexia-terminal-{}-{target}.{format}",
+            identity.version
+        )))
         .env("NFPM_ARCH", arch)
         .env("AUTOMEXIA_VERSION", &identity.version)
         .env("AUTOMEXIA_BINARY", binary)
@@ -5949,6 +5978,25 @@ mod tests {
             "io.github.AmjedAllaya.AutomexiaTerminal"
         );
         assert_eq!(RIO_BASE_SHA.len(), 40);
+    }
+
+    #[test]
+    fn first_alpha_uses_numeric_windows_installer_metadata() {
+        assert_eq!(windows_installer_version("0.0.1-alpha").unwrap(), "0.0.1");
+        assert_eq!(
+            windows_installer_version("255.255.65535").unwrap(),
+            "255.255.65535"
+        );
+        for invalid in [
+            "0.0.1_alpha",
+            "01.2.3",
+            "1.2.3\n",
+            "1.2.3-beta",
+            "256.0.1",
+            "1.1.65536",
+        ] {
+            assert!(windows_installer_version(invalid).is_err(), "{invalid:?}");
+        }
     }
 
     #[test]

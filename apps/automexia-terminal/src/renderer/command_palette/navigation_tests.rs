@@ -1006,7 +1006,8 @@ fn customizations_category_keyboard_routes_visual_controls_and_keeps_back_safe()
             actions,
             [
                 PaletteAction::OpenCustomizations,
-                PaletteAction::OpenTerminalAppearance
+                PaletteAction::OpenTerminalAppearance,
+                PaletteAction::OpenSettings
             ]
         );
         assert_eq!(palette.filtered_rows()[0].1.title(), "Back to categories");
@@ -1064,7 +1065,8 @@ fn customizations_category_search_keeps_one_visual_preferences_entry() {
         actions,
         [
             PaletteAction::OpenCustomizations,
-            PaletteAction::OpenTerminalAppearance
+            PaletteAction::OpenTerminalAppearance,
+            PaletteAction::OpenSettings
         ]
     );
     assert_eq!(
@@ -1080,7 +1082,10 @@ fn customizations_category_search_keeps_one_visual_preferences_entry() {
     assert_eq!(palette.category, Some(Category::Tabs));
     assert!(palette.go_back());
     palette.set_query("settings".into());
-    assert_eq!(palette.get_selected_action(), None);
+    assert_eq!(
+        palette.get_selected_action(),
+        Some(PaletteAction::OpenSettings)
+    );
 }
 
 #[test]
@@ -1213,7 +1218,8 @@ fn visual_preferences_have_no_duplicate_settings_category() {
             actions,
             [
                 PaletteAction::OpenCustomizations,
-                PaletteAction::OpenTerminalAppearance
+                PaletteAction::OpenTerminalAppearance,
+                PaletteAction::OpenSettings
             ]
         );
         assert_eq!(

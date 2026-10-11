@@ -15,6 +15,8 @@ pub(super) struct Snapshot {
     base_height: f32,
     base_palette: Colors,
     user: FontPreferences,
+    sources: rio_backend::config::provenance::SettingSources,
+    theme_override: bool,
 }
 impl Snapshot {
     pub fn new(base: &Config, current: &Config, prefs: &UserPreferences) -> Self {
@@ -26,6 +28,8 @@ impl Snapshot {
             base_height: base.line_height,
             base_palette: base.colors,
             user: prefs.fonts.clone(),
+            sources: base.setting_sources.clone(),
+            theme_override: prefs.theme_selection.is_some(),
         }
     }
 }
@@ -227,6 +231,51 @@ pub(super) fn descriptors(
         rows.push(row);
     }
     for row in &mut rows {
+        if row.origin != ValueOrigin::User {
+            let field = match row.id.as_str() {
+                "fonts.family" if base.family.is_none() => "fonts.regular.family",
+                "fonts.family" => "fonts.family",
+                "fonts.regular-weight" => "fonts.regular.weight",
+                "fonts.bold-weight" => "fonts.bold.weight",
+                "fonts.line-height" => "line-height",
+                "fonts.bold-enabled" => "fonts.bold.style",
+                "fonts.italic-enabled" => "fonts.italic.style",
+                "fonts.ligatures" | "fonts.features" => "fonts.features",
+                "fonts.hinting" => "fonts.hinting",
+                "fonts.drawable-chars" => "fonts.use-drawable-chars",
+                _ => "colors",
+            };
+            row.origin = setting_origin(&snapshot.sources, field, false);
+            if field == "colors" {
+                let name = row
+                    .id
+                    .as_str()
+                    .strip_prefix("fonts.colors.")
+                    .unwrap_or("foreground");
+                let key = match name {
+                    "bright-text" => "light-foreground",
+                    "dim-text" => "dim-foreground",
+                    "selection-text" => "selection-foreground",
+                    "bright-black" => "light-black",
+                    "bright-red" => "light-red",
+                    "bright-green" => "light-green",
+                    "bright-yellow" => "light-yellow",
+                    "bright-blue" => "light-blue",
+                    "bright-magenta" => "light-magenta",
+                    "bright-cyan" => "light-cyan",
+                    "bright-white" => "light-white",
+                    other => other,
+                };
+                row.origin =
+                    setting_origin(&snapshot.sources, &format!("colors.{key}"), false);
+                if row.origin == ValueOrigin::Default {
+                    row.origin = setting_origin(&snapshot.sources, "theme", false);
+                }
+                if snapshot.theme_override {
+                    row.origin = ValueOrigin::User;
+                }
+            }
+        }
         row.keywords = vec![
             "fonts family text size typography spacing".into(),
             "color palette weight ligatures rendering".into(),

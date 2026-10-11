@@ -16,6 +16,7 @@ pub mod platform;
 pub mod presentation;
 pub mod product;
 pub mod profiles;
+pub mod provenance;
 pub mod renderer;
 pub mod theme;
 pub mod title;
@@ -151,6 +152,9 @@ impl Default for SessionRecovery {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Config {
+    /// Parsed field presence, never persisted or accepted from configuration.
+    #[serde(skip)]
+    pub setting_sources: provenance::SettingSources,
     #[serde(default)]
     pub profiles: profiles::ProfileDocument,
     #[serde(skip)]
@@ -367,6 +371,17 @@ impl Config {
         }
     }
 
+    /// Validate an in-memory configuration using the same schema as the file loader.
+    /// Theme files and process/environment effects are resolved by the existing adapter.
+    pub fn parse(content: &str) -> Result<Self, ConfigError> {
+        if content.len() > product::MAX_CONFIG_FILE_BYTES as usize {
+            return Err(ConfigError::ErrLoadingConfig(
+                "configuration exceeds size limit".into(),
+            ));
+        }
+        Self::decode_with_default_colors(content, Colors::default())
+    }
+
     pub fn to_string(&self) -> Result<String, toml::ser::Error> {
         toml::to_string(self)
     }
@@ -390,11 +405,18 @@ impl Config {
             #[serde(flatten)]
             config: Config,
         }
-        let input: ConfigInput =
+        let document: toml::Value =
             toml::from_str(content).map_err(|error: toml::de::Error| {
                 ConfigError::ErrLoadingConfig(error.to_string())
             })?;
+        let sources = provenance::SettingSources::from_document(&document)
+            .map_err(|error| ConfigError::ErrLoadingConfig(error.into()))?;
+        let input: ConfigInput =
+            document.try_into().map_err(|error: toml::de::Error| {
+                ConfigError::ErrLoadingConfig(error.to_string())
+            })?;
         let mut decoded = input.config;
+        decoded.setting_sources = sources;
         decoded
             .validate_environment()
             .map_err(|error| ConfigError::ErrLoadingConfig(error.to_string()))?;
@@ -687,6 +709,7 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
+            setting_sources: provenance::SettingSources::default(),
             session_recovery: SessionRecovery::default(),
             defer_initial_pty: false,
             cursor: CursorConfig::default(),
@@ -1848,3 +1871,49 @@ mod tests {
 
 #[cfg(test)]
 mod presentation_tests;
+
+#[cfg(test)]
+mod settings_provenance_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_default_values_retain_configuration_ownership() {
+        let empty = Config::decode_with_default_colors("", Colors::default()).unwrap();
+        let supplied = Config::decode_with_default_colors(
+            "confirm-before-quit = true\n[window]\nopacity = 1.0",
+            Colors::default(),
+        )
+        .unwrap();
+        assert_eq!(empty.confirm_before_quit, supplied.confirm_before_quit);
+        assert!(!empty.setting_sources.configured("confirm-before-quit"));
+        assert!(supplied.setting_sources.configured("confirm-before-quit"));
+        assert!(supplied.setting_sources.configured("window.opacity"));
+        assert!(!supplied.setting_sources.configured("window.width"));
+        assert!(!supplied.to_string().unwrap().contains("setting_sources"));
+    }
+
+    #[test]
+    fn profile_ownership_only_marks_fields_the_profile_changes() {
+        let mut profile = profiles::NamedProfile::new("work".into(), "Work".into());
+        profile.program = Some("example-shell".into());
+        let base = Config::decode_with_default_colors(
+            "confirm-before-quit = true",
+            Colors::default(),
+        )
+        .unwrap();
+        let resolved = profile
+            .resolve(
+                &base,
+                profiles::ProfilePlatform::current(),
+                None,
+                None,
+                |_| None,
+            )
+            .unwrap();
+        assert!(resolved.setting_sources.profile("shell.program"));
+        assert!(resolved.setting_sources.profile("shell.args"));
+        assert!(!resolved.setting_sources.profile("confirm-before-quit"));
+        assert!(resolved.setting_sources.configured("confirm-before-quit"));
+        assert!(!resolved.setting_sources.profile("working-dir"));
+    }
+}

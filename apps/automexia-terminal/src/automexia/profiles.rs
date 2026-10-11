@@ -354,6 +354,7 @@ fn perform(
                 config.colors = theme.colors;
                 config.adaptive_colors = None;
                 config.theme = name.clone();
+                config.setting_sources.mark_profile_theme();
             }
             check_cancel(cancelled)?;
             Ok(ProfileOutcome::Resolved(Box::new(config)))

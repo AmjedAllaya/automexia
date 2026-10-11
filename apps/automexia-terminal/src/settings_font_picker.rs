@@ -17,6 +17,7 @@ pub(super) enum FontPickerTarget {
     Back,
 }
 pub(super) struct FontPicker {
+    setting: SettingId,
     revision: u64,
     query: String,
     entries: Vec<String>,
@@ -53,7 +54,9 @@ impl SettingsView {
         let Some(entry) = self.focused_entry() else {
             return;
         };
-        if entry.id.as_str() != "fonts.family" || entry.availability.reason().is_some() {
+        if !crate::settings_catalog::is_font_family_setting(entry.id.as_str())
+            || entry.availability.reason().is_some()
+        {
             return;
         }
         let SettingValue::Text(original) = &entry.value else {
@@ -62,7 +65,9 @@ impl SettingsView {
         let Some(generation) = self.font_picker_generation.checked_add(1) else {
             return;
         };
+        let setting = entry.id.clone();
         self.font_picker = Some(FontPicker {
+            setting,
             revision: self.catalog.as_ref().map_or(0, Catalog::revision),
             query: String::new(),
             entries: Vec::new(),
@@ -83,6 +88,22 @@ impl SettingsView {
         self.preedit.clear();
         self.pressed = None;
         self.layout_dirty = true;
+    }
+    pub(crate) fn font_picker_setting(&self) -> Option<&str> {
+        self.font_picker.as_ref().map(|p| p.setting.as_str())
+    }
+    pub(crate) fn preview_tag_styles(
+        &mut self,
+        styles: automexia_ui_model::information_bar::TagStyles,
+    ) {
+        if let Some(snapshot) = self
+            .customizations
+            .as_mut()
+            .and_then(|n| n.slot_pages.as_mut())
+        {
+            snapshot.preview_tag_styles(styles);
+            self.layout_dirty = true;
+        }
     }
     pub(crate) fn font_picker_session(&self) -> Option<(u64, u64)> {
         self.font_picker

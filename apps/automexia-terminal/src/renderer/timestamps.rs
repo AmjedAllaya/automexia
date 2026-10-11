@@ -102,6 +102,28 @@ impl TimestampText {
         overlap: f32,
         mut measure: impl FnMut(bool, &str) -> f32,
     ) -> Option<Band> {
+        self.pack_styled(
+            tags,
+            width,
+            gap,
+            breaks,
+            trailing,
+            overlap,
+            |index, text| measure(index.is_none(), text),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn pack_styled<'a>(
+        &'a self,
+        tags: &[Label<'a>],
+        width: f32,
+        gap: f32,
+        breaks: &[usize],
+        trailing: Option<usize>,
+        overlap: f32,
+        mut measure: impl FnMut(Option<usize>, &str) -> f32,
+    ) -> Option<Band> {
         let mut labels = Vec::with_capacity(tags.len() + self.runs.len());
         let mut owners = Vec::with_capacity(labels.capacity());
         let mut row_breaks = Vec::new();
@@ -154,7 +176,12 @@ impl TimestampText {
             &row_breaks,
             trailing.map(|index| index + tag_start),
             overlap,
-            |index, text| measure(owners[index].0 == tags.len(), text),
+            |index, text| {
+                measure(
+                    (owners[index].0 < tags.len()).then_some(owners[index].0),
+                    text,
+                )
+            },
         )?;
         for fragment in &mut band.fragments {
             let (owner, offset) = owners[fragment.item];
@@ -454,3 +481,57 @@ pub(crate) fn color(
 #[cfg(test)]
 #[path = "timestamps_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod tag_style_tests {
+    use super::*;
+    #[test]
+    fn tag_style_measurement_owners_survive_every_completion_lane() {
+        for position in [
+            TimestampPosition::AboveLeft,
+            TimestampPosition::AboveRight,
+            TimestampPosition::Left,
+            TimestampPosition::Right,
+            TimestampPosition::BelowLeft,
+            TimestampPosition::BelowRight,
+        ] {
+            let stamp = TimestampText::new(
+                TimestampAppearance {
+                    result_position: Some(position),
+                    ..Default::default()
+                },
+                false,
+                None,
+                Some(0),
+                Some(123),
+            );
+            let tags = [
+                Label {
+                    text: "small",
+                    leading: 0.,
+                    padding: 0.,
+                    align_end: false,
+                },
+                Label {
+                    text: "large",
+                    leading: 0.,
+                    padding: 0.,
+                    align_end: false,
+                },
+            ];
+            let mut seen = [false; 3];
+            let band = stamp
+                .pack_styled(&tags, 400., 3., &[], None, 0., |owner, text| {
+                    let index = owner.unwrap_or(2);
+                    seen[index] = true;
+                    text.chars().count() as f32 * [5., 12., 7.][index]
+                })
+                .unwrap();
+            assert_eq!(seen, [true; 3]);
+            let small = band.fragments.iter().find(|f| f.item == 0).unwrap();
+            let large = band.fragments.iter().find(|f| f.item == 1).unwrap();
+            assert!(large.width > small.width * 2.);
+            assert!(band.fragments.iter().any(|f| f.item == 2));
+        }
+    }
+}

@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "repository": "AmjedAllaya/automexia-terminal",
+  "repository": "AmjedAllaya/automexia",
   "default_branch": "main",
   "fork_provenance": {
     "tag": "rio-base-0.5.20-7d595af",
@@ -9,7 +9,7 @@
     "require_remote_tag": true
   },
   "release_source": {
-    "tag_pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$",
+    "tag_pattern": "^(?:v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?|0\\.0\\.1_alpha)$",
     "require_annotated_tag": true,
     "require_remote_tag": true,
     "require_exact_default_branch_head": true,

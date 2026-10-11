@@ -78,7 +78,7 @@ fn window_bg_alpha_with_glass(config: &Config, glass_available: bool) -> f32 {
     } else if glass_available && config.window.blur.is_glass() {
         0.0
     } else {
-        config.window.opacity.clamp(0.0, 1.0)
+        config.window.effective_opacity()
     }
 }
 
@@ -89,13 +89,12 @@ fn dynamic_background_for(
 ) -> ([f32; 4], rio_backend::sugarloaf::Color, bool) {
     let mut dynamic_background =
         (named_colors.background.0, named_colors.background.1, false);
-    if window_bg_alpha(config) < 1.0 {
-        dynamic_background.1.a = window_bg_alpha(config) as f64;
-        dynamic_background.2 = true;
-    } else if config.window.background_image.is_some() {
-        dynamic_background.1 = rio_backend::sugarloaf::Color::TRANSPARENT;
-        dynamic_background.2 = true;
-    }
+    // Startup and later OSC/background updates must use the same window alpha.
+    // Theme RGBA and partially transparent wallpaper never replace this clear;
+    // images blend over it while default grid cells remain transparent to them.
+    let alpha = window_bg_alpha(config);
+    dynamic_background.1.a = f64::from(alpha);
+    dynamic_background.2 = alpha < 1.0 || config.window.background_image.is_some();
     dynamic_background
 }
 
@@ -476,6 +475,15 @@ struct SemanticPaneRenderState {
     output_background_protected: Vec<bool>,
     allow_result_animation: bool,
     is_active: bool,
+}
+
+impl SemanticPaneRenderState {
+    fn needs_local_context_refresh(&self) -> bool {
+        self.prompt_active
+            && self.live_anchor.is_some()
+            && !self.remote_active
+            && self.metadata_readiness == session_metadata::MetadataReadiness::Complete
+    }
 }
 
 const MAX_LEGACY_PROMPT_SCAN_ROWS: usize = 8;
@@ -1208,7 +1216,7 @@ impl Renderer {
             dynamic_background,
             opacity_cells: config.window.opacity_cells
                 && config.renderer.supports_window_transparency(),
-            cell_bg_alpha: (config.window.opacity.clamp(0.0, 1.0) * 255.0).round() as u8,
+            cell_bg_alpha: (config.window.effective_opacity() * 255.0).round() as u8,
             window_bg_alpha: target_bg_alpha,
             search: search::SearchOverlay::default(),
             suggestions: suggestions::SuggestionOverlay::default(),
@@ -1279,8 +1287,7 @@ impl Renderer {
         self.dynamic_background = dynamic_background_for(config, &self.named_colors);
         self.opacity_cells =
             config.window.opacity_cells && config.renderer.supports_window_transparency();
-        self.cell_bg_alpha =
-            (config.window.opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
+        self.cell_bg_alpha = (config.window.effective_opacity() * 255.0).round() as u8;
         self.window_bg_alpha = window_bg_alpha(config);
         self.command_palette.has_adaptive_theme = config.adaptive_colors.is_some();
 
@@ -1364,7 +1371,9 @@ impl Renderer {
                 .set_metadata_readiness(active_route, active.metadata_readiness);
         }
         let discovery_enabled = self.devops_context_enabled || self.git_context_enabled;
-        let refresh_pending = discovery_enabled
+        let active_discovery = discovery_enabled && active.needs_local_context_refresh();
+        let mut visible_discovery = active_discovery;
+        let refresh_pending = active_discovery
             && self
                 .devops_status
                 .refresh_session_context(&active.session, || {
@@ -1376,7 +1385,7 @@ impl Renderer {
             &active.historical_anchors,
             active.live_anchor,
         );
-        if discovery_enabled && new_prompt {
+        if active_discovery && new_prompt {
             self.devops_status
                 .request_prompt_refresh(&active.session, || {
                     context_manager.devops_refresh_completion(active_route)
@@ -1396,7 +1405,9 @@ impl Renderer {
             if !pane.remote_active {
                 status.set_metadata_readiness(route, pane.metadata_readiness);
             }
-            if discovery_enabled {
+            let pane_discovery = discovery_enabled && pane.needs_local_context_refresh();
+            visible_discovery |= pane_discovery;
+            if pane_discovery {
                 inactive_refresh_pending |= status
                     .refresh_visible_session(&pane.session, || {
                         context_manager.devops_refresh_completion(route)
@@ -1408,13 +1419,15 @@ impl Renderer {
                 &pane.historical_anchors,
                 pane.live_anchor,
             );
-            if discovery_enabled && new_prompt {
+            if pane_discovery && new_prompt {
                 status.request_prompt_refresh(&pane.session, || {
                     context_manager.devops_refresh_completion(route)
                 });
             }
         }
-        if discovery_enabled {
+        // Hidden/history-only prompts and remote metadata have no local
+        // discovery work. Worker completions retain their route-owned wake.
+        if visible_discovery {
             context_manager.schedule_render_on_route(
                 devops_status::next_context_wake_millis(
                     refresh_pending || inactive_refresh_pending,
@@ -2718,6 +2731,111 @@ mod prompt_visual_anchor_tests {
     use rio_backend::event::{TerminalDamage, VoidListener, WindowId};
     use rio_backend::performer::handler::Processor;
 
+    #[derive(Clone, Default)]
+    struct ContextWakeRecorder(std::sync::Arc<std::sync::Mutex<Vec<u64>>>);
+
+    impl rio_backend::event::EventListener for ContextWakeRecorder {
+        fn send_event(&self, event: rio_backend::event::RioEvent, _: WindowId) {
+            if let rio_backend::event::RioEvent::PrepareRenderOnRoute(delay, _) = event {
+                self.0.lock().unwrap().push(delay);
+            }
+        }
+    }
+
+    fn context_wake_fixture() -> (
+        Renderer,
+        ContextManager<ContextWakeRecorder>,
+        SemanticPaneRenderState,
+        ContextWakeRecorder,
+    ) {
+        let listener = ContextWakeRecorder::default();
+        let manager =
+            ContextManager::start_with_capacity(1, listener.clone(), WindowId::from(0))
+                .unwrap();
+        let mut renderer = Renderer::new(&Config::default());
+        renderer.git_context_enabled = true;
+        let content =
+            RenderableContent::new(crate::context::renderable::Cursor::default());
+        let mut pane = semantic_snapshot(
+            &content,
+            (8.0, 16.0),
+            rio_backend::config::layout::Margin::default(),
+            1.0,
+            true,
+            (manager.current().route_id, 0),
+        );
+        pane.metadata_readiness = session_metadata::MetadataReadiness::Complete;
+        (renderer, manager, pane, listener)
+    }
+
+    fn live_context_anchor() -> crate::automexia::ui::PromptAnchor {
+        crate::automexia::ui::PromptAnchor {
+            generation: Some(1),
+            key: 1,
+            x: 0.0,
+            y: 0.0,
+            width: 640.0,
+            height: 16.0,
+        }
+    }
+
+    #[test]
+    fn native_idle_context_without_a_visible_local_prompt_schedules_no_discovery_frames()
+    {
+        for scenario in 0..5 {
+            let (mut renderer, mut manager, mut pane, listener) = context_wake_fixture();
+            if scenario != 0 {
+                pane.live_anchor = Some(live_context_anchor());
+            }
+            pane.prompt_active = scenario != 1;
+            match scenario {
+                2 => {
+                    pane.metadata_readiness = session_metadata::MetadataReadiness::Pending
+                }
+                3 => {
+                    pane.metadata_readiness =
+                        session_metadata::MetadataReadiness::Unavailable
+                }
+                4 => pane.remote_active = true,
+                _ => {}
+            }
+            renderer.prepare_prompt_context(&mut manager, &pane, &[]);
+            assert!(
+                listener.0.lock().unwrap().is_empty(),
+                "no optional discovery repaint for scenario {scenario}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_visible_local_prompt_keeps_bounded_context_refresh() {
+        for inactive in [false, true] {
+            let (mut renderer, mut manager, mut pane, listener) = context_wake_fixture();
+            pane.live_anchor = Some(live_context_anchor());
+            pane.prompt_active = true;
+            if inactive {
+                let content =
+                    RenderableContent::new(crate::context::renderable::Cursor::default());
+                let empty = semantic_snapshot(
+                    &content,
+                    (8.0, 16.0),
+                    rio_backend::config::layout::Margin::default(),
+                    1.0,
+                    true,
+                    (manager.current().route_id, 0),
+                );
+                pane.is_active = false;
+                pane.session.session_id += 1;
+                renderer.prepare_prompt_context(&mut manager, &empty, &[pane]);
+            } else {
+                renderer.prepare_prompt_context(&mut manager, &pane, &[]);
+            }
+            let wakes = listener.0.lock().unwrap();
+            assert_eq!(wakes.len(), 1);
+            assert!(matches!(wakes[0], 100 | 3000));
+        }
+    }
+
     #[test]
     fn oversized_osc_context_clears_old_facts_before_renderer_or_worker_clone() {
         let mut terminal = Crosswords::new(
@@ -2839,6 +2957,39 @@ mod prompt_visual_anchor_tests {
             renderer.island.as_ref().unwrap().appearance,
             base.presentation.interface.header
         );
+    }
+
+    #[test]
+    fn appearance_prompt_palette_follows_live_theme_with_readable_inks() {
+        let mut config = Config::default();
+        let mut renderer = Renderer::new(&config);
+        for entry in crate::automexia::theme_gallery::builtins() {
+            config.colors = entry.theme.unwrap().colors;
+            renderer.update_config(&config);
+            for color in [
+                NamedColor::Blue,
+                NamedColor::Cyan,
+                NamedColor::Magenta,
+                NamedColor::LightBlue,
+                NamedColor::Green,
+                NamedColor::LightBlack,
+            ] {
+                let actual = renderer.compute_color(
+                    &AnsiColor::Named(color),
+                    StyleFlags::empty(),
+                    &TermColors::default(),
+                );
+                assert_eq!(actual, List::from(&config.colors)[color as usize]);
+                assert!(
+                    automexia_ui_model::contrast_ratio(
+                        actual,
+                        config.colors.background.0
+                    ) >= 4.5,
+                    "{} {color:?} is not readable",
+                    entry.name
+                );
+            }
+        }
     }
 
     #[test]
@@ -4070,6 +4221,28 @@ mod opacity_tests {
                 assert_eq!(window_bg_alpha_with_glass(&config, available), expected);
                 assert_eq!(config.window.opacity, alpha);
             }
+        }
+    }
+
+    #[test]
+    fn appearance_initial_clear_does_not_inherit_saved_theme_alpha() {
+        let mut config = Config::default();
+        for theme_alpha in [0.0, 0.25, 1.0] {
+            config.colors.background.1.a = theme_alpha;
+            for window_alpha in [0.0, 0.5, 1.0] {
+                config.window.opacity = window_alpha;
+                let initial = dynamic_background_for(&config, &config.colors);
+                assert_eq!(initial.1.a, f64::from(window_bg_alpha(&config)));
+            }
+        }
+    }
+
+    #[test]
+    fn appearance_invalid_opacity_falls_back_to_readable_opaque_window() {
+        let mut config = Config::default();
+        for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -0.1, 1.1] {
+            config.window.opacity = value;
+            assert_eq!(window_bg_alpha_with_glass(&config, false), 1.0);
         }
     }
 
