@@ -167,7 +167,13 @@ function Start-OwnedApp {
         $report.startup.window_count = $windows.Count
         if ($windows.Count -eq 1) {
             $script:window = $windows[0]
-            [void][AutomexiaResizeDriver]::MoveWindow($script:window, 20, 20, 1280, 800, $true)
+            # A hosted desktop can be smaller than 1280x800. Off-screen pixels
+            # from a desktop capture cannot establish a footer rendering failure.
+            $desktopWidth = [AutomexiaResizeDriver]::PrimaryWidth()
+            $desktopHeight = [AutomexiaResizeDriver]::PrimaryHeight()
+            $report.viewport = @{ desktop_width = $desktopWidth; desktop_height = $desktopHeight }
+            [void][AutomexiaResizeDriver]::MoveWindow($script:window, 20, 20,
+                [Math]::Min(1280, $desktopWidth - 60), [Math]::Min(800, $desktopHeight - 100), $true)
             $initial = Wait-Nodes { param($n)
                 @($n | Where-Object Name -eq 'Terminal output').Count -eq 1 -or
                 @($n | Where-Object Name -eq 'Welcome to Automexia. Press Enter to get started.').Count -eq 1
@@ -309,8 +315,20 @@ using System;
 using System.Drawing;
 using System.Runtime.InteropServices;
 public static class AuditCoordinates {
+    [StructLayout(LayoutKind.Sequential)] struct Rect { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] static extern bool ScreenToClient(IntPtr window, ref Point point);
     [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr window);
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr window, out Rect rect);
+    [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+    public static bool WindowFitsDesktop(IntPtr window) {
+        var previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        try {
+            Rect rect;
+            return GetWindowRect(window, out rect) && rect.Left >= 0 && rect.Top >= 0 &&
+                rect.Right <= GetSystemMetrics(0) && rect.Bottom <= GetSystemMetrics(1);
+        } finally { SetThreadDpiAwarenessContext(previous); }
+    }
     public static Point ScreenToClientPoint(IntPtr window, int x, int y) {
         var point = new Point(x, y);
         if (!ScreenToClient(window, ref point)) throw new InvalidOperationException("Coordinate conversion failed");
@@ -415,6 +433,8 @@ public static class AuditCoordinates {
         # Inspect real composited pixels inside the VM; upload booleans only.
         # Palette oracles are fixed independently of application preferences.
         $capture = Join-Path $work 'theme.png'
+        $entry.window_inside_desktop = [AuditCoordinates]::WindowFitsDesktop($script:window)
+        if (-not $entry.window_inside_desktop) { throw 'Window extends beyond the desktop capture area' }
         $null = [AutomexiaResizeDriver]::CaptureClientFrame($script:window, $capture)
         $bitmap = [Drawing.Bitmap]::new($capture)
         try {
@@ -449,7 +469,7 @@ public static class AuditCoordinates {
             'Setting has no native toggle state', 'Setting did not survive restart', 'Script probe wrote application settings',
             'Built-in theme was not reachable', 'Applied theme did not reach the native window palette',
             'Applied theme did not survive restart', 'Setting has no native value', 'An expected active setting is disabled',
-            'Setting keyboard focus was not reached')) {
+            'Setting keyboard focus was not reached', 'Window extends beyond the desktop capture area')) {
         $report.failure_reason = $_.Exception.Message
     }
 } finally {
