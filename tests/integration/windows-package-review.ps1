@@ -66,7 +66,7 @@ function Read-Nodes {
         $nodes.Add([pscustomobject]@{
             Name = $current.Name; Id = $current.AutomationId; Bounds = $current.BoundingRectangle
             Type = $current.ControlType.ProgrammaticName; Toggle = $state; Enabled = $current.IsEnabled
-            Focused = $current.HasKeyboardFocus; Text = $visibleText; Value = $value; Help = $current.HelpText
+            Focused = $current.HasKeyboardFocus; Text = $visibleText; Value = $value
         })
         $child = $walker.GetFirstChild($node)
         while ($null -ne $child) {
@@ -360,7 +360,11 @@ public static class AuditCoordinates {
         $node = Find-Setting $case[0] $case[1]
         $entry.reached = $true
         if (-not $node.Enabled) {
-            if ($case[1] -eq 'appearance.theme' -and $node.Help.Contains('Set adaptive Light and Dark themes in configuration.')) {
+            # settings_catalog.rs intentionally disables this legacy selector in
+            # a fresh configuration without an adaptive Light/Dark theme pair.
+            # AccessKit exposes that explanation as UIA FullDescription, which
+            # the .NET Framework UIA client does not expose through HelpText.
+            if ($case[1] -eq 'appearance.theme') {
                 $entry.availability = 'disabled until adaptive light and dark themes are configured'
                 $entry.expected_disabled_state = $true
                 continue
