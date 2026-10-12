@@ -70,6 +70,7 @@ function Wait-Nodes([scriptblock]$Predicate) {
             terminal_nodes = @($nodes | Where-Object Name -eq 'Terminal output').Count
             text_nodes = @($nodes | Where-Object { $_.Text.Length -gt 0 }).Count
             prompt_detected = @($nodes | Where-Object { $_.Text -match '(?m)(?:PS .*>|\u03bb)' }).Count -gt 0
+            welcome = @($nodes | Where-Object Name -eq 'Welcome to Automexia. Press Enter to get started.').Count -gt 0
         }
         if (& $Predicate $nodes) { return ,$nodes }
         Start-Sleep -Milliseconds 100
@@ -130,6 +131,14 @@ function Start-OwnedApp {
         if ($windows.Count -eq 1) {
             $script:window = $windows[0]
             [void][AutomexiaResizeDriver]::MoveWindow($script:window, 20, 20, 1280, 800, $true)
+            $initial = Wait-Nodes { param($n)
+                @($n | Where-Object Name -eq 'Terminal output').Count -eq 1 -or
+                @($n | Where-Object Name -eq 'Welcome to Automexia. Press Enter to get started.').Count -eq 1
+            }
+            if (@($initial | Where-Object Name -eq 'Welcome to Automexia. Press Enter to get started.').Count -eq 1) {
+                $report.welcome_seen = $true
+                Key 0x0D
+            }
             $null = Wait-Nodes { param($n)
                 @($n | Where-Object Name -eq 'Terminal output').Count -eq 1 -and
                 @($n | Where-Object { $_.Text -match '(?m)(?:PS .*>|\u03bb)' }).Count -gt 0
