@@ -394,6 +394,7 @@ public static class AuditCoordinates {
         Key 0x1B
     }
     $stage = 'theme-gallery'
+    $report.footer_enabled_before_themes = (Find-Setting 'Show Footer' 'interface.footer.visible').Toggle -eq 'On'
     $report.themes = @()
     foreach ($theme in @(@('Solar Dusk', @(33,26,23)), @('Arctic Day', @(233,237,241)))) {
         $entry = [ordered]@{ theme = $theme[0]; applied = $false; persisted = $false; header_color = $false; footer_color = $false }
@@ -420,13 +421,20 @@ public static class AuditCoordinates {
             $scale = [AuditCoordinates]::GetDpiForWindow($script:window) / 96.0
             $entry.header_color = (Count-ThemeColor $bitmap @(($bitmap.Width*0.4),(4*$scale),($bitmap.Width*0.7),(28*$scale)) $theme[1]) -ge 300
             $entry.footer_color = (Count-ThemeColor $bitmap @((30*$scale),($bitmap.Height-55*$scale),($bitmap.Width*0.6),($bitmap.Height-2*$scale)) $theme[1]) -ge 300
+            # Keep the original footer oracle. This extra observation distinguishes
+            # an unexpected footer position from absence of its expected color.
+            $entry.lower_half_surface_color = (Count-ThemeColor $bitmap @((30*$scale),($bitmap.Height*0.5),($bitmap.Width*0.6),($bitmap.Height-2*$scale)) $theme[1]) -ge 300
         } finally { $bitmap.Dispose() }
-        if (-not $entry.header_color -or -not $entry.footer_color) { throw 'Applied theme did not reach the native window palette' }
         Stop-OwnedApp
         Start-OwnedApp
         $nodes = Open-Themes
         $entry.persisted = @($nodes | Where-Object { $_.Name.StartsWith($theme[0] + '.') -and $_.Name.EndsWith('. Current theme') }).Count -eq 1
         if (-not $entry.persisted) { throw 'Applied theme did not survive restart' }
+    }
+    # Collect both palettes and their persistence before reporting any mismatch;
+    # a later successful observation must not erase an earlier failed oracle.
+    if (@($report.themes | Where-Object { -not $_.header_color -or -not $_.footer_color }).Count -gt 0) {
+        throw 'Applied theme did not reach the native window palette'
     }
     $report.complete = $true
 } catch {
@@ -440,7 +448,8 @@ public static class AuditCoordinates {
             'Owned window did not accept fixture input', 'Owned window did not accept pointer input',
             'Setting has no native toggle state', 'Setting did not survive restart', 'Script probe wrote application settings',
             'Built-in theme was not reachable', 'Applied theme did not reach the native window palette',
-            'Applied theme did not survive restart', 'Setting has no native value', 'An expected active setting is disabled')) {
+            'Applied theme did not survive restart', 'Setting has no native value', 'An expected active setting is disabled',
+            'Setting keyboard focus was not reached')) {
         $report.failure_reason = $_.Exception.Message
     }
 } finally {
