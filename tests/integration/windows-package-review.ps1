@@ -66,7 +66,7 @@ function Read-Nodes {
         $nodes.Add([pscustomobject]@{
             Name = $current.Name; Id = $current.AutomationId; Bounds = $current.BoundingRectangle
             Type = $current.ControlType.ProgrammaticName; Toggle = $state; Enabled = $current.IsEnabled
-            Focused = $current.HasKeyboardFocus; Text = $visibleText; Value = $value
+            Focused = $current.HasKeyboardFocus; Text = $visibleText; Value = $value; Help = $current.HelpText
         })
         $child = $walker.GetFirstChild($node)
         while ($null -ne $child) {
@@ -196,6 +196,31 @@ function Stop-OwnedApp {
         }
     }
 }
+function Open-Themes {
+    for ($i = 0; $i -lt 8; $i++) {
+        if (@((Read-Nodes) | Where-Object Name -eq 'Terminal output').Count -eq 1) { break }
+        Key 0x1B
+    }
+    Key 0x50 $true $true
+    $null = Wait-Nodes { param($n) @($n | Where-Object Name -eq 'Search commands').Count -eq 1 }
+    Type-Text 'Theme Gallery'
+    $null = Wait-Nodes { param($n) @($n | Where-Object { $_.Type -eq 'ControlType.ListItem' -and $_.Name -like 'Theme Gallery*' }).Count -eq 1 }
+    Key 0x0D
+    return Wait-Nodes { param($n) @($n | Where-Object { $_.Type -eq 'ControlType.Window' -and $_.Name -eq 'Themes' }).Count -gt 0 -or @($n | Where-Object Name -eq 'Use configuration').Count -gt 0 }
+}
+function Count-ThemeColor($Bitmap, [double[]]$Region, [int[]]$Rgb) {
+    $matches = 0
+    for ($y = [int]$Region[1]; $y -lt [int]$Region[3]; $y += 2) {
+        for ($x = [int]$Region[0]; $x -lt [int]$Region[2]; $x += 2) {
+            if ($x -lt 0 -or $y -lt 0 -or $x -ge $Bitmap.Width -or $y -ge $Bitmap.Height) { throw 'Theme sample outside captured window' }
+            $pixel = $Bitmap.GetPixel($x, $y)
+            if ([Math]::Abs([int]$pixel.R - $Rgb[0]) -le 3 -and
+                [Math]::Abs([int]$pixel.G - $Rgb[1]) -le 3 -and
+                [Math]::Abs([int]$pixel.B - $Rgb[2]) -le 3) { $matches++ }
+        }
+    }
+    return $matches
+}
 try {
     $target = if ($Architecture -eq 'arm64') { 'aarch64' } else { 'x86_64' }
     $digests = @{
@@ -285,6 +310,7 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 public static class AuditCoordinates {
     [DllImport("user32.dll")] static extern bool ScreenToClient(IntPtr window, ref Point point);
+    [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr window);
     public static Point ScreenToClientPoint(IntPtr window, int x, int y) {
         var point = new Point(x, y);
         if (!ScreenToClient(window, ref point)) throw new InvalidOperationException("Coordinate conversion failed");
@@ -333,6 +359,14 @@ public static class AuditCoordinates {
         $report.controls += $entry
         $node = Find-Setting $case[0] $case[1]
         $entry.reached = $true
+        if (-not $node.Enabled) {
+            if ($case[1] -eq 'appearance.theme' -and $node.Help.Contains('Set adaptive Light and Dark themes in configuration.')) {
+                $entry.availability = 'disabled until adaptive light and dark themes are configured'
+                $entry.expected_disabled_state = $true
+                continue
+            }
+            throw 'An expected active setting is disabled'
+        }
         $property = if ($case[2] -eq 'boolean') { 'Toggle' } else { 'Value' }
         $before = $node.$property
         if ($property -eq 'Toggle' -and $before -notin @('On', 'Off')) { throw 'Setting has no native toggle state' }
@@ -355,6 +389,41 @@ public static class AuditCoordinates {
         $null = Wait-Nodes { param($n) @($n | Where-Object { $_.Id -eq $case[1] -and $_.$property -eq $before }).Count -eq 1 }
         Key 0x1B
     }
+    $stage = 'theme-gallery'
+    $report.themes = @()
+    foreach ($theme in @(@('Solar Dusk', @(33,26,23)), @('Arctic Day', @(233,237,241)))) {
+        $entry = [ordered]@{ theme = $theme[0]; applied = $false; persisted = $false; header_color = $false; footer_color = $false }
+        $report.themes += $entry
+        $null = Open-Themes
+        Key 0x24
+        $selected = $false
+        for ($i = 0; $i -lt 24; $i++) {
+            $nodes = Read-Nodes
+            if (@($nodes | Where-Object { $_.Focused -and $_.Name.StartsWith($theme[0] + '.') }).Count -eq 1) { $selected = $true; break }
+            Key 0x28
+        }
+        if (-not $selected) { throw 'Built-in theme was not reachable' }
+        Key 0x0D
+        $null = Wait-Nodes { param($n) @($n | Where-Object Name -eq 'Terminal output').Count -eq 1 }
+        $entry.applied = $true
+        Start-Sleep -Milliseconds 600
+        # Inspect real composited pixels inside the VM; upload booleans only.
+        # Palette oracles are fixed independently of application preferences.
+        $capture = Join-Path $work 'theme.png'
+        $null = [AutomexiaResizeDriver]::CaptureClientFrame($script:window, $capture)
+        $bitmap = [Drawing.Bitmap]::new($capture)
+        try {
+            $scale = [AuditCoordinates]::GetDpiForWindow($script:window) / 96.0
+            $entry.header_color = (Count-ThemeColor $bitmap @(($bitmap.Width*0.4),(4*$scale),($bitmap.Width*0.7),(28*$scale)) $theme[1]) -ge 300
+            $entry.footer_color = (Count-ThemeColor $bitmap @((30*$scale),($bitmap.Height-55*$scale),($bitmap.Width*0.6),($bitmap.Height-2*$scale)) $theme[1]) -ge 300
+        } finally { $bitmap.Dispose() }
+        if (-not $entry.header_color -or -not $entry.footer_color) { throw 'Applied theme did not reach the native window palette' }
+        Stop-OwnedApp
+        Start-OwnedApp
+        $nodes = Open-Themes
+        $entry.persisted = @($nodes | Where-Object { $_.Name.StartsWith($theme[0] + '.') -and $_.Name.EndsWith('. Current theme') }).Count -eq 1
+        if (-not $entry.persisted) { throw 'Applied theme did not survive restart' }
+    }
     $report.complete = $true
 } catch {
     # Do not upload exception messages, UIA text, usernames, shell history or paths.
@@ -365,7 +434,9 @@ public static class AuditCoordinates {
     if ($_.Exception.Message -in @('UIA condition timed out', 'Released app exited before showing its window',
             'Released app did not show one owned window', 'Owned window did not accept keyboard input',
             'Owned window did not accept fixture input', 'Owned window did not accept pointer input',
-            'Setting has no native toggle state', 'Setting did not survive restart', 'Script probe wrote application settings')) {
+            'Setting has no native toggle state', 'Setting did not survive restart', 'Script probe wrote application settings',
+            'Built-in theme was not reachable', 'Applied theme did not reach the native window palette',
+            'Applied theme did not survive restart', 'Setting has no native value', 'An expected active setting is disabled')) {
         $report.failure_reason = $_.Exception.Message
     }
 } finally {
