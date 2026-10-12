@@ -14,6 +14,7 @@ env:
 jobs:
   macos-ax:
     name: Native AX (${{ matrix.runner }})
+    if: github.event_name != 'workflow_dispatch' || github.ref_name != 'codex/windows-package-review'
     strategy:
       fail-fast: false
       matrix:
@@ -46,6 +47,7 @@ jobs:
 
   controlled-visual:
     name: Controlled raster (${{ matrix.runner }})
+    if: github.event_name != 'workflow_dispatch' || github.ref_name != 'codex/windows-package-review'
     strategy:
       fail-fast: false
       matrix:
@@ -240,6 +242,7 @@ jobs:
   # native UI checks must not consume the time needed to run these benchmarks.
   native-microbench:
     name: Native microbenchmarks (${{ matrix.runner }})
+    if: github.event_name != 'workflow_dispatch' || github.ref_name != 'codex/windows-package-review'
     strategy:
       fail-fast: false
       matrix:

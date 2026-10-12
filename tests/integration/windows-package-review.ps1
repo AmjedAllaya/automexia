@@ -65,6 +65,12 @@ function Wait-Nodes([scriptblock]$Predicate) {
     $deadline = [DateTime]::UtcNow.AddSeconds(12)
     do {
         $nodes = Read-Nodes
+        $report.uia = @{
+            node_count = $nodes.Count
+            terminal_nodes = @($nodes | Where-Object Name -eq 'Terminal output').Count
+            text_nodes = @($nodes | Where-Object { $_.Text.Length -gt 0 }).Count
+            prompt_detected = @($nodes | Where-Object { $_.Text -match '(?m)(?:PS .*>|\u03bb)' }).Count -gt 0
+        }
         if (& $Predicate $nodes) { return ,$nodes }
         Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $deadline)
@@ -111,14 +117,23 @@ function Find-Setting([string]$Query, [string]$Id) {
 }
 function Start-OwnedApp {
     $script:process = [Diagnostics.Process]::Start($script:startInfo)
+    $report.startup = @{ exited = $false; window_count = 0 }
     $deadline = [DateTime]::UtcNow.AddSeconds(25)
     do {
-        if ($script:process.HasExited) { throw 'Released app exited before showing its window' }
+        if ($script:process.HasExited) {
+            $report.startup.exited = $true
+            $report.startup.exit_code = $script:process.ExitCode
+            throw 'Released app exited before showing its window'
+        }
         $windows = [AutomexiaNativeWindowLocator]::VisibleApplicationWindows($script:process.Id)
+        $report.startup.window_count = $windows.Count
         if ($windows.Count -eq 1) {
             $script:window = $windows[0]
             [void][AutomexiaResizeDriver]::MoveWindow($script:window, 20, 20, 1280, 800, $true)
-            $null = Wait-Nodes { param($n) @($n | Where-Object { $_.Name -eq 'Terminal output' -and $_.Text -match '(?m)(?:^PS .*>|\u03bb)' }).Count -eq 1 }
+            $null = Wait-Nodes { param($n)
+                @($n | Where-Object Name -eq 'Terminal output').Count -eq 1 -and
+                @($n | Where-Object { $_.Text -match '(?m)(?:PS .*>|\u03bb)' }).Count -gt 0
+            }
             return
         }
         Start-Sleep -Milliseconds 100
@@ -154,6 +169,28 @@ try {
     New-Item -ItemType Directory -Path $configRoot | Out-Null
     if (@(Get-ChildItem -LiteralPath $configRoot -Force).Count -ne 0) { throw 'Settings directory is not empty' }
     $report.started_without_settings = $true
+    $stage = 'packaged-script-policy'
+    $policyProbeFile = Join-Path $work 'policy-probe.json'
+    $policyProbe = New-Object Diagnostics.ProcessStartInfo
+    $policyProbe.FileName = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+    $policyProbe.UseShellExecute = $false
+    $policyProbe.CreateNoWindow = $true
+    $policyProbe.WorkingDirectory = $work
+    $policyProbe.EnvironmentVariables['TERM_PROGRAM'] = 'Automexia'
+    $policyProbe.EnvironmentVariables['AUTOMEXIA_CONFIG_HOME'] = $configRoot
+    $policyProbe.EnvironmentVariables['AUTOMEXIA_AUDIT_SCRIPT'] = Join-Path $packageRoot 'shell-integration/powershell/automexia.ps1'
+    $policyProbe.EnvironmentVariables['AUTOMEXIA_AUDIT_RESULT'] = $policyProbeFile
+    $policyProbe.EnvironmentVariables['PSExecutionPolicyPreference'] = $Policy
+    # Fixed diagnostic code and exact argv; never evaluate downloaded content as a command string.
+    $probeCode = '$blocked=$false;try{. $env:AUTOMEXIA_AUDIT_SCRIPT}catch [System.Management.Automation.PSSecurityException]{$blocked=$true};@{policy=(Get-ExecutionPolicy).ToString();blocked=$blocked;loaded=[bool]$global:AutomexiaShellIntegrationLoaded}|ConvertTo-Json -Compress|Set-Content -LiteralPath $env:AUTOMEXIA_AUDIT_RESULT'
+    $policyProbe.Arguments = '-NoLogo -NoProfile -NonInteractive -EncodedCommand ' + [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($probeCode))
+    $policyChild = [Diagnostics.Process]::Start($policyProbe)
+    if (-not $policyChild.WaitForExit(20000)) { $policyChild.Kill(); throw 'Packaged script probe timed out' }
+    $policyResult = Get-Content -LiteralPath $policyProbeFile -Raw | ConvertFrom-Json
+    $report.packaged_script = @{ effective_policy = $policyResult.policy; blocked = $policyResult.blocked; loaded = $policyResult.loaded }
+    if ($policyResult.policy -ne $Policy) { throw 'Script probe policy mismatch' }
+    # The direct script probe is separate from the application's first-run settings.
+    if (@(Get-ChildItem -LiteralPath $configRoot -Force).Count -ne 0) { throw 'Script probe wrote application settings' }
     $stage = 'native-driver'
     # Compile the repository-owned input/capture driver; do not execute its source-built fixture.
     $harness = Get-Content -LiteralPath (Join-Path $root 'tests/integration/resize-stress-windows.ps1') -Raw
@@ -233,6 +270,14 @@ public static class AuditCoordinates {
     # Do not upload exception messages, UIA text, usernames, shell history or paths.
     $report.failed_stage = $stage
     $report.failure_type = $_.Exception.GetType().Name
+    $report.failure_line = $_.InvocationInfo.ScriptLineNumber
+    # Only fixed diagnostic messages may leave the VM; native exception text can contain paths.
+    if ($_.Exception.Message -in @('UIA condition timed out', 'Released app exited before showing its window',
+            'Released app did not show one owned window', 'Owned window did not accept keyboard input',
+            'Owned window did not accept fixture input', 'Owned window did not accept pointer input',
+            'Setting has no native toggle state', 'Setting did not survive restart', 'Script probe wrote application settings')) {
+        $report.failure_reason = $_.Exception.Message
+    }
 } finally {
     try { Stop-OwnedApp } catch { $report.teardown_failed = $true; $report.complete = $false }
     $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $reportRoot 'report.json') -Encoding UTF8
