@@ -143,6 +143,36 @@ class MacDriver:
         finally:
             if front:
                 self.cf.CFRelease(front)
+        # Frontmost applications can temporarily have no key window, or a
+        # different one. PID-scoped keyboard posting targets that key window.
+        focused = self.copy(self.application, 'AXFocusedWindow', optional=True)
+        try:
+            if not focused or not self.cf.CFEqual(focused, self.window):
+                raise BenchmarkError('benchmark lost exact owned window focus; input stopped')
+        finally:
+            if focused:
+                self.cf.CFRelease(focused)
+
+    def focus_snapshot(self):
+        """Read-only failure evidence; never retain window titles or process IDs."""
+        result = {'process_alive': self.process.poll() is None}
+        owner = ct.c_int()
+        result['window_owned'] = bool(self.window and
+            self.ax.AXUIElementGetPid(self.window, ct.byref(owner)) == 0 and
+            owner.value == self.process.pid)
+        for attribute, name in (('AXFrontmost', 'app_frontmost'),
+                                ('AXFocusedWindow', 'owned_window_focused')):
+            value = self.copy(self.application, attribute, optional=True)
+            try:
+                if value:
+                    result[name] = bool(self.cf.CFBooleanGetValue(value) if attribute == 'AXFrontmost'
+                                        else self.cf.CFEqual(value, self.window))
+                else:
+                    result[name + '_unavailable'] = True
+            finally:
+                if value:
+                    self.cf.CFRelease(value)
+        return result
 
     @staticmethod
     def key_spec(key):
@@ -161,7 +191,12 @@ class MacDriver:
                 modifiers.append('shift')
         if base not in codes or len(modifiers) != len(set(modifiers)) or any(m not in masks for m in modifiers):
             raise BenchmarkError('unsupported fixed probe key')
-        return codes[base], sum(masks[m] for m in modifiers), base
+        flags = sum(masks[m] for m in modifiers)
+        if base in ('F1', 'F3', 'F5', 'F6', 'F8'):
+            # Standard function keys, independent of the host's media-key
+            # preference: kCGEventFlagMaskSecondaryFn, not a system setting.
+            flags |= 1 << 23
+        return codes[base], flags, base
 
     def key(self, key):
         self.check()

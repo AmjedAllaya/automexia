@@ -805,8 +805,11 @@ class CollectorTests(unittest.TestCase):
 
     def test_macos_shortcuts_use_native_modifier_flags_and_reject_ambiguous_keys(self):
         self.assertEqual(MacDriver.key_spec('meta+shift+p'), (35, (1 << 20) | (1 << 17), 'p'))
-        self.assertEqual(MacDriver.key_spec('meta+shift+F1'), (122, (1 << 20) | (1 << 17), 'F1'))
-        self.assertEqual(MacDriver.key_spec('meta+shift+F3'), (99, (1 << 20) | (1 << 17), 'F3'))
+        for key, code in (('F1', 122), ('F3', 99), ('F5', 96), ('F6', 97), ('F8', 100)):
+            with self.subTest(key=key):
+                self.assertEqual(MacDriver.key_spec(key), (code, 1 << 23, key))
+                self.assertEqual(MacDriver.key_spec('meta+shift+' + key),
+                                 (code, (1 << 20) | (1 << 17) | (1 << 23), key))
         self.assertEqual(MacDriver.key_spec('Escape'), (53, 0, 'Escape'))
         self.assertEqual(MacDriver.key_spec('Return'), (36, 0, 'Return'))
         self.assertEqual(MacDriver.key_spec('Down'), (125, 0, 'Down'))
@@ -814,6 +817,78 @@ class CollectorTests(unittest.TestCase):
         for key in ('meta+meta+p', 'unknown+p', 'meta+unsupported', '', 'meta+'):
             with self.subTest(key=key), self.assertRaises(BenchmarkError):
                 MacDriver.key_spec(key)
+
+    def test_macos_input_requires_the_exact_focused_window(self):
+        driver = object.__new__(MacDriver)
+        driver.process = SimpleNamespace(pid=42, poll=lambda: None)
+        driver.application, driver.window = 'app', 'owned-window'
+        released = []
+        driver.cf = SimpleNamespace(CFRelease=released.append,
+            CFBooleanGetValue=lambda value: value == 'true', CFEqual=lambda a, b: a == b)
+        def owner(element, output):
+            output._obj.value = 42
+            return 0
+        driver.ax = SimpleNamespace(AXUIElementGetPid=owner)
+        for front, focused, allowed in (('true', 'owned-window', True),
+                                        ('false', 'owned-window', False),
+                                        ('true', 'other-window', False),
+                                        ('true', None, False)):
+            with self.subTest(front=front, focused=focused):
+                released.clear()
+                driver.copy = lambda element, name, optional=False: {
+                    'AXFrontmost': front, 'AXFocusedWindow': focused}[name]
+                if allowed:
+                    driver.check()
+                else:
+                    with self.assertRaises(BenchmarkError):
+                        driver.check()
+                self.assertIn(front, released)
+                if front == 'true' and focused:
+                    self.assertIn(focused, released)
+
+    def test_macos_function_key_press_and_release_preserve_native_flags(self):
+        driver = object.__new__(MacDriver)
+        driver.process = SimpleNamespace(pid=42)
+        driver.check = lambda: None
+        posted, flags, released = [], [], []
+        driver.cf = SimpleNamespace(CFRelease=released.append)
+        driver.cg = SimpleNamespace(
+            CGEventCreateKeyboardEvent=lambda source, code, down: (code, down),
+            CGEventSetFlags=lambda event, value: flags.append((event, value)),
+            CGEventKeyboardSetUnicodeString=lambda *args: self.fail('function key is not text'),
+            CGEventPostToPid=lambda pid, event: posted.append((pid, event)))
+        driver.key('meta+shift+F3')
+        events = [(99, True), (99, False)]
+        self.assertEqual(posted, [(42, event) for event in events])
+        self.assertEqual(flags, [(event, (1 << 23) | (1 << 20) | (1 << 17)) for event in events])
+        self.assertEqual(released, events)
+
+    def test_native_focus_failure_evidence_is_read_only_and_content_free(self):
+        driver = object.__new__(MacDriver)
+        driver.process = SimpleNamespace(pid=42, poll=lambda: None)
+        driver.application, driver.window = 'app', 'owned-window'
+        released = []
+        driver.cf = SimpleNamespace(CFRelease=released.append,
+            CFBooleanGetValue=lambda value: value == 'true', CFEqual=lambda a, b: a == b)
+        def owner(element, output):
+            output._obj.value = 42
+            return 0
+        driver.ax = SimpleNamespace(AXUIElementGetPid=owner)
+        driver.copy = lambda element, name, optional=False: {
+            'AXFrontmost': 'false', 'AXFocusedWindow': 'other-window'}[name]
+        observed = driver.focus_snapshot()
+        self.assertEqual(observed, {'process_alive': True, 'window_owned': True,
+                                   'app_frontmost': False, 'owned_window_focused': False})
+        self.assertEqual(released, ['false', 'other-window'])
+        driver.copy = lambda *args, **kwargs: None
+        self.assertEqual(driver.focus_snapshot(), {'process_alive': True, 'window_owned': True,
+            'app_frontmost_unavailable': True, 'owned_window_focused_unavailable': True})
+        probe = unix_ui_probe()
+        error = probe.Failure('fixed failure')
+        error.native_focus = dict(observed, private_title='private', process_pid=42)
+        self.assertEqual(probe.failure_details(error)['native_focus'], observed)
+        error.native_focus = {'process_alive': 'private', 'window_owned': 42}
+        self.assertEqual(probe.failure_details(error)['native_focus'], {})
 
     def test_macos_native_picker_search_supports_every_fixed_query_key(self):
         # Exercise the exact native palette query, including repeated letters.
