@@ -1243,6 +1243,10 @@ def native_failure_state(state: dict) -> dict:
                               ("open", "ready", "list_focused", "save_pending")
                               if type(settings.get(key)) is bool}
         result["settings"]["confirmation_visible"] = bool(settings.get("confirmation"))
+        for key in ("catalog_revision", "last_color_dismissal"):
+            value = settings.get(key)
+            if type(value) is int and 0 <= value <= 2**64 - 1:
+                result["settings"][key] = value
         editor = settings.get("color_editor")
         if isinstance(editor, dict):
             palette = editor.get("palette") or {}

@@ -369,6 +369,8 @@ pub(crate) struct SettingsView {
     confirmation_geometry: ConfirmationGeometry,
     can_restore_customizations: bool,
     color_editor: Option<ColorEditor>,
+    #[cfg(feature = "native-gui-test-hooks")]
+    last_color_dismissal: Option<u32>,
     color_favorites: Vec<[u8; 4]>,
     color_suggestions: Vec<[u8; 4]>,
     pending_color_favorite: Option<ColorFavoriteIntent>,
@@ -776,6 +778,8 @@ impl SettingsView {
             .collect();
         serde_json::json!({
             "open": self.is_open(), "ready": ready,
+            "catalog_revision": self.catalog.as_ref().map(Catalog::revision),
+            "last_color_dismissal": self.last_color_dismissal,
             "gallery": self.gallery_snapshot(),
             "font_picker": self.font_picker_snapshot(),
             "profiles": self.profiles.as_ref().map(|p| serde_json::json!({"busy":p.busy,"editing":p.draft.is_some(),"selected":p.selected.is_some()})),

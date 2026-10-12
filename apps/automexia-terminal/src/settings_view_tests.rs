@@ -6029,6 +6029,29 @@ fn opened_color(alpha: bool) -> SettingsView {
 }
 
 #[test]
+#[cfg(feature = "native-gui-test-hooks")]
+fn shared_color_picker_cancellation_diagnostic_tracks_site_and_resets_on_open() {
+    let mut view = opened_color(false);
+    assert!(view.native_test_snapshot()["last_color_dismissal"].is_null());
+    let cancellation_line = line!() + 1;
+    view.cancel_color();
+    assert_eq!(
+        view.native_test_snapshot()["last_color_dismissal"],
+        cancellation_line
+    );
+    assert_eq!(view.native_test_snapshot()["catalog_revision"], 2);
+    // Repeated cancellation without an editor must retain the first cause.
+    view.cancel_color();
+    assert_eq!(
+        view.native_test_snapshot()["last_color_dismissal"],
+        cancellation_line
+    );
+    named(&mut view, NamedKey::Enter);
+    assert!(view.color_editor.is_some());
+    assert!(view.native_test_snapshot()["last_color_dismissal"].is_null());
+}
+
+#[test]
 fn shared_color_picker_selection_keeps_shortcuts_and_text_input_separate() {
     for alpha in [false, true] {
         for favorites in [false, true] {

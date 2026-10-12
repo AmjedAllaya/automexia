@@ -308,3 +308,5 @@ never modified and Latest is never changed. See
 [first-alpha notes](public-release/FIRST-ALPHA-NOTES.md) for user limitations.
 
 Native package validation also exercises macOS architecture argument ordering and merged-slice signing before execution, Windows WiX compiler isolation and complete ARM64 shell resources, and local DEB path resolution. These checks apply to the shared stable/alpha package owners; fixture checks do not replace native installation or UI evidence.
+
+Native UI failures retain the settings generation and fixed source line of a color-editor dismissal. These integer diagnostics exist only in native-test builds; drafts, paths and terminal content are excluded. A retry does not erase failed evidence or lower the final native gate.

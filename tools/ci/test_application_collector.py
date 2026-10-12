@@ -70,6 +70,18 @@ class CollectorTests(unittest.TestCase):
                          "list_focused": True, "confirmation_visible": True})
         self.assertNotIn("private", json.dumps(state))
 
+    def test_native_color_cancellation_diagnostics_are_bounded_integers_only(self):
+        probe = unix_ui_probe()
+        for value in (None, True, -1, 2**64, "private path", {"draft": "private"}):
+            state = probe.native_failure_state({"settings": {
+                "catalog_revision": value, "last_color_dismissal": value}})["settings"]
+            self.assertNotIn("catalog_revision", state)
+            self.assertNotIn("last_color_dismissal", state)
+        state = probe.native_failure_state({"settings": {
+            "catalog_revision": 7, "last_color_dismissal": 1900}})["settings"]
+        self.assertEqual(state["catalog_revision"], 7)
+        self.assertEqual(state["last_color_dismissal"], 1900)
+
     def test_native_color_failure_keeps_only_fixed_focus_and_browsing(self):
         import json
         probe = unix_ui_probe()
