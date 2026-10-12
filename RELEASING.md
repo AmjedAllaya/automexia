@@ -23,11 +23,12 @@ The next authorized alpha is `v0.0.2-alpha`, with application version
 `0.0.2-alpha` and numeric package version `0.0.2`. Stable versions use `vX.Y.Z`.
 
 `.github/workflows/release.yml` starts when an approved internal
-`release/0.0.1-alpha` (or stable `release/X.Y.Z`) PR merges into protected `main`.
+`release/<version>` PR merges into protected `main`. The version must be an
+explicitly supported alpha or a stable `X.Y.Z` version.
 Pushing a tag alone does not publish. Merge release infrastructure changes
 separately first: the release PR gate rejects changes to workflows, packaging,
 release helpers and shell integration. That production channel retains its
-independent review, provenance and signing requirements. The owner-authorized first alpha can instead use the explicitly
+independent review, provenance and signing requirements. Owner-authorized alphas use the explicitly
 unsigned [first-alpha channel](docs/public-release/FIRST-ALPHA-NOTES.md) in
 `.github/workflows/first-alpha.yml`. It requires native quality, packaging and
 reproducibility gates, currently publishes only `v0.0.2-alpha`, and cannot publish a stable

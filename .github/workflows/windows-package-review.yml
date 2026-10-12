@@ -1,8 +1,5 @@
 name: Published package review
 on:
-  # Temporary pre-merge trigger: remove once this workflow is on main and can be dispatched directly.
-  push:
-    branches: [codex/alpha2-cross-platform]
   workflow_call:
     inputs:
       platform:
@@ -28,7 +25,7 @@ env:
   RUSTUP_TOOLCHAIN: '1.96.1'
 jobs:
   windows-published-package-review:
-    if: github.event_name != 'push' && inputs.platform != 'unix'
+    if: inputs.platform != 'unix'
     name: Published Windows (${{ matrix.platform.arch }} / ${{ matrix.case.name }})
     runs-on: ${{ matrix.platform.runner }}
     timeout-minutes: 15
@@ -130,10 +127,10 @@ jobs:
           print('Published package checksums verified')
           PY
       - name: Test actual packages across Linux distribution families
-        if: runner.os == 'Linux' && !inputs.rehearsal && github.event_name != 'push'
+        if: runner.os == 'Linux' && !inputs.rehearsal
         run: python3 tools/ci/test_linux_distros.py --packages artifacts --version 0.0.1-alpha
       - name: Rehearse candidate Linux resource layout and dependency metadata
-        if: runner.os == 'Linux' && (inputs.rehearsal || github.event_name == 'push')
+        if: runner.os == 'Linux' && inputs.rehearsal
         shell: bash
         env:
           PACKAGE_TARGET: ${{ matrix.target }}
