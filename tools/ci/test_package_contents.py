@@ -15,7 +15,7 @@ RUNTIME_BINARIES = ("automexia", "amx", "automexia-suggestion-helper", "automexi
 class PackageContentsTests(unittest.TestCase):
     def test_windows_installers_include_the_exact_vendor_layout(self):
         for name, namespace, source in (
-            ("automexia.wxs", "http://schemas.microsoft.com/wix/2006/wi", "$(env.AUTOMEXIA_CONPTY_ROOT)"),
+            ("automexia.wxs", "http://schemas.microsoft.com/wix/2006/wi", "$(env.CARGO_PACKAGER_AUTOMEXIA_CONPTY_ROOT)"),
             ("automexia-arm64.wxs", "http://wixtoolset.org/schemas/v4/wxs", "$(var.ConptyRuntimeRoot)"),
         ):
             with self.subTest(installer=name):
@@ -37,10 +37,58 @@ class PackageContentsTests(unittest.TestCase):
                     self.assertIsNotNone(root.find(f"w:Directory[@Name='{arch}']/w:Component/w:File[@Name='OpenConsole.exe']", ns))
                 self.assertIsNone(root.find("w:Component/w:File[@Name='OpenConsole.exe']", ns))
 
+    def test_arm64_msi_has_complete_shell_tree_and_repairable_components(self):
+        document = ET.parse(ROOT / "packaging/windows/automexia-arm64.wxs")
+        ns = {"w": "http://wixtoolset.org/schemas/v4/wxs"}
+        components = document.findall(".//w:Component", ns)
+        references = [entry.attrib["Id"] for entry in document.findall(".//w:Feature/w:ComponentRef", ns)]
+        self.assertEqual(len(references), len(set(references)))
+        self.assertCountEqual(references, [entry.attrib["Id"] for entry in components])
+        for component in components:
+            files = component.findall("w:File", ns)
+            with self.subTest(component=component.attrib["Id"]):
+                self.assertEqual(component.attrib["Guid"], "*")
+                # Automatic GUIDs require a single unversioned key-path file.
+                self.assertEqual(len(files), 1)
+                self.assertEqual(files[0].attrib.get("KeyPath"), "yes")
+        prefix = "$(var.ShellIntegrationRoot)\\"
+        files = document.findall(".//w:File", ns)
+        shipped = [entry.attrib["Source"][len(prefix):].replace("\\", "/")
+                   for entry in files if entry.attrib["Source"].startswith(prefix)]
+        expected = [path.relative_to(ROOT / "shell-integration").as_posix()
+                    for path in (ROOT / "shell-integration").rglob("*") if path.is_file()]
+        self.assertCountEqual(shipped, expected)
+        self.assertIn("zsh/session/.zshenv", shipped)
+        self.assertIn("posix/automexia-os.sh", shipped)
+
+    def test_wix3_fragment_compiles_with_the_packager_isolated_environment(self):
+        import os
+        import shutil
+        import subprocess
+        import tempfile
+        executable = shutil.which("candle.exe")
+        if executable is None and os.name == "nt":
+            cached = Path(os.environ.get("LOCALAPPDATA", "")) / ".cargo-packager/WixTools/candle.exe"
+            executable = str(cached) if cached.is_file() else None
+        if executable is None:
+            self.skipTest("WiX 3 unavailable; native release packaging compiles the fragment")
+        with tempfile.TemporaryDirectory(prefix="automexia-wix-compiler-") as directory:
+            root = Path(directory)
+            env = {key: value for key, value in os.environ.items()
+                   if key.upper() in ("SYSTEMROOT", "TMP", "TEMP")}
+            env["CARGO_PACKAGER_AUTOMEXIA_CONPTY_ROOT"] = str(root / "vendor runtime")
+            output = root / "fragment.wixobj"
+            result = subprocess.run([executable, "-arch", "x64", "-out", str(output),
+                                     str(ROOT / "packaging/windows/automexia.wxs")],
+                                    env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue(output.is_file())
+
     def test_cargo_packager_declares_each_runtime_binary_once(self):
         manifest = tomllib.loads(
             (ROOT / "apps/automexia-terminal/Cargo.toml").read_text(encoding="utf-8")
         )
+        self.assertEqual(manifest["package"]["metadata"]["packager"]["homepage"], "https://github.com/AmjedAllaya/automexia")
         binaries = manifest["package"]["metadata"]["packager"]["binaries"]
         self.assertCountEqual([entry["path"] for entry in binaries], RUNTIME_BINARIES)
         self.assertEqual(

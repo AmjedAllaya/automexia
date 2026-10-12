@@ -420,7 +420,7 @@ jobs:
         rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
         python tools/ci/rust_toolchain.py verify --kind development
     - name: Install native Linux build dependencies
-      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core
     - name: Install pinned release quality tools
       uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
       with:
@@ -1094,8 +1094,9 @@ jobs:
           test -f "$x64" && test -f "$arm"
           lipo -create "$x64" "$arm" -output "$app/Contents/MacOS/$runtime"
           chmod 0755 "$app/Contents/MacOS/$runtime"
-          lipo -verify_arch x86_64 arm64 "$app/Contents/MacOS/$runtime"
+          lipo "$app/Contents/MacOS/$runtime" -verify_arch x86_64 arm64
           file "$app/Contents/MacOS/$runtime" | grep -F 'universal binary'
+          codesign --force --sign - "$app/Contents/MacOS/$runtime"
         done
         python3 tools/ci/release_identity.py plist "$AUTOMEXIA_VERSION" \
           --template packaging/macos/Info.plist --output "$app/Contents/Info.plist"
@@ -1140,7 +1141,7 @@ jobs:
         tar -xzf staged/unsigned-macos-app.tar.gz -C dist
         for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
           test -x "dist/Automexia Terminal.app/Contents/MacOS/$runtime"
-          lipo -verify_arch x86_64 arm64 "dist/Automexia Terminal.app/Contents/MacOS/$runtime"
+          lipo "dist/Automexia Terminal.app/Contents/MacOS/$runtime" -verify_arch x86_64 arm64
         done
     - name: Require Apple production signing credentials
       shell: bash
@@ -1668,7 +1669,7 @@ jobs:
         for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
           bin="$app/Contents/MacOS/$runtime"
           test -x "$bin"
-          lipo -verify_arch x86_64 arm64 "$bin"
+          lipo "$bin" -verify_arch x86_64 arm64
           codesign --verify --strict --verbose=4 "$bin"
         done
         "$app/Contents/MacOS/automexia" --version
@@ -1733,7 +1734,7 @@ jobs:
 
         dpkg-deb --info "${debs[0]}" >/dev/null
         rpm -qpl "${rpms[0]}" >/dev/null
-        sudo apt-get install -y "${debs[0]}"
+        sudo apt-get install -y "$(realpath -- "${debs[0]}")"
         installed="$(command -v automexia || command -v automexia-terminal || true)"
         if [[ -z "$installed" ]]; then
           installed="$(find /usr/bin /usr/local/bin -maxdepth 1 -type f -name 'automexia' -print -quit)"

@@ -525,7 +525,7 @@ jobs:
 
         for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
           lipo -create "target/x86_64-apple-darwin/release/$runtime" "target/aarch64-apple-darwin/release/$runtime" -output "target/release/$runtime"
-          lipo -verify_arch x86_64 arm64 "target/release/$runtime"
+          lipo "target/release/$runtime" -verify_arch x86_64 arm64
         done
 
         version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "automexia-terminal") | .version')"

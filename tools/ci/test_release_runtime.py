@@ -62,11 +62,11 @@ printf '%s\\n' '0.4.0'
 
 
 class ReleaseRuntimeTests(unittest.TestCase):
-    def run_fixture_step(self, root: Path, name: str) -> subprocess.CompletedProcess:
+    def run_fixture_step(self, root: Path, name: str, workflow: str = "release.yml") -> subprocess.CompletedProcess:
         bash = bash_program()
         if bash is None:
             self.skipTest("Bash unavailable for workflow package fixture")
-        script = workflow_step("release.yml", name)["run"]
+        script = workflow_step(workflow, name)["run"]
         identity_tool = root / "tools/ci/release_identity.py"
         identity_tool.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / "tools/ci/release_identity.py", identity_tool)
@@ -279,8 +279,8 @@ printf '%s\\n' "$*" >> "$FIXTURE_TRACE/cargo"
 
     def test_macos_assembly_requires_both_slices_of_every_runtime(self) -> None:
         cases = [None, *((arch, runtime) for arch in ("x86_64", "arm64") for runtime in RUNTIMES)]
-        for missing in cases:
-            with self.subTest(missing=missing), tempfile.TemporaryDirectory(prefix="automexia-macos-assemble-") as directory:
+        for workflow, missing in ((workflow, missing) for workflow in ("release.yml", "first-alpha.yml") for missing in cases):
+            with self.subTest(workflow=workflow, missing=missing), tempfile.TemporaryDirectory(prefix="automexia-macos-assemble-") as directory:
                 root = Path(directory)
                 for arch in ("x86_64", "arm64"):
                     for runtime in RUNTIMES:
@@ -293,17 +293,21 @@ printf '%s\\n' "$*" >> "$FIXTURE_TRACE/cargo"
     printf '%s\\n' "$2|$3" >> "$FIXTURE_TRACE/lipo-create"
     cp "$2" "$5"
     ;;
-  -verify_arch)
-    [[ "$#" -eq 4 && "$2" == x86_64 && "$3" == arm64 ]]
-    test -x "$4"
-    printf '%s\\n' "${4##*/}" >> "$FIXTURE_TRACE/lipo-verify"
+  *)
+    # Native lipo consumes every token after -verify_arch as an architecture.
+    [[ "$#" -eq 4 && "$2" == -verify_arch && "$3" == x86_64 && "$4" == arm64 ]]
+    test -x "$1"
+    printf '%s\\n' "${1##*/}" >> "$FIXTURE_TRACE/lipo-verify"
     ;;
-  *) exit 92 ;;
 esac
 ''')
                 write_fixture_script(root / "fixture-bin/file", '''[[ "$#" -eq 1 ]]
 test -x "$1"
 printf '%s: universal binary\\n' "$1"
+''')
+                write_fixture_script(root / "fixture-bin/codesign", '''[[ "$#" -eq 4 && "$1" == --force && "$2" == --sign && "$3" == - ]]
+test -x "$4"
+printf '%s\\n' "${4##*/}" >> "$FIXTURE_TRACE/adhoc"
 ''')
                 (root / "packaging/macos").mkdir(parents=True)
                 shutil.copyfile(ROOT / "packaging/macos/Info.plist", root / "packaging/macos/Info.plist")
@@ -314,7 +318,7 @@ printf '%s: universal binary\\n' "$1"
                 (root / "shell-integration").mkdir()
                 (root / "shell-integration/fixture.txt").write_text("fixture shell resource\n", encoding="utf-8")
                 (root / "fixture-temp").mkdir()
-                result = self.run_fixture_step(root, "Assemble and smoke-test unsigned universal app")
+                result = self.run_fixture_step(root, "Assemble and smoke-test unsigned universal app", workflow)
                 archive = root / "fixture-temp/unsigned-macos-app.tar.gz"
                 if missing is not None:
                     self.assertNotEqual(result.returncode, 0, "incomplete macOS runtime was assembled")
@@ -324,6 +328,7 @@ printf '%s: universal binary\\n' "$1"
                 self.assertEqual((root / "trace/lipo-create").read_text().splitlines(),
                                  [f"staged/x86_64/macos-x86_64/{runtime}|staged/arm64/macos-arm64/{runtime}" for runtime in RUNTIMES])
                 self.assertEqual((root / "trace/lipo-verify").read_text().splitlines(), list(RUNTIMES))
+                self.assertEqual((root / "trace/adhoc").read_text().splitlines(), list(RUNTIMES))
                 self.assertEqual((root / "trace/cli").read_text().splitlines(), ["automexia", "amx"])
                 app = root / "dist/Automexia Terminal.app/Contents"
                 metadata = plistlib.loads((app / "Info.plist").read_bytes())
@@ -336,6 +341,33 @@ printf '%s: universal binary\\n' "$1"
                 self.assertTrue({prefix + "MacOS/" + runtime for runtime in RUNTIMES} <= files)
                 self.assertIn(prefix + "Resources/shell-integration/fixture.txt", files)
                 self.assertIn(prefix + "Resources/README.md", files)
+
+    def test_final_linux_verifier_installs_a_local_file_not_an_apt_package_name(self) -> None:
+        for workflow in ("release.yml", "first-alpha.yml"):
+            with self.subTest(workflow=workflow), tempfile.TemporaryDirectory(prefix="automexia-apt-path-") as directory:
+                root = Path(directory)
+                artifacts = root / "artifacts/packages with spaces"
+                artifacts.mkdir(parents=True)
+                for suffix in ("deb", "rpm"):
+                    (artifacts / ("automexia-x86_64." + suffix)).write_bytes(b"fixture package")
+                payload = root / "payload/automexia"
+                write_fixture_script(payload, runtime_fixture("automexia"))
+                with tarfile.open(artifacts / "automexia-x86_64.tar.gz", "w:gz") as archive:
+                    archive.add(payload, arcname="automexia")
+                for tool in ("file", "readelf", "dpkg-deb", "rpm"):
+                    write_fixture_script(root / "fixture-bin" / tool, ":\n")
+                write_fixture_script(root / "fixture-bin/automexia", runtime_fixture("automexia"))
+                write_fixture_script(root / "fixture-bin/sudo", '''[[ "$#" -eq 4 && "$1" == apt-get && "$2" == install && "$3" == -y ]]
+[[ "$4" == /* && "$4" == *.deb && -f "$4" ]]
+printf '%s\n' "$4" >> "$FIXTURE_TRACE/install"
+''')
+                from unittest import mock
+                with mock.patch.dict(os.environ, {"TARGET_REGEX": "x86_64"}):
+                    result = self.run_fixture_step(root, "Verify tar, DEB and RPM assets", workflow)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                installed = (root / "trace/install").read_text().splitlines()
+                self.assertEqual(len(installed), 1)
+                self.assertTrue(installed[0].endswith("/artifacts/packages with spaces/automexia-x86_64.deb"))
 
     def test_windows_signing_staging_excludes_vendor_binaries(self) -> None:
         pwsh = shutil.which("pwsh")

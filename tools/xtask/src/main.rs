@@ -4792,10 +4792,6 @@ fn package_native_desktop(
         .arg("--output")
         .arg(normalize_canonical_path(output.to_path_buf()))
         .args(["--target", target, "--formats", formats])
-        .env(
-            "AUTOMEXIA_CONPTY_ROOT",
-            normalize_canonical_path(binaries.to_path_buf()),
-        )
         .current_dir(root());
     run_command(command, "native desktop packaging")
 }

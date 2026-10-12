@@ -84,17 +84,36 @@ class FirstAlphaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             alpha.verify_disclosure(manifest)
 
-    def test_publication_checks_current_main_before_creating_remote_refs(self):
+    def test_ci_has_no_publication_or_administration_credentials(self):
         import yaml
         workflow = yaml.safe_load((ROOT / '.github/workflows/first-alpha.yml').read_text())
-        script = next(step['run'] for step in workflow['jobs']['publish-release']['steps'] if 'run' in step)
-        self.assertLess(script.index('first_alpha.py authorize'), script.index('gh api --method POST'))
-        self.assertIn('first_alpha.py verify-manifest', script)
-        self.assertIn('minisign -V', script)
-        self.assertIn('--latest=false', script)
-        self.assertLess(script.index('/immutable-releases'), script.index('gh api --method POST'))
+        self.assertNotIn('publish-release', workflow['jobs'])
+        self.assertEqual(workflow['permissions'], {'contents': 'read'})
         preflight = next(step['run'] for step in workflow['jobs']['preflight']['steps'] if 'run' in step)
-        self.assertIn('/immutable-releases', preflight)
+        self.assertIn('first_alpha.py authorize', preflight)
+        self.assertNotIn('/immutable-releases', preflight)
+
+    def test_release_quality_installs_required_unicode_fonts(self):
+        import yaml
+        for name in ('first-alpha.yml', 'release.yml'):
+            workflow = yaml.safe_load((ROOT / '.github/workflows' / name).read_text())
+            steps = workflow['jobs']['release-quality']['steps']
+            setup = next(step['run'] for step in steps if step.get('name') == 'Install native Linux build dependencies')
+            for package in ('fonts-noto-cjk', 'fonts-noto-color-emoji', 'fonts-noto-core'):
+                with self.subTest(workflow=name, package=package):
+                    self.assertIn(package, setup)
+
+    def test_all_universal_verifiers_put_the_input_before_the_architecture_list(self):
+        import shlex
+        for name in ("first-alpha.yml", "release.yml", "nightly.yml"):
+            text = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+            invocations = [shlex.split(line.strip()) for line in text.splitlines()
+                           if line.strip().startswith("lipo ") and "-verify_arch" in line]
+            self.assertTrue(invocations, name)
+            for argv in invocations:
+                with self.subTest(workflow=name, invocation=argv):
+                    self.assertEqual(argv[2:], ["-verify_arch", "x86_64", "arm64"])
+                    self.assertFalse(argv[1].startswith("-"))
 
     def test_workflow_preserves_native_final_and_reproducibility_gates(self):
         import yaml
@@ -106,7 +125,7 @@ class FirstAlphaTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 alpha.validate_workflow(invalid)
         invalid = copy.deepcopy(workflow)
-        invalid['jobs']['publish-release']['permissions']['contents'] = 'read'
+        invalid['jobs']['build']['permissions'] = {'contents': 'write'}
         with self.assertRaises(ValueError):
             alpha.validate_workflow(invalid)
 

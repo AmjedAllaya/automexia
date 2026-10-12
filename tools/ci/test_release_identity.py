@@ -277,9 +277,17 @@ class ReleaseIdentityTests(unittest.TestCase):
                     self.assertEqual(argv[4:], ["--target", target, "--formats", formats])
                     self.assertEqual(run.call_args.kwargs["cwd"], ROOT / "apps/automexia-terminal")
                     self.assertTrue(run.call_args.kwargs["check"])
+                    self.assertEqual(run.call_args.kwargs["env"]["CARGO_PACKAGER_AUTOMEXIA_CONPTY_ROOT"], str(binaries.resolve()))
             with mock.patch.object(identity.subprocess, "run") as run, self.assertRaises(ValueError):
                 identity.package_native(ROOT, "0.0.1-alpha", binaries, output, "x86_64-pc-windows-msvc", "app,dmg")
             run.assert_not_called()
+
+    def test_native_package_vendor_root_cannot_be_overridden_by_inherited_environment(self):
+        from unittest import mock
+        with mock.patch.dict(identity.os.environ, {"CARGO_PACKAGER_AUTOMEXIA_CONPTY_ROOT": "unrelated inputs"}), mock.patch.object(identity.subprocess, "run") as run:
+            inputs = ROOT / "target/reviewed inputs"
+            identity.package_native(ROOT, "0.0.1-alpha", inputs, ROOT / "target/package", "x86_64-pc-windows-msvc", "wix")
+            self.assertEqual(run.call_args.kwargs["env"]["CARGO_PACKAGER_AUTOMEXIA_CONPTY_ROOT"], str(inputs.resolve()))
 
     def test_native_package_adapter_rejects_hooks_that_can_change_reviewed_inputs(self):
         import shutil

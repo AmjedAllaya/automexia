@@ -627,14 +627,24 @@ impl SettingsView {
             },
             feedback: None,
         });
+        #[cfg(feature = "native-gui-test-hooks")]
+        {
+            self.last_color_dismissal = None;
+        }
         self.preedit.clear();
         self.pressed = None;
         self.touch = None;
         self.layout_dirty = true;
     }
+    #[cfg_attr(feature = "native-gui-test-hooks", track_caller)]
     pub(super) fn cancel_color(&mut self) {
         if self.color_editor.take().is_none() {
             return;
+        }
+        #[cfg(feature = "native-gui-test-hooks")]
+        {
+            // Fixed source line only: no draft, path, terminal text or user data.
+            self.last_color_dismissal = Some(std::panic::Location::caller().line());
         }
         if self.standalone_color_route.is_some() && self.pending.is_none() {
             self.close();

@@ -254,8 +254,31 @@ registry releases or create replacement audit exemptions.
 
 After the workflow implementation has passed CI and merged to main, run
 `first-alpha.yml` from main with `acknowledgement=unsigned-first-alpha`.
-Leave `publish=false` for a complete package rehearsal; select `publish=true`
-for the authorized release. Both run all native and reproducibility gates.
-Publication checks current main again immediately before publishing, rejects
-an existing release, and never replaces an artifact or moves an existing tag.
-The resulting prerelease contains all eleven packages and verified metadata.
+The workflow builds, tests and signs the complete bundle with read-only
+repository permissions. It never publishes a release or holds an owner token.
+
+GitHub's immutable-release settings API requires administration-read access,
+which `GITHUB_TOKEN` cannot provide. Publication therefore uses the already
+authenticated repository owner through `gh`, without exporting that credential
+to CI. Keep main unchanged while preparing and publishing one candidate.
+
+After every job succeeds, download only that run's `release-signed-bundle` into
+an empty directory. Run the owner verifier first, using the actual run ID and
+bundle directory:
+
+```text
+python tools/ci/first_alpha_publish.py --bundle <bundle-directory> --run-id <run-id> --acknowledgement unsigned-first-alpha
+```
+
+Add `--publish` for the explicitly authorized publication. The command requires
+`gh` and `minisign`; on Windows, `--wsl-distro Ubuntu-24.04` may use an already
+installed WSL minisign verifier. No authentication credential is copied into
+WSL. Verification alone performs no remote writes.
+
+The publisher checks all native job results, the signed checksum inventory,
+source-bound notes, current main and immutable-release protection. It uploads
+to a draft, verifies remote digests, then publishes by exact release ID and
+verifies GitHub's release and asset attestations. A matching partial draft can
+resume without replacing assets; conflicting drafts, moved tags and already
+published releases are rejected. The prerelease contains all eleven packages
+and verified metadata, and never becomes Latest.
