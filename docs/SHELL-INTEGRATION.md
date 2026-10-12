@@ -21,6 +21,35 @@ PowerShell integration is dot-sourced into the interactive child session. Its
 prompt, input callback, completion state, and nested CMD helpers must remain
 available after startup returns. Both development and packaged launches use this
 same session bootstrap; execution-policy denial still leaves the native shell.
+The session displays a short explanation and recovery link when policy blocks
+integration. The tags and timing settings cannot restore missing shell hooks.
+
+### Windows PowerShell setup
+
+Windows clients commonly block PowerShell scripts by default. Automexia respects
+that policy. The terminal and normal shell commands remain usable, but command
+tags and timing need integration. Command Prompt supports integration without
+PowerShell scripts: launch `automexia -e cmd.exe`, or create a profile whose
+**Executable** is `cmd.exe`.
+
+To use PowerShell integration, first run `Get-ExecutionPolicy -List`. If your
+organization controls the policy, ask its administrator to allow the integration.
+Otherwise, you can explicitly allow local scripts for Automexia's child sessions
+in your configuration:
+
+```toml
+[shell]
+program = "powershell.exe"
+args = ["-ExecutionPolicy", "RemoteSigned"]
+```
+
+This does not change the computer's policy or override Group Policy. Unsigned
+downloaded scripts can still be blocked. For a verified portable ZIP, use
+**Properties → Unblock** before extracting it, then reopen Automexia. Use only
+packages from the official release whose checksums you have verified. Remove the
+argument to restore the inherited policy. Automexia never changes it for you.
+
+### Linux and macOS startup
 
 Linux's unset shell configuration starts an ordinary interactive, non-login
 shell. It inherits the desktop/login environment and reads the shell's normal

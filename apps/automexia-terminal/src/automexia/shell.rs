@@ -15,7 +15,13 @@ const POWERSHELL_SESSION_BOOTSTRAP: &str = concat!(
     // Load into the interactive session; invocation scope would discard them.
     "try{. $p}",
     "catch [System.Management.Automation.PSSecurityException]{",
-    "$env:AUTOMEXIA_SHELL_INTEGRATION='0'",
+    "$env:AUTOMEXIA_SHELL_INTEGRATION='0';",
+    // Fixed text only: exception details can disclose the user's install path.
+    // Keep native policy and input ownership; do not execute the recovery command.
+    "Write-Host 'PowerShell blocked Automexia shell integration.';",
+    "Write-Host 'Command tags and command timing are unavailable.';",
+    "Write-Host 'For an integrated Command Prompt: automexia -e cmd.exe';",
+    "Write-Host 'PowerShell setup: https://github.com/AmjedAllaya/automexia/blob/main/docs/SHELL-INTEGRATION.md#windows-powershell-setup'",
     "}",
     "}",
 );
@@ -635,6 +641,10 @@ try {
             String::from_utf8_lossy(&output.stderr)
         );
         assert!(output.stderr.is_empty());
+        assert!(
+            output.stdout.is_empty(),
+            "permitted startup must stay quiet"
+        );
     }
 
     #[cfg(target_os = "windows")]
@@ -654,6 +664,36 @@ try {
             "policy fallback leaked a startup error: {}",
             String::from_utf8_lossy(&output.stderr)
         );
+        assert_policy_notice(&output.stdout);
+    }
+
+    fn assert_policy_notice(bytes: &[u8]) {
+        let text = String::from_utf8_lossy(bytes);
+        assert_eq!(
+            text.matches("PowerShell blocked Automexia shell integration.")
+                .count(),
+            1
+        );
+        assert!(text.contains("Command tags and command timing are unavailable."));
+        assert!(text.contains("automexia -e cmd.exe"));
+        assert!(
+            !text.contains(".ps1"),
+            "notice must not expose the script path"
+        );
+    }
+
+    #[test]
+    fn restricted_policy_explains_missing_features_and_preserves_policy() {
+        let output = run_policy_probe(
+            "Restricted",
+            "if((Get-ExecutionPolicy) -eq 'Restricted' -and $env:AUTOMEXIA_SHELL_INTEGRATION -eq '0' -and -not $global:AutomexiaPolicyProbeLoaded){exit 0}else{exit 73}",
+        );
+        assert!(output.status.success(), "native policy fallback failed");
+        assert!(
+            output.stderr.is_empty(),
+            "native policy fallback leaked an error"
+        );
+        assert_policy_notice(&output.stdout);
     }
 
     #[cfg(target_os = "windows")]
