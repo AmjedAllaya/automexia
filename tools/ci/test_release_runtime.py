@@ -342,6 +342,38 @@ printf '%s\\n' "${4##*/}" >> "$FIXTURE_TRACE/adhoc"
                 self.assertIn(prefix + "Resources/shell-integration/fixture.txt", files)
                 self.assertIn(prefix + "Resources/README.md", files)
 
+    def test_linux_reproducibility_invokes_non_executable_wrapper_with_bash(self) -> None:
+        bash = bash_program()
+        if bash is None:
+            self.skipTest("Bash unavailable for release reproducibility fixture")
+        for workflow in ("release.yml", "first-alpha.yml"):
+            document = yaml.safe_load((ROOT / ".github/workflows" / workflow).read_text(encoding="utf-8"))
+            job = document["jobs"]["reproducibility-linux"]
+            script = next(step["run"] for step in job["steps"]
+                          if "check_reproducible_build.sh" in step.get("run", ""))
+            for arch, host in (("x86_64", "x86_64-unknown-linux-gnu"),
+                               ("aarch64", "aarch64-unknown-linux-gnu")):
+                with self.subTest(workflow=workflow, arch=arch), tempfile.TemporaryDirectory(prefix="automexia-repro-permission-") as directory:
+                    root = Path(directory)
+                    wrapper = root / "tools/ci/check_reproducible_build.sh"
+                    wrapper.parent.mkdir(parents=True)
+                    wrapper.write_text((ROOT / "tools/ci/check_reproducible_build.sh").read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
+                    wrapper.chmod(0o644)  # Match its committed mode, never make it executable.
+                    write_fixture_script(root / "fixture-bin/git", '[[ "$*" == "rev-parse --show-toplevel" ]]\npwd\n')
+                    write_fixture_script(root / "fixture-bin/rustc", '[[ "$1" == -vV ]]\nprintf "host: %s\\n" "$FIXTURE_HOST"\n')
+                    write_fixture_script(root / "fixture-bin/python3", '[[ "$#" -eq 6 ]]\nprintf "%s\\n" "$@" > trace-argv\n')
+                    command = script.replace("${{ matrix.arch }}", arch).replace("${{ matrix.artifact }}", "fixture artifact")
+                    result = subprocess.run([bash, "-c", 'export PATH="$PWD/fixture-bin:$PATH"\n' + command],
+                                            cwd=root, env={**os.environ, "FIXTURE_HOST": host},
+                                            capture_output=True, text=True, timeout=15, check=False)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    args = (root / "trace-argv").read_text(encoding="utf-8").splitlines()
+                    self.assertTrue(args[0].endswith("/tools/ci/reproducible_build.py"))
+                    self.assertEqual(args[1:], [f"trust/evidence/reproducibility-{arch}.json", "--target", host,
+                                               "--reference", "reference/fixture artifact"])
+                    # DrvFS/Windows may emulate executable bits; retain the invocation contract there.
+                    self.assertRegex(script, r"(?m)^\s*bash tools/ci/check_reproducible_build\.sh\s")
+
     def test_final_linux_verifier_installs_a_local_file_not_an_apt_package_name(self) -> None:
         for workflow in ("release.yml", "first-alpha.yml"):
             with self.subTest(workflow=workflow), tempfile.TemporaryDirectory(prefix="automexia-apt-path-") as directory:
