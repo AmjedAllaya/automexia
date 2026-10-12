@@ -20,6 +20,17 @@ CACHE_INITIALIZER = r'''printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v2\n' "$RU
 
 
 class FreePlanContractTests(unittest.TestCase):
+    def test_published_package_diagnostic_is_manual_read_only_and_bounded(self) -> None:
+        import yaml
+
+        workflow = yaml.safe_load((ROOT / ".github/workflows/windows-package-review.yml").read_text(encoding="utf-8"))
+        self.assertEqual(workflow.get("on", workflow.get(True)), {"workflow_dispatch": None})
+        self.assertEqual(workflow["permissions"], {"contents": "read"})
+        job = workflow["jobs"]["windows-published-package-review"]
+        self.assertEqual(job["permissions"], {"contents": "read"})
+        self.assertLessEqual(job["timeout-minutes"], 15)
+        self.assertFalse(job.get("continue-on-error", False))
+
     def test_python_policy_dependencies_are_installed_in_each_consumer_job(self) -> None:
         import shlex
         import yaml

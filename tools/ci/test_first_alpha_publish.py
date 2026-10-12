@@ -32,7 +32,7 @@ def native_evidence():
 
 def manifest():
     return {"schema": 1, "project": "automexia-terminal", "source_repository": "https://github.com/" + owner.REPOSITORY,
-            "version": "0.0.1-alpha", "tag": "0.0.1_alpha", "source_commit": SHA,
+            "version": "0.0.2-alpha", "tag": "v0.0.2-alpha", "source_commit": SHA,
             "channel": "first-alpha", "os_signing": owner.alpha.signing_disclosure(), "branding": {"stable_approval": False}}
 
 
@@ -47,7 +47,7 @@ def seal(directory):
 
 
 def make_bundle(directory):
-    names = list(owner.inventory.package_names(owner.alpha.FIRST_ALPHA_VERSION).values())
+    names = list(owner.inventory.package_names(owner.alpha.ALPHA_VERSION).values())
     names.extend(owner.inventory.SBOM_NAMES)
     for name in names:
         (directory / name).write_bytes(b"unit fixture")
@@ -55,8 +55,8 @@ def make_bundle(directory):
 
 
 def remote(records, *, draft=True, immutable=False):
-    return {"id": 45, "tag_name": "0.0.1_alpha", "target_commitish": SHA, "prerelease": True, "draft": draft, "immutable": immutable,
-            "body": "Alpha fixture notes", "name": "Automexia Terminal 0.0.1_alpha",
+    return {"id": 45, "tag_name": "v0.0.2-alpha", "target_commitish": SHA, "prerelease": True, "draft": draft, "immutable": immutable,
+            "body": "Alpha fixture notes", "name": "Automexia Terminal v0.0.2-alpha",
             "assets": [{"name": name, "digest": "sha256:" + digest, "size": size, "state": "uploaded"} for name, (digest, size) in records.items()]}
 
 
@@ -160,7 +160,7 @@ class BundleTests(unittest.TestCase):
         path.write_text(json.dumps(data))
         with self.assertRaises(ValueError):
             owner.validate_bundle(self.bundle)
-        path.write_text('{"version":"0.0.1-alpha","version":"1.0.0"}')
+        path.write_text('{"version":"0.0.2-alpha","version":"1.0.0"}')
         with self.assertRaises(ValueError):
             owner.validate_bundle(self.bundle)
 
@@ -225,7 +225,7 @@ class PublicationFlowTests(unittest.TestCase):
         tag_created = existing
         tag_reads = 0
         notes = b"Alpha fixture notes\n\n## Choose your download\n\nFixture choices.\n\n## Signing and verification\n\nFixture disclosures.\n"
-        rendered_notes = owner.replace_download_guide(notes.decode(), owner.alpha.FIRST_ALPHA_VERSION)
+        rendered_notes = owner.replace_download_guide(notes.decode(), owner.alpha.ALPHA_VERSION)
         draft["body"] = rendered_notes
 
         def fake_api(endpoint, *, fields=None, method="POST", **kwargs):

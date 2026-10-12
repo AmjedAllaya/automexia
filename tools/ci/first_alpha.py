@@ -13,7 +13,7 @@ import re
 import struct
 import tomllib
 
-from release_identity import FIRST_ALPHA_TAG, FIRST_ALPHA_VERSION
+from release_identity import CURRENT_ALPHA_TAG as ALPHA_TAG, CURRENT_ALPHA_VERSION as ALPHA_VERSION
 
 ROOT = Path(__file__).resolve().parents[2]
 REQUIRED_GATES = frozenset({
@@ -29,14 +29,14 @@ TARGETS = frozenset({
 
 
 def validate_identity(version: str, tag: str, commit: str) -> None:
-    if version != FIRST_ALPHA_VERSION or tag != FIRST_ALPHA_TAG:
-        raise ValueError('this workflow is restricted to the first alpha')
+    if version != ALPHA_VERSION or tag != ALPHA_TAG:
+        raise ValueError('this workflow is restricted to the currently authorized alpha')
     if re.fullmatch(r'[0-9a-f]{40}', commit) is None:
         raise ValueError('a full immutable source commit is required')
 
 
 def authorize(expected: str, actual: str, ref: str, acknowledgement: str) -> None:
-    validate_identity(FIRST_ALPHA_VERSION, FIRST_ALPHA_TAG, expected)
+    validate_identity(ALPHA_VERSION, ALPHA_TAG, expected)
     if actual != expected or ref != 'refs/heads/main':
         raise ValueError('publication must use the exact current main revision')
     if acknowledgement != 'unsigned-first-alpha':
@@ -78,7 +78,7 @@ def verify_brand(root: Path) -> dict:
     if hashlib.sha256(source).hexdigest() != manifest['source']['sha256']:
         raise ValueError('brand source digest mismatch')
     approval = manifest.get('first_alpha', {})
-    if approval.get('version') != FIRST_ALPHA_VERSION or approval.get('owner_authorized') is not True:
+    if approval.get('version') != ALPHA_VERSION or approval.get('owner_authorized') is not True:
         raise ValueError('first-alpha brand authorization is missing')
     if approval.get('source_sha256') != manifest['source']['sha256']:
         raise ValueError('brand approval does not bind the source image')

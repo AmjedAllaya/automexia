@@ -89,6 +89,7 @@ EXPECTED_WORKFLOWS = {
     'first-alpha.yml',
     's1-assurance.yml',
     's2-assurance.yml',
+    'windows-package-review.yml',
 }
 actual_workflows = {p.name for p in wf.iterdir() if p.is_file() and p.suffix in {'.yml', '.yaml'}}
 if actual_workflows != EXPECTED_WORKFLOWS:

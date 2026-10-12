@@ -13,13 +13,16 @@ from pathlib import Path
 
 FIRST_ALPHA_VERSION = "0.0.1-alpha"
 FIRST_ALPHA_TAG = "0.0.1_alpha"
+CURRENT_ALPHA_VERSION = "0.0.2-alpha"
+CURRENT_ALPHA_TAG = "v0.0.2-alpha"
+ALPHA_VERSIONS = frozenset((FIRST_ALPHA_VERSION, CURRENT_ALPHA_VERSION))
 STABLE = re.compile(r"(?:0|[1-9][0-9]{0,4})\.(?:0|[1-9][0-9]{0,4})\.(?:0|[1-9][0-9]{0,4})")
 
 
 def native_version(version: str) -> str:
-    numeric = "0.0.1" if version == FIRST_ALPHA_VERSION else version
+    numeric = version.removesuffix("-alpha") if version in ALPHA_VERSIONS else version
     if not STABLE.fullmatch(numeric):
-        raise ValueError("unsupported release version (expected X.Y.Z or 0.0.1-alpha)")
+        raise ValueError("unsupported release version (expected X.Y.Z or an authorized alpha)")
     major, minor, patch = map(int, numeric.split("."))
     if major > 255 or minor > 255 or patch > 65535:
         raise ValueError("release version exceeds native installer limits")
@@ -102,7 +105,7 @@ def main() -> None:
             render_macos_plist(args.template, args.output, args.version)
         else:
             print({"tag": release_tag(args.version), "native": numeric,
-                   "prerelease": str(args.version == FIRST_ALPHA_VERSION).lower()}[args.field])
+                   "prerelease": str(args.version in ALPHA_VERSIONS).lower()}[args.field])
     except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError, plistlib.InvalidFileException) as error:
         parser.error(str(error))
 
