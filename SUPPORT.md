@@ -1,25 +1,25 @@
 # Support
 
-Start with the [frequently asked questions](docs/FAQ.md) and
-[troubleshooting guide](docs/TROUBLESHOOTING.md). They cover installation,
-configuration, platform, shell, image, storage, and first-launch problems.
+Start with the [FAQ](docs/FAQ.md) and [Troubleshooting](docs/TROUBLESHOOTING.md).
+Search existing GitHub issues before filing a report. Include:
 
-Use GitHub issue forms for reproducible defects, feature proposals, performance
-regressions, platform regressions, and upstream-port proposals. Search existing
-issues first and include `automexia --version`, OS/build details, relevant
-configuration with secrets removed, and minimal reproduction steps.
+- `automexia --version` and the affected source revision or package version;
+- OS/build details;
+- minimal reproduction steps;
+- relevant configuration with secrets removed.
 
-This source repository is public. Security issues use GitHub's **Report a
-vulnerability** form when available. It is not currently enabled; use an
-already-established private maintainer contact, or request a private reporting
-route without including vulnerability details. Never post security details in
-public issues. See [Security](SECURITY.md). General usage questions can use the
-issue tracker; GitHub Discussions is not currently enabled.
+Use issue forms for bugs, feature proposals, performance or platform regressions,
+and upstream-port proposals. General questions can use the issue tracker;
+GitHub Discussions is not currently enabled.
 
-Report the exact source revision or package version affected. The separately
-published v0.4.0 Linux Early Access package and current cross-platform source
-have different verification evidence; see [platform status](docs/PLATFORMS.md).
-No fixed maintenance window for older versions is promised by this document.
+Report vulnerabilities privately under [Security](SECURITY.md). GitHub's
+**Report a vulnerability** form is not currently enabled. Use an established
+private maintainer contact or request a private route without disclosing details.
+Never post vulnerability details in public issues.
+
+The v0.4.0 Linux Early Access package and current cross-platform source have
+different evidence. See [Platforms](docs/PLATFORMS.md). No fixed maintenance
+window is promised for older versions.
 
 ## Windows fullscreen brightness
 

@@ -1,9 +1,6 @@
 # Start and launch sessions
 
-Starting in the right shell, directory, and task context removes repeated
-setup and makes the purpose of a session clear. This guide explains the
-practical launch choices for a packaged executable and for work on the Automexia
-source repository.
+Choose a shell, starting directory, or program for an installed build or source checkout.
 
 ## Choose a launch approach
 
@@ -26,7 +23,8 @@ With the Automexia executable on your `PATH`, start it with:
 automexia
 ```
 
-With no custom shell configured, Automexia uses the user's default shell (PowerShell on Windows and the login shell on Unix). A normal launch uses **session-only shell integration** where supported; it does not rewrite your PowerShell/Bash/Zsh/Fish profile merely because the application opened.
+By default, Automexia starts PowerShell on Windows or the login shell on Unix.
+Supported integration applies only to that session; launch does not rewrite shell profiles.
 
 Useful discovery commands are:
 
@@ -35,7 +33,7 @@ automexia --help
 automexia --version
 ```
 
-Use these before assuming a command from development documentation is present in the particular binary you have.
+Check which commands your installed version provides.
 
 ## 2. Start in a specific directory
 
@@ -49,13 +47,15 @@ automexia --working-dir D:\work\my-project
 automexia --working-dir ~/work/my-project
 ```
 
-Automexia validates the path. An invalid working-directory override is rejected with a warning and the safe default is used rather than silently launching in an untrusted/nonexistent location.
+An invalid directory produces a warning and uses the safe default.
 
 ### When to use this instead of `cd`
 
-Use `--working-dir` when you are launching from a desktop shortcut, script, file manager, or project launcher and already know the desired project root. Use a normal shell `cd` when you are already working interactively and the directory change is temporary.
+Use `--working-dir` in shortcuts, scripts, or project launchers.
+Use shell `cd` to change directories in an open session.
 
-For repeated project launchers, prefer a shortcut/script that passes `--working-dir` over hard-coding project paths into your global Automexia configuration.
+For repeated launches, pass `--working-dir` from a shortcut or script instead of
+storing project paths in global settings.
 
 ## 3. Start a specific shell or command
 
@@ -97,9 +97,11 @@ or:
 automexia --working-dir D:\work\project -e pwsh -NoLogo
 ```
 
-This is useful for a dedicated REPL, monitor, or tool that already owns its own interactive interface. It is less appropriate for a complicated shell command line that depends on pipes, redirection, quoting, environment expansion, or shell aliases: in those cases, start the shell normally and run the command inside it.
+Use this for an interactive interpreter such as Python, a monitor, or another
+interactive tool. For pipelines, redirection, expansion, or aliases, start a
+shell and enter the command there.
 
-Automexia passes an exact program/argument vector; it does not reinterpret the command using shell-string parsing.
+Automexia passes arguments directly to the program. It does not parse them as shell code.
 
 ## 5. Create the first configuration
 
@@ -139,7 +141,8 @@ To write an Automexia log file for the current launch:
 automexia --enable-log-file
 ```
 
-Logs live under the Automexia configuration root. Treat them as potentially sensitive because paths and process diagnostics can reveal local machine information. Use this option when diagnosing a problem, not as a requirement for normal use.
+Logs are saved under the configuration root. Enable them for diagnosis and
+redact paths and process details before sharing.
 
 ## 7. First run from source
 
@@ -169,7 +172,7 @@ When you want verification without opening the app:
 cargo ready
 ```
 
-Do not treat these Cargo aliases as commands an ordinary installed-user package needs. They are repository-owned development automation.
+These Cargo commands are for source development only.
 
 ## 8. Confirm that the session started correctly
 
@@ -185,4 +188,5 @@ If icon-aware `ls`/`ll`, prompt metadata, or other shell-enhanced behavior is mi
 
 ## 9. What to learn next
 
-Once you can open a session, the most important concept is the workspace hierarchy. Read [Workspaces, tabs, and panes](workspace.md) before building multi-pane layouts; it explains the difference between a top-level tab, a pane-local tab, a fresh split, and a cloned split.
+Read [Workspaces, tabs, and panes](workspace.md) to arrange sessions and choose
+between fresh and cloned splits.

@@ -15,31 +15,11 @@ platform evidence, security boundaries, and release status.
 
 ## Public scope
 
-Public documentation may include:
+Document current behavior, user tasks, maintenance boundaries, tests, and exact
+platform and release status. Keep future features, commercial plans, and their
+implementation details private. Do not link to ignored private documents.
 
-- current source behavior and exact release/platform status;
-- ordinary free terminal capabilities;
-- installation, use, configuration, recovery, migration, and uninstall;
-- contributor architecture needed to maintain existing code;
-- security and trust boundaries;
-- tests, native evidence, packaging, and release rules;
-- accepted decisions governing current source;
-- current implementation and release-evidence status for the open-source terminal.
-
-Public documentation must not include:
-
-- unreleased product ideas, including ordinary and advanced future free features;
-- paid or commercial features;
-- pricing, packaging, revenue, customer, or market strategy;
-- future specialist extensions;
-- hosted or organization-service designs;
-- unreleased provider workflows;
-- detailed future algorithms, schemas, state machines, UX flows, dependency
-  choices, limits, tests, or delivery phases;
-- links or references to ignored private documents.
-
-The exact public/private rule is in
-[Private documentation policy](PRIVATE-DOCUMENTATION-POLICY.md).
+See [Private documentation policy](PRIVATE-DOCUMENTATION-POLICY.md) for the full rules.
 
 ## Canonical public owners
 
@@ -119,12 +99,7 @@ Before publishing documentation:
 
 ## Publishing a private subject later
 
-Private material does not become public merely because code work begins. A
-deliberate publication review must decide:
-
-1. which behavior is implemented and necessary to document;
-2. which details contributors need to maintain public code;
-3. which product, commercial, security, patent, or competitive details remain
-   private;
-4. which guide/reference/architecture/evidence owners must change; and
-5. whether the feature's release status supports any user-facing claim.
+Starting implementation does not authorize publication. Follow the publication
+review in [Private documentation policy](PRIVATE-DOCUMENTATION-POLICY.md).
+Confirm what is implemented, what readers need, what remains private, and which
+guides, references, and evidence pages must change.

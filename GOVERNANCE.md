@@ -1,8 +1,8 @@
 # Governance
 
-Automexia Terminal uses a maintainer-led, review-first model. Maintainers are
-responsible for roadmap decisions, releases, security response, upstream ports,
-and enforcing the architecture and capability boundaries.
+Automexia Terminal is maintainer-led. Maintainers review changes, decide the
+roadmap, manage releases and security response, review upstream ports, and
+enforce architecture and capability boundaries.
 
 Ordinary changes require one approving review plus applicable CODEOWNERS.
 Changes to release workflows, signing, security policy, capability declarations,

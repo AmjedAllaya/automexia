@@ -387,7 +387,7 @@ changes apply only to the accepting context. See
 [ADR 0042](adr/0042-route-bound-paste-transactions.md) for limits, pointer
 ownership, rejection and the remaining native evidence requirements.
 
-The session owner is responsible for:
+Each session owner manages:
 
 - child identity and inherited context;
 - ordered input and coalesced resize;

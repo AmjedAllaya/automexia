@@ -1,8 +1,7 @@
 # Productivity
 
-Automexia's public productivity model is deliberately simple: the shell owns
-commands, while the terminal provides fast navigation, search, selection,
-clipboard, tabs, panes, a command palette, and optional session-local metadata.
+Your shell controls commands. Automexia adds navigation, search, selection,
+clipboard, tabs, panes, and a command palette.
 
 ## Work quickly without changing command ownership
 
@@ -17,31 +16,32 @@ clipboard, tabs, panes, a command palette, and optional session-local metadata.
 
 ## Prompt and command metadata
 
-Supported session-local shell integration can mark prompt and command
-boundaries, directory, status, and duration. Metadata is bounded, pane-scoped,
-and generation-aware. Automexia does not scrape commands from terminal cells or
-silently persist shell history.
+Supported shell integration marks prompts and commands and reports directory,
+status, and duration. Metadata has size limits and stays with its session;
+updates from replaced sessions are ignored. Automexia does not reconstruct
+commands from displayed text or silently save shell history.
 
 ## Search and navigation
 
-Choose the documented pane or visible-workspace scope. Search updates are
-cancellable and stale results are discarded. Closing search restores prior
-focus and never sends its keystrokes to the PTY.
+Search one pane or the active sessions across visible panes. Results from an
+outdated search are discarded. Closing search cancels it and restores focus;
+search keystrokes never reach the shell. See
+[Search controls](workspace.md#search-scrollback-without-changing-the-shell-command).
 
 Previous/next-command navigation moves only the viewport. It does not edit or
 rerun a command.
 
 ## Keyboard-first use
 
-Use documented shortcuts for frequent actions and the command palette for
-discoverability. All public workflows remain reachable without a pointer and
-retain visible focus, high contrast, reduced motion, and predictable dismissal.
+Use shortcuts for frequent actions and the palette to find others. Public
+workflows remain keyboard-accessible, with visible focus, high contrast, reduced
+motion, and predictable dismissal.
 
 ## Aliases
 
-User shell aliases remain authoritative. Any Automexia-generated alias file is
-previewed, collision-reviewed, explicit to activate, reversible, and removable.
-The shell executes it only after the user invokes and submits the alias.
+Your shell keeps its existing aliases. Generated aliases are previewed and
+checked for naming conflicts before you explicitly activate them. You can undo
+or remove them. An alias runs only when you enter and submit it in the shell.
 
 ## Safe fallback
 
@@ -52,5 +52,3 @@ restores normal shell behavior.
 See [Commands and shell workflows](commands-and-shell.md),
 [Shell productivity](../guide/shell-productivity.md), and
 [Keyboard shortcuts](shortcuts.md).
-
-Unreleased advanced productivity features and commercial plans are private.

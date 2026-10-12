@@ -1,11 +1,7 @@
 # Files, output, and images
 
-Automexia helps you inspect text, files, and visual results without losing the
-context of the current task. Its presentation features make output easier to
-scan and images easier to preview, while the script or tool still controls the
-actual bytes and behavior.
-
-This page explains what is merely visual, what is interactive, and which image approach to use.
+Automexia adds output styling and image previews. Your commands still control
+their output. This guide explains what changes on screen and how to preview images.
 
 ## The basic rule: presentation must not change command output
 
@@ -22,9 +18,12 @@ These features are not supposed to rewrite the bytes that scripts consume. When 
 
 ## Prompt context and path
 
-In integrated shells, Automexia owns a semantic context spacer and complete path row while the shell's line editor owns the editable command line. This separation is why resizing can reflow the prompt context without Automexia pretending to be the shell editor.
+In integrated shells, Automexia displays context tags and a full path row. Your
+shell controls the editable command line. Resizing can rearrange context without
+changing shell input.
 
-Use the prompt context for orientation, but use shell commands/environment/tooling when you need machine-readable state. Renderer labels are a view, not a scripting API.
+Use these labels for orientation. Scripts should read state from shell commands,
+environment variables, or tools, rather than screen labels.
 
 ## Icon-aware listings
 
@@ -85,15 +84,18 @@ Use it as a scanning aid, not as a replacement for the tool's own exit code or s
 - iTerm2 OSC 1337 inline images;
 - Sixel.
 
-This is the right approach for image-aware programs such as terminal image viewers/file managers because the program controls placement, scrolling, sizing, and lifecycle as terminal content.
+Image-aware programs control placement, scrolling, size, and image lifetime.
 
-Examples from their respective ecosystems include `kitten icat`, `imgcat`, and `wezterm imgcat`. Automexia does not change `TERM_PROGRAM` to impersonate another terminal; if a third-party tool has not learned the `Automexia` brand, configure that tool's explicit Kitty/iTerm2/Sixel adapter rather than lying about terminal identity.
+Examples include `kitten icat`, `imgcat`, and `wezterm imgcat`. If a tool does not
+recognize Automexia, select its Kitty, iTerm2, or Sixel adapter. Do not change
+`TERM_PROGRAM` to impersonate another terminal.
 
 Terminal multiplexers also need to pass the chosen graphics protocol through.
 
 ## 2. Local quick look
 
-**Available now.** Quick look is for a local raster path that is already visible in terminal output. It is an emulator-owned overlay, not bytes sent into the PTY.
+**Available now.** Quick look previews a local image whose path is visible in
+terminal output. It opens an overlay without sending input to the shell.
 
 ### Mouse workflow
 
@@ -147,7 +149,7 @@ Quick look is intentionally bounded; it is not a universal file opener.
 
 ## Image security boundaries users will notice
 
-Quick look rejects unsafe/unbounded cases rather than trying to be clever. The canonical contract includes:
+Quick look enforces these safety limits:
 
 - no URL-scheme fetching;
 - no arbitrary Windows UNC path opening;
@@ -158,11 +160,13 @@ Quick look rejects unsafe/unbounded cases rather than trying to be clever. The c
 - background decode work rather than file decoding on UI/renderer/PTY threads;
 - stale/replaced file checks before a decoded result is reused.
 
-If a preview does not appear, the correct response is to verify the path/format/limits or use an explicit external tool—not to disable the safety boundary.
+If no preview appears, check the path, format, and limits, or use an external tool.
+Keep the safety checks enabled.
 
 ## Selection and copied text
 
-Automexia's visual enhancements do not become hidden clipboard transformations. Selection belongs to terminal cells/text; quick-look overlays and semantic backgrounds are presentation layers.
+Selection and copying use terminal text. Previews and backgrounds do not change
+the clipboard.
 
 For normal selection:
 
@@ -175,6 +179,8 @@ For normal selection:
 
 When there is enough pane height, the footer can show information such as UTF-8, LF/CRLF, effective columns/rows, local time, pane/local-tab position, selection state, or scrollback offset.
 
-It is intentionally read-only. Clicking it focuses the pane; it is not a collection of invisible action buttons. Use keyboard bindings, scrollbar, or the command palette for actions.
+The footer is read-only. Clicking it focuses the pane. Use shortcuts, the
+scrollbar, or the palette for actions.
 
-For the detailed image limits, layout behavior, icon taxonomy, and semantic rendering contract, see [Terminal experience](../guide/terminal-experience.md).
+See [Image previews](../IMAGE-PREVIEWS.md) for format and safety limits, and
+[Terminal experience](../guide/terminal-experience.md) for workspace layout.

@@ -1,8 +1,7 @@
 # Automexia user guide
 
-Automexia is a cross-platform, keyboard-first terminal for Windows, Linux, and
-macOS. It hosts local shells, command-line tools and system OpenSSH workflows. This guide documents only public free
-terminal behavior.
+Automexia is a cross-platform terminal for Windows, Linux, and macOS.
+Use this guide for shells, command-line tools, workspaces, and system OpenSSH.
 
 ## Start here
 
@@ -41,9 +40,8 @@ terminal behavior.
 
 ## Public status rule
 
-A behavior is public only when it appears in
-[the public feature catalog](../FEATURES.md) and its user guide. Source names,
-fixtures, tests, disabled code, or internal records do not announce a feature.
+Check [Features](../FEATURES.md) and the matching guide for availability.
+Source names and tests alone do not establish it.
 
-Advanced unreleased and commercial plans are maintained privately and are not
-summarized in this guide.
+See the [Private documentation policy](../PRIVATE-DOCUMENTATION-POLICY.md)
+for publication rules.

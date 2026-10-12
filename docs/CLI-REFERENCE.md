@@ -1,8 +1,7 @@
 # CLI and contributor command reference
 
-Automexia has two public command layers: the installed application and
-repository-owned contributor commands. This page intentionally omits unreleased
-advanced and commercial command surfaces.
+This reference covers installed application commands and repository contributor
+commands. Use your installed version's `--help` to check availability.
 
 ## Application command
 

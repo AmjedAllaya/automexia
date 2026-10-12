@@ -2,17 +2,17 @@
 
 ## Remote tools
 
-Run remote-access clients in the real shell. System OpenSSH and other
-command-line tools keep their own parsing, credentials, configuration,
-authentication, and network behavior. Automexia supplies terminal input/output,
-resize, tabs, panes, search, selection, exit reporting, and cleanup.
+Run remote clients in your shell. They manage command parsing, credentials,
+configuration, authentication, and networking. Automexia manages the local
+terminal, navigation, session exit, and cleanup.
 
 ## WSL
 
-A WSL distribution is an ordinary shell environment. Use its native package
-manager, shell configuration, OpenSSH client, and developer tools. Automexia
-does not silently rewrite distribution profiles or share terminal state across
-sessions.
+Windows Subsystem for Linux (WSL) runs Linux environments on Windows.
+
+Use each WSL distribution's package manager, shell configuration, OpenSSH, and
+development tools. Automexia does not silently rewrite profiles or share
+terminal state between sessions.
 
 Session-local integration may provide bounded prompt metadata. If it is missing
 or disabled, the WSL shell continues normally.

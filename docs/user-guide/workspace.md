@@ -1,9 +1,10 @@
 # Workspaces, tabs, and panes
 
-Automexia lets you arrange command-driven work around the way the task
-actually unfolds. Windows, tabs, panes, and sessions have different scopes;
-choosing the right one keeps related work visible and separates contexts that
-should not interfere with each other.
+Use windows and tabs to separate tasks. Use split panes to keep sessions visible
+together, and pane-local tabs to switch sessions within one pane.
+
+A session runs a shell or program through its own pseudo-terminal (PTY), the
+connection that carries terminal input and output.
 
 ## The workspace hierarchy
 
@@ -41,7 +42,7 @@ close. This correction is in current source, not the earlier 0.4.0 download.
 
 ### Use a window-level tab for a different workspace
 
-A window-level tab is the simplest way to separate substantial contexts without opening another desktop window.
+Use a window-level tab to switch workspaces within one window.
 
 Examples:
 
@@ -83,11 +84,12 @@ Automexia offers two different split behaviors.
   Ctrl+R/Ctrl+D remain shell-owned; previously published 0.4.0 binaries do not
   include these current-source corrections. Explicit user mappings are preserved.
 
-A clone is not shared terminal state. The new pane owns its own PTY and process tree. Think “start another session from the same launch context,” not “mirror this terminal.”
+A clone starts a separate session with its own PTY and process tree.
+It copies launch context, not live terminal state.
 
 ### Use a pane-local tab when a region needs alternatives
 
-A pane-local tab is useful when you want one area of the layout to switch between several independent sessions while other panes remain unchanged.
+Use pane-local tabs to switch sessions in one pane without changing the others.
 
 Create one with:
 
@@ -103,7 +105,8 @@ A pane displays its local tab rail only when it owns multiple local tabs and has
 
 ### Use a new OS window for desktop-level separation
 
-Use another OS window when you need true desktop independence: another monitor, separate virtual desktop, or a workspace you want to minimize/close without affecting the first window.
+Open another window for a separate monitor or desktop, or to minimize and close
+a workspace independently.
 
 - Windows/Linux/BSD: `Ctrl+Shift+N`
 - macOS: `Cmd+N`
@@ -112,7 +115,7 @@ Closing one Automexia window does not close sibling windows. The explicit applic
 
 ## Fresh split or cloned split?
 
-This is one of the most important Automexia choices.
+Fresh splits use defaults. Clones reuse the active launch context.
 
 | Need | Fresh split | Clone split |
 |---|:---:|:---:|
@@ -126,7 +129,7 @@ This is one of the most important Automexia choices.
 
 Example: you are in `D:\work\api` using PowerShell and want another shell in the same project. Clone the pane. If instead you want a clean default shell that is unrelated to the current pane's launch profile, create a fresh split.
 
-If the active shell is currently running an interactive child program such as `ssh`, cloning reproduces the Automexia session launch context; it should not be treated as duplicating the exact live child-process state.
+Cloning does not duplicate a running child program such as `ssh`.
 
 ## Moving between panes
 
@@ -159,9 +162,11 @@ The standard close-session action is scope-aware:
 - Windows/Linux/BSD: `Ctrl+Shift+W`
 - macOS: `Cmd+W`
 
-Depending on focus/layout it closes the selected local tab, split, or window-level tab. This is intentionally different from “quit every Automexia window.”
+It closes the selected local tab, split, or window-level tab, depending on focus
+and layout. Quit closes the whole application.
 
-Use extra care when the selected session has a running process. If you are unsure what scope is selected, use the visible tab/pane close target or the command palette so the intended action is explicit.
+Check the selected session before closing a running process. Use its visible
+close control or the command palette if the scope is unclear.
 
 ## Selection is pane-local
 
@@ -188,7 +193,16 @@ Search is a terminal view operation, not a shell command:
 - Pane search: Windows/Linux/BSD `Ctrl+F`; macOS `Cmd+F` forward or `Cmd+B` backward.
 - All-visible-pane search: Windows/Linux/BSD `Ctrl+Shift+F` forward or `Ctrl+Shift+B` backward; macOS `Cmd+Shift+F` forward or `Cmd+Shift+B` backward.
 
-Pane search replaces the selected pane's footer; an exceptionally narrow pane falls back to the same safe bottom position without changing its pane scope. All-visible-pane search is bottom-centered above the footer and cannot cover top-level tab or window-close controls. Its deterministic scope is the active local tab in every visible split of the selected workspace tab; hidden local tabs and other window tabs are not activated. The `PANE` / `ALL PANES` chip, themed icon, placeholder, and colored close control keep scope and actions recognizable without relying on color alone. The full surface captures pointer input so a click cannot activate UI behind it.
+Pane search replaces the selected pane's footer. In very narrow panes, it uses
+the bottom position while keeping the same search scope.
+
+All-visible-pane search sits above the footer, clear of window tabs and close
+controls. It searches the active local tab in each visible split of the selected
+workspace tab. Hidden local tabs and other workspace tabs are excluded.
+
+The `PANE` / `ALL PANES` label, themed icon, hint text, and colored close button
+identify the scope and controls without relying on color alone. Clicks inside
+the search surface cannot activate controls behind it.
 
 Inside search mode:
 
@@ -208,7 +222,8 @@ Open the command palette with:
 - Windows/Linux/BSD: `Ctrl+Shift+P`
 - macOS: `Cmd+Shift+P`
 
-The palette is the discoverable path for tab, split, pane, config, image-preview, and other registered actions. It is often the better approach for occasional operations because you can search by intent rather than memorize every key chord.
+Search the palette for tab, pane, configuration, image-preview, and other actions.
+You do not need to memorize their shortcuts.
 
 ## A useful layout pattern
 
@@ -221,6 +236,7 @@ For a typical multi-step task:
 5. Add a pane-local tab only when one region needs multiple alternate sessions.
 6. Create another window-level tab when the entire task context changes.
 
-This keeps the visual hierarchy meaningful: **tabs separate contexts; panes preserve simultaneous visibility; local tabs provide alternatives inside one region.**
+**Tabs separate tasks; panes show sessions together; local tabs switch sessions
+within a pane.**
 
-For the complete binding table, see [Keyboard and input reference](../KEYBOARD.md).
+For all shortcuts, see [Keyboard and input reference](../KEYBOARD.md).

@@ -7,57 +7,53 @@ ordinary system OpenSSH workflows.
 
 ## Which features are public?
 
-Only capabilities listed in [the public feature catalog](FEATURES.md) and their
-linked user guides are public. Source names, fixtures, tests, disabled modules,
-or compatibility paths do not announce a feature.
+Check [Features](FEATURES.md) and its linked guides. Source modules and tests
+alone do not establish availability.
 
 ## Does Automexia replace my shell?
 
-No. PowerShell, CMD, Bash, Zsh, Fish, and other supported shells keep command
-editing, history, quoting, completion, aliases, expansion, pipelines, and
-execution.
+No. Your shell controls editing, history, quoting, completion, aliases,
+expansion, pipelines, and execution.
 
 ## Can I run normal command-line tools?
 
-Yes. Run Git, Cargo, Python, FFmpeg, database clients, cloud CLIs, Kubernetes
-clients, REPLs, TUIs, and scripts with their normal shell syntax. Their
-credentials, configuration, network behavior, and command semantics remain
-owned by those tools.
+Yes. Run Git, Python, database clients, and other programs with normal shell
+syntax. Each tool keeps its own credentials, configuration, networking, and
+command behavior.
 
 ## Does Automexia press Enter for me?
 
-No. Paste, copy, selection, navigation, alias generation, and any public
-insertion path do not add implicit Enter.
+Paste and **Insert without Enter** do not submit commands; you press Enter to
+run them. A [reviewed workflow](user-guide/quick-actions.md#build-a-workflow) can
+submit its approved steps after you explicitly choose **Run workflow**.
 
 ## How does OpenSSH work?
 
-Run the system `ssh`, `scp`, or `sftp` command in a pane. OpenSSH and the
-operating system own host keys, credentials, agents, authentication,
-configuration, and networking. Automexia owns the local terminal session.
+Run system `ssh`, `scp`, or `sftp` in a pane. OpenSSH and the operating system
+manage authentication, keys, agents, configuration, and networking. Automexia
+manages the local terminal session.
 
 ## Does Automexia store SSH passwords or keys?
 
-No public terminal or inventory workflow is a credential vault. Keep credentials
-with OpenSSH, the operating system, a hardware device, or another appropriate
-external owner.
+Terminal and inventory workflows are not credential vaults. Keep credentials
+with OpenSSH, the operating system, hardware, or an appropriate external store.
 
 ## What does explicit OpenSSH inventory do?
 
-It reads only bounded local files that the user explicitly selects and reviews,
-shows public metadata, and performs no passive connection, login, or credential
-work. Revocation and invalid input preserve user files and safe
-last-known-good behavior.
+It reads bounded local files you select and review, then displays public metadata.
+It does not connect, log in, or manage credentials. Invalid input or revocation
+preserves user files and the last working state.
 
 ## How is configuration handled?
 
-Configuration is bounded and transactionally validated. Invalid reload keeps the
-last-known-good state. Starter generation and migration do not overwrite
-existing source files.
+Configuration is checked against limits before changes apply. Invalid reloads
+keep the last working settings. Starter generation does not overwrite files;
+migration preserves the originals. See [Configuration](CONFIGURATION.md).
 
 ## Does normal launch change shell profiles?
 
-No. Supported integration is session-local by default. Persistent install,
-repair, or removal is explicit and affects only Automexia-owned content.
+No. Integration is session-local by default. Persistent install, repair, and
+removal require explicit action and affect only Automexia-owned content.
 
 ## Which platforms are supported?
 
@@ -66,15 +62,15 @@ cross-compilation, and native release evidence are different claims.
 
 ## Is Automexia accessible?
 
-Accessibility is a release contract covering keyboard access, focus,
-semantics, contrast, reduced motion, scaling, Unicode/IME, and native assistive
-technology evidence. See [Accessibility](ACCESSIBILITY.md).
+Accessibility requirements cover keyboard access, focus, semantics, contrast,
+reduced motion, scaling, Unicode/IME, and native assistive-technology evidence.
+See [Accessibility](ACCESSIBILITY.md) for status and limits.
 
 ## Are there public extensions or a marketplace?
 
-Automexia v0.4 does not claim public third-party extension download,
-installation, marketplace activation, or component execution. The public
-extension page documents only capability and lifecycle safety.
+Automexia v0.4 does not claim public third-party downloads, installation,
+marketplace activation, or component execution. [Extensions](EXTENSIONS.md)
+describes current capability and lifecycle boundaries.
 
 ## Does the public terminal require AI or a paid API?
 
@@ -82,12 +78,10 @@ No.
 
 ## Where are advanced and commercial plans?
 
-They are intentionally maintained in ignored private documentation and are not
-summarized publicly. Public pages must not tease, name, or link those plans
-before an explicit publication decision.
+They remain private. See [Private documentation policy](PRIVATE-DOCUMENTATION-POLICY.md).
 
 ## How do I report a problem?
 
-Use the issue template for ordinary bugs and the private security channel for
-vulnerabilities. Redact credentials, real host/account data, shell history,
-machine-local paths, and private planning material.
+Use issue templates for bugs and the [private security route](../SECURITY.md)
+for vulnerabilities. Remove credentials, host/account details, history, local
+paths, and private planning material before sharing.

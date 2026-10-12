@@ -25,7 +25,7 @@ modified. Linux/macOS keep their native PTY resize behavior.
 
 ## Run ordinary commands
 
-Inside a pane, use tools exactly as in that shell:
+Run normal shell commands in a pane:
 
 ```text
 git status
@@ -33,9 +33,8 @@ cargo test
 ssh example-host
 ```
 
-The same rule applies to Python, FFmpeg, database clients, build tools, and
-project scripts. If an expression uses pipes, redirects, globs, command
-substitution, functions, or environment expansion, enter it in the shell.
+Run scripts and other tools normally. Enter pipes, redirects, globs, command
+substitution, functions, and environment expansion in the shell.
 
 ## Search from the command line
 
@@ -58,8 +57,7 @@ shortcuts and automation.
 
 ## Command palette
 
-Open the palette with the documented platform shortcut. Use it when an action is
-infrequent, its shortcut is unknown, or compact layout hides a control.
+Open the palette to find actions, look up shortcuts, or reach hidden controls.
 
 Choose a category with the arrows and Enter, or click it. The first command is
 selected; the Back row is one Up away. The fixed header Back button stays
@@ -74,9 +72,8 @@ focus target.
 
 ## Session-only shell integration
 
-Automexia can provide bounded prompt lifecycle metadata, path/status
-presentation, command-boundary navigation, and object-preserving enhanced
-listings while hosting the real shell.
+Shell integration can show prompt metadata, paths and status, mark command
+boundaries, and decorate listings without changing piped objects.
 
 Normal launch uses session-only integration. Persistent profile changes are not
 required for ordinary Automexia sessions.
@@ -93,10 +90,8 @@ outside normal Automexia launch. Session-only behavior is the preferred default.
 Use the documented previous/next-command shortcuts or palette actions to move
 the selected pane between retained semantic command boundaries.
 
-This is viewport navigation, not shell history. It does not alter the editable
-line, submit input, rerun a command, or move another pane. A shell that emits no
-supported prompt markers remains unchanged rather than being parsed
-heuristically.
+Navigation scrolls the selected pane. It does not edit input, submit or rerun
+commands, or move other panes. Without supported prompt markers, it does nothing.
 
 ## Last-command actions
 

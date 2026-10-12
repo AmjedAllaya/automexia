@@ -98,6 +98,3 @@ accessibility; resource bounds; and final cleanup.
 See [Shell integration](../SHELL-INTEGRATION.md),
 [Shell productivity](../COMMAND-PRODUCTIVITY.md), and
 [Commands and shell workflows](../user-guide/commands-and-shell.md).
-
-Unreleased advanced command features and commercial plans are maintained
-privately and are not public commitments.
