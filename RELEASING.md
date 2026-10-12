@@ -25,8 +25,14 @@ Later stable versions use `vX.Y.Z`. Other prerelease spellings are rejected.
 `release/0.0.1-alpha` (or stable `release/X.Y.Z`) PR merges into protected `main`.
 Pushing a tag alone does not publish. Merge release infrastructure changes
 separately first: the release PR gate rejects changes to workflows, packaging,
-release helpers and shell integration. Native OS gates, required independent
-review, source provenance and signing remain mandatory for this alpha.
+release helpers and shell integration. That production channel retains its
+independent review, provenance and signing requirements. The owner-authorized first alpha can instead use the explicitly
+unsigned [first-alpha channel](docs/public-release/FIRST-ALPHA-NOTES.md) in
+`.github/workflows/first-alpha.yml`. It requires native quality, packaging and
+reproducibility gates, publishes only `0.0.1_alpha`, and cannot publish a stable
+version. Windows is unsigned; macOS uses ad-hoc code signatures for execution
+but is not notarized. Signed checksums bind the final packages and disclosures.
+No OS trust or stable/long-duration certification is implied.
 
 All eleven packages must be present: four Windows assets, six Linux assets and
 one universal macOS DMG. Final verifiers download only their own platform's
@@ -243,3 +249,13 @@ The application release version is independent of the maintained Rio libraries.
 Those internal libraries retain their `0.4.0` identity and existing dependency
 review requirements; preparing an Automexia alpha must not relabel them as new
 registry releases or create replacement audit exemptions.
+
+## Dispatching the first alpha
+
+After the workflow implementation has passed CI and merged to main, run
+`first-alpha.yml` from main with `acknowledgement=unsigned-first-alpha`.
+Leave `publish=false` for a complete package rehearsal; select `publish=true`
+for the authorized release. Both run all native and reproducibility gates.
+Publication checks current main again immediately before publishing, rejects
+an existing release, and never replaces an artifact or moves an existing tag.
+The resulting prerelease contains all eleven packages and verified metadata.

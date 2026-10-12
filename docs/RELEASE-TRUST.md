@@ -277,3 +277,20 @@ gate because it requires signed artifacts, an enabled current Defender engine,
 and the expected public publisher. Apple notarization likewise requires Apple
 credentials and a native macOS release host. Local source tests cannot replace
 either external trust decision.
+
+## Owner-authorized first alpha
+
+The fixed `0.0.1_alpha` prerelease has an explicit unsigned distribution mode
+under `.github/workflows/first-alpha.yml`. This exception does not apply to
+production/stable release gates above. It retains native build, final package,
+reproducibility, dependency, accessibility and visual CI gates. Windows
+packages have no publisher signature. The universal macOS application has
+ad-hoc execution signatures and no Apple notarization. Neither is represented
+as OS-trusted. A minisign signature authenticates SHA256SUMS, including the
+manifest with its source identity, asset hashes and signing disclosures.
+
+The workflow accepts only the exact first-alpha version, requires owner
+acknowledgement and current main for publication, and never updates Latest.
+Build and native-test jobs have no signing credentials. Failed or skipped
+platform gates block every public upload. See the
+[first-alpha notes](public-release/FIRST-ALPHA-NOTES.md) for user limitations.

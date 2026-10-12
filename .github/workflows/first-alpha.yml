@@ -1,0 +1,1167 @@
+name: First alpha release
+run-name: First alpha · ${{ github.ref_name }} · publish=${{ inputs.publish }}
+'on':
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the verified 0.0.1_alpha prerelease from main
+        type: boolean
+        default: false
+      acknowledgement:
+        description: Enter unsigned-first-alpha to accept unsigned Windows and non-notarized macOS packages
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: first-alpha-${{ github.repository }}
+  cancel-in-progress: false
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+  RUSTUP_TOOLCHAIN: '1.96.1'
+  AUTOMEXIA_LINUX_GLIBC_MAX: '2.35'
+  AUTOMEXIA_RELEASE_COMMIT: ${{ github.sha }}
+jobs:
+  preflight:
+    name: Authorize exact first-alpha source and branding
+    if: github.repository == 'AmjedAllaya/automexia' && github.actor == github.repository_owner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      commit: ${{ steps.identity.outputs.commit }}
+      version: ${{ steps.identity.outputs.version }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - name: Validate fixed version, source and owner acknowledgement
+      shell: bash
+      run: |
+        set -euo pipefail
+        [[ "$ACKNOWLEDGEMENT" == unsigned-first-alpha ]]
+        [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+        [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+        python3 - <<'PY'
+        import tomllib
+        from pathlib import Path
+        version = tomllib.loads(Path('Cargo.toml').read_text())['workspace']['package']['version']
+        if version != '0.0.1-alpha':
+            raise SystemExit('first-alpha workflow cannot publish another version')
+        PY
+        if [[ "$PUBLISH" == true ]]; then
+          [[ "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" == true ]]
+          main_commit="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          python tools/ci/first_alpha.py authorize --commit "$GITHUB_SHA" --main "$main_commit" --ref "$GITHUB_REF" --acknowledgement "$ACKNOWLEDGEMENT"
+        fi
+        python tools/ci/first_alpha.py brand > "$RUNNER_TEMP/first-alpha-brand.json"
+        printf 'commit=%s
+        version=0.0.1-alpha
+        ' "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+      id: identity
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ACKNOWLEDGEMENT: ${{ inputs.acknowledgement }}
+        PUBLISH: ${{ inputs.publish }}
+  release-quality:
+    name: Release quality and dependency gate
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+    - name: Check out exact release source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.preflight.outputs.commit }}
+        persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - name: Install pinned Python policy dependency
+      run: python -m pip install --disable-pip-version-check --no-input PyYAML==6.0.3
+    - name: Check first-alpha policy and regressions
+      shell: bash
+      run: |
+        set -euo pipefail
+        python tools/ci/first_alpha.py check-workflow
+        python tools/ci/test_first_alpha.py
+        python tools/ci/test_release_identity.py
+        python tools/ci/test_release_manifest.py
+        python tools/ci/test_stable_release.py
+        python tools/ci/repository_protection.py check
+        python .github/scripts/check_action_pins.py
+        python .github/scripts/check_free_plan_contract.py
+    - name: Install pinned Rust toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
+        python tools/ci/rust_toolchain.py verify --kind development
+    - name: Install native Linux build dependencies
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev
+        libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish
+    - name: Install pinned release quality tools
+      uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+      with:
+        tool: cargo-nextest@0.9.137,cargo-audit@0.22.0,cargo-deny@0.20.2
+    - name: Formatting
+      run: cargo fmt --all -- --check
+    - name: Clippy
+      run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+    - name: Full workspace tests
+      run: cargo nextest run --workspace --all-features --locked --profile ci
+    - name: Documentation tests
+      run: cargo test --workspace --all-features --doc --locked
+    - name: RustSec audit
+      run: cargo audit --deny warnings
+    - name: Dependency/license/source policy
+      run: cargo deny --locked --color never check --hide-inclusion-graph
+    - name: Shell integration contracts
+      run: bash tools/ci/test_shell_sources.sh
+  native-platform-qa:
+    name: Native platform accessibility, session and visual QA
+    needs: preflight
+    uses: ./.github/workflows/accessibility-native.yml
+    permissions:
+      contents: read
+  build:
+    name: Build native release binaries
+    needs:
+    - preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - os: windows-2025
+          expected_runner_arch: X64
+          target: x86_64-pc-windows-msvc
+          artifact: windows-x86_64
+        - os: windows-11-arm
+          expected_runner_arch: ARM64
+          target: aarch64-pc-windows-msvc
+          artifact: windows-arm64
+        - os: macos-26-intel
+          expected_runner_arch: X64
+          target: x86_64-apple-darwin
+          artifact: macos-x86_64
+        - os: macos-26
+          expected_runner_arch: ARM64
+          target: aarch64-apple-darwin
+          artifact: macos-arm64
+        - os: ubuntu-22.04
+          expected_runner_arch: X64
+          target: x86_64-unknown-linux-gnu
+          artifact: linux-x86_64
+        - os: ubuntu-22.04-arm
+          expected_runner_arch: ARM64
+          target: aarch64-unknown-linux-gnu
+          artifact: linux-arm64
+    runs-on: ${{ matrix.os }}
+    env:
+      AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.preflight.outputs.commit }}
+    - name: Install Linux build dependencies
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y binutils glslang-tools libasound2-dev libfontconfig1-dev
+        libxkbcommon-dev libwayland-dev libx11-xcb-dev
+    - name: Require the intended native architecture
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$RUNNER_ARCH" = "${{ matrix.expected_runner_arch }}"
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - name: Install pinned Rust toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+        python tools/ci/rust_toolchain.py verify --kind development
+    - run: rustup target add ${{ matrix.target }}
+    - name: Build native release artifact
+      shell: bash
+      run: python tools/ci/reproducible_build.py --build-once --target "${{ matrix.target }}"
+    - name: Native version smoke
+      shell: bash
+      run: |
+        set -euo pipefail
+        binary="target/${{ matrix.target }}/release/automexia"
+        [[ "$RUNNER_OS" == "Windows" ]] && binary="${binary}.exe"
+        "$binary" --version | grep -F "$AUTOMEXIA_VERSION"
+    - name: Enforce GNU/Linux glibc compatibility contract
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        binary="target/${{ matrix.target }}/release/automexia"
+        mkdir -p "dist/${{ matrix.artifact }}"
+        report="dist/${{ matrix.artifact }}/GLIBC_COMPATIBILITY.txt"
+        required=$(readelf --version-info "$binary" | grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' | sed 's/^GLIBC_//' | sort -Vu | tail -n 1 || true)
+        if [[ -z "$required" ]]; then
+          echo 'Could not determine required GLIBC symbol version.' >&2
+          exit 1
+        fi
+        ldd_output=$(ldd "$binary" 2>&1 || true)
+        {
+          echo "target=${{ matrix.target }}"
+          echo "runner=${{ matrix.os }}"
+          echo "maximum_allowed_glibc=$AUTOMEXIA_LINUX_GLIBC_MAX"
+          echo "maximum_required_glibc=$required"
+          echo
+          echo 'ELF dynamic dependencies:'
+          readelf -d "$binary" | grep NEEDED || true
+          echo
+          echo 'Runtime dependency resolution on the native build runner:'
+          printf '%s\n' "$ldd_output"
+        } | tee "$report"
+        newest=$(printf '%s\n%s\n' "$required" "$AUTOMEXIA_LINUX_GLIBC_MAX" | sort -V | tail -n 1)
+        if [[ "$newest" != "$AUTOMEXIA_LINUX_GLIBC_MAX" ]]; then
+          echo "Linux artifact requires GLIBC_$required, newer than the supported GLIBC_$AUTOMEXIA_LINUX_GLIBC_MAX ceiling." >&2
+          exit 1
+        fi
+        if grep -q 'not found' <<<"$ldd_output"; then
+          echo 'Native Linux artifact has unresolved shared-library dependencies.' >&2
+          exit 1
+        fi
+    - name: Stage portable artifact
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "dist/${{ matrix.artifact }}"
+        for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
+          binary="target/${{ matrix.target }}/release/$runtime"
+          [[ "$RUNNER_OS" == "Windows" ]] && binary="${binary}.exe"
+          test -f "$binary"
+          cp "$binary" "dist/${{ matrix.artifact }}/"
+        done
+
+        cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md README.md "dist/${{ matrix.artifact }}/"
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: ${{ matrix.artifact }}
+        path: dist
+        if-no-files-found: error
+    timeout-minutes: 90
+    permissions:
+      contents: read
+  reproducibility-desktop:
+    name: Verify Windows and macOS unsigned runtime reproducibility
+    needs:
+    - preflight
+    - release-quality
+    - build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - runner: windows-2025
+          runner_arch: X64
+          target: x86_64-pc-windows-msvc
+          artifact: windows-x86_64
+        - runner: windows-11-arm
+          runner_arch: ARM64
+          target: aarch64-pc-windows-msvc
+          artifact: windows-arm64
+        - runner: macos-26-intel
+          runner_arch: X64
+          target: x86_64-apple-darwin
+          artifact: macos-x86_64
+        - runner: macos-26
+          runner_arch: ARM64
+          target: aarch64-apple-darwin
+          artifact: macos-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    permissions:
+      contents: read
+    steps:
+    - name: Check out exact release source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.preflight.outputs.commit }}
+        persist-credentials: false
+    - name: Download exact unsigned package inputs
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ matrix.artifact }}
+        path: reference
+    - name: Require native runner architecture
+      shell: bash
+      run: test "$RUNNER_ARCH" = "${{ matrix.runner_arch }}"
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - name: Install pinned Rust toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+        rustup target add "${{ matrix.target }}" --toolchain "$RUSTUP_TOOLCHAIN"
+        python tools/ci/rust_toolchain.py verify --kind development
+    - name: Verify two independent cold source builds
+      shell: bash
+      run: |
+        python tools/ci/reproducible_build.py "trust/evidence/reproducibility-${{ matrix.target }}.json" --target "${{ matrix.target }}" --reference "reference/${{ matrix.artifact }}"
+    - name: Upload cold-build reproducibility evidence
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-reproducibility-${{ matrix.target }}
+        path: trust/evidence/reproducibility-${{ matrix.target }}.json
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+  reproducibility-linux:
+    name: Verify Linux release reproducibility
+    needs:
+    - preflight
+    - release-quality
+    - build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - runner: ubuntu-22.04
+          arch: x86_64
+          runner_arch: X64
+          target: x86_64-unknown-linux-gnu
+          artifact: linux-x86_64
+        - runner: ubuntu-22.04-arm
+          arch: aarch64
+          runner_arch: ARM64
+          target: aarch64-unknown-linux-gnu
+          artifact: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+    - name: Check out exact release source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.preflight.outputs.commit }}
+        persist-credentials: false
+    - name: Download exact unsigned package inputs
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ matrix.artifact }}
+        path: reference
+    - name: Require native runner architecture
+      shell: bash
+      run: test "$RUNNER_ARCH" = "${{ matrix.runner_arch }}"
+    - name: Install native build dependencies
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential pkg-config glslang-tools
+        libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev binutils
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - name: Install pinned Rust toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+        rustup target add "${{ matrix.target }}" --toolchain "$RUSTUP_TOOLCHAIN"
+        python tools/ci/rust_toolchain.py verify --kind development
+    - name: Verify two independent cold source builds
+      shell: bash
+      run: |
+        set -euo pipefail
+        tools/ci/check_reproducible_build.sh \
+          "trust/evidence/reproducibility-${{ matrix.arch }}.json" "reference/${{ matrix.artifact }}"
+    - name: Upload cold-build reproducibility evidence
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-reproducibility-${{ matrix.arch }}
+        path: trust/evidence/reproducibility-${{ matrix.arch }}.json
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+  package-linux:
+    name: Package Linux release artifacts
+    needs:
+    - preflight
+    - build
+    runs-on: ${{ matrix.os }}
+    env:
+      AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - artifact: linux-x86_64
+          os: ubuntu-22.04
+          expected_runner_arch: X64
+          arch: amd64
+          target: x86_64-unknown-linux-gnu
+        - artifact: linux-arm64
+          os: ubuntu-22.04-arm
+          expected_runner_arch: ARM64
+          arch: arm64
+          target: aarch64-unknown-linux-gnu
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.preflight.outputs.commit }}
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ matrix.artifact }}
+        path: staged
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - name: Install pinned Rust toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+        python tools/ci/rust_toolchain.py verify --kind development
+    - name: Require the intended native architecture
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$RUNNER_ARCH" = "${{ matrix.expected_runner_arch }}"
+    - name: Install Linux package validators
+      run: sudo apt-get update && sudo apt-get install -y appstream cpio desktop-file-utils lintian ncurses-bin
+        rpm scdoc
+    - name: Install pinned nFPM
+      run: |
+        go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+    - name: Build DEB, RPM, and portable archive
+      shell: bash
+      run: |
+        set -euo pipefail
+        SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+        export SOURCE_DATE_EPOCH
+        target_dir="target/${{ matrix.target }}/release"
+        mkdir -p "$target_dir"
+        for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
+          binary="staged/${{ matrix.artifact }}/$runtime"
+          test -f "$binary"
+          cp "$binary" "$target_dir/$runtime"
+          chmod 0755 "$target_dir/$runtime"
+        done
+        "$target_dir/automexia" --version | grep -F "$AUTOMEXIA_VERSION"
+        "$target_dir/amx" --version | grep -F "$AUTOMEXIA_VERSION"
+        export AUTOMEXIA_PACKAGE_SKIP_BUILD=1
+        cargo xtask package --target "${{ matrix.target }}"
+        package_dir="target/package/${{ matrix.target }}"
+        desktop-file-validate packaging/linux/automexia-terminal.desktop
+        appstreamcli validate --no-net packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml
+        lintian "$package_dir"/*.deb
+    - name: Clean install, metadata, and uninstall smoke
+      run: bash tools/ci/test_linux_package.sh "target/package/${{ matrix.target }}" "$AUTOMEXIA_VERSION"
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: packages-${{ matrix.artifact }}
+        path: |
+          target/package/${{ matrix.target }}/*.deb
+          target/package/${{ matrix.target }}/*.rpm
+          target/package/${{ matrix.target }}/*.tar.gz
+        if-no-files-found: error
+    timeout-minutes: 90
+    permissions:
+      contents: read
+  assemble-macos:
+    name: Assemble unsigned macOS universal app
+    needs:
+    - preflight
+    - build
+    runs-on: macos-26
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+    - name: Check out exact release source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.preflight.outputs.commit }}
+    - name: Download Intel slice
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: macos-x86_64
+        path: staged/x86_64
+    - name: Download Apple Silicon slice
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: macos-arm64
+        path: staged/arm64
+    - name: Assemble and smoke-test unsigned universal app
+      shell: bash
+      run: |
+        set -euo pipefail
+        app='dist/Automexia Terminal.app'
+        mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+        for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
+          x64="staged/x86_64/macos-x86_64/$runtime"
+          arm="staged/arm64/macos-arm64/$runtime"
+          test -f "$x64" && test -f "$arm"
+          lipo -create "$x64" "$arm" -output "$app/Contents/MacOS/$runtime"
+          chmod 0755 "$app/Contents/MacOS/$runtime"
+          lipo -verify_arch x86_64 arm64 "$app/Contents/MacOS/$runtime"
+          file "$app/Contents/MacOS/$runtime" | grep -F 'universal binary'
+          codesign --force --sign - "$app/Contents/MacOS/$runtime"
+        done
+        python3 tools/ci/release_identity.py plist "$AUTOMEXIA_VERSION" \
+          --template packaging/macos/Info.plist --output "$app/Contents/Info.plist"
+        cp assets/brand/automexia-terminal.icns "$app/Contents/Resources/automexia-terminal.icns"
+        cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md "$app/Contents/Resources/"
+        cp README.md "$app/Contents/Resources/"
+        cp -R shell-integration "$app/Contents/Resources/shell-integration"
+        "$app/Contents/MacOS/automexia" --version | grep -F "$AUTOMEXIA_VERSION"
+        "$app/Contents/MacOS/amx" --version | grep -F "$AUTOMEXIA_VERSION"
+        tar -C dist -czf "$RUNNER_TEMP/unsigned-macos-app.tar.gz" 'Automexia Terminal.app'
+    - name: Upload unsigned app for isolated signing
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: unsigned-macos-universal-app
+        path: ${{ runner.temp }}/unsigned-macos-app.tar.gz
+        if-no-files-found: error
+        retention-days: 2
+        compression-level: 0
+  verify-linux-final:
+    name: Verify final Linux packages
+    needs:
+    - package-linux
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - runner: ubuntu-24.04
+          arch: x86_64
+          artifact: packages-linux-x86_64
+          needle_regex: (x86_64|amd64)
+        - runner: ubuntu-24.04-arm
+          arch: aarch64
+          artifact: packages-linux-arm64
+          needle_regex: (aarch64|arm64)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+    - name: Download release artifacts
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ matrix.artifact }}
+        path: artifacts
+    - name: Install package inspection tools
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils rpm cpio
+    - name: Verify tar, DEB and RPM assets
+      shell: bash
+      env:
+        TARGET_REGEX: ${{ matrix.needle_regex }}
+      run: |
+        set -euo pipefail
+        mapfile -t tars < <(find artifacts -type f \( -name '*.tar.gz' -o -name '*.tgz' \) | grep -Ei "$TARGET_REGEX")
+        mapfile -t debs < <(find artifacts -type f -name '*.deb' | grep -Ei "$TARGET_REGEX")
+        mapfile -t rpms < <(find artifacts -type f -name '*.rpm' | grep -Ei "$TARGET_REGEX")
+        (( ${#tars[@]} == 1 )) || { echo 'No target tarball found' >&2; exit 1; }
+        (( ${#debs[@]} == 1 )) || { echo 'No target DEB found' >&2; exit 1; }
+        (( ${#rpms[@]} == 1 )) || { echo 'No target RPM found' >&2; exit 1; }
+
+        work="$(mktemp -d)"
+        trap 'rm -rf "$work"' EXIT
+        tar -xzf "${tars[0]}" -C "$work"
+        bin="$(find "$work" -type f -perm -111 -name 'automexia' -print -quit)"
+        test -n "$bin"
+        file "$bin"
+        "$bin" --version
+        max_glibc="$(readelf --version-info "$bin" | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -Vu | tail -1 || true)"
+        python3 - "$max_glibc" <<'PY2'
+        import re, sys
+        v=sys.argv[1]
+        if v:
+            major, minor = map(int, re.search(r'(\d+)\.(\d+)', v).groups())
+            if (major, minor) > (2, 35):
+                raise SystemExit(f'ELF requires {v}; supported baseline ceiling is GLIBC_2.35')
+        PY2
+
+        dpkg-deb --info "${debs[0]}" >/dev/null
+        rpm -qpl "${rpms[0]}" >/dev/null
+        sudo apt-get install -y "${debs[0]}"
+        installed="$(command -v automexia || command -v automexia-terminal || true)"
+        if [[ -z "$installed" ]]; then
+          installed="$(find /usr/bin /usr/local/bin -maxdepth 1 -type f -name 'automexia' -print -quit)"
+        fi
+        test -n "$installed"
+        "$installed" --version
+  package-windows:
+    name: Package explicitly unsigned first-alpha Windows MSI and ZIP
+    needs:
+    - preflight
+    - build
+    runs-on: windows-2025
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - artifact: windows-x86_64
+          target: x86_64-pc-windows-msvc
+        - artifact: windows-arm64
+          target: aarch64-pc-windows-msvc
+    steps:
+    - name: Check out exact release source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.preflight.outputs.commit }}
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ matrix.artifact }}
+        path: staged
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - name: Install pinned Rust and packager toolchain
+      shell: pwsh
+      run: |
+        rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
+        if ($LASTEXITCODE -ne 0) { throw 'rustup toolchain install failed' }
+        python tools/ci/rust_toolchain.py verify --kind development
+        if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
+    - name: Install pinned cargo-packager
+      uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+      with:
+        tool: cargo-packager@0.11.8
+    - name: Restore exact native build inputs
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $target = "target/${{ matrix.target }}/release"
+        New-Item -ItemType Directory -Force -Path $target | Out-Null
+        foreach ($runtime in @('automexia.exe','amx.exe','automexia-suggestion-helper.exe','automexia-ssh-helper.exe')) {
+          Copy-Item -LiteralPath "staged/${{ matrix.artifact }}/$runtime" -Destination (Join-Path $target $runtime)
+        }
+    - name: Build MSI and portable ZIP with no signing credentials present
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $env:AUTOMEXIA_PACKAGE_SKIP_BUILD = '1'
+        cargo xtask package --target ${{ matrix.target }}
+        if ($LASTEXITCODE -ne 0) { throw 'cargo xtask package failed' }
+        $packageDir = "target/package/${{ matrix.target }}"
+        $msi = @(Get-ChildItem $packageDir -File -Filter *.msi)
+        $zip = @(Get-ChildItem $packageDir -File -Filter *.zip)
+        if ($msi.Count -ne 1) { throw "expected one MSI, found $($msi.Count)" }
+        if ($zip.Count -ne 1) { throw "expected one ZIP, found $($zip.Count)" }
+        New-Item -ItemType Directory -Force unsigned | Out-Null
+        Copy-Item $msi[0].FullName "unsigned/automexia-terminal-$env:AUTOMEXIA_VERSION-${{ matrix.target }}.msi"
+        Copy-Item $zip[0].FullName "unsigned/automexia-terminal-$env:AUTOMEXIA_VERSION-${{ matrix.target }}.zip"
+    - name: Upload final unsigned Windows alpha packages
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: packages-${{ matrix.artifact }}
+        path: |
+          unsigned/*.msi
+          unsigned/*.zip
+        if-no-files-found: error
+        retention-days: 2
+        compression-level: 0
+  package-macos:
+    name: Package ad-hoc signed first-alpha universal macOS DMG
+    needs:
+    - preflight
+    - assemble-macos
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: unsigned-macos-universal-app
+        path: staged
+    - name: Sign for local execution and build non-notarized DMG
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p dist packages
+        app='dist/Automexia Terminal.app'
+        tar -xzf staged/unsigned-macos-app.tar.gz -C dist
+        for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
+          codesign --force --sign - "$app/Contents/MacOS/$runtime"
+        done
+        codesign --force --sign - "$app"
+        codesign --verify --deep --strict "$app"
+        codesign -dv "$app" 2>&1 | grep -F 'Signature=adhoc'
+        hdiutil create -volname 'Automexia Terminal Alpha' -srcfolder dist -ov -format UDZO packages/automexia-terminal-0.0.1-alpha-universal.dmg
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: packages-macos-universal
+        path: packages/*.dmg
+        if-no-files-found: error
+  verify-windows-final:
+    name: Verify unsigned Windows alpha packages on each native architecture
+    needs:
+    - preflight
+    - package-windows
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - runner: windows-2025
+          runner_arch: X64
+          arch: x86_64
+          artifact: packages-windows-x86_64
+        - runner: windows-11-arm
+          runner_arch: ARM64
+          arch: aarch64
+          artifact: packages-windows-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+    - name: Check out exact Windows verification source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.preflight.outputs.commit }}
+    - name: Download exact final Windows package
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ matrix.artifact }}
+        path: artifacts
+    - name: Verify, execute, install, and uninstall exact final package
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        if ($env:RUNNER_ARCH -ne '${{ matrix.runner_arch }}') { throw "wrong runner architecture: $env:RUNNER_ARCH" }
+        $work = Join-Path $env:RUNNER_TEMP ('automexia-final-windows-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $work | Out-Null
+        $zip = @(Get-ChildItem artifacts -File -Filter *.zip)
+        $msi = @(Get-ChildItem artifacts -File -Filter *.msi)
+        if ($zip.Count -ne 1 -or $msi.Count -ne 1) { throw 'expected exactly one final MSI and ZIP' }
+
+        $msiSig = Get-AuthenticodeSignature -LiteralPath $msi[0].FullName
+        if ($msiSig.Status -ne 'NotSigned') { throw "MSI signature is $($msiSig.Status)" }
+
+        $portable = Join-Path $work 'portable'
+        Expand-Archive -LiteralPath $zip[0].FullName -DestinationPath $portable -Force
+        . ./tools/ci/windows_conpty_trust.ps1
+        Assert-ConPtyRuntime -Root $portable -Architecture '${{ matrix.arch }}' | Out-Null
+        foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe', 'automexia-ssh-helper.exe')) {
+          $exe = Get-Item -LiteralPath (Join-Path $portable $runtime)
+          $exeSig = Get-AuthenticodeSignature -LiteralPath $exe.FullName
+          if ($exeSig.Status -ne 'NotSigned') { throw "portable executable signature is $($exeSig.Status): $runtime" }
+        }
+        foreach ($runtime in @('automexia.exe', 'amx.exe')) {
+          & (Join-Path $portable $runtime) --version
+          if ($LASTEXITCODE -ne 0) { throw "final portable executable smoke failed: $runtime" }
+        }
+
+        $log = Join-Path $work 'msi-install.log'
+        $install = Start-Process msiexec.exe -WindowStyle Hidden -ArgumentList @('/i', "`"$($msi[0].FullName)`"", '/qn', '/norestart', '/l*v', "`"$log`"") -Wait -PassThru
+        if ($install.ExitCode -notin 0, 3010) { throw "MSI install failed with $($install.ExitCode); see $log" }
+        try {
+          $roots = @($env:ProgramFiles, [Environment]::GetFolderPath('ProgramFilesX86'), $env:LOCALAPPDATA) | Where-Object { $_ -and (Test-Path $_) }
+          $installed = @(foreach ($root in $roots) {
+            Get-ChildItem $root -Recurse -File -Filter automexia.exe -ErrorAction SilentlyContinue
+          }) | Select-Object -First 1
+          if (-not $installed) { throw 'installed Automexia executable not found' }
+          Assert-ConPtyRuntime -Root $installed.DirectoryName -Architecture '${{ matrix.arch }}' | Out-Null
+          foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe', 'automexia-ssh-helper.exe')) {
+            $exe = Get-Item -LiteralPath (Join-Path $installed.DirectoryName $runtime)
+            $installedSig = Get-AuthenticodeSignature -LiteralPath $exe.FullName
+            if ($installedSig.Status -ne 'NotSigned') { throw "installed executable signature is $($installedSig.Status): $runtime" }
+          }
+          foreach ($runtime in @('automexia.exe', 'amx.exe')) {
+            & (Join-Path $installed.DirectoryName $runtime) --version
+            if ($LASTEXITCODE -ne 0) { throw "installed executable smoke failed: $runtime" }
+          }
+        } finally {
+          $uninstall = Start-Process msiexec.exe -WindowStyle Hidden -ArgumentList @('/x', "`"$($msi[0].FullName)`"", '/qn', '/norestart') -Wait -PassThru
+          if ($uninstall.ExitCode -notin 0, 1605, 3010) { throw "MSI uninstall failed with $($uninstall.ExitCode)" }
+        }
+  verify-macos-final:
+    name: Verify ad-hoc universal DMG on Intel and Apple Silicon
+    needs:
+    - package-macos
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - runner: macos-26
+          arch: arm64
+        - runner: macos-26-intel
+          arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+    - name: Download release artifacts
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: packages-macos-universal
+        path: artifacts
+    - name: Mount and execute the exact non-notarized alpha DMG
+      shell: bash
+      run: |
+        set -euo pipefail
+        dmg="$(find artifacts -type f -name '*.dmg' -print -quit)"
+        test -n "$dmg"
+        mount_dir="$(mktemp -d)"
+        cleanup() { hdiutil detach "$mount_dir" -quiet >/dev/null 2>&1 || true; rmdir "$mount_dir" >/dev/null 2>&1 || true; }
+        trap cleanup EXIT
+        hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount_dir"
+        app="$(find "$mount_dir" -maxdepth 2 -type d -name '*.app' -print -quit)"
+        test -n "$app"
+        codesign --verify --deep --strict --verbose=4 "$app"
+        codesign -dv "$app" 2>&1 | grep -F 'Signature=adhoc'
+        for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
+          bin="$app/Contents/MacOS/$runtime"
+          test -x "$bin"
+          lipo -verify_arch x86_64 arm64 "$bin"
+          codesign --verify --strict --verbose=4 "$bin"
+        done
+        "$app/Contents/MacOS/automexia" --version
+        "$app/Contents/MacOS/amx" --version
+  final-gate:
+    name: Require every first-alpha platform and quality gate
+    needs:
+    - preflight
+    - release-quality
+    - native-platform-qa
+    - verify-windows-final
+    - verify-macos-final
+    - verify-linux-final
+    - reproducibility-linux
+    - reproducibility-desktop
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.preflight.outputs.commit }}
+        persist-credentials: false
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - name: Reject failed, cancelled or skipped required evidence
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf '%s' "$NEEDS_JSON" > "$RUNNER_TEMP/alpha-gates.json"
+        python tools/ci/first_alpha.py gate --file "$RUNNER_TEMP/alpha-gates.json"
+      env:
+        NEEDS_JSON: ${{ toJSON(needs) }}
+  publish:
+    needs:
+    - preflight
+    - package-windows
+    - package-macos
+    - package-linux
+    - final-gate
+    - reproducibility-linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+    - name: Check out exact release source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.preflight.outputs.commit }}
+    - name: Download final package artifacts
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        pattern: packages-*
+        path: packages
+        merge-multiple: false
+    - name: Copy and validate exact package allowlist
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p release-assets sbom-raw sbom-input/packages
+        python3 .github/scripts/build_release_manifest.py \
+          --source packages \
+          --output release-assets \
+          --version "${{ needs.preflight.outputs.version }}" \
+          --commit "${{ needs.preflight.outputs.commit }}" \
+          --copy-packages
+        find release-assets -maxdepth 1 -type f \( -name '*.msi' -o -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.tar.gz' -o -name '*.tgz' \) -exec cp {} sbom-input/packages/ \;
+        cp Cargo.lock sbom-input/Cargo.lock
+    - name: Generate SPDX SBOM
+      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
+      with:
+        path: sbom-input
+        format: spdx-json
+        output-file: sbom-raw/automexia-terminal.spdx.json
+        upload-artifact: false
+    - name: Generate CycloneDX SBOM
+      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
+      with:
+        path: sbom-input
+        format: cyclonedx-json
+        output-file: sbom-raw/automexia-terminal.cdx.json
+        upload-artifact: false
+    - name: Bind pinned Microsoft transport to both SBOM formats
+      run: |
+        set -euo pipefail
+        python3 .github/scripts/build_release_manifest.py \
+          --source sbom-raw --output release-assets --scan-root sbom-input \
+          --version "${{ needs.preflight.outputs.version }}" \
+          --commit "${{ needs.preflight.outputs.commit }}" --prepare-sbom
+    - name: Finalize release manifest and SHA-256 checksums
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 .github/scripts/build_release_manifest.py \
+          --source release-assets \
+          --output release-assets \
+          --version "${{ needs.preflight.outputs.version }}" \
+          --commit "${{ needs.preflight.outputs.commit }}" \
+          --include-sbom
+        python tools/ci/first_alpha.py manifest --file release-assets/release-manifest.json
+        checksum_manifest="$(mktemp "$RUNNER_TEMP/automexia-sha256.XXXXXX")"
+        trap 'rm -f -- "$checksum_manifest"' EXIT
+        (
+          cd release-assets
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\0' | sort -z | xargs -0 sha256sum > "$checksum_manifest"
+          sha256sum -c "$checksum_manifest"
+          mv "$checksum_manifest" SHA256SUMS
+        )
+        trap - EXIT
+    - name: Upload immutable publication bundle
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-publish-bundle
+        path: |
+          release-assets/*.msi
+          release-assets/*.zip
+          release-assets/*.dmg
+          release-assets/*.deb
+          release-assets/*.rpm
+          release-assets/*.tar.gz
+          release-assets/*.tgz
+          release-assets/*.spdx.json
+          release-assets/*.cdx.json
+          release-assets/SHA256SUMS
+          release-assets/release-manifest.json
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+    if: ${{ needs.final-gate.result == 'success' }}
+    name: Prepare exact alpha package inventory, SBOM and disclosures
+  sign-release-bundle:
+    name: Sign release checksum manifest
+    needs:
+    - publish
+    - preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+    - name: Download verified publication bundle
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: release-publish-bundle
+        path: bundle
+    - name: Verify bundle and install distro-trusted minisign
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd bundle
+        sha256sum -c SHA256SUMS
+        cd ..
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends minisign
+        minisign -v
+    - name: Sign SHA256SUMS with isolated release key
+      shell: bash
+      env:
+        RELEASE_MINISIGN_SECRET_KEY: ${{ secrets.AUTOMEXIA_RELEASE_MINISIGN_SECRET_KEY }}
+        RELEASE_MINISIGN_PUBLIC_KEY: ${{ vars.AUTOMEXIA_RELEASE_MINISIGN_PUBLIC_KEY }}
+        VERSION: ${{ needs.preflight.outputs.version }}
+        RELEASE_COMMIT: ${{ needs.preflight.outputs.commit }}
+      run: |
+        set -euo pipefail
+        key="$RUNNER_TEMP/automexia-release.minisign.key"
+        cleanup() { rm -f "$key"; }
+        trap cleanup EXIT
+        umask 077
+        printf '%s' "$RELEASE_MINISIGN_SECRET_KEY" | base64 --decode > "$key"
+        test -s "$key"
+        minisign -S -W -s "$key" \
+          -m bundle/SHA256SUMS \
+          -x bundle/SHA256SUMS.minisig \
+          -t "Automexia Terminal v$VERSION source $RELEASE_COMMIT"
+        minisign -V -P "$RELEASE_MINISIGN_PUBLIC_KEY" \
+          -m bundle/SHA256SUMS \
+          -x bundle/SHA256SUMS.minisig
+    - name: Upload signed immutable publication bundle
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-signed-bundle
+        path: |
+          bundle/*.msi
+          bundle/*.zip
+          bundle/*.dmg
+          bundle/*.deb
+          bundle/*.rpm
+          bundle/*.tar.gz
+          bundle/*.tgz
+          bundle/*.spdx.json
+          bundle/*.cdx.json
+          bundle/SHA256SUMS
+          bundle/SHA256SUMS.minisig
+          bundle/release-manifest.json
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+  publish-release:
+    name: Publish the immutable first alpha with explicit signing status
+    needs:
+    - sign-release-bundle
+    - preflight
+    if: ${{ inputs.publish && github.ref == 'refs/heads/main' && needs.sign-release-bundle.result == 'success' &&
+      needs.preflight.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+    - name: Check out exact source with complete history for provenance validation
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.preflight.outputs.commit }}
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Download verified publication bundle
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: release-signed-bundle
+        path: bundle
+    - name: Create immutable version tag and publish verified release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        VERSION: ${{ needs.preflight.outputs.version }}
+        RELEASE_COMMIT: ${{ needs.preflight.outputs.commit }}
+        ACKNOWLEDGEMENT: ${{ inputs.acknowledgement }}
+        RELEASE_MINISIGN_PUBLIC_KEY: ${{ vars.AUTOMEXIA_RELEASE_MINISIGN_PUBLIC_KEY }}
+      run: |
+        set -euo pipefail
+        tag="$(python3 tools/ci/release_identity.py tag "$VERSION")"
+        prerelease="$(python3 tools/ci/release_identity.py prerelease "$VERSION")"
+        [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+
+        mkdir publish
+        while IFS= read -r -d '' file; do
+          base="$(basename "$file")"
+          case "$base" in
+            *.msi|*.zip|*.dmg|*.deb|*.rpm|*.tar.gz|*.tgz|*.spdx.json|*.cdx.json|SHA256SUMS|SHA256SUMS.minisig|release-manifest.json|*.sig|*.minisig) ;;
+            *) continue ;;
+          esac
+          [[ "$base" != *$'\n'* && "$base" != *$'\r'* ]]
+          if [[ -e "publish/$base" ]]; then
+            cmp --silent "$file" "publish/$base" || { echo "Conflicting duplicate asset: $base" >&2; exit 1; }
+          else
+            cp --no-preserve=mode,ownership "$file" "publish/$base"
+          fi
+        done < <(find bundle -type f -print0)
+
+        test -f publish/SHA256SUMS
+        test -f publish/SHA256SUMS.minisig
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends minisign
+        minisign -V -P "$RELEASE_MINISIGN_PUBLIC_KEY" -m publish/SHA256SUMS -x publish/SHA256SUMS.minisig
+        test -f publish/release-manifest.json
+        python3 tools/ci/first_alpha.py verify-manifest --file publish/release-manifest.json
+        (cd publish && sha256sum -c SHA256SUMS)
+        python3 - "$VERSION" "$RELEASE_COMMIT" "$tag" <<'PY2'
+        import json, sys
+        m=json.load(open('publish/release-manifest.json', encoding='utf-8'))
+        if m.get('version') != sys.argv[1]:
+            raise SystemExit('release-manifest version mismatch')
+        if m.get('source_commit') != sys.argv[2]:
+            raise SystemExit('release-manifest source_commit mismatch')
+        if m.get('tag') != sys.argv[3]:
+            raise SystemExit('release-manifest tag mismatch')
+        if not m.get('artifacts'):
+            raise SystemExit('release-manifest has no artifacts')
+        PY2
+
+        # Require create-once release protection before any public mutation.
+        [[ "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" == true ]]
+
+        # Refuse stale source before creating any public tag or draft.
+        main_commit="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+        python tools/ci/first_alpha.py authorize --commit "$RELEASE_COMMIT" --main "$main_commit" --ref "$GITHUB_REF" --acknowledgement "$ACKNOWLEDGEMENT"
+
+        # Never modify an already-created GitHub Release.
+        if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          echo "Release $tag already exists; refusing mutation" >&2
+          exit 1
+        fi
+
+        # A rerun may safely recover from a previous network failure that created the
+        # exact annotated tag but failed before creating the GitHub Release.
+        if ref_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha' 2>/dev/null)"; then
+          target_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$ref_sha" --jq '.object.sha' 2>/dev/null || printf '%s' "$ref_sha")"
+          [[ "$target_sha" == "$RELEASE_COMMIT" ]] || {
+            echo "Existing tag $tag does not point to the validated release commit" >&2
+            exit 1
+          }
+          echo "Reusing existing exact tag $tag after a partial prior publication attempt."
+        else
+          tag_object="$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" \
+            -f tag="$tag" \
+            -f message="Automexia Terminal $VERSION" \
+            -f object="$RELEASE_COMMIT" \
+            -f type=commit \
+            --jq .sha)"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$tag" \
+            -f sha="$tag_object" >/dev/null
+        fi
+        git fetch --no-tags origin "refs/tags/$tag:refs/tags/$tag"
+        main_commit="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+        python tools/ci/first_alpha.py authorize --commit "$RELEASE_COMMIT" --main "$main_commit" --ref "$GITHUB_REF" --acknowledgement "$ACKNOWLEDGEMENT"
+        [[ "$(git rev-parse "$tag^{commit}")" == "$RELEASE_COMMIT" ]]
+
+        options=()
+        if [[ "$prerelease" == true ]]; then options+=(--prerelease); fi
+        gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --notes-file docs/public-release/FIRST-ALPHA-NOTES.md --title "Automexia Terminal $tag" "${options[@]}"
+        mapfile -d '' assets < <(find publish -maxdepth 1 -type f -print0 | sort -z)
+        (( ${#assets[@]} > 0 ))
+        gh release upload "$tag" --repo "$GITHUB_REPOSITORY" "${assets[@]}"
+        if [[ "$prerelease" == true ]]; then
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
+        else
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+        fi
+        gh release verify "$tag" --repo "$GITHUB_REPOSITORY"
+        for asset in "${assets[@]}"; do
+          gh release verify-asset "$tag" "$asset" --repo "$GITHUB_REPOSITORY"
+        done

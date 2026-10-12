@@ -36,6 +36,7 @@ EXPECTED_WORKFLOWS = {
     "linux-early-access.yml": "Linux Early Access release",
     "nightly.yml": "Deep assurance (manual)",
     "release.yml": "Stable release",
+    "first-alpha.yml": "First alpha release",
     "s1-assurance.yml": "S1 controlled assurance",
     "s2-assurance.yml": "S2 controlled activation",
 }
