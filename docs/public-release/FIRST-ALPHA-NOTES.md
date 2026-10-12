@@ -6,11 +6,27 @@ configuration before trying it. Updates are explicit downloads.
 
 ## Choose your download
 
-- Windows: x86_64 or ARM64, MSI installer or portable ZIP.
-- macOS: universal DMG for Apple Silicon and Intel. Drag the application to
-  Applications; ordinary launch opens a terminal without a setup wizard.
-- Linux: x86_64 or ARM64 DEB, RPM or portable tar.gz. The GNU libc baseline is
-  2.35; required desktop, font and audio libraries still come from your system.
+| Download | Use this when |
+|---|---|
+| [Windows - Intel/AMD 64-bit (x64) - Installer (.msi)](https://github.com/AmjedAllaya/automexia/releases/download/0.0.1_alpha/automexia-terminal-0.0.1-alpha-x86_64-pc-windows-msvc.msi) | Install on an Intel or AMD 64-bit Windows PC (most PCs). |
+| [Windows - Intel/AMD 64-bit (x64) - Portable (.zip)](https://github.com/AmjedAllaya/automexia/releases/download/0.0.1_alpha/automexia-terminal-0.0.1-alpha-x86_64-pc-windows-msvc.zip) | Extract and run on an Intel or AMD 64-bit Windows PC, without installing. |
+| [Windows - ARM64 - Installer (.msi)](https://github.com/AmjedAllaya/automexia/releases/download/0.0.1_alpha/automexia-terminal-0.0.1-alpha-aarch64-pc-windows-msvc.msi) | Install on an ARM-based Windows PC, such as a Snapdragon PC. |
+| [Windows - ARM64 - Portable (.zip)](https://github.com/AmjedAllaya/automexia/releases/download/0.0.1_alpha/automexia-terminal-0.0.1-alpha-aarch64-pc-windows-msvc.zip) | Extract and run on an ARM-based Windows PC, without installing. |
+| [macOS - Apple Silicon and Intel - Installer (.dmg)](https://github.com/AmjedAllaya/automexia/releases/download/0.0.1_alpha/automexia-terminal-0.0.1-alpha-universal.dmg) | Works on both Apple Silicon (M-series) and Intel Macs. Drag the app to Applications. |
+| [Linux - Debian/Ubuntu family - Intel/AMD 64-bit (.deb)](https://github.com/AmjedAllaya/automexia/releases/download/0.0.1_alpha/automexia-terminal-0.0.1-alpha-x86_64-unknown-linux-gnu.deb) | Use a DEB package manager on an Intel or AMD 64-bit PC. |
+| [Linux - Fedora/openSUSE family - Intel/AMD 64-bit (.rpm)](https://github.com/AmjedAllaya/automexia/releases/download/0.0.1_alpha/automexia-terminal-0.0.1-alpha-x86_64-unknown-linux-gnu.rpm) | Use an RPM package manager on an Intel or AMD 64-bit PC. |
+| [Linux - Intel/AMD 64-bit (x64) - Portable (.tar.gz)](https://github.com/AmjedAllaya/automexia/releases/download/0.0.1_alpha/automexia-terminal-0.0.1-alpha-x86_64-unknown-linux-gnu.tar.gz) | Extract manually on a compatible Intel or AMD 64-bit GNU/Linux system. |
+| [Linux - Debian/Ubuntu family - ARM64 (.deb)](https://github.com/AmjedAllaya/automexia/releases/download/0.0.1_alpha/automexia-terminal-0.0.1-alpha-aarch64-unknown-linux-gnu.deb) | Use a DEB package manager on a 64-bit ARM device. |
+| [Linux - Fedora/openSUSE family - ARM64 (.rpm)](https://github.com/AmjedAllaya/automexia/releases/download/0.0.1_alpha/automexia-terminal-0.0.1-alpha-aarch64-unknown-linux-gnu.rpm) | Use an RPM package manager on a 64-bit ARM device. |
+| [Linux - ARM64 - Portable (.tar.gz)](https://github.com/AmjedAllaya/automexia/releases/download/0.0.1_alpha/automexia-terminal-0.0.1-alpha-aarch64-unknown-linux-gnu.tar.gz) | Extract manually on a compatible 64-bit ARM GNU/Linux system. |
+
+**Check your processor:** Windows: Settings > System > About > System type. Linux: run `uname -m`; `x86_64` means x64, and `aarch64` or `arm64` means ARM64. macOS: the same DMG works on either chip type.
+
+**Choose one package.** Installer and portable downloads contain the same application. Use the installer for a normal installation; choose portable for manual extraction. Portable packages still use normal application settings and require system libraries.
+
+**Linux compatibility:** DEB is the package format used by Debian, Ubuntu and Linux Mint; RPM is used by Fedora and openSUSE. These are format guides, not certification of every distro or version. All Linux packages require GNU libc (glibc) 2.35 or newer and the required desktop, font and audio libraries. The portable archive does not bypass those requirements. Alpine/musl is not supported by these builds.
+
+**Other files:** `SHA256SUMS`, its `.minisig` signature and `release-manifest.json` are for verification. The SPDX and CycloneDX JSON files list dependencies. GitHub's Source code ZIP/tar.gz files contain source, not a ready-to-run app.
 
 ## Signing and verification
 

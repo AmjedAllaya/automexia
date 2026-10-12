@@ -16,6 +16,7 @@ import subprocess
 import sys
 
 import first_alpha as alpha
+from release_downloads import replace_download_guide, upload_argument
 from check_public_release_metadata import PUBLIC_KEY
 
 sys.path.insert(0, str(alpha.ROOT / ".github/scripts"))
@@ -180,7 +181,7 @@ def validate_bundle(bundle: Path, wsl_distro: str | None = None) -> tuple[dict, 
     if expected != set(records):
         raise ValueError("release contains unlisted assets")
     packages = [path for path in paths if path.name.endswith(inventory.PACKAGE_SUFFIXES)]
-    inventory._validate_exact_packages(packages, alpha.FIRST_ALPHA_VERSION)
+    inventory._validate_exact_packages(packages, alpha.FIRST_ALPHA_VERSION, public=True)
     inventory._validate_sboms([path for path in paths if path.name in inventory.SBOM_NAMES], alpha.FIRST_ALPHA_VERSION)
     return manifest, records
 
@@ -252,7 +253,7 @@ def publish(bundle: Path, run_id: int, acknowledgement: str, *, perform: bool, w
     notes_bytes = base64.b64decode(source["content"].replace("\n", ""), validate=True)
     if len(notes_bytes) != source["size"]:
         raise ValueError("release note size mismatch")
-    notes = notes_bytes.decode("utf-8")
+    notes = replace_download_guide(notes_bytes.decode("utf-8"), alpha.FIRST_ALPHA_VERSION)
     releases = api(f"repos/{REPOSITORY}/releases?per_page=100", allow_array=True)
     if not isinstance(releases, list) or len(releases) >= 100:
         raise ValueError("first-alpha release inventory is truncated or invalid")
@@ -282,7 +283,8 @@ def publish(bundle: Path, run_id: int, acknowledgement: str, *, perform: bool, w
     if not isinstance(release_id, int) or release_id <= 0:
         raise ValueError("invalid draft release identity")
     release_endpoint = f"repos/{REPOSITORY}/releases/{release_id}"
-    missing_assets = [str(bundle / name) for name in sorted(set(records) - uploaded)]
+    missing_assets = [upload_argument(bundle / name, alpha.FIRST_ALPHA_VERSION)
+                      for name in sorted(set(records) - uploaded)]
     if missing_assets:
         checked_process(["gh", "release", "upload", tag, "--repo", REPOSITORY, *missing_assets], timeout=900)
     draft = api(release_endpoint)

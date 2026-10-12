@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -69,6 +70,37 @@ def write_application_sboms(root: Path, version: str) -> None:
 
 
 class ReleaseManifestTests(unittest.TestCase):
+    def test_public_names_explain_platform_architecture_and_package(self) -> None:
+        expected = (
+            f"automexia-{VERSION}-windows-x64-installer.msi",
+            f"automexia-{VERSION}-windows-x64-portable.zip",
+            f"automexia-{VERSION}-windows-arm64-installer.msi",
+            f"automexia-{VERSION}-windows-arm64-portable.zip",
+            f"automexia-{VERSION}-macos-apple-silicon-and-intel.dmg",
+            f"automexia-{VERSION}-linux-debian-ubuntu-x64.deb",
+            f"automexia-{VERSION}-linux-fedora-opensuse-x64.rpm",
+            f"automexia-{VERSION}-linux-x64-portable.tar.gz",
+            f"automexia-{VERSION}-linux-debian-ubuntu-arm64.deb",
+            f"automexia-{VERSION}-linux-fedora-opensuse-arm64.rpm",
+            f"automexia-{VERSION}-linux-arm64-portable.tar.gz",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, output = root / "downloads", root / "release"
+            source.mkdir()
+            write_packages(source)
+            first = MANIFEST.build_release_manifest(source, output, VERSION, COMMIT, copy_packages=True)
+            self.assertEqual({entry["file"] for entry in first["artifacts"]}, set(expected))
+            for index, name in enumerate(expected):
+                payload = f"fixture-{index}\n".encode()
+                self.assertEqual((output / name).read_bytes(), payload)
+                entry = next(entry for entry in first["artifacts"] if entry["file"] == name)
+                self.assertEqual((entry["sha256"], entry["size"]), (hashlib.sha256(payload).hexdigest(), len(payload)))
+            self.assertEqual(first, MANIFEST.build_release_manifest(source, output, VERSION, COMMIT, copy_packages=True))
+            (output / expected[0]).write_bytes(b"conflicting package")
+            with self.assertRaisesRegex(MANIFEST.ReleaseManifestError, "conflicting destination"):
+                MANIFEST.build_release_manifest(source, output, VERSION, COMMIT, copy_packages=True)
+
     def test_first_alpha_retains_exact_public_tag_and_complete_package_set(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -117,6 +149,16 @@ class ReleaseManifestTests(unittest.TestCase):
             source = root / "downloads"
             source.mkdir()
             write_packages(source)
+            # The old build name and new public name still occupy one slot.
+            (source / f"automexia-{VERSION}-windows-x64-installer.msi").write_bytes(b"duplicate")
+            with self.assertRaisesRegex(MANIFEST.ReleaseManifestError, "exactly one"):
+                MANIFEST.build_release_manifest(source, root / "release", VERSION, COMMIT, copy_packages=True)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "downloads"
+            source.mkdir()
+            write_packages(source)
             missing = next(source.rglob("*.dmg"))
             missing.unlink()
             with self.assertRaisesRegex(MANIFEST.ReleaseManifestError, "incomplete"):
@@ -155,8 +197,8 @@ class ReleaseManifestTests(unittest.TestCase):
             for directory in (output, raw, scan):
                 directory.mkdir()
             version = "0.0.1-alpha"
-            for name in package_names():
-                (output / name.replace(VERSION, version)).write_bytes(b"package fixture")
+            for name in MANIFEST.package_names(version).values():
+                (output / name).write_bytes(b"package fixture")
             write_application_sboms(raw, version)
             lock = scan / "Cargo.lock"
             lock.write_bytes(b"lockfile fixture")

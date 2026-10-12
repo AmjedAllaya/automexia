@@ -1867,10 +1867,13 @@ jobs:
 
         options=()
         if [[ "$prerelease" == true ]]; then options+=(--prerelease); fi
-        gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --generate-notes --title "Automexia Terminal $tag" "${options[@]}"
+        python tools/ci/release_downloads.py guide --version "$VERSION" > download-guide.md
+        gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --generate-notes --notes-file download-guide.md --title "Automexia Terminal $tag" "${options[@]}"
         mapfile -d '' assets < <(find publish -maxdepth 1 -type f -print0 | sort -z)
         (( ${#assets[@]} > 0 ))
-        gh release upload "$tag" --repo "$GITHUB_REPOSITORY" "${assets[@]}"
+        upload_arguments="$(python tools/ci/release_downloads.py upload-arguments --version "$VERSION" --directory publish)"
+        mapfile -t labelled_assets <<< "$upload_arguments"
+        gh release upload "$tag" --repo "$GITHUB_REPOSITORY" "${labelled_assets[@]}"
         if [[ "$prerelease" == true ]]; then
           gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
         else

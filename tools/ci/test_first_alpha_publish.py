@@ -47,12 +47,7 @@ def seal(directory):
 
 
 def make_bundle(directory):
-    names = []
-    for target in ("x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"):
-        names.extend(f"automexia-terminal-0.0.1-alpha-{target}.{suffix}" for suffix in ("msi", "zip"))
-    names.append("automexia-terminal-0.0.1-alpha-universal.dmg")
-    for arch in ("x86_64", "aarch64"):
-        names.extend(f"automexia-terminal-0.0.1-alpha-{arch}.{suffix}" for suffix in ("deb", "rpm", "tar.gz"))
+    names = list(owner.inventory.package_names(owner.alpha.FIRST_ALPHA_VERSION).values())
     names.extend(owner.inventory.SBOM_NAMES)
     for name in names:
         (directory / name).write_bytes(b"unit fixture")
@@ -229,7 +224,9 @@ class PublicationFlowTests(unittest.TestCase):
         immutable_reads = 0
         tag_created = existing
         tag_reads = 0
-        notes = b"Alpha fixture notes"
+        notes = b"Alpha fixture notes\n\n## Choose your download\n\nFixture choices.\n\n## Signing and verification\n\nFixture disclosures.\n"
+        rendered_notes = owner.replace_download_guide(notes.decode(), owner.alpha.FIRST_ALPHA_VERSION)
+        draft["body"] = rendered_notes
 
         def fake_api(endpoint, *, fields=None, method="POST", **kwargs):
             nonlocal immutable_reads, tag_created, tag_reads
@@ -261,7 +258,7 @@ class PublicationFlowTests(unittest.TestCase):
             if endpoint.endswith("releases"):
                 self.assertTrue(fields["draft"])
                 self.assertEqual(fields["target_commitish"], SHA)
-                self.assertEqual(fields["body"], notes.decode())
+                self.assertEqual(fields["body"], rendered_notes)
                 return copy.deepcopy(draft)
             if endpoint.endswith("releases/45"):
                 if method == "PATCH":
@@ -300,7 +297,7 @@ class PublicationFlowTests(unittest.TestCase):
         self.exercise(existing=True)
         uploads = [args for args in self.commands if args[:3] == ["gh", "release", "upload"]]
         self.assertEqual(len(uploads), 1)
-        self.assertTrue(uploads[0][-1].endswith("SHA256SUMS"))
+        self.assertTrue(uploads[0][-1].endswith("SHA256SUMS#Verification - SHA-256 checksums (SHA256SUMS)"))
         self.assertNotIn("bundle/asset.zip", uploads[0])
         self.assertEqual(len(self.writes), 1)  # Only the final PATCH; no new tag/draft.
 
