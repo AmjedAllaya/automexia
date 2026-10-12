@@ -5,6 +5,7 @@ param(
     [ValidateSet('zip', 'msi')][string]$PackageKind = 'zip',
     [ValidateSet('x64', 'arm64')][string]$Architecture = 'x64',
     [switch]$InternetMark,
+    [switch]$StressOutputHighlighting,
     [string]$PackagePath,
     [ValidatePattern('^[0-9a-f]{64}$')][string]$PackageSha256,
     [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+-alpha$')][string]$CandidateVersion,
@@ -30,6 +31,7 @@ $report = [ordered]@{
     package = $PackageKind
     policy = $Policy
     internet_mark = [bool]$InternetMark
+    stress_output_highlighting = [bool]$StressOutputHighlighting
     environment = $(if ($Architecture -eq 'arm64') { 'fresh Windows 11 ARM64 hosted VM' } else { 'fresh Windows Server hosted VM; client execution policy is an explicit test condition' })
     controls = @()
     complete = $false
@@ -417,8 +419,13 @@ public static class AuditCoordinates {
         @('Font size', 'appearance.font_size', 'value'),
         @('Appearance', 'appearance.theme', 'value')
     )
+    if ($StressOutputHighlighting) {
+        # Supplemental reproduction of the candidate's intermittent restore
+        # timeout. Each cycle changes, restarts, verifies and restores the value.
+        $cases = @(1..12 | ForEach-Object { ,@('Highlight recognized output', 'terminal.output_highlighting', 'boolean') })
+    }
     foreach ($case in $cases) {
-        $entry = [ordered]@{ id = $case[1]; reached = $false; toggled = $false; persisted = $false }
+        $entry = [ordered]@{ id = $case[1]; cycle = $report.controls.Count + 1; reached = $false; toggled = $false; persisted = $false; restored = $false }
         $report.controls += $entry
         $node = Find-Setting $case[0] $case[1]
         $entry.reached = $true
@@ -456,6 +463,7 @@ public static class AuditCoordinates {
         $script:settingAction = 'restore-setting'
         Key $backwardKey
         $null = Wait-Nodes { param($n) @($n | Where-Object { $_.Id -eq $case[1] -and $_.$property -eq $before }).Count -eq 1 }
+        $entry.restored = $true
         Key 0x1B
     }
     $stage = 'theme-gallery'

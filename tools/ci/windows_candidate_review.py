@@ -15,6 +15,13 @@ STEPS = (
     "Verify, execute, install, and uninstall exact final package",
     "Exercise fresh installed Windows settings and policy recovery",
 )
+STRESS_SCRIPT = r'''$ErrorActionPreference = 'Stop'
+$package = @(Get-ChildItem artifacts -File -Filter *.msi)
+if ($package.Count -ne 1) { throw 'Expected one final MSI package' }
+$digest = (Get-FileHash -LiteralPath $package[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+& powershell.exe -NoProfile -File tests/integration/windows-package-review.ps1 -RepositoryRoot $env:GITHUB_WORKSPACE -PackagePath $package[0].FullName -PackageSha256 $digest -CandidateVersion $env:RELEASE_VERSION -CandidateCommit $env:CANDIDATE_COMMIT -PackageKind msi -Policy Restricted -StressOutputHighlighting
+if ($LASTEXITCODE -ne 0) { throw 'Focused Windows setting stress failed' }
+'''
 
 
 def validate_source(run: dict, repository: str, commit: str) -> None:
@@ -69,8 +76,9 @@ def main() -> None:
                    check=True, timeout=120)
     child_env = {key: value for key, value in os.environ.items()
                  if key not in {"GH_TOKEN", "GITHUB_TOKEN"}}
+    scripts = [STRESS_SCRIPT] if os.environ.get("CANDIDATE_STRESS") == "true" else release_scripts()
     with tempfile.TemporaryDirectory(prefix="automexia-candidate-", dir=os.environ["RUNNER_TEMP"]) as folder:
-        for index, script in enumerate(release_scripts()):
+        for index, script in enumerate(scripts):
             path = Path(folder) / f"verify-{index}.ps1"
             path.write_text(script, encoding="utf-8")
             subprocess.run(["pwsh", "-NoProfile", "-File", str(path)],

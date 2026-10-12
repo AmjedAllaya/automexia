@@ -17,6 +17,9 @@ on:
       candidate_version:
         type: string
         default: ''
+      stress_output_highlighting:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       platform:
@@ -40,6 +43,10 @@ on:
         description: Candidate alpha version, such as 0.0.2-alpha
         type: string
         default: ''
+      stress_output_highlighting:
+        description: Supplemental MSI restart/restore repetition for output highlighting
+        type: boolean
+        default: false
 permissions:
   contents: read
 env:
@@ -64,6 +71,7 @@ jobs:
           CANDIDATE_RUN: ${{ inputs.candidate_run }}
           CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
           RELEASE_VERSION: ${{ inputs.candidate_version }}
+          CANDIDATE_STRESS: ${{ inputs.stress_output_highlighting }}
         run: python tools/ci/windows_candidate_review.py
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
