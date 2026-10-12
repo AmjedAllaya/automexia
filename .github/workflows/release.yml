@@ -420,7 +420,7 @@ jobs:
         rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
         python tools/ci/rust_toolchain.py verify --kind development
     - name: Install native Linux build dependencies
-      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core
     - name: Install pinned release quality tools
       uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
       with:

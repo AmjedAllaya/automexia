@@ -1,12 +1,8 @@
 name: First alpha release
-run-name: First alpha · ${{ github.ref_name }} · publish=${{ inputs.publish }}
+run-name: First alpha native bundle · ${{ github.ref_name }}
 'on':
   workflow_dispatch:
     inputs:
-      publish:
-        description: Publish the verified 0.0.1_alpha prerelease from main
-        type: boolean
-        default: false
       acknowledgement:
         description: Enter unsigned-first-alpha to accept unsigned Windows and non-notarized macOS packages
         type: string
@@ -53,11 +49,8 @@ jobs:
         if version != '0.0.1-alpha':
             raise SystemExit('first-alpha workflow cannot publish another version')
         PY
-        if [[ "$PUBLISH" == true ]]; then
-          [[ "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" == true ]]
-          main_commit="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
-          python tools/ci/first_alpha.py authorize --commit "$GITHUB_SHA" --main "$main_commit" --ref "$GITHUB_REF" --acknowledgement "$ACKNOWLEDGEMENT"
-        fi
+        main_commit="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+        python tools/ci/first_alpha.py authorize --commit "$GITHUB_SHA" --main "$main_commit" --ref "$GITHUB_REF" --acknowledgement "$ACKNOWLEDGEMENT"
         python tools/ci/first_alpha.py brand > "$RUNNER_TEMP/first-alpha-brand.json"
         printf 'commit=%s
         version=0.0.1-alpha
@@ -66,7 +59,6 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
         ACKNOWLEDGEMENT: ${{ inputs.acknowledgement }}
-        PUBLISH: ${{ inputs.publish }}
   release-quality:
     name: Release quality and dependency gate
     needs: preflight
@@ -92,6 +84,7 @@ jobs:
         set -euo pipefail
         python tools/ci/first_alpha.py check-workflow
         python tools/ci/test_first_alpha.py
+        python tools/ci/test_first_alpha_publish.py
         python tools/ci/test_release_identity.py
         python tools/ci/test_release_manifest.py
         python tools/ci/test_stable_release.py
@@ -106,7 +99,7 @@ jobs:
         python tools/ci/rust_toolchain.py verify --kind development
     - name: Install native Linux build dependencies
       run: sudo apt-get update && sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev
-        libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish
+        libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core
     - name: Install pinned release quality tools
       uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
       with:
@@ -1039,129 +1032,3 @@ jobs:
         if-no-files-found: error
         retention-days: 7
         compression-level: 0
-  publish-release:
-    name: Publish the immutable first alpha with explicit signing status
-    needs:
-    - sign-release-bundle
-    - preflight
-    if: ${{ inputs.publish && github.ref == 'refs/heads/main' && needs.sign-release-bundle.result == 'success' &&
-      needs.preflight.result == 'success' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    permissions:
-      contents: write
-    steps:
-    - name: Check out exact source with complete history for provenance validation
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        ref: ${{ needs.preflight.outputs.commit }}
-        fetch-depth: 0
-        persist-credentials: false
-    - name: Download verified publication bundle
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-      with:
-        name: release-signed-bundle
-        path: bundle
-    - name: Create immutable version tag and publish verified release
-      shell: bash
-      env:
-        GH_TOKEN: ${{ github.token }}
-        VERSION: ${{ needs.preflight.outputs.version }}
-        RELEASE_COMMIT: ${{ needs.preflight.outputs.commit }}
-        ACKNOWLEDGEMENT: ${{ inputs.acknowledgement }}
-        RELEASE_MINISIGN_PUBLIC_KEY: ${{ vars.AUTOMEXIA_RELEASE_MINISIGN_PUBLIC_KEY }}
-      run: |
-        set -euo pipefail
-        tag="$(python3 tools/ci/release_identity.py tag "$VERSION")"
-        prerelease="$(python3 tools/ci/release_identity.py prerelease "$VERSION")"
-        [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
-
-        mkdir publish
-        while IFS= read -r -d '' file; do
-          base="$(basename "$file")"
-          case "$base" in
-            *.msi|*.zip|*.dmg|*.deb|*.rpm|*.tar.gz|*.tgz|*.spdx.json|*.cdx.json|SHA256SUMS|SHA256SUMS.minisig|release-manifest.json|*.sig|*.minisig) ;;
-            *) continue ;;
-          esac
-          [[ "$base" != *$'\n'* && "$base" != *$'\r'* ]]
-          if [[ -e "publish/$base" ]]; then
-            cmp --silent "$file" "publish/$base" || { echo "Conflicting duplicate asset: $base" >&2; exit 1; }
-          else
-            cp --no-preserve=mode,ownership "$file" "publish/$base"
-          fi
-        done < <(find bundle -type f -print0)
-
-        test -f publish/SHA256SUMS
-        test -f publish/SHA256SUMS.minisig
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends minisign
-        minisign -V -P "$RELEASE_MINISIGN_PUBLIC_KEY" -m publish/SHA256SUMS -x publish/SHA256SUMS.minisig
-        test -f publish/release-manifest.json
-        python3 tools/ci/first_alpha.py verify-manifest --file publish/release-manifest.json
-        (cd publish && sha256sum -c SHA256SUMS)
-        python3 - "$VERSION" "$RELEASE_COMMIT" "$tag" <<'PY2'
-        import json, sys
-        m=json.load(open('publish/release-manifest.json', encoding='utf-8'))
-        if m.get('version') != sys.argv[1]:
-            raise SystemExit('release-manifest version mismatch')
-        if m.get('source_commit') != sys.argv[2]:
-            raise SystemExit('release-manifest source_commit mismatch')
-        if m.get('tag') != sys.argv[3]:
-            raise SystemExit('release-manifest tag mismatch')
-        if not m.get('artifacts'):
-            raise SystemExit('release-manifest has no artifacts')
-        PY2
-
-        # Require create-once release protection before any public mutation.
-        [[ "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" == true ]]
-
-        # Refuse stale source before creating any public tag or draft.
-        main_commit="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
-        python tools/ci/first_alpha.py authorize --commit "$RELEASE_COMMIT" --main "$main_commit" --ref "$GITHUB_REF" --acknowledgement "$ACKNOWLEDGEMENT"
-
-        # Never modify an already-created GitHub Release.
-        if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-          echo "Release $tag already exists; refusing mutation" >&2
-          exit 1
-        fi
-
-        # A rerun may safely recover from a previous network failure that created the
-        # exact annotated tag but failed before creating the GitHub Release.
-        if ref_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha' 2>/dev/null)"; then
-          target_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$ref_sha" --jq '.object.sha' 2>/dev/null || printf '%s' "$ref_sha")"
-          [[ "$target_sha" == "$RELEASE_COMMIT" ]] || {
-            echo "Existing tag $tag does not point to the validated release commit" >&2
-            exit 1
-          }
-          echo "Reusing existing exact tag $tag after a partial prior publication attempt."
-        else
-          tag_object="$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" \
-            -f tag="$tag" \
-            -f message="Automexia Terminal $VERSION" \
-            -f object="$RELEASE_COMMIT" \
-            -f type=commit \
-            --jq .sha)"
-          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
-            -f ref="refs/tags/$tag" \
-            -f sha="$tag_object" >/dev/null
-        fi
-        git fetch --no-tags origin "refs/tags/$tag:refs/tags/$tag"
-        main_commit="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
-        python tools/ci/first_alpha.py authorize --commit "$RELEASE_COMMIT" --main "$main_commit" --ref "$GITHUB_REF" --acknowledgement "$ACKNOWLEDGEMENT"
-        [[ "$(git rev-parse "$tag^{commit}")" == "$RELEASE_COMMIT" ]]
-
-        options=()
-        if [[ "$prerelease" == true ]]; then options+=(--prerelease); fi
-        gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --notes-file docs/public-release/FIRST-ALPHA-NOTES.md --title "Automexia Terminal $tag" "${options[@]}"
-        mapfile -d '' assets < <(find publish -maxdepth 1 -type f -print0 | sort -z)
-        (( ${#assets[@]} > 0 ))
-        gh release upload "$tag" --repo "$GITHUB_REPOSITORY" "${assets[@]}"
-        if [[ "$prerelease" == true ]]; then
-          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
-        else
-          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest
-        fi
-        gh release verify "$tag" --repo "$GITHUB_REPOSITORY"
-        for asset in "${assets[@]}"; do
-          gh release verify-asset "$tag" "$asset" --repo "$GITHUB_REPOSITORY"
-        done

@@ -289,8 +289,20 @@ ad-hoc execution signatures and no Apple notarization. Neither is represented
 as OS-trusted. A minisign signature authenticates SHA256SUMS, including the
 manifest with its source identity, asset hashes and signing disclosures.
 
-The workflow accepts only the exact first-alpha version, requires owner
-acknowledgement and current main for publication, and never updates Latest.
-Build and native-test jobs have no signing credentials. Failed or skipped
-platform gates block every public upload. See the
+The workflow accepts only the exact first-alpha version and current main,
+requires owner acknowledgement, and produces a signed bundle with read-only
+repository permissions. Build and native-test jobs have no signing credentials.
+`tools/ci/first_alpha_publish.py` performs the separately authorized publication
+using the owner's existing `gh` authentication, because the immutable-release
+settings API requires administration-read access unavailable to `GITHUB_TOKEN`.
+The owner credential is never exported to a workflow or WSL.
+
+The publisher rejects failed, missing or skipped native evidence, stale main,
+modified bundles, altered release notes and conflicting remote assets. A
+matching incomplete draft may resume without overwriting an uploaded asset.
+The exact draft ID and every remote digest are verified before publication;
+immutability is rechecked immediately before the draft becomes public. GitHub
+release and asset attestations are verified afterward. Published releases are
+never modified and Latest is never changed. See
+[dispatch instructions](../RELEASING.md#dispatching-the-first-alpha) and the
 [first-alpha notes](public-release/FIRST-ALPHA-NOTES.md) for user limitations.

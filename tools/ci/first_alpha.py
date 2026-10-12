@@ -131,27 +131,19 @@ def validate_workflow(workflow: dict) -> None:
     targets = {item.get('target') for item in jobs['build']['strategy']['matrix']['include']}
     if targets != TARGETS:
         raise ValueError('alpha must build all six native targets')
-    publisher = jobs.get('publish-release', {})
-    if publisher.get('permissions') != {'contents': 'write'}:
-        raise ValueError('publisher permission scope drifted')
-    if set(publisher.get('needs', [])) != {'preflight', 'sign-release-bundle'}:
-        raise ValueError('publisher must require the verified signed bundle')
+    if 'publish-release' in jobs or workflow.get('permissions') != {'contents': 'read'}:
+        raise ValueError('alpha CI prepares verified bundles; publication belongs to the owner CLI')
     if jobs['native-platform-qa'].get('uses') != './.github/workflows/accessibility-native.yml':
         raise ValueError('native QA must retain its existing owner')
-    if 'inputs.publish' not in publisher.get('if', ''):
-        raise ValueError('publication must be explicitly selected')
     for name, dependencies in {
         'publish': {'preflight', 'package-windows', 'package-macos', 'package-linux', 'final-gate', 'reproducibility-linux'},
         'sign-release-bundle': {'publish', 'preflight'},
     }.items():
         if set(jobs[name].get('needs', [])) != dependencies:
             raise ValueError('publication/signing dependency chain drifted')
-    condition = publisher.get('if', '')
-    if "github.ref == 'refs/heads/main'" not in condition:
-        raise ValueError('publication must remain restricted to main')
-    for name, job in jobs.items():
-        if name != 'publish-release' and job.get('permissions', {}).get('contents') == 'write':
-            raise ValueError('only the isolated publisher may write repository contents')
+    for job in jobs.values():
+        if job.get('permissions', {'contents': 'read'}) != {'contents': 'read'}:
+            raise ValueError('alpha CI must never hold repository write or administration permissions')
 
 
 def main() -> None:
