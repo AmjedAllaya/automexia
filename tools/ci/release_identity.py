@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import tomllib
 import plistlib
@@ -70,9 +71,12 @@ def package_native(root: Path, version: str, binaries: Path, output: Path,
     if allowed.get(target) != formats:
         raise ValueError("unsupported native packager target/format pair")
     config = native_packager_config(root, version, binaries, output)
+    # cargo-packager isolates WiX and retains only its namespaced variables.
+    # Bind the vendor path to this invocation, never an inherited override.
+    env = dict(os.environ, CARGO_PACKAGER_AUTOMEXIA_CONPTY_ROOT=str(binaries.resolve()))
     subprocess.run(["cargo", "packager", "--config", json.dumps(config),
                     "--target", target, "--formats", formats],
-                   cwd=root / "apps/automexia-terminal", check=True, timeout=1800)
+                   cwd=root / "apps/automexia-terminal", env=env, check=True, timeout=1800)
 
 
 def main() -> None:

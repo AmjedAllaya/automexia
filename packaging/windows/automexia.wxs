@@ -8,16 +8,16 @@
   <Fragment>
     <DirectoryRef Id="INSTALLDIR">
       <Component Id="AutomexiaConptyComponent" Guid="*" Win64="yes">
-        <File Id="AutomexiaConpty" Source="$(env.AUTOMEXIA_CONPTY_ROOT)\conpty.dll" Name="conpty.dll" KeyPath="yes" />
+        <File Id="AutomexiaConpty" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_CONPTY_ROOT)\conpty.dll" Name="conpty.dll" KeyPath="yes" />
       </Component>
       <Directory Id="AutomexiaConptyX64Folder" Name="x64">
         <Component Id="AutomexiaConptyX64HostComponent" Guid="*" Win64="yes">
-          <File Id="AutomexiaConptyX64Host" Source="$(env.AUTOMEXIA_CONPTY_ROOT)\x64\OpenConsole.exe" Name="OpenConsole.exe" KeyPath="yes" />
+          <File Id="AutomexiaConptyX64Host" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_CONPTY_ROOT)\x64\OpenConsole.exe" Name="OpenConsole.exe" KeyPath="yes" />
         </Component>
       </Directory>
       <Directory Id="AutomexiaConptyArm64Folder" Name="arm64">
         <Component Id="AutomexiaConptyArm64HostComponent" Guid="*" Win64="yes">
-          <File Id="AutomexiaConptyArm64Host" Source="$(env.AUTOMEXIA_CONPTY_ROOT)\arm64\OpenConsole.exe" Name="OpenConsole.exe" KeyPath="yes" />
+          <File Id="AutomexiaConptyArm64Host" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_CONPTY_ROOT)\arm64\OpenConsole.exe" Name="OpenConsole.exe" KeyPath="yes" />
         </Component>
       </Directory>
       <Component Id="AutomexiaDirectoryContextMenu" Guid="*" Win64="yes">

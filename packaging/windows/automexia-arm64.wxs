@@ -102,54 +102,48 @@
             <File Id="AutomexiaReadme" Source="$(var.ReadmePath)" Name="README.md" KeyPath="yes" />
           </Component>
           <Directory Id="AutomexiaShellIntegrationFolder" Name="shell-integration">
-            <Component Id="AutomexiaShellRootComponent" Guid="*" Bitness="always64">
-              <File Id="AutomexiaShellInstallWindows" Source="$(var.ShellIntegrationRoot)\install-windows.ps1" Name="install-windows.ps1" KeyPath="yes" />
-              <File Id="AutomexiaShellUninstallWindows" Source="$(var.ShellIntegrationRoot)\uninstall-windows.ps1" Name="uninstall-windows.ps1" />
-              <File Id="AutomexiaShellWindowsPathSafety" Source="$(var.ShellIntegrationRoot)\windows-path-safety.ps1" Name="windows-path-safety.ps1" />
-              <File Id="AutomexiaShellWindowsWsl" Source="$(var.ShellIntegrationRoot)\windows-wsl.ps1" Name="windows-wsl.ps1" />
+            <Component Id="AutomexiaShellFileAmxToolBridgePyComponent" Guid="*" Bitness="always64">
+              <File Id="AutomexiaShellFileAmxToolBridgePy" Source="$(var.ShellIntegrationRoot)\amx-tool-bridge.py" Name="amx-tool-bridge.py" KeyPath="yes" />
             </Component>
-            <Directory Id="AutomexiaShellPowerShellFolder" Name="powershell">
-              <Component Id="AutomexiaShellPowerShellComponent" Guid="*" Bitness="always64">
-                <File Id="AutomexiaShellPowerShellScript" Source="$(var.ShellIntegrationRoot)\powershell\automexia.ps1" Name="automexia.ps1" KeyPath="yes" />
-                <File Id="AutomexiaShellPowerShellFormat" Source="$(var.ShellIntegrationRoot)\powershell\automexia.format.ps1xml" Name="automexia.format.ps1xml" />
-              </Component>
-            </Directory>
-            <Directory Id="AutomexiaShellCmdFolder" Name="cmd">
-              <Component Id="AutomexiaShellCmdComponent" Guid="*" Bitness="always64">
-                <File Id="AutomexiaShellCmdScript" Source="$(var.ShellIntegrationRoot)\cmd\automexia.cmd" Name="automexia.cmd" KeyPath="yes" />
-                <File Id="AutomexiaShellCmdListLauncher" Source="$(var.ShellIntegrationRoot)\cmd\automexia-ls.cmd" Name="automexia-ls.cmd" />
-                <File Id="AutomexiaShellCmdListScript" Source="$(var.ShellIntegrationRoot)\cmd\automexia-ls.ps1" Name="automexia-ls.ps1" />
-              </Component>
-            </Directory>
             <Directory Id="AutomexiaShellBashFolder" Name="bash">
               <Component Id="AutomexiaShellBashComponent" Guid="*" Bitness="always64">
                 <File Id="AutomexiaShellBashScript" Source="$(var.ShellIntegrationRoot)\bash\automexia.bash" Name="automexia.bash" KeyPath="yes" />
               </Component>
-            </Directory>
-            <Directory Id="AutomexiaShellZshFolder" Name="zsh">
-              <Component Id="AutomexiaShellZshComponent" Guid="*" Bitness="always64">
-                <File Id="AutomexiaShellZshScript" Source="$(var.ShellIntegrationRoot)\zsh\automexia.zsh" Name="automexia.zsh" KeyPath="yes" />
+              <Component Id="AutomexiaShellFileBashLoginSessionBashComponent" Guid="*" Bitness="always64">
+                <File Id="AutomexiaShellFileBashLoginSessionBash" Source="$(var.ShellIntegrationRoot)\bash\login-session.bash" Name="login-session.bash" KeyPath="yes" />
+              </Component>
+              <Component Id="AutomexiaShellFileBashSessionBashComponent" Guid="*" Bitness="always64">
+                <File Id="AutomexiaShellFileBashSessionBash" Source="$(var.ShellIntegrationRoot)\bash\session.bash" Name="session.bash" KeyPath="yes" />
               </Component>
             </Directory>
-            <Directory Id="AutomexiaShellFishFolder" Name="fish">
-              <Component Id="AutomexiaShellFishComponent" Guid="*" Bitness="always64">
-                <File Id="AutomexiaShellFishScript" Source="$(var.ShellIntegrationRoot)\fish\automexia.fish" Name="automexia.fish" KeyPath="yes" />
+            <Directory Id="AutomexiaShellCmdFolder" Name="cmd">
+              <Component Id="AutomexiaShellFileCmdAutomexiaAliasLoaderPs1Component" Guid="*" Bitness="always64">
+                <File Id="AutomexiaShellFileCmdAutomexiaAliasLoaderPs1" Source="$(var.ShellIntegrationRoot)\cmd\automexia-alias-loader.ps1" Name="automexia-alias-loader.ps1" KeyPath="yes" />
               </Component>
-            </Directory>
-            <Directory Id="AutomexiaShellPosixFolder" Name="posix">
-              <Component Id="AutomexiaShellPosixComponent" Guid="*" Bitness="always64">
-                <File Id="AutomexiaShellEzaFilter" Source="$(var.ShellIntegrationRoot)\posix\automexia-eza-filter.pl" Name="automexia-eza-filter.pl" KeyPath="yes" />
+              <Component Id="AutomexiaShellCmdListLauncherComponent" Guid="*" Bitness="always64">
+                <File Id="AutomexiaShellCmdListLauncher" Source="$(var.ShellIntegrationRoot)\cmd\automexia-ls.cmd" Name="automexia-ls.cmd" KeyPath="yes" />
+              </Component>
+              <Component Id="AutomexiaShellCmdListScriptComponent" Guid="*" Bitness="always64">
+                <File Id="AutomexiaShellCmdListScript" Source="$(var.ShellIntegrationRoot)\cmd\automexia-ls.ps1" Name="automexia-ls.ps1" KeyPath="yes" />
+              </Component>
+              <Component Id="AutomexiaShellCmdComponent" Guid="*" Bitness="always64">
+                <File Id="AutomexiaShellCmdScript" Source="$(var.ShellIntegrationRoot)\cmd\automexia.cmd" Name="automexia.cmd" KeyPath="yes" />
               </Component>
             </Directory>
             <Directory Id="AutomexiaShellCompletionFolder" Name="completion">
-              <Directory Id="AutomexiaShellCompletionPowerShellFolder" Name="powershell">
-                <Component Id="AutomexiaShellCompletionPowerShellComponent" Guid="*" Bitness="always64">
-                  <File Id="AutomexiaShellCompletionPowerShell" Source="$(var.ShellIntegrationRoot)\completion\powershell\automexia-completion.ps1" Name="automexia-completion.ps1" KeyPath="yes" />
-                </Component>
-              </Directory>
               <Directory Id="AutomexiaShellCompletionBashFolder" Name="bash">
                 <Component Id="AutomexiaShellCompletionBashComponent" Guid="*" Bitness="always64">
                   <File Id="AutomexiaShellCompletionBash" Source="$(var.ShellIntegrationRoot)\completion\bash\automexia-completion.bash" Name="automexia-completion.bash" KeyPath="yes" />
+                </Component>
+              </Directory>
+              <Directory Id="AutomexiaShellCompletionFishFolder" Name="fish">
+                <Component Id="AutomexiaShellCompletionFishComponent" Guid="*" Bitness="always64">
+                  <File Id="AutomexiaShellCompletionFish" Source="$(var.ShellIntegrationRoot)\completion\fish\automexia-completion.fish" Name="automexia-completion.fish" KeyPath="yes" />
+                </Component>
+              </Directory>
+              <Directory Id="AutomexiaShellCompletionPowerShellFolder" Name="powershell">
+                <Component Id="AutomexiaShellCompletionPowerShellComponent" Guid="*" Bitness="always64">
+                  <File Id="AutomexiaShellCompletionPowerShell" Source="$(var.ShellIntegrationRoot)\completion\powershell\automexia-completion.ps1" Name="automexia-completion.ps1" KeyPath="yes" />
                 </Component>
               </Directory>
               <Directory Id="AutomexiaShellCompletionZshFolder" Name="zsh">
@@ -157,9 +151,81 @@
                   <File Id="AutomexiaShellCompletionZsh" Source="$(var.ShellIntegrationRoot)\completion\zsh\automexia-completion.zsh" Name="automexia-completion.zsh" KeyPath="yes" />
                 </Component>
               </Directory>
-              <Directory Id="AutomexiaShellCompletionFishFolder" Name="fish">
-                <Component Id="AutomexiaShellCompletionFishComponent" Guid="*" Bitness="always64">
-                  <File Id="AutomexiaShellCompletionFish" Source="$(var.ShellIntegrationRoot)\completion\fish\automexia-completion.fish" Name="automexia-completion.fish" KeyPath="yes" />
+            </Directory>
+            <Directory Id="AutomexiaShellFishFolder" Name="fish">
+              <Component Id="AutomexiaShellFishComponent" Guid="*" Bitness="always64">
+                <File Id="AutomexiaShellFishScript" Source="$(var.ShellIntegrationRoot)\fish\automexia.fish" Name="automexia.fish" KeyPath="yes" />
+              </Component>
+            </Directory>
+            <Component Id="AutomexiaShellFileInstallUnixShComponent" Guid="*" Bitness="always64">
+              <File Id="AutomexiaShellFileInstallUnixSh" Source="$(var.ShellIntegrationRoot)\install-unix.sh" Name="install-unix.sh" KeyPath="yes" />
+            </Component>
+            <Component Id="AutomexiaShellRootComponent" Guid="*" Bitness="always64">
+              <File Id="AutomexiaShellInstallWindows" Source="$(var.ShellIntegrationRoot)\install-windows.ps1" Name="install-windows.ps1" KeyPath="yes" />
+            </Component>
+            <Directory Id="AutomexiaShellPosixFolder" Name="posix">
+              <Component Id="AutomexiaShellPosixComponent" Guid="*" Bitness="always64">
+                <File Id="AutomexiaShellEzaFilter" Source="$(var.ShellIntegrationRoot)\posix\automexia-eza-filter.pl" Name="automexia-eza-filter.pl" KeyPath="yes" />
+              </Component>
+              <Component Id="AutomexiaShellFilePosixAutomexiaOsShComponent" Guid="*" Bitness="always64">
+                <File Id="AutomexiaShellFilePosixAutomexiaOsSh" Source="$(var.ShellIntegrationRoot)\posix\automexia-os.sh" Name="automexia-os.sh" KeyPath="yes" />
+              </Component>
+            </Directory>
+            <Directory Id="AutomexiaShellPowerShellFolder" Name="powershell">
+              <Component Id="AutomexiaShellPowerShellFormatComponent" Guid="*" Bitness="always64">
+                <File Id="AutomexiaShellPowerShellFormat" Source="$(var.ShellIntegrationRoot)\powershell\automexia.format.ps1xml" Name="automexia.format.ps1xml" KeyPath="yes" />
+              </Component>
+              <Component Id="AutomexiaShellPowerShellComponent" Guid="*" Bitness="always64">
+                <File Id="AutomexiaShellPowerShellScript" Source="$(var.ShellIntegrationRoot)\powershell\automexia.ps1" Name="automexia.ps1" KeyPath="yes" />
+              </Component>
+            </Directory>
+            <Directory Id="AutomexiaShellDirSuggestions" Name="suggestions">
+              <Component Id="AutomexiaShellFileSuggestionsReadmeMdComponent" Guid="*" Bitness="always64">
+                <File Id="AutomexiaShellFileSuggestionsReadmeMd" Source="$(var.ShellIntegrationRoot)\suggestions\README.md" Name="README.md" KeyPath="yes" />
+              </Component>
+              <Directory Id="AutomexiaShellDirSuggestionsBash" Name="bash">
+                <Component Id="AutomexiaShellFileSuggestionsBashAutomexiaSuggestionsBashComponent" Guid="*" Bitness="always64">
+                  <File Id="AutomexiaShellFileSuggestionsBashAutomexiaSuggestionsBash" Source="$(var.ShellIntegrationRoot)\suggestions\bash\automexia-suggestions.bash" Name="automexia-suggestions.bash" KeyPath="yes" />
+                </Component>
+              </Directory>
+              <Directory Id="AutomexiaShellDirSuggestionsFish" Name="fish">
+                <Component Id="AutomexiaShellFileSuggestionsFishAutomexiaSuggestionsFishComponent" Guid="*" Bitness="always64">
+                  <File Id="AutomexiaShellFileSuggestionsFishAutomexiaSuggestionsFish" Source="$(var.ShellIntegrationRoot)\suggestions\fish\automexia-suggestions.fish" Name="automexia-suggestions.fish" KeyPath="yes" />
+                </Component>
+              </Directory>
+              <Component Id="AutomexiaShellFileSuggestionsHelperProtocolMdComponent" Guid="*" Bitness="always64">
+                <File Id="AutomexiaShellFileSuggestionsHelperProtocolMd" Source="$(var.ShellIntegrationRoot)\suggestions\helper-protocol.md" Name="helper-protocol.md" KeyPath="yes" />
+              </Component>
+              <Directory Id="AutomexiaShellDirSuggestionsPowershell" Name="powershell">
+                <Component Id="AutomexiaShellFileSuggestionsPowershellAutomexiaSuggestionsPs1Component" Guid="*" Bitness="always64">
+                  <File Id="AutomexiaShellFileSuggestionsPowershellAutomexiaSuggestionsPs1" Source="$(var.ShellIntegrationRoot)\suggestions\powershell\automexia-suggestions.ps1" Name="automexia-suggestions.ps1" KeyPath="yes" />
+                </Component>
+              </Directory>
+              <Directory Id="AutomexiaShellDirSuggestionsZsh" Name="zsh">
+                <Component Id="AutomexiaShellFileSuggestionsZshAutomexiaSuggestionsZshComponent" Guid="*" Bitness="always64">
+                  <File Id="AutomexiaShellFileSuggestionsZshAutomexiaSuggestionsZsh" Source="$(var.ShellIntegrationRoot)\suggestions\zsh\automexia-suggestions.zsh" Name="automexia-suggestions.zsh" KeyPath="yes" />
+                </Component>
+              </Directory>
+            </Directory>
+            <Component Id="AutomexiaShellFileUninstallUnixShComponent" Guid="*" Bitness="always64">
+              <File Id="AutomexiaShellFileUninstallUnixSh" Source="$(var.ShellIntegrationRoot)\uninstall-unix.sh" Name="uninstall-unix.sh" KeyPath="yes" />
+            </Component>
+            <Component Id="AutomexiaShellUninstallWindowsComponent" Guid="*" Bitness="always64">
+              <File Id="AutomexiaShellUninstallWindows" Source="$(var.ShellIntegrationRoot)\uninstall-windows.ps1" Name="uninstall-windows.ps1" KeyPath="yes" />
+            </Component>
+            <Component Id="AutomexiaShellWindowsPathSafetyComponent" Guid="*" Bitness="always64">
+              <File Id="AutomexiaShellWindowsPathSafety" Source="$(var.ShellIntegrationRoot)\windows-path-safety.ps1" Name="windows-path-safety.ps1" KeyPath="yes" />
+            </Component>
+            <Component Id="AutomexiaShellWindowsWslComponent" Guid="*" Bitness="always64">
+              <File Id="AutomexiaShellWindowsWsl" Source="$(var.ShellIntegrationRoot)\windows-wsl.ps1" Name="windows-wsl.ps1" KeyPath="yes" />
+            </Component>
+            <Directory Id="AutomexiaShellZshFolder" Name="zsh">
+              <Component Id="AutomexiaShellZshComponent" Guid="*" Bitness="always64">
+                <File Id="AutomexiaShellZshScript" Source="$(var.ShellIntegrationRoot)\zsh\automexia.zsh" Name="automexia.zsh" KeyPath="yes" />
+              </Component>
+              <Directory Id="AutomexiaShellDirZshSession" Name="session">
+                <Component Id="AutomexiaShellFileZshSessionZshenvComponent" Guid="*" Bitness="always64">
+                  <File Id="AutomexiaShellFileZshSessionZshenv" Source="$(var.ShellIntegrationRoot)\zsh\session\.zshenv" Name=".zshenv" KeyPath="yes" />
                 </Component>
               </Directory>
             </Directory>
@@ -180,17 +246,37 @@
       <ComponentRef Id="AutomexiaNoticeComponent" />
       <ComponentRef Id="AutomexiaThirdPartyComponent" />
       <ComponentRef Id="AutomexiaReadmeComponent" />
-      <ComponentRef Id="AutomexiaShellRootComponent" />
-      <ComponentRef Id="AutomexiaShellPowerShellComponent" />
-      <ComponentRef Id="AutomexiaShellCmdComponent" />
+      <ComponentRef Id="AutomexiaShellFileAmxToolBridgePyComponent" />
       <ComponentRef Id="AutomexiaShellBashComponent" />
-      <ComponentRef Id="AutomexiaShellZshComponent" />
-      <ComponentRef Id="AutomexiaShellFishComponent" />
-      <ComponentRef Id="AutomexiaShellPosixComponent" />
-      <ComponentRef Id="AutomexiaShellCompletionPowerShellComponent" />
+      <ComponentRef Id="AutomexiaShellFileBashLoginSessionBashComponent" />
+      <ComponentRef Id="AutomexiaShellFileBashSessionBashComponent" />
+      <ComponentRef Id="AutomexiaShellFileCmdAutomexiaAliasLoaderPs1Component" />
+      <ComponentRef Id="AutomexiaShellCmdListLauncherComponent" />
+      <ComponentRef Id="AutomexiaShellCmdListScriptComponent" />
+      <ComponentRef Id="AutomexiaShellCmdComponent" />
       <ComponentRef Id="AutomexiaShellCompletionBashComponent" />
-      <ComponentRef Id="AutomexiaShellCompletionZshComponent" />
       <ComponentRef Id="AutomexiaShellCompletionFishComponent" />
+      <ComponentRef Id="AutomexiaShellCompletionPowerShellComponent" />
+      <ComponentRef Id="AutomexiaShellCompletionZshComponent" />
+      <ComponentRef Id="AutomexiaShellFishComponent" />
+      <ComponentRef Id="AutomexiaShellFileInstallUnixShComponent" />
+      <ComponentRef Id="AutomexiaShellRootComponent" />
+      <ComponentRef Id="AutomexiaShellPosixComponent" />
+      <ComponentRef Id="AutomexiaShellFilePosixAutomexiaOsShComponent" />
+      <ComponentRef Id="AutomexiaShellPowerShellFormatComponent" />
+      <ComponentRef Id="AutomexiaShellPowerShellComponent" />
+      <ComponentRef Id="AutomexiaShellFileSuggestionsReadmeMdComponent" />
+      <ComponentRef Id="AutomexiaShellFileSuggestionsBashAutomexiaSuggestionsBashComponent" />
+      <ComponentRef Id="AutomexiaShellFileSuggestionsFishAutomexiaSuggestionsFishComponent" />
+      <ComponentRef Id="AutomexiaShellFileSuggestionsHelperProtocolMdComponent" />
+      <ComponentRef Id="AutomexiaShellFileSuggestionsPowershellAutomexiaSuggestionsPs1Component" />
+      <ComponentRef Id="AutomexiaShellFileSuggestionsZshAutomexiaSuggestionsZshComponent" />
+      <ComponentRef Id="AutomexiaShellFileUninstallUnixShComponent" />
+      <ComponentRef Id="AutomexiaShellUninstallWindowsComponent" />
+      <ComponentRef Id="AutomexiaShellWindowsPathSafetyComponent" />
+      <ComponentRef Id="AutomexiaShellWindowsWslComponent" />
+      <ComponentRef Id="AutomexiaShellZshComponent" />
+      <ComponentRef Id="AutomexiaShellFileZshSessionZshenvComponent" />
     </Feature>
   </Package>
 </Wix>

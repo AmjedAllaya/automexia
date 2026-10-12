@@ -510,7 +510,7 @@ jobs:
           test -f "$x64" && test -f "$arm"
           lipo -create "$x64" "$arm" -output "$app/Contents/MacOS/$runtime"
           chmod 0755 "$app/Contents/MacOS/$runtime"
-          lipo -verify_arch x86_64 arm64 "$app/Contents/MacOS/$runtime"
+          lipo "$app/Contents/MacOS/$runtime" -verify_arch x86_64 arm64
           file "$app/Contents/MacOS/$runtime" | grep -F 'universal binary'
           codesign --force --sign - "$app/Contents/MacOS/$runtime"
         done
@@ -591,7 +591,7 @@ jobs:
 
         dpkg-deb --info "${debs[0]}" >/dev/null
         rpm -qpl "${rpms[0]}" >/dev/null
-        sudo apt-get install -y "${debs[0]}"
+        sudo apt-get install -y "$(realpath -- "${debs[0]}")"
         installed="$(command -v automexia || command -v automexia-terminal || true)"
         if [[ -z "$installed" ]]; then
           installed="$(find /usr/bin /usr/local/bin -maxdepth 1 -type f -name 'automexia' -print -quit)"
@@ -831,7 +831,7 @@ jobs:
         for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
           bin="$app/Contents/MacOS/$runtime"
           test -x "$bin"
-          lipo -verify_arch x86_64 arm64 "$bin"
+          lipo "$bin" -verify_arch x86_64 arm64
           codesign --verify --strict --verbose=4 "$bin"
         done
         "$app/Contents/MacOS/automexia" --version

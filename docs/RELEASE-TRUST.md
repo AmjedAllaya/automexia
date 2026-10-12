@@ -306,3 +306,5 @@ release and asset attestations are verified afterward. Published releases are
 never modified and Latest is never changed. See
 [dispatch instructions](../RELEASING.md#dispatching-the-first-alpha) and the
 [first-alpha notes](public-release/FIRST-ALPHA-NOTES.md) for user limitations.
+
+Native package validation also exercises macOS architecture argument ordering and merged-slice signing before execution, Windows WiX compiler isolation and complete ARM64 shell resources, and local DEB path resolution. These checks apply to the shared stable/alpha package owners; fixture checks do not replace native installation or UI evidence.

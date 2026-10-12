@@ -103,6 +103,18 @@ class FirstAlphaTests(unittest.TestCase):
                 with self.subTest(workflow=name, package=package):
                     self.assertIn(package, setup)
 
+    def test_all_universal_verifiers_put_the_input_before_the_architecture_list(self):
+        import shlex
+        for name in ("first-alpha.yml", "release.yml", "nightly.yml"):
+            text = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+            invocations = [shlex.split(line.strip()) for line in text.splitlines()
+                           if line.strip().startswith("lipo ") and "-verify_arch" in line]
+            self.assertTrue(invocations, name)
+            for argv in invocations:
+                with self.subTest(workflow=name, invocation=argv):
+                    self.assertEqual(argv[2:], ["-verify_arch", "x86_64", "arm64"])
+                    self.assertFalse(argv[1].startswith("-"))
+
     def test_workflow_preserves_native_final_and_reproducibility_gates(self):
         import yaml
         workflow = yaml.safe_load((ROOT / '.github/workflows/first-alpha.yml').read_text())
