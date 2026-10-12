@@ -669,7 +669,7 @@ jobs:
         '
     - name: Verify two independent cold source builds
       shell: bash
-      run: "set -euo pipefail\ntools/ci/check_reproducible_build.sh \\\n  \"trust/evidence/reproducibility-${{ matrix.arch }}.json\" \"reference/${{ matrix.artifact }}\"\n"
+      run: "set -euo pipefail\nbash tools/ci/check_reproducible_build.sh \\\n  \"trust/evidence/reproducibility-${{ matrix.arch }}.json\" \"reference/${{ matrix.artifact }}\"\n"
     - name: Upload cold-build reproducibility evidence
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:

@@ -373,7 +373,7 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        tools/ci/check_reproducible_build.sh \
+        bash tools/ci/check_reproducible_build.sh \
           "trust/evidence/reproducibility-${{ matrix.arch }}.json" "reference/${{ matrix.artifact }}"
     - name: Upload cold-build reproducibility evidence
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
