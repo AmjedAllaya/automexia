@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 
 from test_shell_location_hints import run_prompt_fixture
@@ -24,6 +25,11 @@ def verify(root: Path) -> list[dict]:
         for shell in ("bash", "zsh", "fish"):
             if not shutil.which(shell):
                 raise ValueError(f"required native shell unavailable: {shell}")
+            source = root / shell / f"automexia.{shell}"
+            syntax = subprocess.run([shell, "-n", str(source)], capture_output=True, timeout=10)
+            if syntax.returncode:
+                detail = syntax.stderr[-2048:].decode("utf-8", errors="replace").replace(str(root), "<packaged-integration>")
+                raise ValueError(f"{shell}: packaged syntax failure: {detail}")
             frames, elapsed = run_prompt_fixture(
                 shell, ["/fixture/first", "", "/fixture/restored"], repeat=3,
                 no_encoder=True, inspect_identity=True,

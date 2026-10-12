@@ -24,7 +24,7 @@ def run(argv: list[str], timeout: int = 240) -> bytes:
     result = subprocess.run(argv, check=False, capture_output=True, timeout=timeout)
     if result.returncode:
         # Package-manager diagnostics contain only public packages and container paths.
-        detail = result.stderr[-8192:].decode("utf-8", errors="replace")
+        detail = (result.stderr or result.stdout)[-8192:].decode("utf-8", errors="replace")
         raise RuntimeError(f"{Path(argv[0]).name} exited {result.returncode}: {detail}")
     return result.stdout
 
