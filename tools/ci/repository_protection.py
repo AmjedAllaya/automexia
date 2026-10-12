@@ -39,6 +39,7 @@ EXPECTED_WORKFLOWS = {
     "first-alpha.yml": "First alpha release",
     "s1-assurance.yml": "S1 controlled assurance",
     "s2-assurance.yml": "S2 controlled activation",
+    "windows-package-review.yml": "Published package review",
 }
 EXPECTED_DEFAULT_BRANCH_EVIDENCE_WORKFLOWS = [
     "ci.yml",

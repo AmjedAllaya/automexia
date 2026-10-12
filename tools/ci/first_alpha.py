@@ -13,7 +13,7 @@ import re
 import struct
 import tomllib
 
-from release_identity import FIRST_ALPHA_TAG, FIRST_ALPHA_VERSION
+from release_identity import CURRENT_ALPHA_TAG as ALPHA_TAG, CURRENT_ALPHA_VERSION as ALPHA_VERSION
 
 ROOT = Path(__file__).resolve().parents[2]
 REQUIRED_GATES = frozenset({
@@ -29,14 +29,14 @@ TARGETS = frozenset({
 
 
 def validate_identity(version: str, tag: str, commit: str) -> None:
-    if version != FIRST_ALPHA_VERSION or tag != FIRST_ALPHA_TAG:
-        raise ValueError('this workflow is restricted to the first alpha')
+    if version != ALPHA_VERSION or tag != ALPHA_TAG:
+        raise ValueError('this workflow is restricted to the currently authorized alpha')
     if re.fullmatch(r'[0-9a-f]{40}', commit) is None:
         raise ValueError('a full immutable source commit is required')
 
 
 def authorize(expected: str, actual: str, ref: str, acknowledgement: str) -> None:
-    validate_identity(FIRST_ALPHA_VERSION, FIRST_ALPHA_TAG, expected)
+    validate_identity(ALPHA_VERSION, ALPHA_TAG, expected)
     if actual != expected or ref != 'refs/heads/main':
         raise ValueError('publication must use the exact current main revision')
     if acknowledgement != 'unsigned-first-alpha':
@@ -78,7 +78,7 @@ def verify_brand(root: Path) -> dict:
     if hashlib.sha256(source).hexdigest() != manifest['source']['sha256']:
         raise ValueError('brand source digest mismatch')
     approval = manifest.get('first_alpha', {})
-    if approval.get('version') != FIRST_ALPHA_VERSION or approval.get('owner_authorized') is not True:
+    if approval.get('version') != ALPHA_VERSION or approval.get('owner_authorized') is not True:
         raise ValueError('first-alpha brand authorization is missing')
     if approval.get('source_sha256') != manifest['source']['sha256']:
         raise ValueError('brand approval does not bind the source image')
@@ -135,6 +135,15 @@ def validate_workflow(workflow: dict) -> None:
         raise ValueError('alpha CI prepares verified bundles; publication belongs to the owner CLI')
     if jobs['native-platform-qa'].get('uses') != './.github/workflows/accessibility-native.yml':
         raise ValueError('native QA must retain its existing owner')
+    for job, command, condition in (
+        ('verify-linux-final', 'tools/ci/test_packaged_shells.py', None),
+        ('verify-linux-final', 'tools/ci/test_linux_distros.py', None),
+        ('verify-macos-final', 'tools/ci/test_packaged_shells.py', None),
+        ('verify-windows-final', 'tests/integration/windows-package-review.ps1', "matrix.arch == 'x86_64'"),
+    ):
+        steps = [step for step in jobs[job]['steps'] if command in step.get('run', '')]
+        if len(steps) != 1 or steps[0].get('if') != condition or steps[0].get('continue-on-error', False):
+            raise ValueError('alpha must exercise the shipped shell and settings resources')
     for name, dependencies in {
         'publish': {'preflight', 'package-windows', 'package-macos', 'package-linux', 'final-gate', 'reproducibility-linux'},
         'sign-release-bundle': {'publish', 'preflight'},

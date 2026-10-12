@@ -15,6 +15,8 @@ class ReleaseIdentityTests(unittest.TestCase):
     def test_alpha_tag_cargo_and_native_versions_are_distinct(self):
         self.assertEqual(identity.release_tag("0.0.1-alpha"), "0.0.1_alpha")
         self.assertEqual(identity.native_version("0.0.1-alpha"), "0.0.1")
+        self.assertEqual(identity.release_tag("0.0.2-alpha"), "v0.0.2-alpha")
+        self.assertEqual(identity.native_version("0.0.2-alpha"), "0.0.2")
         self.assertEqual(identity.release_tag("1.2.3"), "v1.2.3")
         self.assertEqual(identity.native_version("255.255.65535"), "255.255.65535")
 
@@ -95,7 +97,8 @@ class ReleaseIdentityTests(unittest.TestCase):
                     if item.get("name", "").startswith("Validate internal release branch"))
         guard = step["run"].split("rustup toolchain install", 1)[0]
         for branch, success in (("release/0.0.1-alpha", True), ("release/1.2.3", True),
-                                ("release/0.0.2-alpha", False), ("release/0.0.1_alpha", False),
+                                ("release/0.0.2-alpha", True), ("release/0.0.3-alpha", False),
+                                ("release/0.0.1_alpha", False),
                                 ("release/01.2.3", False), ("release/1.2.3+test", False)):
             with self.subTest(branch=branch):
                 result = subprocess.run(["bash", "-c", guard], cwd=ROOT, capture_output=True,
@@ -357,7 +360,7 @@ class ReleaseIdentityTests(unittest.TestCase):
         import reproducible_build as build
         from unittest import mock
         with tempfile.TemporaryDirectory() as directory:
-            source = Path(directory) / "source"
+            source = (Path(directory) / "source").resolve()
             for target in build.TARGETS:
                 environment = build.build_environment(source, target, 1700000000)
                 self.assertEqual(environment["CARGO_INCREMENTAL"], "0")

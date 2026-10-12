@@ -1,0 +1,176 @@
+name: Published package review
+on:
+  workflow_call:
+    inputs:
+      platform:
+        type: string
+        default: unix
+      rehearsal:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Published package family to review on disposable runners
+        type: choice
+        default: unix
+        options: [unix, windows, all]
+      rehearsal:
+        description: Test candidate Linux resources and metadata using published binaries (never uploaded)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+env:
+  RUSTUP_TOOLCHAIN: '1.96.1'
+jobs:
+  windows-published-package-review:
+    if: inputs.platform != 'unix'
+    name: Published Windows (${{ matrix.platform.arch }} / ${{ matrix.case.name }})
+    runs-on: ${{ matrix.platform.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - arch: x64
+            runner: windows-2025
+          - arch: arm64
+            runner: windows-11-arm
+        case:
+          - name: fresh-client-policy
+            package: zip
+            policy: Restricted
+            internet-mark: false
+          - name: local-scripts-permitted
+            package: zip
+            policy: RemoteSigned
+            internet-mark: false
+          - name: downloaded-scripts
+            package: zip
+            policy: RemoteSigned
+            internet-mark: true
+          - name: msi-fresh-client-policy
+            package: msi
+            policy: Restricted
+            internet-mark: false
+          - name: msi-local-scripts-permitted
+            package: msi
+            policy: RemoteSigned
+            internet-mark: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Exercise exact published package without source rebuild or test hooks
+        shell: powershell
+        env:
+          AUDIT_POLICY: ${{ matrix.case.policy }}
+          AUDIT_INTERNET_MARK: ${{ matrix.case.internet-mark }}
+          AUDIT_PACKAGE: ${{ matrix.case.package }}
+          AUDIT_ARCH: ${{ matrix.platform.arch }}
+        run: |
+          & tests/integration/windows-package-review.ps1 -RepositoryRoot $env:GITHUB_WORKSPACE -Policy $env:AUDIT_POLICY -PackageKind $env:AUDIT_PACKAGE -Architecture $env:AUDIT_ARCH -InternetMark:($env:AUDIT_INTERNET_MARK -eq 'true')
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: windows-package-review-${{ matrix.platform.arch }}-${{ matrix.case.name }}
+          path: artifacts/windows-package-review/report.json
+          if-no-files-found: error
+          retention-days: 2
+  unix-published-package-review:
+    if: inputs.platform != 'windows'
+    name: Published Unix (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - runner: macos-26
+            target: universal
+          - runner: macos-26-intel
+            target: universal
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Download immutable published packages and verify their checksums
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          gh release download 0.0.1_alpha --repo AmjedAllaya/automexia --dir artifacts --pattern "automexia-terminal-0.0.1-alpha-$PACKAGE_TARGET.*" --pattern SHA256SUMS
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          root = Path('artifacts')
+          records = dict(line.split(None, 1)[::-1] for line in (root / 'SHA256SUMS').read_text().splitlines())
+          packages = [p for p in root.iterdir() if p.name != 'SHA256SUMS']
+          if len(packages) not in (1, 3):
+              raise SystemExit('incomplete published package inventory')
+          for package in packages:
+              with package.open('rb') as source:
+                  digest = hashlib.sha256()
+                  for block in iter(lambda: source.read(1024 * 1024), b''):
+                      digest.update(block)
+              if records.get(package.name) != digest.hexdigest():
+                  raise SystemExit('published package checksum mismatch')
+          print('Published package checksums verified')
+          PY
+      - name: Test actual packages across Linux distribution families
+        if: runner.os == 'Linux' && !inputs.rehearsal
+        run: python3 tools/ci/test_linux_distros.py --packages artifacts --version 0.0.1-alpha
+      - name: Rehearse candidate Linux resource layout and dependency metadata
+        if: runner.os == 'Linux' && inputs.rehearsal
+        shell: bash
+        env:
+          PACKAGE_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+          python3 tools/ci/rust_toolchain.py verify --kind development
+          sudo apt-get update
+          sudo apt-get install -y scdoc ncurses-bin
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
+          PATH="$(go env GOPATH)/bin:$PATH"
+          export PATH
+          staged="$(mktemp -d)"
+          tar -xzf "artifacts/automexia-terminal-0.0.1-alpha-$PACKAGE_TARGET.tar.gz" -C "$staged"
+          binary="$(find "$staged" -type f -name automexia -print -quit)"
+          test -n "$binary"
+          mkdir -p "target/$PACKAGE_TARGET/release"
+          for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
+            cp "$(dirname "$binary")/$runtime" "target/$PACKAGE_TARGET/release/$runtime"
+            chmod 0755 "target/$PACKAGE_TARGET/release/$runtime"
+          done
+          # This isolates candidate package resources/dependencies. These mixed-version
+          # rehearsal packages are never uploaded or accepted by the release publisher.
+          export AUTOMEXIA_PACKAGE_SKIP_BUILD=1
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          cargo xtask package --target "$PACKAGE_TARGET"
+          python3 tools/ci/test_linux_distros.py --packages "target/package/$PACKAGE_TARGET" --version 0.0.1-alpha
+      - name: Test shipped macOS shell resources on the native architecture
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install fish
+          mount_dir="$(mktemp -d)"
+          cleanup() { hdiutil detach "$mount_dir" -quiet >/dev/null 2>&1 || true; rmdir "$mount_dir" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          hdiutil attach artifacts/automexia-terminal-0.0.1-alpha-universal.dmg -nobrowse -readonly -mountpoint "$mount_dir"
+          app="$mount_dir/Automexia Terminal.app"
+          test -d "$app"
+          codesign --verify --deep --strict "$app"
+          "$app/Contents/MacOS/automexia" --version
+          python3 tools/ci/test_packaged_shells.py "$app/Contents/Resources/shell-integration"

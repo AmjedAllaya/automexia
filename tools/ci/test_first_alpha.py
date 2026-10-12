@@ -12,11 +12,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class FirstAlphaTests(unittest.TestCase):
     def test_exact_owner_authorized_identity_only(self):
-        alpha.validate_identity('0.0.1-alpha', '0.0.1_alpha', 'a' * 40)
+        alpha.validate_identity('0.0.2-alpha', 'v0.0.2-alpha', 'a' * 40)
         for version, tag, commit in [('1.0.0', 'v1.0.0', 'a'*40),
-                                     ('0.0.2-alpha', '0.0.2_alpha', 'a'*40),
-                                     ('0.0.1-alpha', 'v0.0.1-alpha', 'a'*40),
-                                     ('0.0.1-alpha', '0.0.1_alpha', 'main')]:
+                                     ('0.0.1-alpha', '0.0.1_alpha', 'a'*40),
+                                     ('0.0.3-alpha', 'v0.0.3-alpha', 'a'*40),
+                                     ('0.0.2-alpha', 'v0.0.2-alpha', 'main')]:
             with self.subTest(version=version, tag=tag, commit=commit):
                 with self.assertRaises(ValueError):
                     alpha.validate_identity(version, tag, commit)
@@ -70,7 +70,7 @@ class FirstAlphaTests(unittest.TestCase):
         self.assertEqual(report['checksum_manifest'], 'minisign')
 
     def test_publisher_rejects_missing_or_forged_signing_disclosure(self):
-        manifest = {'version': '0.0.1-alpha', 'tag': '0.0.1_alpha',
+        manifest = {'version': '0.0.2-alpha', 'tag': 'v0.0.2-alpha',
                     'source_commit': 'a'*40, 'channel': 'first-alpha',
                     'os_signing': alpha.signing_disclosure(),
                     'branding': {'stable_approval': False}}
@@ -128,6 +128,29 @@ class FirstAlphaTests(unittest.TestCase):
         invalid['jobs']['build']['permissions'] = {'contents': 'write'}
         with self.assertRaises(ValueError):
             alpha.validate_workflow(invalid)
+
+    def test_packaged_shell_and_settings_checks_cannot_be_removed_or_skipped(self):
+        import yaml
+        workflow = yaml.safe_load((ROOT / '.github/workflows/first-alpha.yml').read_text())
+        for job, command in (
+            ('verify-linux-final', 'tools/ci/test_packaged_shells.py'),
+            ('verify-linux-final', 'tools/ci/test_linux_distros.py'),
+            ('verify-macos-final', 'tools/ci/test_packaged_shells.py'),
+            ('verify-windows-final', 'tests/integration/windows-package-review.ps1'),
+        ):
+            for mutation in ('remove', 'skip', 'ignore_failure'):
+                with self.subTest(job=job, mutation=mutation):
+                    invalid = copy.deepcopy(workflow)
+                    steps = invalid['jobs'][job]['steps']
+                    step = next(step for step in steps if command in step.get('run', ''))
+                    if mutation == 'remove':
+                        steps.remove(step)
+                    elif mutation == 'skip':
+                        step['if'] = 'false'
+                    else:
+                        step['continue-on-error'] = True
+                    with self.assertRaises(ValueError):
+                        alpha.validate_workflow(invalid)
 
 
 if __name__ == '__main__':

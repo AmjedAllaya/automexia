@@ -181,16 +181,16 @@ def validate_bundle(bundle: Path, wsl_distro: str | None = None) -> tuple[dict, 
     if expected != set(records):
         raise ValueError("release contains unlisted assets")
     packages = [path for path in paths if path.name.endswith(inventory.PACKAGE_SUFFIXES)]
-    inventory._validate_exact_packages(packages, alpha.FIRST_ALPHA_VERSION, public=True)
-    inventory._validate_sboms([path for path in paths if path.name in inventory.SBOM_NAMES], alpha.FIRST_ALPHA_VERSION)
+    inventory._validate_exact_packages(packages, alpha.ALPHA_VERSION, public=True)
+    inventory._validate_sboms([path for path in paths if path.name in inventory.SBOM_NAMES], alpha.ALPHA_VERSION)
     return manifest, records
 
 
 def validate_remote(release: dict, records: dict[str, tuple[str, int]], *, notes: str, complete: bool, published: bool = False) -> set[str]:
-    if (release.get("tag_name") != alpha.FIRST_ALPHA_TAG or release.get("prerelease") is not True
+    if (release.get("tag_name") != alpha.ALPHA_TAG or release.get("prerelease") is not True
             or release.get("draft") is not (not published)
             or not isinstance(release.get("target_commitish"), str) or not release["target_commitish"]
-            or release.get("body") != notes or release.get("name") != f"Automexia Terminal {alpha.FIRST_ALPHA_TAG}"):
+            or release.get("body") != notes or release.get("name") != f"Automexia Terminal {alpha.ALPHA_TAG}"):
         raise ValueError("existing release is published or has a conflicting identity")
     if published and release.get("immutable") is not True:
         raise ValueError("published release is not immutable")
@@ -222,7 +222,7 @@ def authorize_owner(commit: str, acknowledgement: str) -> None:
 
 def verify_tag(commit: str, *, allow_missing: bool = False) -> bool:
     # target_commitish is informational once a tag exists; resolve the Git object.
-    ref = api(f"repos/{REPOSITORY}/git/ref/tags/{alpha.FIRST_ALPHA_TAG}", missing=allow_missing)
+    ref = api(f"repos/{REPOSITORY}/git/ref/tags/{alpha.ALPHA_TAG}", missing=allow_missing)
     if ref is None:
         if allow_missing:
             return False
@@ -246,14 +246,14 @@ def publish(bundle: Path, run_id: int, acknowledgement: str, *, perform: bool, w
         raise ValueError("native job inventory was truncated")
     validate_run(run, jobs, commit, run_id)
     authorize_owner(commit, acknowledgement)
-    tag = alpha.FIRST_ALPHA_TAG
+    tag = alpha.ALPHA_TAG
     source = api(f"repos/{REPOSITORY}/contents/docs/public-release/FIRST-ALPHA-NOTES.md?ref={commit}")
     if source.get("encoding") != "base64" or not 0 < source.get("size", 0) <= 64 * 1024:
         raise ValueError("release notes are missing or oversized")
     notes_bytes = base64.b64decode(source["content"].replace("\n", ""), validate=True)
     if len(notes_bytes) != source["size"]:
         raise ValueError("release note size mismatch")
-    notes = replace_download_guide(notes_bytes.decode("utf-8"), alpha.FIRST_ALPHA_VERSION)
+    notes = replace_download_guide(notes_bytes.decode("utf-8"), alpha.ALPHA_VERSION)
     releases = api(f"repos/{REPOSITORY}/releases?per_page=100", allow_array=True)
     if not isinstance(releases, list) or len(releases) >= 100:
         raise ValueError("first-alpha release inventory is truncated or invalid")
@@ -283,7 +283,7 @@ def publish(bundle: Path, run_id: int, acknowledgement: str, *, perform: bool, w
     if not isinstance(release_id, int) or release_id <= 0:
         raise ValueError("invalid draft release identity")
     release_endpoint = f"repos/{REPOSITORY}/releases/{release_id}"
-    missing_assets = [upload_argument(bundle / name, alpha.FIRST_ALPHA_VERSION)
+    missing_assets = [upload_argument(bundle / name, alpha.ALPHA_VERSION)
                       for name in sorted(set(records) - uploaded)]
     if missing_assets:
         checked_process(["gh", "release", "upload", tag, "--repo", REPOSITORY, *missing_assets], timeout=900)

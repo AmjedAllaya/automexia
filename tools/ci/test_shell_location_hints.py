@@ -72,18 +72,19 @@ def native_shells():
     return [name for name in candidates if shutil.which(name)]
 
 
-def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=False, disabled=False, location_changes=None, selector_changes=None, inspect_identity=False, identity_environment=None):
+def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=False, disabled=False, location_changes=None, selector_changes=None, inspect_identity=False, identity_environment=None, integration_root=None, fixture_parent=None):
     """Run real hooks in one shell so cache invalidation cannot hide behind restart."""
     powershell = shell in ("powershell", "pwsh")
     adapter = "powershell" if powershell else shell
     suffix = {"powershell": "ps1", "bash": "bash", "zsh": "zsh", "fish": "fish"}[adapter]
-    temporary_root = ROOT / "target/qa/shell-location-fixtures"
+    temporary_root = fixture_parent or ROOT / "target/qa/shell-location-fixtures"
+    integration_root = integration_root or ROOT / "shell-integration"
     temporary_root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="fixture-", dir=temporary_root) as temporary:
         env = {key: os.environ[key] for key in ("PATH", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT") if key in os.environ}
         env.update(HOME=temporary, USERPROFILE=temporary, XDG_CONFIG_HOME=temporary,
                    AUTOMEXIA_CONFIG_HOME=temporary, TERM_PROGRAM="Automexia", AUTOMEXIA_PLAIN_LS="1",
-                   AUTOMEXIA_HINT_SOURCE=str(ROOT / f"shell-integration/{adapter}/automexia.{suffix}"),
+                   AUTOMEXIA_HINT_SOURCE=str(integration_root / f"{adapter}/automexia.{suffix}"),
                    USER="alice", HOSTNAME="devbox", WSL_DISTRO_NAME="Fixture-Distro", LC_ALL="C.UTF-8")
         if identity_environment is not None:
             if set(identity_environment) - {"WSL_DISTRO_NAME", "USER"}:
@@ -101,6 +102,8 @@ def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=Fals
             args = [shutil.which(shell), "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "-"]
         elif shell == "fish":
             script = 'source "$AUTOMEXIA_HINT_SOURCE"' + ('\n' if inspect_identity else ' >/dev/null 2>/dev/null\n')
+            script += 'functions -q __automexia_fish_prompt automexia_completion_health; or exit 91\n'
+            script += 'source "$AUTOMEXIA_HINT_SOURCE"\n'  # Repeated startup must retain the same owners.
             prompt = "__automexia_fish_prompt"
             marker = "printf '\\036'"
             assign = lambda key, value: f"set -gx {key} '" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
@@ -155,6 +158,11 @@ def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=Fals
         started = time.perf_counter()
         result = subprocess.run(args, input=payload, env=env, cwd=temporary,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False)
+        # Identify missing shell primitives without exposing paths or terminal data.
+        missing = sorted(set(re.findall(rb"Unknown command: ([A-Za-z_][A-Za-z0-9_-]{0,63})", result.stderr)))
+        diagnostic = ", ".join(name.decode("ascii") for name in missing[:8])
+        if missing:
+            raise AssertionError(f"{shell}: unavailable commands: {diagnostic}")
         if result.returncode:
             raise AssertionError(f"{shell}: native prompt fixture failed (output withheld)")
         if len(result.stdout) > 8 * 1024 * 1024:
@@ -169,7 +177,7 @@ def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=Fals
                 raise AssertionError(f"{shell}: missing complete startup identity")
             identity_frames = [committed_identity_frames(shell, chunk) for chunk in chunks]
             if any(not frames for frames in identity_frames):
-                raise AssertionError(f"{shell}: missing complete prompt identity")
+                raise AssertionError(f"{shell}: missing complete prompt identity; unavailable commands: {diagnostic or 'none'}")
         for chunk in chunks:
             names = HINT_NAMES + (list(WINDOWS_HINTS) if powershell else [])
             wire = re.findall(rb"\x1b\]1337;SetUserVar=automexia_env_(pending|HOME|KUBECONFIG|HOMEDRIVE|HOMEPATH|USERPROFILE)=([A-Za-z0-9+/=]*)\x07", chunk)

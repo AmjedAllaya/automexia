@@ -46,14 +46,14 @@ jobs:
         import tomllib
         from pathlib import Path
         version = tomllib.loads(Path('Cargo.toml').read_text())['workspace']['package']['version']
-        if version != '0.0.1-alpha':
+        if version != '0.0.2-alpha':
             raise SystemExit('first-alpha workflow cannot publish another version')
         PY
         main_commit="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
         python tools/ci/first_alpha.py authorize --commit "$GITHUB_SHA" --main "$main_commit" --ref "$GITHUB_REF" --acknowledgement "$ACKNOWLEDGEMENT"
         python tools/ci/first_alpha.py brand > "$RUNNER_TEMP/first-alpha-brand.json"
         printf 'commit=%s
-        version=0.0.1-alpha
+        version=0.0.2-alpha
         ' "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
       id: identity
       env:
@@ -538,6 +538,7 @@ jobs:
   verify-linux-final:
     name: Verify final Linux packages
     needs:
+    - preflight
     - package-linux
     strategy:
       fail-fast: false
@@ -556,13 +557,18 @@ jobs:
     permissions:
       contents: read
     steps:
+    - name: Check out exact package verification source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.preflight.outputs.commit }}
     - name: Download release artifacts
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
       with:
         name: ${{ matrix.artifact }}
         path: artifacts
     - name: Install package inspection tools
-      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils rpm cpio
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils rpm cpio zsh fish
     - name: Verify tar, DEB and RPM assets
       shell: bash
       env:
@@ -602,6 +608,25 @@ jobs:
         fi
         test -n "$installed"
         "$installed" --version
+    - name: Verify shipped Unix shell resources
+      shell: bash
+      env:
+        TARGET_REGEX: ${{ matrix.needle_regex }}
+      run: |
+        set -euo pipefail
+        mapfile -t tars < <(find artifacts -type f \( -name '*.tar.gz' -o -name '*.tgz' \) | grep -Ei "$TARGET_REGEX")
+        (( ${#tars[@]} == 1 )) || { echo 'No target tarball found' >&2; exit 1; }
+        work="$(mktemp -d)"
+        trap 'rm -rf "$work"' EXIT
+        tar -xzf "${tars[0]}" -C "$work"
+        bin="$(find "$work" -type f -perm -111 -name 'automexia' -print -quit)"
+        test -n "$bin"
+        python3 tools/ci/test_packaged_shells.py "$(dirname "$bin")/shell-integration"
+        python3 tools/ci/test_packaged_shells.py /usr/share/automexia/shell-integration
+    - name: Install and verify packages in clean Linux distributions
+      env:
+        RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+      run: python3 tools/ci/test_linux_distros.py --packages artifacts --version "$RELEASE_VERSION"
   package-windows:
     name: Package explicitly unsigned first-alpha Windows MSI and ZIP
     needs:
@@ -707,7 +732,7 @@ jobs:
         codesign --force --sign - "$app"
         codesign --verify --deep --strict "$app"
         codesign -dv "$app" 2>&1 | grep -F 'Signature=adhoc'
-        hdiutil create -volname 'Automexia Terminal Alpha' -srcfolder dist -ov -format UDZO packages/automexia-terminal-0.0.1-alpha-universal.dmg
+        hdiutil create -volname 'Automexia Terminal Alpha' -srcfolder dist -ov -format UDZO packages/automexia-terminal-0.0.2-alpha-universal.dmg
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
         name: packages-macos-universal
@@ -796,9 +821,40 @@ jobs:
           $uninstall = Start-Process msiexec.exe -WindowStyle Hidden -ArgumentList @('/x', "`"$($msi[0].FullName)`"", '/qn', '/norestart') -Wait -PassThru
           if ($uninstall.ExitCode -notin 0, 1605, 3010) { throw "MSI uninstall failed with $($uninstall.ExitCode)" }
         }
+    - name: Exercise fresh installed Windows settings and policy recovery
+      if: matrix.arch == 'x86_64'
+      shell: pwsh
+      env:
+        RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        foreach ($kind in @('zip', 'msi')) {
+          $package = @(Get-ChildItem artifacts -File -Filter "*.$kind")
+          if ($package.Count -ne 1) { throw 'Expected one final package' }
+          $digest = (Get-FileHash -LiteralPath $package[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          foreach ($policy in @('Restricted', 'RemoteSigned')) {
+            & powershell.exe -NoProfile -File tests/integration/windows-package-review.ps1 -RepositoryRoot $env:GITHUB_WORKSPACE -PackagePath $package[0].FullName -PackageSha256 $digest -CandidateVersion $env:RELEASE_VERSION -PackageKind $kind -Policy $policy
+            if ($LASTEXITCODE -ne 0) { throw 'Fresh Windows package scenario failed' }
+            Copy-Item artifacts/windows-package-review/report.json "artifacts/windows-package-review/$kind-$policy.json"
+          }
+        }
+        $package = @(Get-ChildItem artifacts -File -Filter *.zip)[0]
+        $digest = (Get-FileHash -LiteralPath $package.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        & powershell.exe -NoProfile -File tests/integration/windows-package-review.ps1 -RepositoryRoot $env:GITHUB_WORKSPACE -PackagePath $package.FullName -PackageSha256 $digest -CandidateVersion $env:RELEASE_VERSION -Policy RemoteSigned -InternetMark
+        if ($LASTEXITCODE -ne 0) { throw 'Downloaded Windows package scenario failed' }
+        Copy-Item artifacts/windows-package-review/report.json artifacts/windows-package-review/zip-internet-mark.json
+    - name: Retain bounded Windows package results
+      if: always() && matrix.arch == 'x86_64'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: alpha-windows-package-scenarios
+        path: artifacts/windows-package-review/*.json
+        if-no-files-found: error
+        retention-days: 2
   verify-macos-final:
     name: Verify ad-hoc universal DMG on Intel and Apple Silicon
     needs:
+    - preflight
     - package-macos
     strategy:
       fail-fast: false
@@ -813,6 +869,13 @@ jobs:
     permissions:
       contents: read
     steps:
+    - name: Check out exact package verification source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.preflight.outputs.commit }}
+    - name: Install native shell scenario prerequisite
+      run: brew install fish
     - name: Download release artifacts
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
       with:
@@ -840,6 +903,7 @@ jobs:
         done
         "$app/Contents/MacOS/automexia" --version
         "$app/Contents/MacOS/amx" --version
+        python3 tools/ci/test_packaged_shells.py "$app/Contents/Resources/shell-integration"
   final-gate:
     name: Require every first-alpha platform and quality gate
     needs:
