@@ -19,6 +19,21 @@ TARGETS = frozenset(("x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu",
                      "x86_64-apple-darwin", "aarch64-apple-darwin"))
 
 
+class RuntimeComparisonError(ValueError):
+    """Public diagnostics contain only fixed runtime/stage names and byte offsets."""
+
+    def __init__(self, runtime: str, reason: str, stage: str, offset: int | None = None):
+        labels = {"missing": "missing regular runtime", "size": "invalid runtime size",
+                  "different": "non-reproducible unsigned runtime"}
+        names = {name + suffix for name in RUNTIMES for suffix in ("", ".exe")}
+        if (runtime not in names or reason not in labels
+                or stage not in ("comparison", "cold-builds", "packaged-inputs")
+                or offset is not None and (type(offset) is not int or not 0 <= offset <= 512 * 1024 * 1024)):
+            raise ValueError("invalid comparison diagnostic")
+        detail = "" if offset is None else f"; first differing byte={offset}"
+        super().__init__(f"{labels[reason]}: {runtime}; stage={stage}{detail}")
+
+
 def build_environment(source: Path, target: str, epoch: int) -> dict[str, str]:
     if target not in TARGETS:
         raise ValueError("unsupported reproducibility target")
@@ -39,7 +54,7 @@ def build_environment(source: Path, target: str, epoch: int) -> dict[str, str]:
     return env
 
 
-def compare_binaries(first: Path, second: Path, target: str) -> dict:
+def compare_binaries(first: Path, second: Path, target: str, *, stage: str = "comparison") -> dict:
     if target not in TARGETS:
         raise ValueError("unsupported reproducibility target")
     results = {}
@@ -47,21 +62,24 @@ def compare_binaries(first: Path, second: Path, target: str) -> dict:
         name = runtime + (".exe" if "windows" in target else "")
         left, right = first / name, second / name
         if not all(path.is_file() and not path.is_symlink() for path in (left, right)):
-            raise ValueError(f"missing regular runtime: {name}")
+            raise RuntimeComparisonError(name, "missing", stage)
         size = left.stat().st_size
         if not 0 < size <= 512 * 1024 * 1024:
-            raise ValueError(f"invalid runtime size: {name}")
+            raise RuntimeComparisonError(name, "size", stage)
         digest = hashlib.sha256()
         with left.open("rb") as before, right.open("rb") as after:
             remaining = size
             while remaining:
                 chunk = before.read(min(1024 * 1024, remaining))
-                if not chunk or chunk != after.read(len(chunk)):
-                    raise ValueError(f"non-reproducible unsigned runtime: {name}")
+                other = after.read(len(chunk))
+                if not chunk or chunk != other:
+                    differing = next((index for index, pair in enumerate(zip(chunk, other))
+                                      if pair[0] != pair[1]), min(len(chunk), len(other)))
+                    raise RuntimeComparisonError(name, "different", stage, size - remaining + differing)
                 digest.update(chunk)
                 remaining -= len(chunk)
             if before.read(1) or after.read(1):
-                raise ValueError(f"non-reproducible unsigned runtime: {name}")
+                raise RuntimeComparisonError(name, "different", stage, size)
         results[name] = {"sha256": digest.hexdigest(), "size": size}
     return results
 
@@ -101,9 +119,9 @@ def run(root: Path, target: str, output: Path, reference: Path | None = None) ->
                            check=True, timeout=7200)
             durations.append(round(time.monotonic() - started, 3))
         results = compare_binaries(staging / "1/target" / target / "release",
-                                   staging / "2/target" / target / "release", target)
+                                   staging / "2/target" / target / "release", target, stage="cold-builds")
         if reference is not None:
-            compare_binaries(staging / "1/target" / target / "release", reference, target)
+            compare_binaries(staging / "1/target" / target / "release", reference, target, stage="packaged-inputs")
     main = results["automexia.exe" if "windows" in target else "automexia"]
     report = {"schema": 1, "result": "pass", "target": target, "commit": commit,
               "source_date_epoch": epoch, **main, "runtimes": results,
@@ -148,6 +166,8 @@ def main() -> None:
             if args.output is None:
                 parser.error("reproducibility evidence output is required")
             run(root, args.target, args.output, args.reference)
+    except RuntimeComparisonError as error:
+        parser.exit(1, f"Native reproducibility verification failed: {error}.\n")
     except (ValueError, OSError, tarfile.TarError, subprocess.SubprocessError):
         # Build logs stay with the private CI run; the public status carries no
         # machine paths, environment values, or command arguments.

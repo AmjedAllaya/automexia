@@ -49,7 +49,51 @@ fn main() {
         .set("InternalName", "automexia.exe")
         .set("OriginalFilename", "automexia.exe")
         .set("ProductName", "Automexia Terminal");
+    // winres 0.1.12 emits VERSIONINFO maps in randomized HashMap order.
+    // Keep its escaping, metadata and compiler discovery, but canonicalize
+    // contiguous generated records before compiling the same resource file.
+    let resource_path = output_directory.join("resource.rc");
     resource
+        .write_resource_file(&resource_path)
+        .expect("failed to generate Automexia Windows resources");
+    let generated = std::fs::read_to_string(&resource_path)
+        .expect("failed to read generated Automexia Windows resources");
+    let mut lines: Vec<_> = generated.lines().collect();
+    let sortable = |line: &str| {
+        [
+            "VALUE ",
+            "FILEVERSION ",
+            "PRODUCTVERSION ",
+            "FILEFLAGSMASK ",
+            "FILEFLAGS ",
+            "FILEOS ",
+            "FILETYPE ",
+            "FILESUBTYPE ",
+        ]
+        .iter()
+        .any(|prefix| line.starts_with(prefix))
+    };
+    let mut start = 0;
+    while start < lines.len() {
+        if !sortable(lines[start]) {
+            start += 1;
+            continue;
+        }
+        let mut end = start + 1;
+        while end < lines.len() && sortable(lines[end]) {
+            end += 1;
+        }
+        lines[start..end].sort_unstable();
+        start = end;
+    }
+    std::fs::write(&resource_path, lines.join("\n") + "\n")
+        .expect("failed to canonicalize Automexia Windows resources");
+    resource
+        .set_resource_file(
+            resource_path
+                .to_str()
+                .expect("generated Windows resource path must be UTF-8"),
+        )
         .compile()
         .expect("failed to embed Automexia Windows resources");
 
