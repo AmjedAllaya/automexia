@@ -50,7 +50,8 @@ function Read-Nodes {
         }
         $nodes.Add([pscustomobject]@{
             Name = $current.Name; Id = $current.AutomationId; Bounds = $current.BoundingRectangle
-            Type = $current.ControlType.ProgrammaticName; Toggle = $state; Enabled = $current.IsEnabled; Text = $visibleText
+            Type = $current.ControlType.ProgrammaticName; Toggle = $state; Enabled = $current.IsEnabled
+            Focused = $current.HasKeyboardFocus; Text = $visibleText
         })
         $child = $walker.GetFirstChild($node)
         while ($null -ne $child) {
@@ -123,7 +124,19 @@ function Find-Setting([string]$Query, [string]$Id) {
         $nodes = Wait-Nodes { param($n) @($n | Where-Object { $_.Id -eq $Id -and $_.Type -eq 'ControlType.CheckBox' }).Count -eq 1 }
         $node = @($nodes | Where-Object { $_.Id -eq $Id -and $_.Type -eq 'ControlType.CheckBox' })[0]
     }
-    return $node
+    # UIA bounds describe the complete setting row; its center can be explanatory
+    # text rather than the smaller painted input. Use the supported list keyboard
+    # interaction and verify the actual focused ID before changing a value.
+    $nodes = Read-Nodes
+    Click-Node @($nodes | Where-Object Name -eq 'Search settings')[0]
+    Key 0x09
+    for ($i = 0; $i -lt 32; $i++) {
+        $nodes = Read-Nodes
+        $focused = @($nodes | Where-Object { $_.Id -eq $Id -and $_.Focused })
+        if ($focused.Count -eq 1) { return $focused[0] }
+        Key 0x28
+    }
+    throw 'Setting keyboard focus was not reached'
 }
 function Start-OwnedApp {
     $script:process = [Diagnostics.Process]::Start($script:startInfo)
@@ -267,7 +280,7 @@ public static class AuditCoordinates {
         $entry.reached = $true
         $before = $node.Toggle
         if ($before -notin @('On', 'Off')) { throw 'Setting has no native toggle state' }
-        Click-Node $node
+        Key 0x20
         $nodes = Wait-Nodes { param($n) @($n | Where-Object { $_.Id -eq $case[1] -and $_.Toggle -ne $before }).Count -eq 1 }
         $after = @($nodes | Where-Object Id -eq $case[1])[0].Toggle
         $entry.toggled = $true
@@ -279,7 +292,7 @@ public static class AuditCoordinates {
         $entry.persisted = $restored.Toggle -eq $after
         if (-not $entry.persisted) { throw 'Setting did not survive restart' }
         # Return to the original value before moving to another independent control.
-        Click-Node $restored
+        Key 0x20
         $null = Wait-Nodes { param($n) @($n | Where-Object { $_.Id -eq $case[1] -and $_.Toggle -eq $before }).Count -eq 1 }
         Key 0x1B
     }
