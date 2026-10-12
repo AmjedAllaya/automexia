@@ -608,10 +608,6 @@ impl SettingsView {
             SettingValue::Text(value) => value.clone(),
             _ => display_value(entry),
         };
-        #[cfg(feature = "native-gui-test-hooks")]
-        {
-            self.last_color_dismissal = None;
-        }
         self.color_editor = Some(ColorEditor {
             id: entry.id.clone(),
             revision: self.catalog.as_ref().map_or(0, Catalog::revision),
@@ -631,6 +627,10 @@ impl SettingsView {
             },
             feedback: None,
         });
+        #[cfg(feature = "native-gui-test-hooks")]
+        {
+            self.last_color_dismissal = None;
+        }
         self.preedit.clear();
         self.pressed = None;
         self.touch = None;
