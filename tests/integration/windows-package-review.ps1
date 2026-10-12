@@ -92,6 +92,15 @@ function Click-Node($Node) {
     # UIA gives screen coordinates; the existing driver takes client coordinates.
     $client = [AuditCoordinates]::ScreenToClientPoint($script:window,
         [int]($Node.Bounds.X + $Node.Bounds.Width / 2), [int]($Node.Bounds.Y + $Node.Bounds.Height / 2))
+    if (-not [AutomexiaResizeDriver]::ActivateWindow($script:window) -or
+        -not [AutomexiaResizeDriver]::MovePhysicalPointerToClient($script:window, $client.X + 6, $client.Y)) {
+        throw 'Owned window did not accept pointer input'
+    }
+    Start-Sleep -Milliseconds 100
+    if (-not [AutomexiaResizeDriver]::MovePhysicalPointerToClient($script:window, $client.X, $client.Y)) {
+        throw 'Owned window did not accept pointer input'
+    }
+    Start-Sleep -Milliseconds 100
     if (-not [AutomexiaResizeDriver]::SendPhysicalLeftClick($script:window, $client.X, $client.Y)) {
         throw 'Owned window did not accept pointer input'
     }
