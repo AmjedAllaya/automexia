@@ -1201,6 +1201,13 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                         "split": True, "local_tab": True, "resize": True, "shared_caption_controls": True,
                         "header_pointer": True, "native_maximize_restore": True if MACOS else None,
                         "native_ax_caption": True if MACOS else None}
+            except Exception as error:
+                if driver:
+                    try:
+                        error.native_focus = driver.focus_snapshot()
+                    except BenchmarkError:
+                        error.native_focus = {'observation_unavailable': True}
+                raise
             finally:
                 if driver:
                     driver.dispose()
@@ -1271,6 +1278,12 @@ def failure_details(error: BaseException) -> dict:
     # a failing operation without exposing the isolated session's contents.
     message = str(error)[:240] if isinstance(error, (Failure, BenchmarkError)) else type(error).__name__
     result = {"failure": message}
+    focus = getattr(error, "native_focus", None)
+    if isinstance(focus, dict):
+        result["native_focus"] = {key: focus[key] for key in (
+            "process_alive", "window_owned", "app_frontmost", "owned_window_focused",
+            "app_frontmost_unavailable", "owned_window_focused_unavailable", "observation_unavailable")
+            if type(focus.get(key)) is bool}
     if isinstance(error, Failure) and hasattr(error, "observed"):
         result["observed"] = error.observed
     if isinstance(error, OSError):
