@@ -1,3 +1,10 @@
+automexia-terminal (0.0.2~alpha-1) unstable; urgency=medium
+
+  * Restore Fish 3.3 integration and portable RPM dependency metadata.
+  * Explain blocked PowerShell integration and simplify release download names.
+
+ -- Automexia Contributors <AmjedAllaya@users.noreply.github.com>  Mon, 12 Oct 2026 00:00:00 +0000
+
 automexia-terminal (0.0.1~alpha-1) unstable; urgency=medium
 
   * First cross-platform alpha release in the Automexia repository.

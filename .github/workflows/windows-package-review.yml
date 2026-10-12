@@ -144,7 +144,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y scdoc ncurses-bin
           go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
-          export PATH="$(go env GOPATH)/bin:$PATH"
+          PATH="$(go env GOPATH)/bin:$PATH"
+          export PATH
           staged="$(mktemp -d)"
           tar -xzf "artifacts/automexia-terminal-0.0.1-alpha-$PACKAGE_TARGET.tar.gz" -C "$staged"
           binary="$(find "$staged" -type f -name automexia -print -quit)"
