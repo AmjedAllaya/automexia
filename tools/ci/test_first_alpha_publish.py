@@ -304,6 +304,13 @@ class PublicationFlowTests(unittest.TestCase):
         with patch.object(owner, "checked_process", return_value=denied), self.assertRaisesRegex(ValueError, "403"):
             owner.api("repos/example/terminal/immutable-releases", missing=True)
 
+    def test_signature_verifiers_never_inherit_github_or_signing_credentials(self):
+        injected = {key: "unit-fixture" for key in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "AUTOMEXIA_RELEASE_MINISIGN_SECRET_KEY", "WSLENV")}
+        for command in ("wsl", "minisign"):
+            with patch.dict(owner.os.environ, injected), patch.object(owner.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"", b"")) as run:
+                owner.checked_process([command, "--version"])
+            self.assertFalse(set(injected) & set(run.call_args.kwargs["env"]))
+
     def test_boolean_api_fields_are_typed_and_notes_are_literal_argv(self):
         result = subprocess.CompletedProcess([], 0, b'HTTP/2.0 201 Created\ncontent-type: application/json\n\n{"id":45}', b'')
         with patch.object(owner, "checked_process", return_value=result) as command:

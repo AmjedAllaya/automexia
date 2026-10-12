@@ -47,6 +47,10 @@ MAX_API_BYTES = 8 * 1024 * 1024
 def checked_process(argv: list[str], *, allow_failure: bool = False, timeout: int = 120) -> subprocess.CompletedProcess:
     env = os.environ.copy()
     env.pop("GH_DEBUG", None)
+    if Path(argv[0]).name.casefold() in ("wsl", "wsl.exe", "minisign", "minisign.exe"):
+        for key in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
+                    "AUTOMEXIA_RELEASE_MINISIGN_SECRET_KEY", "WSLENV"):
+            env.pop(key, None)
     env.update(GH_HOST="github.com", GH_PROMPT_DISABLED="1", GH_PAGER="cat")
     result = subprocess.run(argv, capture_output=True, timeout=timeout, env=env)
     if len(result.stdout) + len(result.stderr) > MAX_API_BYTES:
