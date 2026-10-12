@@ -122,8 +122,8 @@ overrides:
       - fontconfig
       - "libfreetype.so.6()(64bit)"
       - glibc
-      - libgcc
-      - libstdc++
+      - "libgcc_s.so.1()(64bit)"
+      - "libstdc++.so.6()(64bit)"
 rpm:
   compression: xz
 deb:

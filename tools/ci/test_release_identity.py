@@ -97,7 +97,8 @@ class ReleaseIdentityTests(unittest.TestCase):
                     if item.get("name", "").startswith("Validate internal release branch"))
         guard = step["run"].split("rustup toolchain install", 1)[0]
         for branch, success in (("release/0.0.1-alpha", True), ("release/1.2.3", True),
-                                ("release/0.0.2-alpha", False), ("release/0.0.1_alpha", False),
+                                ("release/0.0.2-alpha", True), ("release/0.0.3-alpha", False),
+                                ("release/0.0.1_alpha", False),
                                 ("release/01.2.3", False), ("release/1.2.3+test", False)):
             with self.subTest(branch=branch):
                 result = subprocess.run(["bash", "-c", guard], cwd=ROOT, capture_output=True,

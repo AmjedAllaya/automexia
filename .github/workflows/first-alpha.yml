@@ -589,7 +589,6 @@ jobs:
         test -n "$bin"
         file "$bin"
         "$bin" --version
-        python3 tools/ci/test_packaged_shells.py "$(dirname "$bin")/shell-integration"
         max_glibc="$(readelf --version-info "$bin" | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -Vu | tail -1 || true)"
         python3 - "$max_glibc" <<'PY2'
         import re, sys
@@ -609,6 +608,20 @@ jobs:
         fi
         test -n "$installed"
         "$installed" --version
+    - name: Verify shipped Unix shell resources
+      shell: bash
+      env:
+        TARGET_REGEX: ${{ matrix.needle_regex }}
+      run: |
+        set -euo pipefail
+        mapfile -t tars < <(find artifacts -type f \( -name '*.tar.gz' -o -name '*.tgz' \) | grep -Ei "$TARGET_REGEX")
+        (( ${#tars[@]} == 1 )) || { echo 'No target tarball found' >&2; exit 1; }
+        work="$(mktemp -d)"
+        trap 'rm -rf "$work"' EXIT
+        tar -xzf "${tars[0]}" -C "$work"
+        bin="$(find "$work" -type f -perm -111 -name 'automexia' -print -quit)"
+        test -n "$bin"
+        python3 tools/ci/test_packaged_shells.py "$(dirname "$bin")/shell-integration"
         python3 tools/ci/test_packaged_shells.py /usr/share/automexia/shell-integration
     - name: Install and verify packages in clean Linux distributions
       env:
