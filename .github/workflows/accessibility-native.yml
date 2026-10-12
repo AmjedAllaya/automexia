@@ -290,25 +290,41 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   windows-published-package-review:
-    name: Published Windows ZIP (${{ matrix.case.name }})
+    name: Published Windows (${{ matrix.platform.arch }} / ${{ matrix.case.name }})
     if: github.event_name == 'workflow_dispatch' && github.ref_name == 'codex/windows-package-review'
-    runs-on: windows-2025
+    runs-on: ${{ matrix.platform.runner }}
     timeout-minutes: 15
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
+        platform:
+          - arch: x64
+            runner: windows-2025
+          - arch: arm64
+            runner: windows-11-arm
         case:
           - name: fresh-client-policy
+            package: zip
             policy: Restricted
             internet-mark: false
           - name: local-scripts-permitted
+            package: zip
             policy: RemoteSigned
             internet-mark: false
           - name: downloaded-scripts
+            package: zip
             policy: RemoteSigned
             internet-mark: true
+          - name: msi-fresh-client-policy
+            package: msi
+            policy: Restricted
+            internet-mark: false
+          - name: msi-local-scripts-permitted
+            package: msi
+            policy: RemoteSigned
+            internet-mark: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -318,12 +334,14 @@ jobs:
         env:
           AUDIT_POLICY: ${{ matrix.case.policy }}
           AUDIT_INTERNET_MARK: ${{ matrix.case.internet-mark }}
+          AUDIT_PACKAGE: ${{ matrix.case.package }}
+          AUDIT_ARCH: ${{ matrix.platform.arch }}
         run: |
-          & tests/integration/windows-package-review.ps1 -RepositoryRoot $env:GITHUB_WORKSPACE -Policy $env:AUDIT_POLICY -InternetMark:($env:AUDIT_INTERNET_MARK -eq 'true')
+          & tests/integration/windows-package-review.ps1 -RepositoryRoot $env:GITHUB_WORKSPACE -Policy $env:AUDIT_POLICY -PackageKind $env:AUDIT_PACKAGE -Architecture $env:AUDIT_ARCH -InternetMark:($env:AUDIT_INTERNET_MARK -eq 'true')
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: windows-package-review-${{ matrix.case.name }}
+          name: windows-package-review-${{ matrix.platform.arch }}-${{ matrix.case.name }}
           path: artifacts/windows-package-review/report.json
           if-no-files-found: error
           retention-days: 2

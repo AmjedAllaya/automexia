@@ -2,6 +2,8 @@
 param(
     [Parameter(Mandatory)][string]$RepositoryRoot,
     [ValidateSet('Restricted', 'RemoteSigned')][string]$Policy = 'Restricted',
+    [ValidateSet('zip', 'msi')][string]$PackageKind = 'zip',
+    [ValidateSet('x64', 'arm64')][string]$Architecture = 'x64',
     [switch]$InternetMark
 )
 $ErrorActionPreference = 'Stop'
@@ -9,6 +11,8 @@ if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hoste
     throw 'This diagnostic may run only on a disposable GitHub-hosted Windows runner.'
 }
 if ($InternetMark -and $Policy -ne 'RemoteSigned') { throw 'Internet-mark comparison requires RemoteSigned.' }
+if ($InternetMark -and $PackageKind -ne 'zip') { throw 'Internet-mark comparison targets extracted ZIP scripts.' }
+if ($env:RUNNER_ARCH -ine $Architecture) { throw 'A native runner is required for the selected package architecture.' }
 $root = [IO.Path]::GetFullPath($RepositoryRoot)
 $work = Join-Path $env:RUNNER_TEMP ('automexia-package-review-' + [guid]::NewGuid().ToString('N'))
 $reportRoot = Join-Path $root 'artifacts/windows-package-review'
@@ -17,17 +21,23 @@ $report = [ordered]@{
     schema = 1
     tag = '0.0.1_alpha'
     source_commit = '7b099a6be450f1cd35910e3a454da45f01d45e12'
-    architecture = 'x64'
-    package = 'portable ZIP'
+    architecture = $Architecture
+    package = $PackageKind
     policy = $Policy
     internet_mark = [bool]$InternetMark
-    environment = 'fresh Windows Server hosted VM; client execution policy is an explicit test condition'
+    environment = $(if ($Architecture -eq 'arm64') { 'fresh Windows 11 ARM64 hosted VM' } else { 'fresh Windows Server hosted VM; client execution policy is an explicit test condition' })
     controls = @()
     complete = $false
 }
 $process = $null
 $window = [IntPtr]::Zero
 $stage = 'package'
+$msiInstalled = $false
+function Invoke-Installer([string]$Operation, [string]$Path) {
+    $installer = Start-Process -FilePath "$env:SystemRoot\System32\msiexec.exe" -WindowStyle Hidden -PassThru -ArgumentList @($Operation, ('"' + $Path + '"'), '/qn', '/norestart')
+    if (-not $installer.WaitForExit(120000)) { $installer.Kill(); throw 'Installer timed out in the disposable VM' }
+    return $installer.ExitCode
+}
 function Read-Nodes {
     $native = [Windows.Automation.AutomationElement]::FromHandle($script:window)
     $walker = [Windows.Automation.TreeWalker]::RawViewWalker
@@ -42,6 +52,11 @@ function Read-Nodes {
         $state = $null
         $textPattern = $null
         $visibleText = ''
+        $valuePattern = $null
+        $value = ''
+        if ($node.TryGetCurrentPattern([Windows.Automation.ValuePattern]::Pattern, [ref]$valuePattern)) {
+            $value = $valuePattern.Current.Value
+        }
         if ($node.TryGetCurrentPattern([Windows.Automation.TextPattern]::Pattern, [ref]$textPattern)) {
             $visibleText = $textPattern.DocumentRange.GetText(16384)
         }
@@ -51,7 +66,7 @@ function Read-Nodes {
         $nodes.Add([pscustomobject]@{
             Name = $current.Name; Id = $current.AutomationId; Bounds = $current.BoundingRectangle
             Type = $current.ControlType.ProgrammaticName; Toggle = $state; Enabled = $current.IsEnabled
-            Focused = $current.HasKeyboardFocus; Text = $visibleText
+            Focused = $current.HasKeyboardFocus; Text = $visibleText; Value = $value
         })
         $child = $walker.GetFirstChild($node)
         while ($null -ne $child) {
@@ -119,7 +134,7 @@ function Find-Setting([string]$Query, [string]$Id) {
     Type-Text $Query
     $nodes = Wait-Nodes { param($n) @($n | Where-Object Id -eq $Id).Count -eq 1 }
     $node = @($nodes | Where-Object Id -eq $Id)[0]
-    if ($node.Type -ne 'ControlType.CheckBox') {
+    if ($node.Type -eq 'ControlType.Button') {
         Click-Node $node
         $nodes = Wait-Nodes { param($n) @($n | Where-Object { $_.Id -eq $Id -and $_.Type -eq 'ControlType.CheckBox' }).Count -eq 1 }
         $node = @($nodes | Where-Object { $_.Id -eq $Id -and $_.Type -eq 'ControlType.CheckBox' })[0]
@@ -182,16 +197,50 @@ function Stop-OwnedApp {
     }
 }
 try {
-    $zip = Join-Path $work 'package.zip'
-    Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/AmjedAllaya/automexia/releases/download/0.0.1_alpha/automexia-terminal-0.0.1-alpha-x86_64-pc-windows-msvc.zip' -OutFile $zip
-    $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($hash -ne 'b94baab303681884ebde7aedbae37c6cf75be265556a9009ef9b879234ece077') { throw 'Published package digest mismatch' }
+    $target = if ($Architecture -eq 'arm64') { 'aarch64' } else { 'x86_64' }
+    $digests = @{
+        'x64.zip' = 'b94baab303681884ebde7aedbae37c6cf75be265556a9009ef9b879234ece077'
+        'x64.msi' = 'af7a19c7517ef03982c753651568d11769fe3e8b98add611fb680b89953d81a1'
+        'arm64.zip' = '5ecc9cd47661be01c9c698df86b2d3dbb797972987da130b4f73b79628792a3b'
+        'arm64.msi' = '20050f5d0aadcff7848974c3da6fafa59c37a6c537a5bdf9604370fe5cc503d1'
+    }
+    $download = Join-Path $work ('package.' + $PackageKind)
+    $asset = 'automexia-terminal-0.0.1-alpha-' + $target + '-pc-windows-msvc.' + $PackageKind
+    Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -Uri ('https://github.com/AmjedAllaya/automexia/releases/download/0.0.1_alpha/' + $asset) -OutFile $download
+    $hash = (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($hash -ne $digests[($Architecture + '.' + $PackageKind)]) { throw 'Published package digest mismatch' }
     $report.package_sha256 = $hash
     $packageRoot = Join-Path $work 'package'
-    Expand-Archive -LiteralPath $zip -DestinationPath $packageRoot
+    if ($PackageKind -eq 'zip') {
+        Expand-Archive -LiteralPath $download -DestinationPath $packageRoot
+    } else {
+        $stage = 'msi-install'
+        $exitCode = Invoke-Installer '/i' $download
+        $report.msi_install_exit = $exitCode
+        if ($exitCode -notin @(0, 3010)) { throw 'MSI installation failed' }
+        $msiInstalled = $true
+        $candidates = foreach ($base in @($env:ProgramFiles, [Environment]::GetFolderPath('ProgramFilesX86'), $env:LOCALAPPDATA)) {
+            if ($base) {
+                foreach ($suffix in @('Automexia Terminal', 'Automexia\Terminal', 'AutomexiaTerminal', 'automexia')) {
+                    $candidate = Join-Path $base $suffix
+                    if (Test-Path -LiteralPath (Join-Path $candidate 'automexia.exe')) { $candidate }
+                }
+            }
+        }
+        $candidates = @($candidates | Select-Object -Unique)
+        if ($candidates.Count -ne 1) { throw 'MSI did not expose one expected installation root' }
+        $packageRoot = $candidates[0]
+    }
+    $integrationCandidates = @(
+        (Join-Path $packageRoot 'shell-integration'),
+        (Join-Path $packageRoot 'resources/shell-integration')
+    )
+    $integrationRoot = @($integrationCandidates | Where-Object { Test-Path -LiteralPath (Join-Path $_ 'powershell/automexia.ps1') })
+    if ($integrationRoot.Count -ne 1) { throw 'Package integration layout is ambiguous or missing' }
+    $integrationRoot = $integrationRoot[0]
     if ($InternetMark) {
         # Controlled extracted-file provenance condition, not a browser download simulation.
-        Get-ChildItem -LiteralPath (Join-Path $packageRoot 'shell-integration') -Recurse -File |
+        Get-ChildItem -LiteralPath $integrationRoot -Recurse -File |
             Where-Object Extension -in '.ps1', '.ps1xml' | ForEach-Object {
                 Set-Content -LiteralPath $_.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3" -Encoding ASCII
             }
@@ -209,7 +258,7 @@ try {
     $policyProbe.WorkingDirectory = $work
     $policyProbe.EnvironmentVariables['TERM_PROGRAM'] = 'Automexia'
     $policyProbe.EnvironmentVariables['AUTOMEXIA_CONFIG_HOME'] = $configRoot
-    $policyProbe.EnvironmentVariables['AUTOMEXIA_AUDIT_SCRIPT'] = Join-Path $packageRoot 'shell-integration/powershell/automexia.ps1'
+    $policyProbe.EnvironmentVariables['AUTOMEXIA_AUDIT_SCRIPT'] = Join-Path $integrationRoot 'powershell/automexia.ps1'
     $policyProbe.EnvironmentVariables['AUTOMEXIA_AUDIT_RESULT'] = $policyProbeFile
     $policyProbe.EnvironmentVariables['PSExecutionPolicyPreference'] = $Policy
     # Fixed diagnostic code and exact argv; never evaluate downloaded content as a command string.
@@ -269,31 +318,41 @@ public static class AuditCoordinates {
     if ($probe.policy -ne $Policy) { throw 'Requested policy did not become effective; comparison is invalid' }
     $stage = 'customization-controls'
     $cases = @(
-        @('Show information tags', 'tags.enabled'),
-        @('Inline tables', 'terminal.inline_tables'),
-        @('Command timestamps', 'terminal.command_timestamps')
+        @('Show information tags', 'tags.enabled', 'boolean'),
+        @('Inline tables', 'terminal.inline_tables', 'boolean'),
+        @('Command timestamps', 'terminal.command_timestamps', 'boolean'),
+        @('Highlight recognized output', 'terminal.output_highlighting', 'boolean'),
+        @('Highlight completed commands', 'terminal.command_output_highlighting', 'boolean'),
+        @('Highlight Kubernetes status', 'terminal.kubernetes_highlighting', 'boolean'),
+        @('Show Footer', 'interface.footer.visible', 'boolean'),
+        @('Font size', 'appearance.font_size', 'value'),
+        @('Appearance', 'appearance.theme', 'value')
     )
     foreach ($case in $cases) {
         $entry = [ordered]@{ id = $case[1]; reached = $false; toggled = $false; persisted = $false }
         $report.controls += $entry
         $node = Find-Setting $case[0] $case[1]
         $entry.reached = $true
-        $before = $node.Toggle
-        if ($before -notin @('On', 'Off')) { throw 'Setting has no native toggle state' }
-        Key 0x20
-        $nodes = Wait-Nodes { param($n) @($n | Where-Object { $_.Id -eq $case[1] -and $_.Toggle -ne $before }).Count -eq 1 }
-        $after = @($nodes | Where-Object Id -eq $case[1])[0].Toggle
+        $property = if ($case[2] -eq 'boolean') { 'Toggle' } else { 'Value' }
+        $before = $node.$property
+        if ($property -eq 'Toggle' -and $before -notin @('On', 'Off')) { throw 'Setting has no native toggle state' }
+        if ($property -eq 'Value' -and [string]::IsNullOrEmpty($before)) { throw 'Setting has no native value' }
+        $forwardKey = if ($property -eq 'Toggle') { 0x20 } else { 0x27 }
+        $backwardKey = if ($property -eq 'Toggle') { 0x20 } else { 0x25 }
+        Key $forwardKey
+        $nodes = Wait-Nodes { param($n) @($n | Where-Object { $_.Id -eq $case[1] -and $_.$property -ne $before }).Count -eq 1 }
+        $after = @($nodes | Where-Object Id -eq $case[1])[0].$property
         $entry.toggled = $true
         Start-Sleep -Milliseconds 600
         Key 0x1B
         Stop-OwnedApp
         Start-OwnedApp
         $restored = Find-Setting $case[0] $case[1]
-        $entry.persisted = $restored.Toggle -eq $after
+        $entry.persisted = $restored.$property -eq $after
         if (-not $entry.persisted) { throw 'Setting did not survive restart' }
         # Return to the original value before moving to another independent control.
-        Key 0x20
-        $null = Wait-Nodes { param($n) @($n | Where-Object { $_.Id -eq $case[1] -and $_.Toggle -eq $before }).Count -eq 1 }
+        Key $backwardKey
+        $null = Wait-Nodes { param($n) @($n | Where-Object { $_.Id -eq $case[1] -and $_.$property -eq $before }).Count -eq 1 }
         Key 0x1B
     }
     $report.complete = $true
@@ -311,6 +370,12 @@ public static class AuditCoordinates {
     }
 } finally {
     try { Stop-OwnedApp } catch { $report.teardown_failed = $true; $report.complete = $false }
+    if ($msiInstalled) {
+        try {
+            $report.msi_uninstall_exit = Invoke-Installer '/x' $download
+            if ($report.msi_uninstall_exit -notin @(0, 1605, 3010)) { $report.complete = $false }
+        } catch { $report.msi_uninstall_failed = $true; $report.complete = $false }
+    }
     $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $reportRoot 'report.json') -Encoding UTF8
 }
 if (-not $report.complete) { throw "Package review incomplete at $stage; see the bounded report." }
