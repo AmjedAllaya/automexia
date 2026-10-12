@@ -32,6 +32,10 @@ class FreePlanContractTests(unittest.TestCase):
         self.assertEqual(job["permissions"], {"contents": "read"})
         self.assertLessEqual(job["timeout-minutes"], 15)
         self.assertFalse(job.get("continue-on-error", False))
+        candidate = workflow["jobs"]["windows-candidate-review"]
+        self.assertEqual(candidate["permissions"], {"contents": "read", "actions": "read"})
+        self.assertLessEqual(candidate["timeout-minutes"], 20)
+        self.assertFalse(candidate.get("continue-on-error", False))
 
     def test_python_policy_dependencies_are_installed_in_each_consumer_job(self) -> None:
         import shlex
