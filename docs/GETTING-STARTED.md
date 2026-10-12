@@ -1,11 +1,10 @@
 # Getting started
 
-This tutorial builds, verifies, and opens Automexia Terminal on Windows, Linux,
-or macOS from a clean checkout. It is for contributors and source users; signed stable installers are
-not published until the release prerequisites in [Releasing](../RELEASING.md)
-are satisfied.
+Build, verify, and open Automexia on Windows, Linux, or macOS from a clean checkout.
+This tutorial is for source users and contributors. Signed stable installers
+require the gates in [Releasing](../RELEASING.md).
 
-For the complete platform requirements, update, cleanup, and removal steps,
+For full platform requirements, update, cleanup, and removal steps,
 start with [Install Automexia](INSTALLATION.md).
 
 ## 1. Prepare the host
@@ -46,11 +45,9 @@ From the repository root, run:
 cargo dev
 ```
 
-This one command performs the complete contributor gate, builds the debug
-application, checks `automexia --version`, prepares session-only shell
-integration, and opens Automexia. A cold build can spend several minutes in
-WGPU, shader, and workspace tests. The window opens only after verification
-passes.
+This runs the contributor gate, builds the debug app, checks its version, and
+prepares session-only shell integration. The window opens after checks pass.
+A first build can take several minutes.
 
 After one successful complete gate, use the incremental launch path:
 
@@ -108,11 +105,9 @@ Create a non-overwriting starter file with a pointer to the canonical reference:
 automexia --write-config
 ```
 
-Then use [Configuration reference](CONFIGURATION.md) to add only the settings
-you want to change. Automexia works with no configuration; omitted values use
-tested defaults. Restart, or bind the stable `ReloadConfig` action for an
-explicit reload. Malformed or oversized configuration is rejected and the last
-known-good runtime configuration remains active.
+Use [Configuration](CONFIGURATION.md) to change settings; omitted values use defaults.
+Restart or bind `ReloadConfig` to reload. Malformed or oversized changes are
+rejected, keeping the last working runtime settings.
 
 ## Continue with a task
 

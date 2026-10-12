@@ -35,8 +35,6 @@ cohesive optional behavior within its current capability boundary. A new
 extension requires a distinct optional authority or dependency footprint,
 explicit lifecycle, limits, disable/uninstall behavior, tests, and an ADR.
 
-Unreleased feature placement and commercial architecture are private.
-
 ## Maintaining existing boundaries
 
 Map a change to its current owner before adding a crate or shared type. Reuse

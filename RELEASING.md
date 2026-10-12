@@ -59,6 +59,29 @@ install. `0.0.1-alpha` sorts below the historical separate `0.4.0` Linux build;
 package managers can therefore require an explicit downgrade choice. Back up
 configuration first and never force a downgrade or delete preferences for users.
 
+### Download names and guidance
+
+`tools/ci/release_downloads.py` owns public filenames, asset labels and the
+download guide. Final assembly assigns names before generating SBOMs, the
+manifest and signed checksums. Native build filenames may still use target
+triples; installed commands remain `automexia` and `amx`.
+
+Examples for version `1.2.3`:
+
+- `automexia-1.2.3-windows-x64-installer.msi` — Intel/AMD Windows installer.
+- `automexia-1.2.3-windows-arm64-portable.zip` — ARM Windows portable copy.
+- `automexia-1.2.3-macos-apple-silicon-and-intel.dmg` — one download for both Mac chips.
+- `automexia-1.2.3-linux-debian-ubuntu-x64.deb` — DEB package family.
+- `automexia-1.2.3-linux-fedora-opensuse-arm64.rpm` — RPM package family.
+- `automexia-1.2.3-linux-x64-portable.tar.gz` — manual Linux extraction.
+
+The release guide explains architecture, installer versus portable, Linux
+runtime requirements, and verification files. Distro names identify package
+formats; they do not certify every distro version. New releases use these
+names. Published immutable assets, including `0.0.1_alpha`, keep their original
+names, URLs and signed metadata. Owner-authorized display labels and release-note
+clarifications can make those downloads clearer without replacing them.
+
 ## Release preparation
 
 For local release preparation, run the helper with the workspace version:

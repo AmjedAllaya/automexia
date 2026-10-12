@@ -202,6 +202,8 @@ fn every_shell_compiler_is_deterministic_bounded_and_nonactivated() {
         )
         .expect("shell compiler");
         assert_eq!(artifact.file_name, file_name);
+        // Bundled loaders pin this format identity, independently of app releases.
+        assert_eq!(artifact.generator, "automexia-devops/0.4.0");
         assert!(!artifact.activation_enabled);
         assert_eq!(artifact.bindings.len(), 1);
         assert!(artifact.content.contains(first), "{shell:?}");

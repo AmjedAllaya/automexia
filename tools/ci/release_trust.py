@@ -368,7 +368,8 @@ def validate_vendor_sboms(spdx: Any, cyclonedx: Any) -> None:
 def add_vendor_sbom(directory: Path, policy: dict[str, Any], *,
                     package_directory: Path | None = None) -> None:
     """Augment scanner SBOMs with the recipe-owned binary dependency offline."""
-    if not any(path.name.endswith(("-pc-windows-msvc.zip", "-pc-windows-msvc.msi"))
+    from release_downloads import is_windows_package
+    if not any(is_windows_package(path.name)
                for path in (directory if package_directory is None else package_directory).iterdir()):
         return
     rules = metadata_rules(policy)

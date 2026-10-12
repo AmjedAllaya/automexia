@@ -27,5 +27,5 @@ licenses, SBOM, provenance, signatures, install, upgrade, rollback, uninstall,
 and cleanup. Missing accounts, hardware, native assistive technology, signing,
 notarization, or long-duration evidence remains external.
 
-Public release documentation covers only baseline terminal behavior. Unreleased
-advanced and commercial release plans remain private.
+Public release docs cover baseline terminal behavior. Follow the
+[Private documentation policy](../PRIVATE-DOCUMENTATION-POLICY.md) for publication.

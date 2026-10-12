@@ -1,6 +1,6 @@
 # Configuration and customization
 
-Automexia is designed to work with **zero configuration**. The most maintainable customization strategy is to override only what you intentionally want to change.
+Automexia works without a configuration file. Change only the settings you need.
 
 ## Choose the right kind of customization
 
@@ -21,7 +21,7 @@ Automexia is designed to work with **zero configuration**. The most maintainable
 | Occasional UI action | Command palette instead of adding a binding |
 | Different project launcher | Desktop/script launcher with CLI options rather than global config |
 
-This separation prevents the global config from becoming a collection of one-off project assumptions.
+Keep one-off project settings in launchers instead of global configuration.
 
 See [Customize a shortcut](shortcuts.md#customize-a-shortcut-in-the-palette) for
 recording, conflict checks, Save/Reset, persistence and recovery. UI shortcuts use

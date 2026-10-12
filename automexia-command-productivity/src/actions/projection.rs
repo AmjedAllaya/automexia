@@ -15,8 +15,9 @@ use super::{
 };
 
 pub const PROJECTION_SCHEMA_VERSION: u32 = 1;
-pub const PROJECTION_GENERATOR: &str =
-    concat!("automexia-devops/", env!("CARGO_PKG_VERSION"));
+// Version of the generated format accepted by the bundled shell loaders, not
+// the app release. Change it only with a coordinated loader/migration update.
+pub const PROJECTION_GENERATOR: &str = "automexia-devops/0.4.0";
 pub const MAX_GENERATED_FILE_BYTES: usize = MAX_SOURCE_BYTES;
 pub const MAX_COLLISION_ENTRIES: usize = 4_096;
 pub const MAX_OBSERVATION_ENTRIES: usize = MAX_ENABLED_ALIASES;

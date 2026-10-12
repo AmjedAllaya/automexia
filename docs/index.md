@@ -1,9 +1,7 @@
 # Automexia Terminal documentation
 
-Automexia is a cross-platform terminal for Windows, Linux and macOS. This public
-documentation covers current open-source terminal behavior and
-implemented free terminal capabilities. It excludes all future features,
-including open-source ideas, and commercial strategy.
+Automexia is a cross-platform terminal for Windows, Linux, and macOS.
+These guides cover current behavior, configuration, development, and release status.
 
 ## Start here
 
@@ -80,13 +78,11 @@ including open-source ideas, and commercial strategy.
 
 ## Public feature-status boundary
 
-The source contains some disabled or release-gated foundations. Their public
-pages document only current code, safety boundaries, and remaining evidence.
-They are not promises of a future product.
+Some source behavior is disabled or release-gated. Its documentation records
+current boundaries and missing evidence, not future promises.
 
-No public page should infer an unreleased advanced feature, commercial product,
-price, hosted service, specialist extension, or delivery plan from the absence
-or presence of an internal source module.
+Source modules do not establish public availability. See
+[Features](FEATURES.md) and the [Private documentation policy](PRIVATE-DOCUMENTATION-POLICY.md).
 
 ## Documentation maintenance
 
@@ -97,7 +93,7 @@ ignored private documentation workspace and remove public links to it.
 
 ## Command-productivity evidence status
 
-Accepted source work partial overall: command-productivity foundations have
-source and local assurance owners, while native and release evidence remains
-explicitly gated. See [CP5.0 native autocomplete research](research/CP5-AUTOCOMPLETE-RESEARCH.md)
-and the CP3.3 boundary in [DevOps aliases](DEVOPS-ALIASES.md).
+Accepted source work partial overall: shell-productivity code has local test
+evidence, but native and release evidence remains incomplete.
+See [Autocomplete evidence](research/CP5-AUTOCOMPLETE-RESEARCH.md)
+and [DevOps alias limits (CP3.3)](DEVOPS-ALIASES.md) for details.

@@ -231,6 +231,9 @@ commercial packages remain private and are not part of this specification.
 
 The pure compiler converts validated action records into deterministic,
 shell-specific candidate artifacts. It has no activation or execution authority.
+Its generator identity, `automexia-devops/0.4.0`, versions the generated format
+independently of app releases. Changing it requires coordinated loader and
+migration updates; loaders reject unknown identities.
 
 ## CP2.2 action search editor and insert/copy
 

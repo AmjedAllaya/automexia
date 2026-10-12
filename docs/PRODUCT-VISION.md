@@ -13,10 +13,8 @@ images, configuration, and keyboard navigation—in one focused workspace.
 
 ## Intended users
 
-Automexia is useful to anyone who works through a shell, including developers,
-system administrators, operators, researchers, analysts, and technical
-contributors. Public documentation does not assume that one profession or one
-external tool defines every user.
+Automexia is for anyone who works in a shell, including developers, administrators,
+researchers, and analysts.
 
 ## Public product values
 
@@ -60,13 +58,11 @@ or release evidence. See [Features](FEATURES.md), [Platforms](PLATFORMS.md), and
 
 ## Publication boundary
 
-Public vision and roadmap pages describe current implementation, observable
-limitations and release evidence only. Future features remain private,
-including free and open-source ideas. Business plans, commercial strategy,
-pricing, market analysis and future architectures are not public documentation.
+Public pages describe current behavior, limitations, and release evidence.
+Future features and business plans remain private under the
+[Private documentation policy](PRIVATE-DOCUMENTATION-POLICY.md).
 
-Private planning is not evidence that a feature exists. Public descriptions
-must match actual source behavior and distinguish it from released artifacts.
+Describe source behavior and published availability separately.
 
 ## Documentation language
 

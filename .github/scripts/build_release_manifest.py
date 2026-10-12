@@ -16,6 +16,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools/ci"))
 from release_trust import ReleaseTrustError, load_policy, validate_sboms, validate_vendor_sboms
 from release_identity import release_tag
+from release_downloads import package_names
 
 
 PACKAGE_SUFFIXES = (".msi", ".zip", ".dmg", ".deb", ".rpm", ".tar.gz", ".tgz")
@@ -61,7 +62,7 @@ def _regular_unlinked(path: Path, label: str, maximum: int) -> os.stat_result:
 
 def _artifact_patterns(version: str) -> dict[str, re.Pattern[str]]:
     escaped = re.escape(version)
-    return {
+    build_patterns = {
         "Windows x64 MSI": re.compile(
             rf"^automexia-terminal-{escaped}-x86_64-pc-windows-msvc\.msi$"
         ),
@@ -98,10 +99,15 @@ def _artifact_patterns(version: str) -> dict[str, re.Pattern[str]]:
             re.IGNORECASE,
         ),
     }
+    public_names = package_names(version)
+    return {slot: re.compile(rf"(?:{pattern.pattern}|{re.escape(public_names[slot])})", pattern.flags)
+            for slot, pattern in build_patterns.items()}
 
 
-def _validate_exact_packages(paths: list[Path], version: str) -> None:
+def _validate_exact_packages(paths: list[Path], version: str, *, public: bool = False) -> None:
     patterns = _artifact_patterns(version)
+    if public:
+        patterns = {slot: re.compile(re.escape(name)) for slot, name in package_names(version).items()}
     slots: dict[str, list[str]] = {label: [] for label in patterns}
     unexpected: list[str] = []
     for path in paths:
@@ -273,19 +279,23 @@ def build_release_manifest(
         _validate_exact_packages(candidates, version)
         _prepare_directory(output, "release output")
         names: dict[str, tuple[str, int]] = {}
+        public_names = package_names(version)
+        patterns = _artifact_patterns(version)
         for source_path in candidates:
             record = records[source_path]
-            prior = names.get(source_path.name)
+            slot = next(slot for slot, pattern in patterns.items() if pattern.fullmatch(source_path.name))
+            public_name = public_names[slot]
+            prior = names.get(public_name)
             if prior is not None:
                 raise ReleaseManifestError(
                     f"duplicate release filename across inputs: {source_path.name}"
                 )
-            names[source_path.name] = record
-            destination = output / source_path.name
+            names[public_name] = record
+            destination = output / public_name
             if destination.exists() or destination.is_symlink():
                 if digest(destination, maximum=max_artifact_bytes) != record:
                     raise ReleaseManifestError(
-                        f"conflicting destination release filename: {source_path.name}"
+                        f"conflicting destination release filename: {public_name}"
                     )
                 continue
             temporary = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")
@@ -316,7 +326,7 @@ def build_release_manifest(
         for path in final_paths
         if any(path.name.endswith(suffix) for suffix in PACKAGE_SUFFIXES)
     ]
-    _validate_exact_packages(packages, version)
+    _validate_exact_packages(packages, version, public=True)
     if include_sbom:
         sboms = [path for path in final_paths if path.name in SBOM_NAMES or path.name.endswith((".spdx.json", ".cdx.json"))]
         _validate_sboms(sboms, version)

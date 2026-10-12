@@ -302,8 +302,10 @@ modified bundles, altered release notes and conflicting remote assets. A
 matching incomplete draft may resume without overwriting an uploaded asset.
 The exact draft ID and every remote digest are verified before publication;
 immutability is rechecked immediately before the draft becomes public. GitHub
-release and asset attestations are verified afterward. Published releases are
-never modified and Latest is never changed. See
+release and asset attestations are verified afterward. Published filenames, bytes
+and tags are never changed and Latest is never changed. Owner-authorized display
+labels and release-note clarifications must preserve signing disclosures and
+asset links. See
 [dispatch instructions](../RELEASING.md#dispatching-the-first-alpha) and the
 [first-alpha notes](public-release/FIRST-ALPHA-NOTES.md) for user limitations.
 
