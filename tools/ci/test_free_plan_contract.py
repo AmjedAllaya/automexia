@@ -20,12 +20,12 @@ CACHE_INITIALIZER = r'''printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v2\n' "$RU
 
 
 class FreePlanContractTests(unittest.TestCase):
-    def test_published_package_diagnostic_is_manual_read_only_and_bounded(self) -> None:
+    def test_published_package_diagnostic_is_explicit_read_only_and_bounded(self) -> None:
         import yaml
 
         workflow = yaml.safe_load((ROOT / ".github/workflows/windows-package-review.yml").read_text(encoding="utf-8"))
         trigger = workflow.get("on", workflow.get(True))
-        self.assertEqual(set(trigger), {"workflow_dispatch"})
+        self.assertEqual(set(trigger), {"workflow_call", "workflow_dispatch"})
         self.assertEqual(trigger["workflow_dispatch"]["inputs"]["platform"]["options"], ["unix", "windows", "all"])
         self.assertEqual(workflow["permissions"], {"contents": "read"})
         job = workflow["jobs"]["windows-published-package-review"]

@@ -1,5 +1,10 @@
 name: Published package review
 on:
+  workflow_call:
+    inputs:
+      platform:
+        type: string
+        default: unix
   workflow_dispatch:
     inputs:
       platform:
