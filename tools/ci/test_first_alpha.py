@@ -129,6 +129,29 @@ class FirstAlphaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             alpha.validate_workflow(invalid)
 
+    def test_packaged_shell_and_settings_checks_cannot_be_removed_or_skipped(self):
+        import yaml
+        workflow = yaml.safe_load((ROOT / '.github/workflows/first-alpha.yml').read_text())
+        for job, command in (
+            ('verify-linux-final', 'tools/ci/test_packaged_shells.py'),
+            ('verify-linux-final', 'tools/ci/test_linux_distros.py'),
+            ('verify-macos-final', 'tools/ci/test_packaged_shells.py'),
+            ('verify-windows-final', 'tests/integration/windows-package-review.ps1'),
+        ):
+            for mutation in ('remove', 'skip', 'ignore_failure'):
+                with self.subTest(job=job, mutation=mutation):
+                    invalid = copy.deepcopy(workflow)
+                    steps = invalid['jobs'][job]['steps']
+                    step = next(step for step in steps if command in step.get('run', ''))
+                    if mutation == 'remove':
+                        steps.remove(step)
+                    elif mutation == 'skip':
+                        step['if'] = 'false'
+                    else:
+                        step['continue-on-error'] = True
+                    with self.assertRaises(ValueError):
+                        alpha.validate_workflow(invalid)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -24,7 +24,9 @@ class FreePlanContractTests(unittest.TestCase):
         import yaml
 
         workflow = yaml.safe_load((ROOT / ".github/workflows/windows-package-review.yml").read_text(encoding="utf-8"))
-        self.assertEqual(workflow.get("on", workflow.get(True)), {"workflow_dispatch": None})
+        trigger = workflow.get("on", workflow.get(True))
+        self.assertEqual(set(trigger), {"workflow_dispatch"})
+        self.assertEqual(trigger["workflow_dispatch"]["inputs"]["platform"]["options"], ["unix", "windows", "all"])
         self.assertEqual(workflow["permissions"], {"contents": "read"})
         job = workflow["jobs"]["windows-published-package-review"]
         self.assertEqual(job["permissions"], {"contents": "read"})

@@ -72,18 +72,19 @@ def native_shells():
     return [name for name in candidates if shutil.which(name)]
 
 
-def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=False, disabled=False, location_changes=None, selector_changes=None, inspect_identity=False, identity_environment=None):
+def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=False, disabled=False, location_changes=None, selector_changes=None, inspect_identity=False, identity_environment=None, integration_root=None, fixture_parent=None):
     """Run real hooks in one shell so cache invalidation cannot hide behind restart."""
     powershell = shell in ("powershell", "pwsh")
     adapter = "powershell" if powershell else shell
     suffix = {"powershell": "ps1", "bash": "bash", "zsh": "zsh", "fish": "fish"}[adapter]
-    temporary_root = ROOT / "target/qa/shell-location-fixtures"
+    temporary_root = fixture_parent or ROOT / "target/qa/shell-location-fixtures"
+    integration_root = integration_root or ROOT / "shell-integration"
     temporary_root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="fixture-", dir=temporary_root) as temporary:
         env = {key: os.environ[key] for key in ("PATH", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT") if key in os.environ}
         env.update(HOME=temporary, USERPROFILE=temporary, XDG_CONFIG_HOME=temporary,
                    AUTOMEXIA_CONFIG_HOME=temporary, TERM_PROGRAM="Automexia", AUTOMEXIA_PLAIN_LS="1",
-                   AUTOMEXIA_HINT_SOURCE=str(ROOT / f"shell-integration/{adapter}/automexia.{suffix}"),
+                   AUTOMEXIA_HINT_SOURCE=str(integration_root / f"{adapter}/automexia.{suffix}"),
                    USER="alice", HOSTNAME="devbox", WSL_DISTRO_NAME="Fixture-Distro", LC_ALL="C.UTF-8")
         if identity_environment is not None:
             if set(identity_environment) - {"WSL_DISTRO_NAME", "USER"}:

@@ -4,7 +4,10 @@ param(
     [ValidateSet('Restricted', 'RemoteSigned')][string]$Policy = 'Restricted',
     [ValidateSet('zip', 'msi')][string]$PackageKind = 'zip',
     [ValidateSet('x64', 'arm64')][string]$Architecture = 'x64',
-    [switch]$InternetMark
+    [switch]$InternetMark,
+    [string]$PackagePath,
+    [ValidatePattern('^[0-9a-f]{64}$')][string]$PackageSha256,
+    [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+-alpha$')][string]$CandidateVersion
 )
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
@@ -13,14 +16,15 @@ if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hoste
 if ($InternetMark -and $Policy -ne 'RemoteSigned') { throw 'Internet-mark comparison requires RemoteSigned.' }
 if ($InternetMark -and $PackageKind -ne 'zip') { throw 'Internet-mark comparison targets extracted ZIP scripts.' }
 if ($env:RUNNER_ARCH -ine $Architecture) { throw 'A native runner is required for the selected package architecture.' }
+if ($PackagePath -and (-not $PackageSha256 -or -not $CandidateVersion)) { throw 'Candidate packages require an exact digest and version.' }
 $root = [IO.Path]::GetFullPath($RepositoryRoot)
 $work = Join-Path $env:RUNNER_TEMP ('automexia-package-review-' + [guid]::NewGuid().ToString('N'))
 $reportRoot = Join-Path $root 'artifacts/windows-package-review'
 New-Item -ItemType Directory -Path $work, $reportRoot -Force | Out-Null
 $report = [ordered]@{
     schema = 1
-    tag = '0.0.1_alpha'
-    source_commit = '7b099a6be450f1cd35910e3a454da45f01d45e12'
+    tag = $(if ($PackagePath) { 'v' + $CandidateVersion } else { '0.0.1_alpha' })
+    source_commit = $(if ($PackagePath) { $env:GITHUB_SHA } else { '7b099a6be450f1cd35910e3a454da45f01d45e12' })
     architecture = $Architecture
     package = $PackageKind
     policy = $Policy
@@ -236,10 +240,17 @@ try {
         'arm64.msi' = '20050f5d0aadcff7848974c3da6fafa59c37a6c537a5bdf9604370fe5cc503d1'
     }
     $download = Join-Path $work ('package.' + $PackageKind)
-    $asset = 'automexia-terminal-0.0.1-alpha-' + $target + '-pc-windows-msvc.' + $PackageKind
-    Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -Uri ('https://github.com/AmjedAllaya/automexia/releases/download/0.0.1_alpha/' + $asset) -OutFile $download
+    if ($PackagePath) {
+        if ([IO.Path]::GetExtension($PackagePath) -ne ('.' + $PackageKind)) { throw 'Candidate package kind mismatch' }
+        Copy-Item -LiteralPath $PackagePath -Destination $download
+        $expectedHash = $PackageSha256
+    } else {
+        $asset = 'automexia-terminal-0.0.1-alpha-' + $target + '-pc-windows-msvc.' + $PackageKind
+        Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -Uri ('https://github.com/AmjedAllaya/automexia/releases/download/0.0.1_alpha/' + $asset) -OutFile $download
+        $expectedHash = $digests[($Architecture + '.' + $PackageKind)]
+    }
     $hash = (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($hash -ne $digests[($Architecture + '.' + $PackageKind)]) { throw 'Published package digest mismatch' }
+    if ($hash -ne $expectedHash) { throw 'Package digest mismatch' }
     $report.package_sha256 = $hash
     $packageRoot = Join-Path $work 'package'
     if ($PackageKind -eq 'zip') {
@@ -300,6 +311,8 @@ try {
     $policyResult = Get-Content -LiteralPath $policyProbeFile -Raw | ConvertFrom-Json
     $report.packaged_script = @{ effective_policy = $policyResult.policy; blocked = $policyResult.blocked; loaded = $policyResult.loaded }
     if ($policyResult.policy -ne $Policy) { throw 'Script probe policy mismatch' }
+    $expectedIntegration = $Policy -eq 'RemoteSigned' -and -not $InternetMark
+    if ($policyResult.loaded -ne $expectedIntegration -or $policyResult.blocked -eq $expectedIntegration) { throw 'Packaged script violated the expected policy behavior' }
     # The direct script probe is separate from the application's first-run settings.
     if (@(Get-ChildItem -LiteralPath $configRoot -Force).Count -ne 0) { throw 'Script probe wrote application settings' }
     $stage = 'native-driver'
@@ -354,12 +367,17 @@ public static class AuditCoordinates {
     $startInfo.EnvironmentVariables['PATH'] = "$packageRoot;$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
     Start-OwnedApp
     $stage = 'shell-integration'
+    if ($PackagePath -and -not $expectedIntegration) {
+        $null = Wait-Nodes { param($n) @($n | Where-Object { $_.Text -match 'PowerShell blocked Automexia shell integration' }).Count -gt 0 }
+        $report.policy_notice_visible = $true
+    }
     Type-Text '$r=@{policy=(Get-ExecutionPolicy).ToString();integrated=($env:AUTOMEXIA_SHELL_INTEGRATION -eq "1");promptHook=[bool]$global:AutomexiaShellIntegrationLoaded};$r|ConvertTo-Json -Compress|Set-Content -LiteralPath $env:AUTOMEXIA_AUDIT_RESULT;Write-Output "AUDIT_COMMAND_COMPLETE"' $true
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     while (-not (Test-Path -LiteralPath $probeFile) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 100 }
     $probe = Get-Content -LiteralPath $probeFile -Raw | ConvertFrom-Json
     $report.shell = @{ effective_policy = $probe.policy; integration_loaded = $probe.integrated; prompt_hook_loaded = $probe.promptHook }
     if ($probe.policy -ne $Policy) { throw 'Requested policy did not become effective; comparison is invalid' }
+    if ($probe.integrated -ne $expectedIntegration -or $probe.promptHook -ne $expectedIntegration) { throw 'Application shell integration did not match effective policy' }
     $stage = 'customization-controls'
     $cases = @(
         @('Show information tags', 'tags.enabled', 'boolean'),

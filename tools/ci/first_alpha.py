@@ -135,6 +135,15 @@ def validate_workflow(workflow: dict) -> None:
         raise ValueError('alpha CI prepares verified bundles; publication belongs to the owner CLI')
     if jobs['native-platform-qa'].get('uses') != './.github/workflows/accessibility-native.yml':
         raise ValueError('native QA must retain its existing owner')
+    for job, command, condition in (
+        ('verify-linux-final', 'tools/ci/test_packaged_shells.py', None),
+        ('verify-linux-final', 'tools/ci/test_linux_distros.py', None),
+        ('verify-macos-final', 'tools/ci/test_packaged_shells.py', None),
+        ('verify-windows-final', 'tests/integration/windows-package-review.ps1', "matrix.arch == 'x86_64'"),
+    ):
+        steps = [step for step in jobs[job]['steps'] if command in step.get('run', '')]
+        if len(steps) != 1 or steps[0].get('if') != condition or steps[0].get('continue-on-error', False):
+            raise ValueError('alpha must exercise the shipped shell and settings resources')
     for name, dependencies in {
         'publish': {'preflight', 'package-windows', 'package-macos', 'package-linux', 'final-gate', 'reproducibility-linux'},
         'sign-release-bundle': {'publish', 'preflight'},

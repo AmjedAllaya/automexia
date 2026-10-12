@@ -390,7 +390,13 @@ mod tests {
         .unwrap();
         let root = dunce::canonicalize(temporary.path()).unwrap();
         assert!(!root.to_string_lossy().starts_with(r"\\?\"));
-        let probe = format!("{POWERSHELL_SESSION_BOOTSTRAP};{assertion}");
+        // Use Windows PowerShell's own modules. A test launched by pwsh can
+        // inherit its incompatible Security module and fail the policy query.
+        let modules = std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+            .join("System32/WindowsPowerShell/v1.0/Modules");
+        let probe = format!(
+            "$policyBefore=Get-ExecutionPolicy;{POWERSHELL_SESSION_BOOTSTRAP};{assertion}"
+        );
 
         Command::new("powershell.exe")
             .args([
@@ -404,6 +410,7 @@ mod tests {
             .arg(probe)
             .env("AUTOMEXIA_SHELL_INTEGRATION_ROOT", root)
             .env("TERM_PROGRAM", "Automexia")
+            .env("PSModulePath", modules)
             .output()
             .expect("PowerShell policy probe must start")
     }
@@ -686,7 +693,7 @@ try {
     fn restricted_policy_explains_missing_features_and_preserves_policy() {
         let output = run_policy_probe(
             "Restricted",
-            "if((Get-ExecutionPolicy) -eq 'Restricted' -and $env:AUTOMEXIA_SHELL_INTEGRATION -eq '0' -and -not $global:AutomexiaPolicyProbeLoaded){exit 0}else{exit 73}",
+            "if($policyBefore -eq 'Restricted' -and (Get-ExecutionPolicy) -eq $policyBefore -and $env:AUTOMEXIA_SHELL_INTEGRATION -eq '0' -and -not $global:AutomexiaPolicyProbeLoaded){exit 0}else{exit 73}",
         );
         assert!(output.status.success(), "native policy fallback failed");
         assert!(
