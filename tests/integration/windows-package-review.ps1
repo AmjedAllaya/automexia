@@ -5,9 +5,11 @@ param(
     [ValidateSet('zip', 'msi')][string]$PackageKind = 'zip',
     [ValidateSet('x64', 'arm64')][string]$Architecture = 'x64',
     [switch]$InternetMark,
+    [switch]$StressOutputHighlighting,
     [string]$PackagePath,
     [ValidatePattern('^[0-9a-f]{64}$')][string]$PackageSha256,
-    [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+-alpha$')][string]$CandidateVersion
+    [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+-alpha$')][string]$CandidateVersion,
+    [ValidatePattern('^[0-9a-f]{40}$')][string]$CandidateCommit = $env:GITHUB_SHA
 )
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
@@ -24,11 +26,12 @@ New-Item -ItemType Directory -Path $work, $reportRoot -Force | Out-Null
 $report = [ordered]@{
     schema = 1
     tag = $(if ($PackagePath) { 'v' + $CandidateVersion } else { '0.0.1_alpha' })
-    source_commit = $(if ($PackagePath) { $env:GITHUB_SHA } else { '7b099a6be450f1cd35910e3a454da45f01d45e12' })
+    source_commit = $(if ($PackagePath) { $CandidateCommit } else { '7b099a6be450f1cd35910e3a454da45f01d45e12' })
     architecture = $Architecture
     package = $PackageKind
     policy = $Policy
     internet_mark = [bool]$InternetMark
+    stress_output_highlighting = [bool]$StressOutputHighlighting
     environment = $(if ($Architecture -eq 'arm64') { 'fresh Windows 11 ARM64 hosted VM' } else { 'fresh Windows Server hosted VM; client execution policy is an explicit test condition' })
     controls = @()
     complete = $false
@@ -92,6 +95,25 @@ function Wait-Nodes([scriptblock]$Predicate) {
             prompt_detected = @($nodes | Where-Object { $_.Text -match '(?m)(?:PS .*>|\u03bb)' }).Count -gt 0
             welcome = @($nodes | Where-Object Name -eq 'Welcome to Automexia. Press Enter to get started.').Count -gt 0
         }
+        if ($script:settingId) {
+            $target = @($nodes | Where-Object Id -eq $script:settingId)
+            $search = @($nodes | Where-Object Name -eq 'Search settings')
+            # Only fixed fixture identifiers, booleans and native enum values may
+            # leave this VM. Never include arbitrary UI names, values or text.
+            $report.setting_diagnostic = @{
+                id = $script:settingId
+                action = $script:settingAction
+                target_count = $target.Count
+                target_enabled = @($target | Where-Object Enabled).Count -eq 1
+                target_focused = @($target | Where-Object Focused).Count -eq 1
+                target_on = @($target | Where-Object Toggle -eq 'On').Count -eq 1
+                target_off = @($target | Where-Object Toggle -eq 'Off').Count -eq 1
+                search_count = $search.Count
+                search_focused = @($search | Where-Object Focused).Count -eq 1
+                search_matches_query = @($search | Where-Object Value -eq $script:settingQuery).Count -eq 1
+                focused_nodes = @($nodes | Where-Object Focused).Count
+            }
+        }
         if (& $Predicate $nodes) { return ,$nodes }
         Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $deadline)
@@ -127,6 +149,9 @@ function Click-Node($Node) {
     Start-Sleep -Milliseconds 200
 }
 function Find-Setting([string]$Query, [string]$Id) {
+    $script:settingId = $Id
+    $script:settingQuery = $Query
+    $script:settingAction = 'open-settings'
     for ($i = 0; $i -lt 8; $i++) {
         if (@((Read-Nodes) | Where-Object Name -eq 'Terminal output').Count -eq 1) { break }
         Key 0x1B
@@ -136,6 +161,7 @@ function Find-Setting([string]$Query, [string]$Id) {
     Click-Node @($nodes | Where-Object Name -eq 'Search settings')[0]
     Key 0x41 $true
     Type-Text $Query
+    $script:settingAction = 'find-setting'
     $nodes = Wait-Nodes { param($n) @($n | Where-Object Id -eq $Id).Count -eq 1 }
     $node = @($nodes | Where-Object Id -eq $Id)[0]
     if ($node.Type -eq 'ControlType.Button') {
@@ -393,8 +419,13 @@ public static class AuditCoordinates {
         @('Font size', 'appearance.font_size', 'value'),
         @('Appearance', 'appearance.theme', 'value')
     )
+    if ($StressOutputHighlighting) {
+        # Supplemental reproduction of the candidate's intermittent restore
+        # timeout. Each cycle changes, restarts, verifies and restores the value.
+        $cases = @(1..12 | ForEach-Object { ,@('Highlight recognized output', 'terminal.output_highlighting', 'boolean') })
+    }
     foreach ($case in $cases) {
-        $entry = [ordered]@{ id = $case[1]; reached = $false; toggled = $false; persisted = $false }
+        $entry = [ordered]@{ id = $case[1]; cycle = $report.controls.Count + 1; reached = $false; toggled = $false; persisted = $false; restored = $false }
         $report.controls += $entry
         $node = Find-Setting $case[0] $case[1]
         $entry.reached = $true
@@ -416,6 +447,7 @@ public static class AuditCoordinates {
         if ($property -eq 'Value' -and [string]::IsNullOrEmpty($before)) { throw 'Setting has no native value' }
         $forwardKey = if ($property -eq 'Toggle') { 0x20 } else { 0x27 }
         $backwardKey = if ($property -eq 'Toggle') { 0x20 } else { 0x25 }
+        $script:settingAction = 'change-setting'
         Key $forwardKey
         $nodes = Wait-Nodes { param($n) @($n | Where-Object { $_.Id -eq $case[1] -and $_.$property -ne $before }).Count -eq 1 }
         $after = @($nodes | Where-Object Id -eq $case[1])[0].$property
@@ -428,8 +460,10 @@ public static class AuditCoordinates {
         $entry.persisted = $restored.$property -eq $after
         if (-not $entry.persisted) { throw 'Setting did not survive restart' }
         # Return to the original value before moving to another independent control.
+        $script:settingAction = 'restore-setting'
         Key $backwardKey
         $null = Wait-Nodes { param($n) @($n | Where-Object { $_.Id -eq $case[1] -and $_.$property -eq $before }).Count -eq 1 }
+        $entry.restored = $true
         Key 0x1B
     }
     $stage = 'theme-gallery'
