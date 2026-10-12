@@ -367,6 +367,11 @@ class ReleaseIdentityTests(unittest.TestCase):
                 if "windows" in target:
                     self.assertIn("windows_slim_errors", environment["CARGO_ENCODED_RUSTFLAGS"])
                     self.assertIn("/Brepro", environment["CARGO_ENCODED_RUSTFLAGS"])
+                if "apple" in target:
+                    self.assertIn("-Clink-arg=-Wl,-oso_prefix,.", environment["CARGO_ENCODED_RUSTFLAGS"])
+                else:
+                    self.assertNotIn("oso_prefix", environment["CARGO_ENCODED_RUSTFLAGS"])
+                self.assertNotIn("no_uuid", environment["CARGO_ENCODED_RUSTFLAGS"])
                 if target == "aarch64-apple-darwin":
                     self.assertIn("apple-m1", environment["CARGO_ENCODED_RUSTFLAGS"])
             with mock.patch.object(build, "capture", return_value="host: x86_64-unknown-linux-gnu"), self.assertRaisesRegex(ValueError, "native host"):

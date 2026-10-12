@@ -51,8 +51,15 @@ def build_environment(source: Path, target: str, epoch: int) -> dict[str, str]:
         flags.extend(("--cfg=windows_slim_errors", "-Clink-arg=/Brepro"))
     elif "linux" in target:
         flags.append("-Clink-arg=-Wl,--build-id=sha1")
-    elif target == "aarch64-apple-darwin":
-        flags.append("-Ctarget-cpu=apple-m1")
+    else:
+        # rustc source remapping does not cover the Apple linker's OSO debug
+        # map. Absolute object paths change LC_UUID even after symbols are
+        # stripped (and consequently change the ARM64 ad-hoc signature).
+        # Relativize that metadata before linking; retain content-derived UUIDs
+        # and the unchanged, strict all-byte verification of every runtime.
+        flags.append("-Clink-arg=-Wl,-oso_prefix,.")
+        if target == "aarch64-apple-darwin":
+            flags.append("-Ctarget-cpu=apple-m1")
     env.update(CARGO_ENCODED_RUSTFLAGS="\x1f".join(flags), CARGO_INCREMENTAL="0",
                CARGO_TARGET_DIR=str(source / "target"),
                CARGO_BUILD_BUILD_DIR=str(source / "target/build"),
