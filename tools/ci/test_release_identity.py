@@ -276,11 +276,15 @@ class ReleaseIdentityTests(unittest.TestCase):
         self.assertIn(host, build.TARGETS)
         outputs = []
         with tempfile.TemporaryDirectory(prefix="automexia-path-repro-") as directory:
-            for attempt in (1, 2):
-                real = Path(directory) / f"physical-{attempt}"
-                root = Path(directory) / f"logical-{attempt}"
+            # Packaged inputs originate in a direct checkout; verification also
+            # uses temporary source archives behind the macOS /var symlink.
+            # Vary both path form and length, including a non-ASCII checkout.
+            for attempt, name in enumerate(("checkout", "archive-with-a-longer-name", "source-\u00e9")):
+                real = Path(directory).resolve() / name
+                root = real if attempt == 0 else Path(directory) / f"logical-{attempt}"
                 (real / "src/bin").mkdir(parents=True)
-                root.symlink_to(real, target_is_directory=True)
+                if attempt:
+                    root.symlink_to(real, target_is_directory=True)
                 (root / "Cargo.toml").write_text(
                     '[package]\nname="repro-fixture"\nversion="0.1.0"\nedition="2021"\n[workspace]\n'
                     '[profile.release]\nstrip="symbols"\ndebug="full"\nsplit-debuginfo="packed"\n'
@@ -294,7 +298,17 @@ class ReleaseIdentityTests(unittest.TestCase):
                     capture_output=True, text=True, timeout=180)
                 self.assertEqual(result.returncode, 0, "native path-remapping fixture build failed")
                 outputs.append(root / "target" / host / "release")
-            self.assertEqual(len(build.compare_binaries(*outputs, host)), len(build.RUNTIMES))
+            for output in outputs[1:]:
+                for runtime in build.RUNTIMES:
+                    before = (outputs[0] / runtime).read_bytes()
+                    after = (output / runtime).read_bytes()
+                    # Retain bounded, content-free native failure diagnostics.
+                    changed = [i for i, pair in enumerate(zip(before, after)) if pair[0] != pair[1]]
+                    detail = {"runtime": runtime, "sizes": [len(before), len(after)],
+                              "changed_bytes": len(changed), "first_offsets": changed[:20],
+                              "last_offsets": changed[-20:]}
+                    self.assertTrue(before == after, str(detail))
+                self.assertEqual(len(build.compare_binaries(outputs[0], output, host)), len(build.RUNTIMES))
 
     def test_reproducibility_diagnostics_identify_stage_without_binary_content_or_paths(self):
         import contextlib
