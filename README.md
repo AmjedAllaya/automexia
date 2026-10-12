@@ -277,8 +277,7 @@ The Rust workspace contains the desktop application (`apps/automexia-terminal`),
 product contracts (`automexia-*`), terminal and rendering crates, optional
 adapters (`extensions/`), and contributor tools (`tools/`).
 
-The source workspace version is **0.4.0**, separate from the public prerelease
-tag above. It uses Rust 2021 and is MIT-licensed.
+The workspace uses Rust 2021 and is MIT-licensed.
 `Cargo.toml` lists packages and dependencies. See
 [Architecture](docs/ARCHITECTURE.md#layers) for their roles and the
 [Source map](docs/developer/source-map.md) for documentation owners.
