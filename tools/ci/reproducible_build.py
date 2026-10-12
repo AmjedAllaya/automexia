@@ -40,7 +40,13 @@ def build_environment(source: Path, target: str, epoch: int) -> dict[str, str]:
     env = dict(os.environ)
     for name in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER"):
         env.pop(name, None)
-    flags = [f"--remap-path-prefix={source}=/usr/src/automexia"]
+    # Cargo/rustc may canonicalize symlinks and Windows short paths. Map both
+    # spellings and keep build outputs under the canonical root (macOS /var
+    # temporary directories commonly resolve beneath /private/var).
+    logical_source = source.absolute()
+    source = source.resolve()
+    prefixes = dict.fromkeys((logical_source, source))
+    flags = [f"--remap-path-prefix={prefix}=/usr/src/automexia" for prefix in prefixes]
     if "windows" in target:
         flags.extend(("--cfg=windows_slim_errors", "-Clink-arg=/Brepro"))
     elif "linux" in target:

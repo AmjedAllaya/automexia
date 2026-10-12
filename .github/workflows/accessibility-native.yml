@@ -33,6 +33,8 @@ jobs:
           set -euo pipefail
           rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
           python tools/ci/rust_toolchain.py verify --kind development
+      - name: Verify native release path remapping
+        run: python -m unittest discover -s tools/ci -p test_release_identity.py -k native_unix_symlinked_source
       - name: Verify native adapter source and platform boundaries
         run: python tools/ci/check_accessibility_contract.py
       - name: Native NSRange regression tests

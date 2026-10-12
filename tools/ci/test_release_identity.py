@@ -268,6 +268,34 @@ class ReleaseIdentityTests(unittest.TestCase):
                 outputs.append(root / "target" / host / "release")
             self.assertEqual(len(build.compare_binaries(*outputs, host)), len(build.RUNTIMES))
 
+    @unittest.skipUnless(sys.platform in ("darwin", "linux"), "requires native Unix symlink semantics")
+    def test_native_unix_symlinked_source_rebuilds_identically(self):
+        import reproducible_build as build
+        host = next(line[6:] for line in subprocess.check_output(
+            ["rustc", "-vV"], text=True, timeout=30).splitlines() if line.startswith("host: "))
+        self.assertIn(host, build.TARGETS)
+        outputs = []
+        with tempfile.TemporaryDirectory(prefix="automexia-path-repro-") as directory:
+            for attempt in (1, 2):
+                real = Path(directory) / f"physical-{attempt}"
+                root = Path(directory) / f"logical-{attempt}"
+                (real / "src/bin").mkdir(parents=True)
+                root.symlink_to(real, target_is_directory=True)
+                (root / "Cargo.toml").write_text(
+                    '[package]\nname="repro-fixture"\nversion="0.1.0"\nedition="2021"\n[workspace]\n'
+                    '[profile.release]\nstrip="symbols"\ndebug="full"\nsplit-debuginfo="packed"\n'
+                    'lto=true\npanic="abort"\ncodegen-units=1\nincremental=false\n', encoding="utf-8")
+                (root / "src/payload.rs").write_text('fn main() { println!("{}", file!()); }\n', encoding="utf-8")
+                for runtime in build.RUNTIMES:
+                    (root / "src/bin" / (runtime + ".rs")).write_text(
+                        'include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/payload.rs"));\n', encoding="utf-8")
+                result = subprocess.run(["cargo", "build", "--offline", "--release", "--target", host],
+                    cwd=root, env=build.build_environment(root, host, 1700000000),
+                    capture_output=True, text=True, timeout=180)
+                self.assertEqual(result.returncode, 0, "native path-remapping fixture build failed")
+                outputs.append(root / "target" / host / "release")
+            self.assertEqual(len(build.compare_binaries(*outputs, host)), len(build.RUNTIMES))
+
     def test_reproducibility_diagnostics_identify_stage_without_binary_content_or_paths(self):
         import contextlib
         import io
