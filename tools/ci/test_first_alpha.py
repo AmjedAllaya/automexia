@@ -92,6 +92,9 @@ class FirstAlphaTests(unittest.TestCase):
         self.assertIn('first_alpha.py verify-manifest', script)
         self.assertIn('minisign -V', script)
         self.assertIn('--latest=false', script)
+        self.assertLess(script.index('/immutable-releases'), script.index('gh api --method POST'))
+        preflight = next(step['run'] for step in workflow['jobs']['preflight']['steps'] if 'run' in step)
+        self.assertIn('/immutable-releases', preflight)
 
     def test_workflow_preserves_native_final_and_reproducibility_gates(self):
         import yaml
