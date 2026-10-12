@@ -175,31 +175,38 @@ class RemoteTests(unittest.TestCase):
         self.records = {"asset.zip": ("a"*64, 20), "SHA256SUMS": ("b"*64, 80)}
 
     def test_complete_remote_draft_and_published_identity(self):
-        self.assertEqual(owner.validate_remote(remote(self.records), self.records, SHA, notes="Alpha fixture notes", complete=True), set(self.records))
-        owner.validate_remote(remote(self.records, draft=False, immutable=True), self.records, SHA, notes="Alpha fixture notes", complete=True, published=True)
+        self.assertEqual(owner.validate_remote(remote(self.records), self.records, notes="Alpha fixture notes", complete=True), set(self.records))
+        owner.validate_remote(remote(self.records, draft=False, immutable=True), self.records, notes="Alpha fixture notes", complete=True, published=True)
+
+    def test_target_commitish_is_informational_and_actual_tag_is_verified_separately(self):
+        data = remote(self.records)
+        data["target_commitish"] = "main"
+        owner.validate_remote(data, self.records, notes="Alpha fixture notes", complete=True)
+        with patch.object(owner, "api", side_effect=[{"object": {"type": "tag", "sha": "c"*40}}, {"object": {"type": "commit", "sha": "b"*40}}]), self.assertRaises(ValueError):
+            owner.verify_tag(SHA)
 
     def test_existing_published_release_cannot_be_overwritten(self):
         with self.assertRaises(ValueError):
-            owner.validate_remote(remote(self.records, draft=False, immutable=True), self.records, SHA, notes="Alpha fixture notes", complete=False)
+            owner.validate_remote(remote(self.records, draft=False, immutable=True), self.records, notes="Alpha fixture notes", complete=False)
 
     def test_exact_partial_draft_can_resume_but_conflicts_cannot(self):
         draft = remote(self.records)
         draft["assets"].pop()
-        self.assertEqual(owner.validate_remote(draft, self.records, SHA, notes="Alpha fixture notes", complete=False), {"asset.zip"})
+        self.assertEqual(owner.validate_remote(draft, self.records, notes="Alpha fixture notes", complete=False), {"asset.zip"})
         with self.assertRaises(ValueError):
-            owner.validate_remote(draft, self.records, SHA, notes="Alpha fixture notes", complete=True)
+            owner.validate_remote(draft, self.records, notes="Alpha fixture notes", complete=True)
         draft["assets"][0]["digest"] = "sha256:" + "c"*64
         with self.assertRaises(ValueError):
-            owner.validate_remote(draft, self.records, SHA, notes="Alpha fixture notes", complete=False)
+            owner.validate_remote(draft, self.records, notes="Alpha fixture notes", complete=False)
 
     def test_missing_metadata_or_disabled_immutability_rejected(self):
         for key in ("draft", "prerelease", "target_commitish", "tag_name", "body", "name"):
             data = remote(self.records)
             del data[key]
             with self.assertRaises(ValueError):
-                owner.validate_remote(data, self.records, SHA, notes="Alpha fixture notes", complete=True)
+                owner.validate_remote(data, self.records, notes="Alpha fixture notes", complete=True)
         with self.assertRaises(ValueError):
-            owner.validate_remote(remote(self.records, draft=False), self.records, SHA, notes="Alpha fixture notes", complete=True, published=True)
+            owner.validate_remote(remote(self.records, draft=False), self.records, notes="Alpha fixture notes", complete=True, published=True)
 
     def test_wrong_owner_disabled_immutability_and_stale_main_fail_closed(self):
         responses = [{"login": owner.REPOSITORY.split("/")[0]}, {"enabled": True}, {"object": {"sha": SHA}}]
@@ -211,7 +218,7 @@ class RemoteTests(unittest.TestCase):
 
 
 class PublicationFlowTests(unittest.TestCase):
-    def exercise(self, *, perform=True, existing=False, late_disabled=False, upload_failure=False):
+    def exercise(self, *, perform=True, existing=False, late_disabled=False, upload_failure=False, late_tag_change=False):
         self.writes = []
         self.commands = []
         self.patches = []
@@ -220,10 +227,12 @@ class PublicationFlowTests(unittest.TestCase):
         draft = remote(records)
         draft["assets"] = draft["assets"][:1] if existing else []
         immutable_reads = 0
+        tag_created = existing
+        tag_reads = 0
         notes = b"Alpha fixture notes"
 
         def fake_api(endpoint, *, fields=None, method="POST", **kwargs):
-            nonlocal immutable_reads
+            nonlocal immutable_reads, tag_created, tag_reads
             if fields is not None:
                 self.writes.append((endpoint, method, fields))
             if endpoint == "user":
@@ -240,12 +249,14 @@ class PublicationFlowTests(unittest.TestCase):
             if endpoint.endswith("releases?per_page=100"):
                 return [copy.deepcopy(draft)] if existing else []
             if "/git/ref/tags/" in endpoint:
-                return {"object": {"type": "tag", "sha": "c"*40}} if existing else None
+                tag_reads += 1
+                return {"object": {"type": "tag", "sha": "c"*40}} if tag_created else None
             if "/git/tags/" in endpoint:
-                return {"object": {"type": "commit", "sha": SHA}}
+                return {"object": {"type": "commit", "sha": "b"*40 if late_tag_change and tag_reads > 1 else SHA}}
             if endpoint.endswith("git/tags"):
                 return {"sha": "c"*40}
             if endpoint.endswith("git/refs"):
+                tag_created = True
                 return {"object": {"sha": "c"*40}}
             if endpoint.endswith("releases"):
                 self.assertTrue(fields["draft"])
@@ -294,7 +305,7 @@ class PublicationFlowTests(unittest.TestCase):
         self.assertEqual(len(self.writes), 1)  # Only the final PATCH; no new tag/draft.
 
     def test_late_immutability_change_and_failed_upload_never_publish(self):
-        for args in ({"late_disabled": True}, {"upload_failure": True}):
+        for args in ({"late_disabled": True}, {"upload_failure": True}, {"late_tag_change": True}):
             with self.subTest(args=args), self.assertRaises(ValueError):
                 self.exercise(**args)
             self.assertFalse(self.patches)

@@ -185,9 +185,10 @@ def validate_bundle(bundle: Path, wsl_distro: str | None = None) -> tuple[dict, 
     return manifest, records
 
 
-def validate_remote(release: dict, records: dict[str, tuple[str, int]], commit: str, *, notes: str, complete: bool, published: bool = False) -> set[str]:
+def validate_remote(release: dict, records: dict[str, tuple[str, int]], *, notes: str, complete: bool, published: bool = False) -> set[str]:
     if (release.get("tag_name") != alpha.FIRST_ALPHA_TAG or release.get("prerelease") is not True
-            or release.get("draft") is not (not published) or release.get("target_commitish") != commit
+            or release.get("draft") is not (not published)
+            or not isinstance(release.get("target_commitish"), str) or not release["target_commitish"]
             or release.get("body") != notes or release.get("name") != f"Automexia Terminal {alpha.FIRST_ALPHA_TAG}"):
         raise ValueError("existing release is published or has a conflicting identity")
     if published and release.get("immutable") is not True:
@@ -218,6 +219,22 @@ def authorize_owner(commit: str, acknowledgement: str) -> None:
     alpha.authorize(commit, current, "refs/heads/main", acknowledgement)
 
 
+def verify_tag(commit: str, *, allow_missing: bool = False) -> bool:
+    # target_commitish is informational once a tag exists; resolve the Git object.
+    ref = api(f"repos/{REPOSITORY}/git/ref/tags/{alpha.FIRST_ALPHA_TAG}", missing=allow_missing)
+    if ref is None:
+        if allow_missing:
+            return False
+        raise ValueError("verified release tag is missing")
+    target = ref.get("object", {})
+    if target.get("type") != "tag" or re.fullmatch(r"[0-9a-f]{40}", target.get("sha", "")) is None:
+        raise ValueError("release tag must be annotated")
+    annotated = api(f"repos/{REPOSITORY}/git/tags/{target['sha']}").get("object", {})
+    if annotated.get("type") != "commit" or annotated.get("sha") != commit:
+        raise ValueError("existing release tag conflicts with the verified source")
+    return True
+
+
 def publish(bundle: Path, run_id: int, acknowledgement: str, *, perform: bool, wsl_distro: str | None = None) -> None:
     manifest, records = validate_bundle(bundle, wsl_distro)
     commit = manifest["source_commit"]
@@ -243,15 +260,8 @@ def publish(bundle: Path, run_id: int, acknowledgement: str, *, perform: bool, w
     if len(matches) > 1:
         raise ValueError("ambiguous first-alpha release identity")
     existing = matches[0] if matches else None
-    uploaded = validate_remote(existing, records, commit, notes=notes, complete=False) if existing is not None else set()
-    ref = api(f"repos/{REPOSITORY}/git/ref/tags/{tag}", missing=True)
-    if ref is not None:
-        target = ref["object"]
-        if target.get("type") != "tag":
-            raise ValueError("release tag must be annotated")
-        annotated_target = api(f"repos/{REPOSITORY}/git/tags/{target['sha']}").get("object", {})
-        if annotated_target.get("type") != "commit" or annotated_target.get("sha") != commit:
-            raise ValueError("existing release tag conflicts with the verified source")
+    uploaded = validate_remote(existing, records, notes=notes, complete=False) if existing is not None else set()
+    tag_exists = verify_tag(commit, allow_missing=True)
     if not perform:
         print(f"Verified first-alpha bundle and native run {run_id}; publication not requested")
         return
@@ -259,7 +269,7 @@ def publish(bundle: Path, run_id: int, acknowledgement: str, *, perform: bool, w
     if any(inventory.digest(bundle / name) != record for name, record in records.items()):
         raise ValueError("bundle changed after verification")
     authorize_owner(commit, acknowledgement)
-    if ref is None:
+    if not tag_exists:
         annotated = api(f"repos/{REPOSITORY}/git/tags", fields={"tag": tag, "message": f"Automexia Terminal {tag}", "object": commit, "type": "commit"})
         api(f"repos/{REPOSITORY}/git/refs", fields={"ref": "refs/tags/" + tag, "sha": annotated["sha"]})
     if existing is None:
@@ -276,11 +286,13 @@ def publish(bundle: Path, run_id: int, acknowledgement: str, *, perform: bool, w
     if missing_assets:
         checked_process(["gh", "release", "upload", tag, "--repo", REPOSITORY, *missing_assets], timeout=900)
     draft = api(release_endpoint)
-    validate_remote(draft, records, commit, notes=notes, complete=True)
+    validate_remote(draft, records, notes=notes, complete=True)
     authorize_owner(commit, acknowledgement)
+    verify_tag(commit)
     api(release_endpoint, method="PATCH", fields={"draft": False, "prerelease": True, "make_latest": "false"})
     result = api(release_endpoint)
-    validate_remote(result, records, commit, notes=notes, complete=True, published=True)
+    verify_tag(commit)
+    validate_remote(result, records, notes=notes, complete=True, published=True)
     checked_process(["gh", "release", "verify", tag, "--repo", REPOSITORY])
     for name in sorted(records):
         checked_process(["gh", "release", "verify-asset", tag, str(bundle / name), "--repo", REPOSITORY])
