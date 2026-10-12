@@ -120,7 +120,7 @@ overrides:
   rpm:
     depends:
       - fontconfig
-      - freetype
+      - "libfreetype.so.6()(64bit)"
       - glibc
       - libgcc
       - libstdc++

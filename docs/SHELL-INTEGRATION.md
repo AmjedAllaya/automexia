@@ -51,6 +51,9 @@ argument to restore the inherited policy. Automexia never changes it for you.
 
 ### Linux and macOS startup
 
+Fish integration supports Fish 3.3 and newer, including Ubuntu 22.04's shell.
+It keeps Fish's prompt, editor and completion definitions.
+
 Linux's unset shell configuration starts an ordinary interactive, non-login
 shell. It inherits the desktop/login environment and reads the shell's normal
 interactive rc file. To retain login startup explicitly, configure

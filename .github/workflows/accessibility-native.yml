@@ -12,14 +12,6 @@ env:
   RUSTUP_TOOLCHAIN: '1.96.1'
 
 jobs:
-  published-package-review:
-    name: Published Unix package diagnostics
-    if: github.event_name == 'workflow_dispatch'
-    uses: ./.github/workflows/windows-package-review.yml
-    with:
-      platform: unix
-    permissions:
-      contents: read
   macos-ax:
     name: Native AX (${{ matrix.runner }})
     strategy:

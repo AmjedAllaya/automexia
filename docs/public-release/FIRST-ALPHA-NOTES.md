@@ -10,6 +10,10 @@ See [PowerShell setup](https://github.com/AmjedAllaya/automexia/blob/main/docs/S
 for recovery steps or use `automexia -e cmd.exe` for an integrated Command Prompt.
 The existing `0.0.1_alpha` release is unchanged.
 
+Linux fixes restore Fish 3.3 integration and let openSUSE resolve the RPM's
+FreeType dependency. Package checks now cover clean Ubuntu, Debian, Fedora and
+openSUSE environments, alongside the native Windows and macOS checks.
+
 ## Choose your download
 
 | Download | Use this when |

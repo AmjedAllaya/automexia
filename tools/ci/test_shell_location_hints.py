@@ -102,6 +102,8 @@ def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=Fals
             args = [shutil.which(shell), "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "-"]
         elif shell == "fish":
             script = 'source "$AUTOMEXIA_HINT_SOURCE"' + ('\n' if inspect_identity else ' >/dev/null 2>/dev/null\n')
+            script += 'functions -q __automexia_fish_prompt automexia_completion_health; or exit 91\n'
+            script += 'source "$AUTOMEXIA_HINT_SOURCE"\n'  # Repeated startup must retain the same owners.
             prompt = "__automexia_fish_prompt"
             marker = "printf '\\036'"
             assign = lambda key, value: f"set -gx {key} '" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
@@ -159,6 +161,8 @@ def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=Fals
         # Identify missing shell primitives without exposing paths or terminal data.
         missing = sorted(set(re.findall(rb"Unknown command: ([A-Za-z_][A-Za-z0-9_-]{0,63})", result.stderr)))
         diagnostic = ", ".join(name.decode("ascii") for name in missing[:8])
+        if missing:
+            raise AssertionError(f"{shell}: unavailable commands: {diagnostic}")
         if result.returncode:
             raise AssertionError(f"{shell}: native prompt fixture failed (output withheld)")
         if len(result.stdout) > 8 * 1024 * 1024:
