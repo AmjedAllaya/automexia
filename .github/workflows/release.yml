@@ -504,6 +504,10 @@ jobs:
     - name: Build native release artifact
       shell: bash
       run: python tools/ci/reproducible_build.py --build-once --target "${{ matrix.target }}"
+    - name: Verify deterministic Windows resource generation
+      if: runner.os == 'Windows'
+      shell: bash
+      run: python -m unittest discover -s tools/ci -p test_release_identity.py -k native_windows_resources
     - name: Native version smoke
       shell: bash
       run: 'set -euo pipefail

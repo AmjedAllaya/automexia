@@ -230,6 +230,115 @@ class ReleaseIdentityTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "non-reproducible"):
                 build.compare_binaries(left, right, "x86_64-unknown-linux-gnu")
 
+    @unittest.skipUnless(sys.platform == "win32", "requires native Windows resource compiler")
+    def test_native_windows_resources_rebuild_identically(self):
+        import shutil
+        import reproducible_build as build
+        host = next(line[6:] for line in subprocess.check_output(
+            ["rustc", "-vV"], text=True, timeout=30).splitlines() if line.startswith("host: "))
+        self.assertIn(host, ("x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"))
+        outputs = []
+        with tempfile.TemporaryDirectory(prefix="automexia-resource-repro-") as directory:
+            for attempt in (1, 2):
+                root = Path(directory) / str(attempt)
+                package = root / "apps/automexia-terminal"
+                (package / "src/bin").mkdir(parents=True)
+                for relative in ("assets/brand/automexia-terminal.ico", "packaging/windows/automexia.manifest"):
+                    destination = root / relative
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(ROOT / relative, destination)
+                shutil.copyfile(ROOT / "apps/automexia-terminal/build.rs", package / "build.rs")
+                (package / "Cargo.toml").write_text(
+                    '[package]\nname="automexia-terminal"\nversion="0.0.1-alpha"\nedition="2021"\n'
+                    '[workspace]\n[build-dependencies]\nwinres="=0.1.12"\n'
+                    '[profile.release]\nstrip="symbols"\ndebug="full"\nsplit-debuginfo="packed"\n'
+                    'lto=true\npanic="abort"\ncodegen-units=1\nincremental=false\n', encoding="utf-8")
+                (package / "src/lib.rs").write_text('pub fn marker() -> u32 { 7 }\n', encoding="utf-8")
+                for runtime in build.RUNTIMES:
+                    source = 'fn main() { println!("{}", automexia_terminal::marker()); }\n'
+                    if runtime == "amx":
+                        source = 'fn main() { println!("launcher"); }\n'
+                    (package / "src/bin" / (runtime + ".rs")).write_text(source, encoding="utf-8")
+                env = build.build_environment(root, host, 1700000000)
+                for argv in (["cargo", "generate-lockfile", "--offline"],
+                             ["cargo", "build", "--offline", "--locked", "--release", "--target", host]):
+                    result = subprocess.run(argv, cwd=package, env=env, capture_output=True,
+                                            text=True, timeout=180)
+                    self.assertEqual(result.returncode, 0, "native resource fixture build failed")
+                outputs.append(root / "target" / host / "release")
+            self.assertEqual(len(build.compare_binaries(*outputs, host)), len(build.RUNTIMES))
+
+    @unittest.skipUnless(sys.platform in ("darwin", "linux"), "requires native Unix symlink semantics")
+    def test_native_unix_symlinked_source_rebuilds_identically(self):
+        import reproducible_build as build
+        host = next(line[6:] for line in subprocess.check_output(
+            ["rustc", "-vV"], text=True, timeout=30).splitlines() if line.startswith("host: "))
+        self.assertIn(host, build.TARGETS)
+        outputs = []
+        with tempfile.TemporaryDirectory(prefix="automexia-path-repro-") as directory:
+            for attempt in (1, 2):
+                real = Path(directory) / f"physical-{attempt}"
+                root = Path(directory) / f"logical-{attempt}"
+                (real / "src/bin").mkdir(parents=True)
+                root.symlink_to(real, target_is_directory=True)
+                (root / "Cargo.toml").write_text(
+                    '[package]\nname="repro-fixture"\nversion="0.1.0"\nedition="2021"\n[workspace]\n'
+                    '[profile.release]\nstrip="symbols"\ndebug="full"\nsplit-debuginfo="packed"\n'
+                    'lto=true\npanic="abort"\ncodegen-units=1\nincremental=false\n', encoding="utf-8")
+                (root / "src/payload.rs").write_text('fn main() { println!("{}", file!()); }\n', encoding="utf-8")
+                for runtime in build.RUNTIMES:
+                    (root / "src/bin" / (runtime + ".rs")).write_text(
+                        'include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/payload.rs"));\n', encoding="utf-8")
+                result = subprocess.run(["cargo", "build", "--offline", "--release", "--target", host],
+                    cwd=root, env=build.build_environment(root, host, 1700000000),
+                    capture_output=True, text=True, timeout=180)
+                self.assertEqual(result.returncode, 0, "native path-remapping fixture build failed")
+                outputs.append(root / "target" / host / "release")
+            self.assertEqual(len(build.compare_binaries(*outputs, host)), len(build.RUNTIMES))
+
+    def test_reproducibility_diagnostics_identify_stage_without_binary_content_or_paths(self):
+        import contextlib
+        import io
+        from unittest import mock
+        import reproducible_build as build
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            left, right = root / "private-left", root / "private-right"
+            left.mkdir(); right.mkdir()
+            (left / "automexia.exe").write_bytes(b"same-private-canary")
+            (right / "automexia.exe").write_bytes(b"same-PRIVATE-canary")
+            for stage in ("cold-builds", "packaged-inputs"):
+                with self.assertRaises(build.RuntimeComparisonError) as raised:
+                    build.compare_binaries(left, right, "x86_64-pc-windows-msvc", stage=stage)
+                error = raised.exception
+                stream = io.StringIO()
+                with mock.patch.object(sys, "argv", ["repro", "report.json", "--target", "x86_64-pc-windows-msvc"]), \
+                        mock.patch.object(build, "run", side_effect=error), contextlib.redirect_stderr(stream), \
+                        self.assertRaises(SystemExit) as exited:
+                    build.main()
+                self.assertEqual(exited.exception.code, 1)
+                self.assertIn("stage=" + stage, stream.getvalue())
+                self.assertIn("first differing byte=5", stream.getvalue())
+                self.assertNotIn("private", stream.getvalue())
+                self.assertNotIn(str(root), stream.getvalue())
+            for runtime, reason, stage, offset in (("private-name", "different", "comparison", 0),
+                    ("automexia", "private-reason", "comparison", 0),
+                    ("automexia", "different", "private-stage", 0),
+                    ("automexia", "different", "comparison", -1),
+                    ("automexia", "different", "comparison", True)):
+                with self.assertRaisesRegex(ValueError, "invalid comparison diagnostic"):
+                    build.RuntimeComparisonError(runtime, reason, stage, offset)
+
+    def test_windows_release_jobs_run_native_resource_regression(self):
+        import yaml
+        for name in ("first-alpha.yml", "release.yml"):
+            document = yaml.safe_load((ROOT / ".github/workflows" / name).read_text(encoding="utf-8"))
+            steps = document["jobs"]["build"]["steps"]
+            checks = [step for step in steps if "-k native_windows_resources" in step.get("run", "")]
+            self.assertEqual(len(checks), 1)
+            self.assertEqual(checks[0]["if"], "runner.os == 'Windows'")
+            self.assertFalse(checks[0].get("continue-on-error", False))
+
     def test_reproducibility_is_cold_native_and_preserves_target_flags(self):
         import reproducible_build as build
         from unittest import mock
