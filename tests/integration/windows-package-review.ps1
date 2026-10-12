@@ -303,6 +303,8 @@ try {
     $policyProbe.EnvironmentVariables['AUTOMEXIA_AUDIT_SCRIPT'] = Join-Path $integrationRoot 'powershell/automexia.ps1'
     $policyProbe.EnvironmentVariables['AUTOMEXIA_AUDIT_RESULT'] = $policyProbeFile
     $policyProbe.EnvironmentVariables['PSExecutionPolicyPreference'] = $Policy
+    # Release jobs use pwsh; its modules are incompatible with Windows PowerShell.
+    $policyProbe.EnvironmentVariables['PSModulePath'] = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules"
     # Fixed diagnostic code and exact argv; never evaluate downloaded content as a command string.
     $probeCode = '$blocked=$false;try{. $env:AUTOMEXIA_AUDIT_SCRIPT}catch [System.Management.Automation.PSSecurityException]{$blocked=$true};@{policy=(Get-ExecutionPolicy).ToString();blocked=$blocked;loaded=[bool]$global:AutomexiaShellIntegrationLoaded}|ConvertTo-Json -Compress|Set-Content -LiteralPath $env:AUTOMEXIA_AUDIT_RESULT'
     $policyProbe.Arguments = '-NoLogo -NoProfile -NonInteractive -EncodedCommand ' + [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($probeCode))
@@ -363,6 +365,7 @@ public static class AuditCoordinates {
     $startInfo.EnvironmentVariables['AUTOMEXIA_CONFIG_HOME'] = $configRoot
     $startInfo.EnvironmentVariables['AUTOMEXIA_AUDIT_RESULT'] = $probeFile
     $startInfo.EnvironmentVariables['PSExecutionPolicyPreference'] = $Policy
+    $startInfo.EnvironmentVariables['PSModulePath'] = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules"
     # Limit discoverable tooling to Windows and the actual package; no source-tree resource fallback.
     $startInfo.EnvironmentVariables['PATH'] = "$packageRoot;$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
     Start-OwnedApp
