@@ -1,5 +1,8 @@
 name: Published package review
 on:
+  # Temporary pre-merge trigger: remove once this workflow is on main and can be dispatched directly.
+  push:
+    branches: [codex/alpha2-cross-platform]
   workflow_call:
     inputs:
       platform:
@@ -16,7 +19,7 @@ permissions:
   contents: read
 jobs:
   windows-published-package-review:
-    if: inputs.platform != 'unix'
+    if: github.event_name != 'push' && inputs.platform != 'unix'
     name: Published Windows (${{ matrix.platform.arch }} / ${{ matrix.case.name }})
     runs-on: ${{ matrix.platform.runner }}
     timeout-minutes: 15

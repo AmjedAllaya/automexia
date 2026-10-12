@@ -61,6 +61,7 @@ def host(packages: Path, version: str) -> None:
     if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("RUNNER_OS") != "Linux":
         raise ValueError("distro tests require a disposable hosted Linux runner")
     scripts = Path(__file__).resolve().parent
+    failures = []
     for family, image in IMAGES.items():
         # Bootstrap only Python; all remaining package operations use exact argv.
         bootstrap = (["apt-get", "update"], ["apt-get", "install", "-y", "python3"]) if family in ("ubuntu", "debian") else (
@@ -79,6 +80,10 @@ def host(packages: Path, version: str) -> None:
                               "--mount", f"type=bind,src={scripts},dst=/qa/tools/ci,readonly",
                               "--mount", f"type=bind,src={entry},dst=/entry.sh,readonly",
                               image, "sh", "/entry.sh", family, version], timeout=600)
+            except (RuntimeError, subprocess.TimeoutExpired) as error:
+                failures.append(family)
+                print(f"FAIL: {family}: {error}", flush=True)
+                continue
             finally:
                 # Retain ownership if the Docker client times out before --rm.
                 subprocess.run(["docker", "rm", "--force", name], check=False,
@@ -89,6 +94,8 @@ def host(packages: Path, version: str) -> None:
             if report.get("distro") != family or report.get("installed_package") != "pass":
                 raise ValueError("missing distro package result")
             print(json.dumps(report), flush=True)
+    if failures:
+        raise RuntimeError("package checks failed: " + ", ".join(failures))
 
 
 if __name__ == "__main__":

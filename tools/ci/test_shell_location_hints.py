@@ -156,6 +156,9 @@ def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=Fals
         started = time.perf_counter()
         result = subprocess.run(args, input=payload, env=env, cwd=temporary,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False)
+        # Identify missing shell primitives without exposing paths or terminal data.
+        missing = sorted(set(re.findall(rb"Unknown command: ([A-Za-z_][A-Za-z0-9_-]{0,63})", result.stderr)))
+        diagnostic = ", ".join(name.decode("ascii") for name in missing[:8])
         if result.returncode:
             raise AssertionError(f"{shell}: native prompt fixture failed (output withheld)")
         if len(result.stdout) > 8 * 1024 * 1024:
@@ -170,7 +173,7 @@ def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=Fals
                 raise AssertionError(f"{shell}: missing complete startup identity")
             identity_frames = [committed_identity_frames(shell, chunk) for chunk in chunks]
             if any(not frames for frames in identity_frames):
-                raise AssertionError(f"{shell}: missing complete prompt identity")
+                raise AssertionError(f"{shell}: missing complete prompt identity; unavailable commands: {diagnostic or 'none'}")
         for chunk in chunks:
             names = HINT_NAMES + (list(WINDOWS_HINTS) if powershell else [])
             wire = re.findall(rb"\x1b\]1337;SetUserVar=automexia_env_(pending|HOME|KUBECONFIG|HOMEDRIVE|HOMEPATH|USERPROFILE)=([A-Za-z0-9+/=]*)\x07", chunk)
