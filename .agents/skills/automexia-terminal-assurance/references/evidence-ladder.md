@@ -2,6 +2,8 @@
 
 Use the lightest rung that proves the current step, then broaden only when the change or result justifies it.
 
+All executable rungs use the environment selected by `$automexia-isolated-validation`. "Local" means a local disposable guest, not the personal workstation. Record source/archive identity and guest baseline as well as revision; uncommitted and untracked required source must be accounted for.
+
 ## Rungs
 
 1. **Static inspection**

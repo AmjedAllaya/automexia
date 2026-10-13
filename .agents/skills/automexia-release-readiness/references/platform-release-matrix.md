@@ -6,6 +6,8 @@ Use the current supported matrix from repository policy. This reference defines 
 
 For each OS and architecture record:
 
+- disposable builder and clean customer environment identities, reset method, and inherited/preinstalled dependencies;
+- exact tested package digest, fresh profile, shell policy, and absence of repository/toolchain files on the customer image;
 - native build environment and toolchain identity;
 - default and relevant optional feature sets;
 - application version output and package metadata;

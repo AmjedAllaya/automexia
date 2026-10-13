@@ -59,9 +59,15 @@ A semantic summary does not prove Narrator/NVDA/VoiceOver/Orca delivery. Control
 
 ## Tool/output discipline
 
+Use `$automexia-isolated-validation` before launching the application or a native test. Confirm an interactive guest session, renderer, fonts, scale, and accessibility service actually match the claim. A virtual display or software GPU must be identified in the result; it cannot certify physical GPU or assistive-technology behavior that was not exercised.
+
 Use native computer control only when the requested validation requires it and current tool rules permit it. Keep accidental PTY input isolated. Store screenshots/recordings/accessibility dumps/reports only in approved private evidence locations and redact private identifiers.
 
+Keep capture drivers, comparison tools, and executable fixtures in tracked test/tool owners. `.automexia-private/` may hold passive captures and review notes, never helper scripts or source copies. Apply `../../../docs/PRIVATE-DOCUMENTATION-POLICY.md` before creating or moving review tooling.
+
 For visual comparison, freeze controllable variables, use exact comparison only under controlled conditions, inspect required expected/actual artifacts, and record only the parameters relevant to the claim.
+
+Review complete user tasks, including first use with no saved preferences, keyboard-only operation, cancellation, error recovery, close/reopen, and persistence when relevant. Check that accessible names/states and focus match visible controls. Do not change baselines, contrast tolerances, or timing thresholds merely to accept unexplained differences.
 
 ## Report
 

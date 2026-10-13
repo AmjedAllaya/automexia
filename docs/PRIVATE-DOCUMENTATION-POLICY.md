@@ -54,6 +54,36 @@ path may contain only a minimal non-activating compatibility notice. It must not
 contain the product idea, workflow, architecture, commercial placement, or
 delivery plan.
 
+## Code and script placement
+
+Private documentation folders are not implementation workspaces. Do not write,
+copy, generate, or maintain source code or scripts in `.automexia-private/`,
+even for a temporary diagnostic. This includes test harnesses, VM setup scripts,
+workflow generators, executable fixtures, and release helpers.
+
+| Material | Location |
+| --- | --- |
+| Application code and required assets | Existing tracked subsystem |
+| Reusable developer, build, test, or release scripts | Existing tracked owner in `tools/`, `tests/`, or `.github/` |
+| Disposable agent scripts | `target/agent-scratch/` or an OS temporary directory |
+| Generated binaries, source snapshots, and downloaded tools | Existing ignored build, artifact, or tool-cache location |
+| Private plans, notes, and passive evidence | `.automexia-private/` |
+
+A private document may explain a design with snippets, but no command or tool
+may depend on extracting executable code from it. Private evidence is data,
+not the code needed to reproduce that evidence.
+
+Before writing a helper, check its destination with `git check-ignore`. Required
+code must be included in the intended Git changes and must work from a fresh
+checkout without this private folder. Ignored scratch scripts cannot be a
+dependency of builds, tests, installation, or releases.
+
+When auditing existing private files, compare them with their tracked owners
+first. Move only needed implementation, remove machine-specific details, update
+callers, and validate the tracked replacement. Preserve unrelated private work;
+do not publish old diagnostics, backups, or local maintenance tools merely
+because they are executable. Never force-add the private directory.
+
 ## Never document in the repository
 
 Public and private project documents must both avoid credentials, tokens,

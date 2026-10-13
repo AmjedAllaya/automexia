@@ -44,8 +44,17 @@ Use [references/delivery-checklist.md](references/delivery-checklist.md) for com
 - do not rerun expensive checks that remain valid after later non-affecting edits;
 - synchronize only specifications/docs/ADRs/change fragments whose truth changed;
 - scan task-owned artifacts for confidential or machine-local information before authorized commit/push.
+- check that required source, scripts, and fixtures are included in the intended Git changes and have no dependency on `.automexia-private/` or ignored scratch files; never force-add private content. Review any migration under `../../../docs/PRIVATE-DOCUMENTATION-POLICY.md` before staging it.
 
 Do not weaken a gate or omit a failure to obtain a clean delivery.
+
+Run runtime gates through `$automexia-isolated-validation`. For a non-trivial change, use `$automexia-code-review` before staging. A pre-push hook that would run project tests on the workstation is not permission to violate isolation: inspect the supported guest/delivery path and preserve the gate rather than disabling it.
+
+## Hosted failure loop
+
+When push and CI repair are authorized, bind each run to the intended commit and inspect the exact failing job/step with `$automexia-systematic-debugging`. Distinguish failed, pending, cancelled, absent, skipped, and successful required checks. Fix the cause, validate the affected path, then commit/push only the repair within scope. Recheck the new remote revision; an older green run does not cover it.
+
+Retry a transient service failure only with evidence and a bounded retry plan. Stop the failing loop when the same condition repeats without new evidence, permissions are missing, or infrastructure is unavailable; report the exact blocker and continue independent work. Never silently quarantine tests, remove matrix cases, bypass review, or weaken required checks.
 
 ## Commit grouping
 

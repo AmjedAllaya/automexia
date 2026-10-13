@@ -25,14 +25,20 @@ Use the smallest sufficient context without weakening correctness.
 Skills live under [`.agents/skills`](.agents/skills). Invoke `$skill` only when its workflow is reached; do not preload downstream skills.
 
 1. **`$automexia-feature-planning`** — non-trivial feature/behavior changes, contract-impacting bug fixes, refactors, dependencies, shared helpers/crates, protocols, persistence, capabilities/extensions, architecture, migration, or performance changes.
-2. **`$automexia-terminal-assurance`** — affected PTY/process, parser, shell integration, terminal state, rendering, input, panes/tabs, resize/reflow, Unicode, concurrency, lifecycle, resources, persistence, security, or performance.
-3. **`$automexia-native-ux-review`** — affected visible/interactive hierarchy, themes, overlays, focus, keyboard/mouse/IME, clipboard, responsive layout, scaling, motion, pixels, or accessibility.
-4. **`$automexia-integration-delivery`** — actual conflict resolution, merge/rebase/cherry-pick continuation, staging, commit, push, or PR preparation. A normal final implementation handoff does not require it.
-5. **`$automexia-release-readiness`** — release candidates, versioning, packaging, signing/notarization, SBOM/provenance, release rehearsal, tags/uploads/publication, or post-publication verification.
+2. **`$automexia-systematic-debugging`** — reported defects, unexplained failures, CI failures, hangs, crashes, flaky tests, or platform/package discrepancies; establish the cause before changing behavior.
+3. **`$automexia-isolated-validation`** — preparing or executing builds, tests, application probes, fuzzing, benchmarks, or package checks in disposable environments; choose and verify the execution boundary before running commands.
+4. **`$automexia-terminal-assurance`** — affected PTY/process, parser, shell integration, terminal state, rendering, input, panes/tabs, resize/reflow, Unicode, concurrency, lifecycle, resources, persistence, security, or performance.
+5. **`$automexia-performance-investigation`** — measuring or changing latency, throughput, allocations, memory, CPU/GPU, startup, build time, or resource growth; distinguish profiling from regression measurement.
+6. **`$automexia-native-ux-review`** — affected visible/interactive hierarchy, themes, overlays, focus, keyboard/mouse/IME, clipboard, responsive layout, scaling, motion, pixels, or accessibility.
+7. **`$automexia-code-review`** — requested code/diff review or the final self-review of a non-trivial patch; trace realistic failures, callers, contracts, and evidence without rewriting unrelated code.
+8. **`$automexia-integration-delivery`** — actual conflict resolution, merge/rebase/cherry-pick continuation, staging, commit, push, or PR preparation. A normal final implementation handoff does not require it.
+9. **`$automexia-release-readiness`** — release candidates, versioning, packaging, signing/notarization, SBOM/provenance, release rehearsal, tags/uploads/publication, or post-publication verification.
 
 Load only the current-phase skill and references it explicitly routes. Do not reload unchanged skill/reference context. A documentation-only spelling/link correction needs no feature planning when behavior, contracts, architecture, security, tests, and release claims cannot change.
 
 Planning/review does not authorize implementation; implementation does not authorize commit, push, release, publication, credential changes, service installation, destructive Git, or deletion. If a required skill is unreadable, stop only its dependent action and report the path/workflow.
+
+Use the applicable routes without asking the user to name each skill. A small task may skip irrelevant phases. Load the next skill when its phase begins, and carry forward established facts instead of restarting the analysis.
 
 ## Definition of done
 
@@ -55,6 +61,14 @@ A focused test does not prove every platform. A cross-compile is not a native ru
 Start with `git status --short`, current branch, and HEAD; record the dirty inventory. Read history only when needed for intent/ownership. Re-read a task-owned target/diff immediately before editing or staging. Never overwrite, format, stage, move, regenerate, or delete unrelated work to obtain a clean tree, and never use destructive Git/filesystem actions without explicit authorization and exact target verification.
 
 Keep one owner for each session, PTY, child process, renderer snapshot, route, pane/tab/window state, persisted record, cache, worker, generated artifact, and UI surface.
+
+### Keep executable work out of private documentation
+
+`.automexia-private/` is for local documentation and passive evidence. Never author, copy, generate, or maintain source code, scripts, workflows, executable fixtures, or build tools there, including temporary agent helpers. This also applies to other private documentation folders.
+
+Put required implementation in its tracked subsystem, reusable automation in `tools/`, and regression tests in the owning test suite. Disposable scripts belong in `target/agent-scratch/` or an OS temporary directory; they must never become a required build, test, install, or release dependency. Keep generated binaries and source snapshots in ignored build/artifact locations.
+
+Before creating a helper, choose its owner and check whether its destination is ignored. Before delivery, verify required source and scripts are included in the intended Git changes and work without private files. Do not force-add private content or publish an old private script without reviewing its purpose, callers, duplicates, and confidential data. See [`docs/PRIVATE-DOCUMENTATION-POLICY.md`](docs/PRIVATE-DOCUMENTATION-POLICY.md#code-and-script-placement).
 
 ### Protect terminal hot paths
 
@@ -92,6 +106,8 @@ For regressions, add or identify a real-path test that fails for the observed re
 
 ### Validate proportionately
 
+Keep application execution, builds, project tests, fuzzing, and benchmarks off the personal workstation. Use a verified disposable guest or ephemeral hosted runner through `$automexia-isolated-validation`. Host-side file inspection and VM orchestration are allowed; changing a profile directory alone is not OS isolation. Never clear personal caches or spoof CI variables to bypass a runner guard. If the required environment is unavailable, continue safe static work and report runtime evidence as not run.
+
 Use this ladder:
 
 1. during editing — narrow failing/characterization test;
@@ -99,6 +115,10 @@ Use this ladder:
 3. before delivery — only affected integration/policy/platform gates and any repository profile explicitly required for this class of change.
 
 Do not repeat a broad passing check unless later changes invalidate its inputs. Verify filtered test names/nonzero counts. Inspect fresh generated artifacts only when required by the changed contract or policy.
+
+### Review and close the loop
+
+For a non-trivial patch, make a separate self-review pass through the final diff, callers, failure paths, and tests using `$automexia-code-review`. Resolve actionable findings within the authorized scope and rerun only invalidated checks. A self-review is not independent approval. Preserve unexplained failures, skipped coverage, and missing native evidence in the handoff; never convert them into a pass.
 
 ### Document the truth
 

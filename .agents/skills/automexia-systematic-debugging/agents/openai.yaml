@@ -1,0 +1,4 @@
+interface:
+  display_name: "Automexia Systematic Debugging"
+  short_description: "Find causes with reproducible failure evidence"
+  default_prompt: "Use $automexia-systematic-debugging to diagnose this Automexia failure and verify a focused fix."

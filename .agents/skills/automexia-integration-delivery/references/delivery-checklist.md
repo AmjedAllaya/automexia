@@ -17,10 +17,13 @@ Apply only the sections authorized by the user.
 ## Validation
 
 - Diff and whitespace checks pass.
+- Runtime evidence comes from verified isolated environments; local hook behavior does not bypass that boundary.
+- A separate self-review of the final non-trivial patch is complete; required independent approvals remain separate.
 - Conflict-marker and unmerged-entry checks pass.
 - Skill and documentation validation pass when those files changed.
 - Formatter and static checks pass for changed languages.
 - New regression and legitimate control pass with a nonzero test count.
+- Unexplained initial failures, skips, and unavailable combinations remain visible; reruns did not erase them.
 - Owning target and affected integration gates pass.
 - Architecture, feature reinforcement, dependency, security, privacy, workflow, packaging, and release-policy gates pass when applicable.
 - Required fresh artifacts were generated and inspected.

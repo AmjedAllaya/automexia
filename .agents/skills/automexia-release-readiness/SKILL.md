@@ -45,6 +45,12 @@ Before release work, record only the identity needed for the requested stage:
 
 Never package an ambiguous tree or reuse artifacts from another revision.
 
+Build, package, install, and verification entrypoints must come from the candidate's tracked source. Never write release helpers, workflow generators, or VM setup scripts in `.automexia-private/`. Keep passive release evidence separate, and verify the candidate works without private or scratch implementation. Use `../../../docs/PRIVATE-DOCUMENTATION-POLICY.md` when migrating an existing helper.
+
+Use `$automexia-isolated-validation` to separate builder images from clean customer images. Test the exact final package bytes without repository files, developer tools, inherited shell modules/profiles, custom fonts, or prior application settings supplying missing dependencies. Record intentional OS defaults and package prerequisites rather than calling every hosted runner a clean customer system.
+
+Exercise both first installation and supported upgrade/restart/uninstall paths with fictional data. Verify useful behavior and persistence, not just a process exit code or version string. Missing native evidence remains missing even when an archive extracts or a cross-build succeeds.
+
 ## Readiness sequence
 
 Apply only stages required by the requested release action:
@@ -72,7 +78,7 @@ A release remains partial/blocked when required native OS, architecture, hardwar
 
 ## Fail-closed rules
 
-- Do not substitute unsigned packages for signed release artifacts.
+- Enforce the selected channel's signing policy. Never silently substitute unsigned packages for required signatures; a separately authorized unsigned/ad-hoc alpha remains subject to its current disclosure, provenance, and verification gates.
 - Do not call a cross-compile natively tested.
 - Do not sign bytes different from the inspected final package.
 - Do not publish from an unidentified or unaccounted tree.

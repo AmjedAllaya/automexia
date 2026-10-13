@@ -34,12 +34,16 @@ The reinforcement Markdown and JSON mirror remain coupled authorities. Update on
 
 ## Test-first contract
 
+Use `$automexia-isolated-validation` before executing any test or application probe. This skill chooses behavioral evidence; the isolated-validation skill owns where it runs. Use `$automexia-systematic-debugging` for unexplained failures and `$automexia-performance-investigation` for a measurement or optimization campaign.
+
 1. Reproduce the real user/system path or identify the existing real-path regression before production editing.
 2. Add the smallest deterministic isolation test only when it provides distinct evidence.
 3. Characterize legacy behavior before moving ownership or consolidating implementations.
 4. Add only boundary/negative cases that distinguish the intended invariant from the observed failure.
 5. Implement the smallest coherent change and run the focused gate.
 6. Keep the regression as permanent evidence when it protects a real contract.
+
+Keep reusable probes, regression tests, executable fixtures, and benchmark drivers in their tracked owners. Private evidence may contain results, but never the scripts needed to reproduce them. Do not write even temporary test helpers in `.automexia-private/`; follow `../../../docs/PRIVATE-DOCUMENTATION-POLICY.md` for placement. Verify required test inputs are available without private files.
 
 If implementation is not authorized, produce the scenario/evidence plan without editing production code.
 
@@ -54,6 +58,16 @@ Choose the closest useful layer and expand only when the claim requires it:
 - benchmarks/resource tests when latency, allocation, throughput, sustained operation, or cleanup is part of the change.
 
 A mock proves only its boundary. A cross-compile cannot replace a native run. Never compute an expected result using the same production mechanism under test.
+
+## Test design and reliability
+
+- Assert observable state, output, side effects, and cleanup. A string search over implementation or a mirrored algorithm does not prove behavior.
+- Start from the actual entrypoint when the defect concerns startup, packaging, shell policy, configuration precedence, or a platform adapter. Keep model tests for the invariant they can isolate.
+- Use independent expected values, controlled clocks/seeds, explicit synchronization, and bounded waits. A longer sleep is not a race fix. Keep timeouts as failure bounds and verify cleanup after expiration.
+- Give each case its own temporary profile, ports, files, processes, and mutable caches. Test repeated calls, cancellation, stale completion, and resource restoration when the owner is stateful.
+- Capture the seed, failing input, exact target/features, exit code, executed count, and skipped cases. Keep redacted minimized reproductions as permanent fixtures when useful.
+- For changes to validators, prove rejection of a realistic violation and acceptance of a legitimate case. Avoid tests that only require particular wording or headings.
+- Update goldens only after inspecting the semantic/pixel difference and its intended cause. Regenerating expectations to match a failure is not a fix.
 
 ## Scenario inventory
 

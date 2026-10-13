@@ -1,0 +1,4 @@
+interface:
+  display_name: "Automexia Code Review"
+  short_description: "Review contracts, failure paths, and test evidence"
+  default_prompt: "Use $automexia-code-review to review this Automexia change for actionable defects and missing evidence."

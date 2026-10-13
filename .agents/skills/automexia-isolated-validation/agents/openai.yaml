@@ -1,0 +1,4 @@
+interface:
+  display_name: "Automexia Isolated Validation"
+  short_description: "Run checks in verified disposable environments"
+  default_prompt: "Use $automexia-isolated-validation to prepare and verify isolated testing for this local Automexia candidate."

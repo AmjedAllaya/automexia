@@ -1,0 +1,4 @@
+interface:
+  display_name: "Automexia Performance Investigation"
+  short_description: "Profile bottlenecks and verify measured improvements"
+  default_prompt: "Use $automexia-performance-investigation to measure this Automexia performance issue and validate an evidence-backed improvement."

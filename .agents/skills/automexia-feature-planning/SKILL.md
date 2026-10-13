@@ -34,11 +34,28 @@ Before production editing, record only the decisions that apply:
 7. **Proof.** Identify the first failing/characterization test, relevant negative/boundary cases, owning target, and only the broader gates invalidated by the change. Load `$automexia-terminal-assurance` or `$automexia-native-ux-review` only when their scopes are reached.
 8. **Delivery impact.** Identify documentation/ADR/migration/change-fragment work whose truth will change. Load integration or release skills later only if the workflow reaches those phases.
 
+For reported failures, use `$automexia-systematic-debugging` to establish the failing contract before committing to a design. For runtime proof, use `$automexia-isolated-validation` before choosing commands or environments. A local checkout can be tested in a disposable guest without pushing it.
+
+## Implementation checkpoints
+
+When implementation is authorized:
+
+1. Trace one concrete scenario from its entrypoint through the owning state and side effects. Write the expected outcome before editing; include a legitimate control and relevant failure behavior.
+2. Deliver the smallest coherent slice. Separate mechanical movement from behavior changes when that makes review and rollback clearer. Preserve public defaults, units, errors, feature gates, and migration behavior unless the request changes them.
+3. Keep platform adapters thin and policy/state decisions testable. Reuse existing errors and lifecycle owners. Add an abstraction only when actual consumers share the same contract.
+4. Validate the slice in the approved environment. If evidence contradicts the plan, update the hypothesis and scope before continuing; do not accumulate speculative fixes.
+5. Inspect integration with important callers, default/optional features, and package consumers. Remove task-owned temporary bypasses and update only documentation whose truth changed.
+6. Make a final self-review with `$automexia-code-review` for a non-trivial patch. Record remaining native or external evidence without expanding the task into unrelated cleanup.
+
+Choose tradeoffs explicitly when they affect users: compatibility versus migration cost, responsiveness versus throughput, resource ceilings versus completeness, and adoption versus maintenance. Record an ADR when repository contribution rules require one, not for every implementation detail.
+
 ## Reuse rules
 
 Keep one authoritative owner for each session, PTY, process, renderer snapshot, persisted record, cache, worker, and UI surface. Prefer an existing function/module, then an existing shared crate/tool whose responsibility fits, then a maintained external option, then a new boundary only when real consumers justify it.
 
 Do not create catch-all `utils`, `common`, or `core` packages; extract speculative abstractions; or copy logic because its owner is inconvenient to find.
+
+Choose a tracked owner for required code, scripts, generators, and tests before writing them. Check the destination with `git check-ignore`. Keep private plans separate from implementation: never place executable work in `.automexia-private/`, including temporary helpers. Use the placement rules in `../../../docs/PRIVATE-DOCUMENTATION-POLICY.md` when choosing a scratch location or migrating an existing private file.
 
 ## Plan output
 

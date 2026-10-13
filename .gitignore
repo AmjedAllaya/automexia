@@ -16,8 +16,8 @@ target/
 # Generated development-cache leases and reusable build/tool cache.
 /.automexia-cache/
 
-# Private product research and unreleased implementation plans. This directory
-# is local-only and must never be staged or committed.
+# Private documentation and passive evidence only; never source or scripts.
+# Local-only: never stage or commit (see docs/PRIVATE-DOCUMENTATION-POLICY.md).
 /.automexia-private/
 
 # Opt-in native screenshots, reports, and other local QA evidence.
