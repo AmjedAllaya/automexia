@@ -287,6 +287,39 @@ class OrchestrationTests(unittest.TestCase):
 
 
 class NativeHelperRunnerTests(unittest.TestCase):
+    def test_native_failure_reports_location_without_private_panic_data(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        import test_ssh_helper_native as native
+
+        output = (b"thread 'fixture' panicked at private-checkout/inline_pipeline_native.rs:608:17:\n"
+                  b'native SSH stage timed out: native helper readiness; private-output\n')
+        def fail(_command, **kwargs):
+            kwargs['consume'](output)
+            return SimpleNamespace(return_code=101, timed_out=False, error=None)
+        with TemporaryDirectory() as directory, patch.object(native.qa_process, 'run', side_effect=fail):
+            with self.assertRaises(ValueError) as failure:
+                native.run(['fixture'], Path(directory), 'native-session', {})
+        self.assertEqual(str(failure.exception), 'native helper evidence failed; '
+                         'native-session: exit=101, timeout=False, owner_error=False, '
+                         'fixture line 608:17, stage=readiness')
+
+    def test_native_timeout_does_not_disclose_process_owner_error(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        import test_ssh_helper_native as native
+
+        outcome = SimpleNamespace(return_code=None, timed_out=True, error='private-profile')
+        with TemporaryDirectory() as directory, patch.object(native.qa_process, 'run', return_value=outcome):
+            with self.assertRaises(ValueError) as failure:
+                native.run(['fixture'], Path(directory), 'native-session', {})
+        self.assertEqual(str(failure.exception), 'native helper evidence failed; '
+                         'native-session: exit=None, timeout=True, owner_error=True')
+
     def invoke(self, output, *, host=True, shells=None):
         from pathlib import Path
         from unittest.mock import patch, MagicMock

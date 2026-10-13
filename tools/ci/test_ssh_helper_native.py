@@ -3,6 +3,7 @@
 import argparse
 import os
 from pathlib import Path
+import re
 import sys
 
 import qa_process
@@ -25,7 +26,20 @@ def run(command, report, label, environment):
                                  timeout_seconds=600 if label.endswith('build') else 150,
                                  consume=consume)
     if outcome.return_code != 0 or outcome.timed_out or outcome.error:
-        raise ValueError('native helper evidence failed; inspect the bounded ' + label + ' log')
+        diagnostic = (f'{label}: exit={outcome.return_code}, '
+                      f'timeout={outcome.timed_out}, owner_error={bool(outcome.error)}')
+        # Report only the owned fixture location, never paths or panic values.
+        text = output.decode('utf-8', errors='replace')
+        location = re.search(r'inline_pipeline_native\.rs:([1-9][0-9]{0,5}):([1-9][0-9]{0,4})', text)
+        if location:
+            diagnostic += f', fixture line {location[1]}:{location[2]}'
+        for stage in ('readiness', 'passive discovery', 'idle file refresh',
+                      'cwd and selector revision', 'failed command', 'running command',
+                      'interrupt returns prompt', 'terminal resize'):
+            if f'native SSH stage timed out: native helper {stage};' in text:
+                diagnostic += ', stage=' + stage
+                break
+        raise ValueError('native helper evidence failed; ' + diagnostic)
     return bytes(output)
 
 

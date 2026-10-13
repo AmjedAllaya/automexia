@@ -402,10 +402,10 @@ jobs:
     - name: SSH actual-generator native PowerShell 5 and 7 regression
       if: matrix.target == 'x86_64-pc-windows-msvc'
       run: python tools/ci/check_ssh_library.py --shell-only --require-windows-powershells
-    - run: cargo build --release --locked --bins -p automexia-terminal --target ${{ matrix.target }}
     - name: SSH helper native ConPTY session regression
       if: matrix.target == 'x86_64-pc-windows-msvc'
       run: python tools/ci/test_ssh_helper_native.py
+    - run: cargo build --release --locked --bins -p automexia-terminal --target ${{ matrix.target }}
     - name: Build unsigned MSI and portable ZIP
       shell: pwsh
       run: |
