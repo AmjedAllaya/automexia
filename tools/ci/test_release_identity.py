@@ -12,6 +12,12 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ReleaseIdentityTests(unittest.TestCase):
+    def test_debian_changelog_starts_with_current_workspace_release(self):
+        import tomllib
+        version = tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]["package"]["version"]
+        header = (ROOT / "packaging/linux/changelog.Debian").read_text().splitlines()[0]
+        self.assertEqual(header, f"automexia-terminal ({version.replace('-', '~')}-1) unstable; urgency=medium")
+
     def test_alpha_tag_cargo_and_native_versions_are_distinct(self):
         self.assertEqual(identity.release_tag("0.0.1-alpha"), "0.0.1_alpha")
         self.assertEqual(identity.native_version("0.0.1-alpha"), "0.0.1")

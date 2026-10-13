@@ -1,3 +1,10 @@
+automexia-terminal (0.0.3~alpha-1) unstable; urgency=medium
+
+  * Release updated native packages with self-contained Windows C++ runtimes.
+  * Retain Fish 3.3 integration and openSUSE runtime dependency fixes.
+
+ -- Automexia Contributors <AmjedAllaya@users.noreply.github.com>  Tue, 13 Oct 2026 00:00:00 +0000
+
 automexia-terminal (0.0.2~alpha-1) unstable; urgency=medium
 
   * Restore Fish 3.3 integration and portable RPM dependency metadata.
