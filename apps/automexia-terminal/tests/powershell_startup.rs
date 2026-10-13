@@ -191,6 +191,78 @@ fn native_pwsh_bootstrap_stays_idle_until_explicit_input() {
     native_startup("pwsh.exe");
 }
 
+fn cmd_prompt_ready(editor: &Editor, completed_commands: usize) -> bool {
+    use rio_vt::crosswords::grid::row::PromptInputShell;
+    let terminal = editor.terminal.lock();
+    assert!(terminal.history_size() < 64, "bounded CMD startup output");
+    // Stock CMD emits A/P/B markers without PowerShell's aid generation.
+    // Require the real editable input boundary and independently observed output.
+    let row = &terminal.grid[terminal.grid.cursor.pos.row];
+    terminal
+        .user_vars
+        .get("automexia_prompt_active")
+        .map(String::as_str)
+        == Some("1")
+        && terminal
+            .user_vars
+            .get("automexia_shell_name")
+            .map(String::as_str)
+            == Some("CMD")
+        && row.semantic_input.is_some_and(|input| {
+            input.shell == PromptInputShell::Cmd
+                && !input.command_complete
+                && input.column == terminal.grid.cursor.pos.col.0
+        })
+        && terminal
+            .visible_rows()
+            .iter()
+            .filter(|row| {
+                row.inner
+                    .iter()
+                    .map(|cell| cell.c())
+                    .collect::<String>()
+                    .trim_matches([' ', '\0'])
+                    == "CMD-STARTUP-ACCEPTED"
+            })
+            .count()
+            == completed_commands
+}
+
+fn wait_for_cmd_prompt(editor: &Editor, completed_commands: usize) {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        service_protocol(editor);
+        if cmd_prompt_ready(editor, completed_commands) {
+            return;
+        }
+        if Instant::now() >= deadline {
+            let terminal = editor.terminal.lock();
+            let row = &terminal.grid[terminal.grid.cursor.pos.row];
+            panic!("native CMD input boundary missing after {completed_commands} commands: mark={:?}, input={:?}, cursor_col={}", row.semantic_prompt, row.semantic_input, terminal.grid.cursor.pos.col.0);
+        }
+    }
+}
+
+fn assert_cmd_idle(editor: &Editor, completed_commands: usize) {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let checkpoint = Instant::now() + Duration::from_secs(1);
+    let mut stable = None;
+    while Instant::now() < deadline {
+        service_protocol(editor);
+        assert!(
+            cmd_prompt_ready(editor, completed_commands),
+            "idle CMD lost its editable prompt or emitted unexpected command output"
+        );
+        if stable.is_none() && Instant::now() >= checkpoint {
+            stable = Some(visible_state(editor));
+        }
+    }
+    assert!(
+        stable.as_ref() == Some(&visible_state(editor)),
+        "idle CMD output must remain stable"
+    );
+}
+
 #[test]
 fn native_cmd_bootstrap_loads_packaged_prompt_through_real_launch_arguments() {
     // Exercise normalized_args -> CreateProcessW -> CMD -> the shipped hook.
@@ -257,7 +329,7 @@ fn native_cmd_bootstrap_loads_packaged_prompt_through_real_launch_arguments() {
         )
         .unwrap_or_else(|_| panic!("native CMD startup launch"));
         let editor = Editor::launch(pty, 146, 28);
-        wait_for_prompt(&editor, 1);
+        wait_for_cmd_prompt(&editor, 0);
         assert_eq!(
             editor
                 .terminal
@@ -267,7 +339,7 @@ fn native_cmd_bootstrap_loads_packaged_prompt_through_real_launch_arguments() {
                 .map(String::as_str),
             Some("CMD")
         );
-        assert_idle(&editor, 1);
+        assert_cmd_idle(&editor, 0);
         for byte in b"echo CMD-STARTUP-ACCEPTED" {
             let virtual_key = if *byte == b'-' {
                 0xbd
@@ -277,8 +349,8 @@ fn native_cmd_bootstrap_loads_packaged_prompt_through_real_launch_arguments() {
             editor.key(virtual_key, 0, u16::from(*byte), std::slice::from_ref(byte));
         }
         editor.key(13, 28, 13, b"\r");
-        wait_for_prompt(&editor, 2);
-        assert_idle(&editor, 2);
+        wait_for_cmd_prompt(&editor, 1);
+        assert_cmd_idle(&editor, 1);
         assert_eq!(
             visible_state(&editor)
                 .3
