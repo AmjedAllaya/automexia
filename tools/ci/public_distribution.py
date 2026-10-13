@@ -18,6 +18,7 @@ from typing import NoReturn
 from urllib.parse import quote, unquote, urlsplit
 
 import release_trust
+from release_identity import ALPHA_VERSIONS
 
 
 PUBLIC_REPOSITORY = "AmjedAllaya/automexia-releases"
@@ -856,7 +857,9 @@ def validate_public_sboms(spdx: dict, cdx: dict, version: str, *,
 def prepare_public_sboms(source: Path, output: Path, scan_root: Path, version: str, *,
                          allowed_inputs: frozenset[str] | None = None) -> None:
     """Project only known location fields; keep the scanner's evidence intact."""
-    if ((VERSION_RE.fullmatch(version) is None and version != "0.0.1-alpha") or source.is_symlink() or not source.is_dir()
+    if VERSION_RE.fullmatch(version) is None and version not in ALPHA_VERSIONS:
+        fail("public SBOM version must be numeric or an authorized alpha")
+    if (source.is_symlink() or not source.is_dir()
             or output.is_symlink() or not output.is_dir() or scan_root.is_symlink()
             or not scan_root.is_dir() or source.resolve() == output.resolve()):
         fail("public SBOM preparation needs separate real input and output directories")
