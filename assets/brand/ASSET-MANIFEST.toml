@@ -47,6 +47,16 @@ path = "assets/brand/automexia-terminal.icns"
 status = "derived-from-supplied-raster"
 
 [[asset]]
+kind = "windows-installer-banner-493x58"
+path = "assets/brand/windows-installer/banner.bmp"
+status = "derived-from-supplied-raster"
+
+[[asset]]
+kind = "windows-installer-dialog-493x312"
+path = "assets/brand/windows-installer/dialog.bmp"
+status = "derived-from-supplied-raster"
+
+[[asset]]
 kind = "linux-png-16-32-48-64-128-256-512"
 path = "assets/brand/png"
 status = "derived-from-supplied-raster"

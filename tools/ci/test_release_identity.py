@@ -370,6 +370,9 @@ class ReleaseIdentityTests(unittest.TestCase):
                 if "windows" in target:
                     self.assertIn("windows_slim_errors", environment["CARGO_ENCODED_RUSTFLAGS"])
                     self.assertIn("/Brepro", environment["CARGO_ENCODED_RUSTFLAGS"])
+                    self.assertIn("-Ctarget-feature=+crt-static", environment["CARGO_ENCODED_RUSTFLAGS"].split("\x1f"))
+                else:
+                    self.assertNotIn("crt-static", environment["CARGO_ENCODED_RUSTFLAGS"])
                 if "apple" in target:
                     self.assertIn("-Clink-arg=-Wl,-oso_prefix,.", environment["CARGO_ENCODED_RUSTFLAGS"])
                 else:
@@ -380,6 +383,22 @@ class ReleaseIdentityTests(unittest.TestCase):
             with mock.patch.object(build, "capture", return_value="host: x86_64-unknown-linux-gnu"), self.assertRaisesRegex(ValueError, "native host"):
                 build.run(Path(directory), "aarch64-apple-darwin", Path(directory) / "result.json")
             self.assertFalse((Path(directory) / "result.json").exists())
+
+    def test_windows_crt_policy_survives_reproducible_flag_override(self):
+        import reproducible_build as build
+        import tomllib
+        from unittest import mock
+        config = tomllib.loads((ROOT / ".cargo/config.toml").read_text(encoding="utf-8"))
+        flags = config["target"]['cfg(all(target_os = "windows", target_env = "msvc"))']["rustflags"]
+        self.assertIn("-Ctarget-feature=+crt-static", flags)
+        for target in ("x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"):
+            with mock.patch.dict(build.os.environ, {"RUSTFLAGS": "-Ctarget-feature=-crt-static",
+                                                    "CARGO_ENCODED_RUSTFLAGS": "-Ctarget-feature=-crt-static"}):
+                environment = build.build_environment(ROOT, target, 1700000000)
+            self.assertNotIn("RUSTFLAGS", environment)
+            flags = environment["CARGO_ENCODED_RUSTFLAGS"].split("\x1f")
+            self.assertIn("-Ctarget-feature=+crt-static", flags)
+            self.assertNotIn("-Ctarget-feature=-crt-static", flags)
 
     def test_packaging_does_not_pass_flags_rejected_by_the_pinned_packager(self):
         for name in ("tools/xtask/src/main.rs", ".github/workflows/nightly.yml"):

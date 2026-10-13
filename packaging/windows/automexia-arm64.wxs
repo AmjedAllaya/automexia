@@ -4,7 +4,8 @@
   produce ARM64 MSI databases. Keep this source limited to the unsupported
   target; x64 continues to use the canonical cargo-packager configuration.
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
   <Package Name="Automexia Terminal"
            Manufacturer="Automexia Contributors"
            Version="$(var.ProductVersion)"
@@ -19,6 +20,10 @@
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
     <Icon Id="AutomexiaTerminal.exe" SourceFile="$(var.IconPath)" />
     <Property Id="ARPPRODUCTICON" Value="AutomexiaTerminal.exe" />
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUIBannerBmp" Value="$(var.InstallerBrandRoot)\banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(var.InstallerBrandRoot)\dialog.bmp" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.InstallerLicensePath)" />
 
     <StandardDirectory Id="ProgramFiles6432Folder">
       <Directory Id="AutomexiaPublisherFolder" Name="Automexia">

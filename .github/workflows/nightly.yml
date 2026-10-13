@@ -1,6 +1,12 @@
 name: Deep assurance (manual)
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: Run all deep checks or only build and verify Windows packages
+        type: choice
+        default: all
+        options: [all, windows-packaging]
 permissions:
   contents: read
 env:
@@ -10,7 +16,7 @@ env:
 jobs:
   native-gui-resize-stress:
     name: Native Windows GUI resize and history latency
-    if: vars.AUTOMEXIA_NATIVE_GUI_RUNNER == '1'
+    if: inputs.scope != 'windows-packaging' && (vars.AUTOMEXIA_NATIVE_GUI_RUNNER == '1')
     runs-on:
     - self-hosted
     - Windows
@@ -37,7 +43,7 @@ jobs:
     timeout-minutes: 60
   native-windows-deep:
     name: Windows AppVerifier, WPR, and resource lifetime
-    if: vars.AUTOMEXIA_WINDOWS_DEEP_RUNNER == '1'
+    if: inputs.scope != 'windows-packaging' && (vars.AUTOMEXIA_WINDOWS_DEEP_RUNNER == '1')
     runs-on:
     - self-hosted
     - Windows
@@ -68,7 +74,7 @@ jobs:
     timeout-minutes: 60
   native-wsl-session-clone:
     name: Native WSL session clone
-    if: vars.AUTOMEXIA_WSL_RUNNER == '1'
+    if: inputs.scope != 'windows-packaging' && (vars.AUTOMEXIA_WSL_RUNNER == '1')
     runs-on:
     - self-hosted
     - Windows
@@ -99,6 +105,7 @@ jobs:
       run: "if ([string]::IsNullOrWhiteSpace($env:AUTOMEXIA_TEST_WSL_DISTRO)) {\n  throw 'AUTOMEXIA_TEST_WSL_DISTRO is required'\n}\n$workspace = (& wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO --cd $env:GITHUB_WORKSPACE -- pwd -P).Trim()\nif ($LASTEXITCODE -ne 0 -or -not $workspace.StartsWith('/')) {\n  throw 'could not resolve the checked-out workspace inside WSL'\n}\n& wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO -- bash -lc 'set -euo pipefail; cd -- \"$1\"; command -v python3 shellcheck zsh fish >/dev/null; bash tools/ci/test_shell_sources.sh' automexia-wsl $workspace\nif ($LASTEXITCODE -ne 0) {\n  throw 'CP3.1 WSL shell lifecycle validation failed'\n}\n"
     timeout-minutes: 60
   fuzz:
+    if: inputs.scope != 'windows-packaging'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
@@ -149,6 +156,7 @@ jobs:
       if: matrix.target == 'multicloud_provider_inputs'
       run: cargo +nightly-2026-08-25 fuzz run --no-default-features --features multicloud-provider-inputs multicloud_provider_inputs --target x86_64-unknown-linux-gnu -- -max_total_time=120 -rss_limit_mb=768 -timeout=15 -max_len=1048577
   miri:
+    if: inputs.scope != 'windows-packaging'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -188,6 +196,7 @@ jobs:
 
         '
   sanitizers:
+    if: inputs.scope != 'windows-packaging'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -224,6 +233,7 @@ jobs:
         '
     timeout-minutes: 90
   benchmark-build:
+    if: inputs.scope != 'windows-packaging'
     name: Benchmark targets compile
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -250,7 +260,7 @@ jobs:
       run: cargo check --locked -p automexia-terminal --bin automexia --features application-benchmarks
   benchmarks-controlled:
     name: Execute latency benchmarks on named controlled Linux hardware
-    if: vars.AUTOMEXIA_BENCHMARK_RUNNER == '1'
+    if: inputs.scope != 'windows-packaging' && (vars.AUTOMEXIA_BENCHMARK_RUNNER == '1')
     runs-on:
     - self-hosted
     - Linux
@@ -297,7 +307,7 @@ jobs:
         retention-days: 90
   performance-controlled-windows:
     name: Collect complete S2 latency and memory evidence
-    if: vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER == '1'
+    if: inputs.scope != 'windows-packaging' && (vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER == '1')
     runs-on:
     - self-hosted
     - Windows
@@ -387,7 +397,9 @@ jobs:
       if: matrix.target == 'x86_64-pc-windows-msvc'
       with:
         tool: cargo-packager@0.11.8
-    - run: cargo build --release --locked -p automexia-terminal --target ${{ matrix.target }}
+    - name: Verify native Windows runtime dependency gate
+      run: python -m unittest discover -s tools/ci -p test_windows_runtime_dependencies.py
+    - run: cargo build --release --locked --bins -p automexia-terminal --target ${{ matrix.target }}
     - name: SSH actual-generator native PowerShell 5 and 7 regression
       if: matrix.target == 'x86_64-pc-windows-msvc'
       run: python tools/ci/check_ssh_library.py --shell-only --require-windows-powershells
@@ -396,11 +408,13 @@ jobs:
       run: python tools/ci/test_ssh_helper_native.py
     - name: Build unsigned MSI and portable ZIP
       shell: pwsh
-      run: '$env:AUTOMEXIA_PACKAGE_SKIP_BUILD = ''1''
-
+      run: |
+        $env:AUTOMEXIA_PACKAGE_SKIP_BUILD = '1'
         cargo xtask package --target ${{ matrix.target }}
-
-        '
+        if ($LASTEXITCODE -ne 0) { throw 'cargo xtask package failed' }
+        $env:AUTOMEXIA_REQUIRE_WIX3_BRANDING_TEST = if ('${{ matrix.target }}' -eq 'x86_64-pc-windows-msvc') { '1' } else { '0' }
+        python tools/ci/test_windows_installer_branding.py
+        if ($LASTEXITCODE -ne 0) { throw 'Windows installer branding regression failed' }
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
         name: automexia-nightly-${{ matrix.target }}
@@ -413,6 +427,7 @@ jobs:
         retention-days: 7
     timeout-minutes: 90
   unsigned-linux:
+    if: inputs.scope != 'windows-packaging'
     name: Unsigned Linux release-candidate builds
     runs-on: ${{ matrix.runner }}
     env:
@@ -495,6 +510,7 @@ jobs:
         retention-days: 7
     timeout-minutes: 90
   unsigned-macos:
+    if: inputs.scope != 'windows-packaging'
     name: Unsigned macOS universal
     runs-on: macos-26
     steps:
@@ -543,7 +559,7 @@ jobs:
     timeout-minutes: 90
   application-windows:
     name: Windows application measurements on pinned hardware
-    if: github.ref == 'refs/heads/main' && vars.AUTOMEXIA_APPLICATION_BENCHMARK_RUNNER == '1'
+    if: inputs.scope != 'windows-packaging' && (github.ref == 'refs/heads/main' && vars.AUTOMEXIA_APPLICATION_BENCHMARK_RUNNER == '1')
     runs-on: [self-hosted, Windows, X64, automexia-gpu, automexia-benchmark]
     timeout-minutes: 90
     concurrency:

@@ -44,3 +44,8 @@ rustflags = [
     "--cfg",
     "windows_slim_errors",        # This cfg will reduce the size of `windows::core::Error` from 16 bytes to 4 bytes
 ]
+
+[target.'cfg(all(target_os = "windows", target_env = "msvc"))']
+# Include the C/C++ runtime so MSI and portable builds work on a fresh OS.
+# Cargo combines this with the matching Windows flags above.
+rustflags = ["-Ctarget-feature=+crt-static"]

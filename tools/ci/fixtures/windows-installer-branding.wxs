@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- UI-only regression fixture. Never publish or install as an application. -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Automexia Terminal" Language="1033" Version="0.0.0"
+           Manufacturer="Automexia Contributors" UpgradeCode="B4B36DA2-7541-496D-95EE-13B609DB6897">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
+    <MediaTemplate EmbedCab="yes" />
+    <Icon Id="AutomexiaIcon" SourceFile="$(var.IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="AutomexiaIcon" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+    <UIRef Id="WixUI_InstallDir" />
+    <?if $(var.Branded) = "yes" ?>
+    <WixVariable Id="WixUIBannerBmp" Value="$(var.BannerPath)" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(var.DialogPath)" />
+    <?endif?>
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicensePath)" />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="AutomexiaInstallerBrandingFixture">
+          <Component Id="Fixture" Guid="*" Win64="yes">
+            <File Id="FixtureFile" Source="$(var.LicensePath)" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+    <Feature Id="FixtureFeature" Level="1"><ComponentRef Id="Fixture" /></Feature>
+  </Product>
+</Wix>

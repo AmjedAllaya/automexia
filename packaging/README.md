@@ -31,6 +31,19 @@ ARM64 Windows MSI packaging requires the .NET SDK; xtask restores the pinned
 local WiX tool before compiling the installer and never depends on a moving
 global WiX installation.
 
+Both Windows installers share the artwork in `assets/brand/windows-installer`
+and concise English setup text in `packaging/windows/*-en-us.wxl`. ARM64 also
+restores the matching WiX UI extension, pinned to 5.0.2. Native Windows controls
+handle focus, keyboard navigation, progress, cancellation, and the license view.
+`tools/brand/generate-windows-installer-assets.ps1` regenerates the artwork and
+license RTF from the canonical mark and `LICENSE`.
+
+Packaging inspects each compiled MSI and rejects missing or changed artwork or
+setup text. Run `python tools/ci/test_windows_installer_branding.py` in an isolated
+Windows builder with WiX 3 on `PATH` to exercise the compiled-package checks,
+including rejection of default WiX artwork and text. Other environments run only
+the source/asset checks and report the native test as skipped.
+
 Linux packaging requires `nFPM`, `scdoc`, `gzip`, and `tic`. The repository
 manifest assigns deterministic 0644/0755 modes instead of inheriting host
 checkout permissions, declares the dynamically linked Debian/RPM runtime

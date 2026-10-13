@@ -282,8 +282,20 @@ class RuntimeTrustTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(TRUST.RuntimeTrustError, "bounded"):
             TRUST.validate_packaging(
-                xtask, self.read("packaging/windows/automexia-arm64.wxs")
+                xtask, self.read("packaging/windows/automexia-arm64.wxs"),
+                self.read("tools/xtask/src/windows_package.rs"),
             )
+
+    def test_arm64_packaging_adapter_must_remain_connected_and_include_shell_resources(self) -> None:
+        xtask = self.read("tools/xtask/src/main.rs")
+        adapter = self.read("tools/xtask/src/windows_package.rs")
+        wix = self.read("packaging/windows/automexia-arm64.wxs")
+        TRUST.validate_packaging(xtask, wix, adapter)
+        for marker in ("mod windows_package;", "use windows_package::package_windows_arm64;"):
+            with self.subTest(marker=marker), self.assertRaisesRegex(TRUST.RuntimeTrustError, "ARM64 MSI"):
+                TRUST.validate_packaging(xtask.replace(marker, ""), wix, adapter)
+        with self.assertRaisesRegex(TRUST.RuntimeTrustError, "ARM64 MSI"):
+            TRUST.validate_packaging(xtask, wix, adapter.replace("ShellIntegrationRoot", "MissingRoot"))
 
 
 if __name__ == "__main__":

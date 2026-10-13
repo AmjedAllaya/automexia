@@ -42,6 +42,9 @@ allow-downgrades = false
 [package.metadata.packager.wix]
 fragment-paths = ["../../packaging/windows/automexia.wxs"]
 component-group-refs = ["AutomexiaContextMenuComponents"]
+banner-path = "../../assets/brand/windows-installer/banner.bmp"
+dialog-image-path = "../../assets/brand/windows-installer/dialog.bmp"
+languages = [{ identifier = "en-US", path = "../../packaging/windows/automexia-en-us.wxl" }]
 
 [[bin]]
 name = "automexia"

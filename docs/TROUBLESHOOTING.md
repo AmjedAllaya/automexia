@@ -1,5 +1,21 @@
 # Troubleshooting
 
+## Windows reports a missing C++ runtime DLL
+
+The `0.0.2-alpha` Windows packages depend on Microsoft's Visual C++ runtime.
+A fresh Windows installation may report missing `MSVCP140.dll`,
+`VCRUNTIME140.dll`, or `VCRUNTIME140_1.dll` when Automexia starts.
+
+For that release, install the official
+[Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
+inside the affected Windows installation, then reopen Automexia. Choose **X64**
+for the Intel/AMD package or **ARM64** for the ARM package. Reinstalling the same
+Automexia MSI does not supply these files.
+
+The source fix links the runtime into Automexia and its helpers. It also rejects
+Windows packages with external Visual C++ runtime imports. Existing release
+downloads remain unchanged until a replacement release is published.
+
 ## Antivirus reports PowerShell or shell-integration behavior
 
 Current normal launches do not invoke an installer, change execution policy,

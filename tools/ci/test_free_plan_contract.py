@@ -20,6 +20,26 @@ CACHE_INITIALIZER = r'''printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v2\n' "$RU
 
 
 class FreePlanContractTests(unittest.TestCase):
+    def test_windows_package_rehearsal_is_opt_in_and_preserves_default_deep_checks(self):
+        import yaml
+
+        workflow = yaml.safe_load((ROOT / ".github/workflows/nightly.yml").read_text(encoding="utf-8"))
+        trigger = workflow.get("on", workflow.get(True))
+        self.assertEqual(set(trigger), {"workflow_dispatch"})
+        scope = trigger["workflow_dispatch"]["inputs"]["scope"]
+        self.assertEqual(scope["default"], "all")
+        self.assertEqual(scope["options"], ["all", "windows-packaging"])
+        self.assertEqual(workflow["permissions"], {"contents": "read"})
+        for name, job in workflow["jobs"].items():
+            if name == "unsigned-windows":
+                self.assertNotIn("if", job)
+                self.assertEqual(job["strategy"]["matrix"]["target"],
+                                 ["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"])
+                self.assertLessEqual(job["timeout-minutes"], 90)
+            else:
+                self.assertTrue(job["if"].startswith("inputs.scope != 'windows-packaging'"), name)
+            self.assertFalse(job.get("continue-on-error", False), name)
+
     def test_native_windows_process_ownership_has_real_ci_coverage(self):
         import yaml
 

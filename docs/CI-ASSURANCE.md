@@ -45,6 +45,11 @@ evidence does not change the separate private-plan branch-protection limit.
 | `.github/workflows/s2-assurance.yml` | Manual independently reviewed performance-baseline activation |
 | `.github/workflows/release.yml` | Merged internal release PR authorization through signed immutable publication |
 
+The manual deep workflow defaults to all checks. Select `windows-packaging` to
+build and verify only x64 and ARM64 MSI/ZIP candidates on hosted Windows runners.
+This scoped rehearsal checks CRT imports and compiled installer branding and
+retains Actions artifacts; it does not publish a release or prove clean-OS startup.
+
 All workflows default to read-only contents. External Actions must use a
 reviewed repository and a full lowercase 40-character commit. Only the final
 publication job receives `contents: write`; signing credentials stay in their

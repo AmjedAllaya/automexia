@@ -1073,6 +1073,13 @@ values rather than contributor account or executable-path data.
 
 ### packaging-release-provenance
 
+Windows package checks inspect all shipped PE imports and reject an undeployed
+Visual C++ runtime, including skipped builds. Native fixtures must reject a
+dynamic-CRT executable and accept a static-CRT control. MSI checks compare the
+compiled artwork and live setup text against their shared sources, with stock
+WiX artwork and copy as negative controls. These checks do not replace a clean
+customer installation, first launch, upgrade, and uninstall of the final bytes.
+
 Linux DEB/RPM manifests include the complete shell-integration resource tree including hidden Zsh startup files; installed-prefix discovery works without environment overrides and rejects incomplete payloads. Package construction and native installed-artifact evidence remain separate.
 
 Windows packages must retain the pinned Microsoft DLL and both kernel hosts in

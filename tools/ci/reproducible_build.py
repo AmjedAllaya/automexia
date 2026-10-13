@@ -48,7 +48,8 @@ def build_environment(source: Path, target: str, epoch: int) -> dict[str, str]:
     prefixes = dict.fromkeys((logical_source, source))
     flags = [f"--remap-path-prefix={prefix}=/usr/src/automexia" for prefix in prefixes]
     if "windows" in target:
-        flags.extend(("--cfg=windows_slim_errors", "-Clink-arg=/Brepro"))
+        # Encoded flags replace Cargo's target config, including static CRT.
+        flags.extend(("--cfg=windows_slim_errors", "-Clink-arg=/Brepro", "-Ctarget-feature=+crt-static"))
     elif "linux" in target:
         flags.append("-Clink-arg=-Wl,--build-id=sha1")
     else:

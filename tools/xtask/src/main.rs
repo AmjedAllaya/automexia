@@ -5,6 +5,9 @@ mod keybindings;
 mod portable_package_tests;
 mod renderer_benchmarks;
 mod visual_diff;
+mod windows_package;
+
+use windows_package::package_windows_arm64;
 
 use process_wrap::std::CommandWrap;
 #[cfg(windows)]
@@ -1793,6 +1796,8 @@ fn complete_ci_gate() -> TaskResult {
     run_python("tools/ci/test_cmd_prompt.py")?;
     run_python("tools/ci/test_windows_conpty_runtime.py")?;
     run_python("tools/ci/test_package_contents.py")?;
+    run_python("tools/ci/test_windows_installer_branding.py")?;
+    run_python("tools/ci/test_windows_runtime_dependencies.py")?;
     run_python("tools/ci/test_release_runtime.py")?;
     run_python("tools/ci/test_release_identity.py")?;
     run_python("tools/ci/test_release_manifest.py")?;
@@ -4715,6 +4720,17 @@ fn require_package_runtime_binaries(binaries: &[PathBuf]) -> TaskResult {
     Ok(())
 }
 
+fn check_windows_runtime_dependencies(binary: &Path, target: &str) -> TaskResult {
+    let python = python_program()
+        .ok_or("Python 3 is required to inspect Windows runtime dependencies")?;
+    let mut command = Command::new(python);
+    command.current_dir(root());
+    command.arg("tools/ci/windows_runtime_dependencies.py");
+    command.args(package_runtime_binaries(binary, target));
+    command.args(package_conpty_runtime_files(binary)?);
+    run_command(command, "check Windows runtime dependencies")
+}
+
 fn package_target(target: &str) -> TaskResult {
     package_check()?;
     let identity = product_identity()?;
@@ -4748,11 +4764,20 @@ fn package_target(target: &str) -> TaskResult {
         )?;
         let runtime_root = binary.parent().ok_or("release binary has no parent")?;
         prepare_windows_runtime(runtime_root, target)?;
+        check_windows_runtime_dependencies(&binary, target)?;
         if target == "aarch64-pc-windows-msvc" {
             package_windows_arm64(&identity, &binary, &output, target)?;
         } else {
             package_native_desktop(&identity, &binary, &output, target, "wix")?;
         }
+        let python =
+            python_program().ok_or("Python 3 is required to inspect MSI branding")?;
+        let mut branding = Command::new(python);
+        branding
+            .arg("tools/ci/windows_installer_branding.py")
+            .arg(&output)
+            .current_dir(root());
+        run_command(branding, "check compiled MSI branding")?;
         portable_archive(&identity, target, &binary, &output, "zip")?;
     } else if target.contains("apple-darwin") {
         require(
@@ -4819,116 +4844,6 @@ fn windows_installer_version(version: &str) -> Result<&str, String> {
         }
     }
     Ok(numeric)
-}
-
-fn package_windows_arm64(
-    identity: &ProductIdentity,
-    binary: &Path,
-    output: &Path,
-    target: &str,
-) -> TaskResult {
-    require(
-        command_available("dotnet"),
-        "ARM64 MSI packaging requires the .NET SDK for the repository-pinned WiX 5 tool",
-    )?;
-    run("dotnet", &["tool", "restore"])?;
-
-    // WiX is a .NET application and interprets its source argument as a URI.
-    // `std::fs::canonicalize` adds the Windows `\\?\` verbatim prefix used by
-    // `root()` which `System.Uri` rejects before WiX can parse the source.
-    // Keep filesystem resolution canonical while presenting regular Win32
-    // paths to this external tool.
-    let workspace = normalize_canonical_path(root());
-    let binary = normalize_canonical_path(binary.to_path_buf());
-    let output = normalize_canonical_path(output.to_path_buf());
-
-    let msi = output.join(format!(
-        "automexia-terminal-{}-{target}.msi",
-        identity.version
-    ));
-    let intermediate = output.join(".wix-arm64");
-    fs::create_dir_all(&intermediate).map_err(|error| {
-        format!(
-            "could not create WiX intermediate directory {}: {error}",
-            intermediate.display()
-        )
-    })?;
-
-    let define = |name: &str, path: &Path| format!("{name}={}", path.display());
-    let mut command = Command::new("dotnet");
-    command.args([
-        "tool",
-        "run",
-        "wix",
-        "--",
-        "build",
-        "-arch",
-        "arm64",
-        "-pdbtype",
-        "none",
-        "-intermediateFolder",
-    ]);
-    command.arg(&intermediate);
-    command.args([
-        "-d",
-        &format!(
-            "ProductVersion={}",
-            windows_installer_version(&identity.version)?
-        ),
-    ]);
-    command.args(["-d", &define("BinaryPath", &binary)]);
-    command.args([
-        "-d",
-        &define(
-            "ConptyRuntimeRoot",
-            binary.parent().ok_or("release binary has no parent")?,
-        ),
-    ]);
-    command.args([
-        "-d",
-        &define("CliBinaryPath", &binary.with_file_name("amx.exe")),
-    ]);
-    command.args([
-        "-d",
-        &define(
-            "SuggestionHelperPath",
-            &binary.with_file_name("automexia-suggestion-helper.exe"),
-        ),
-    ]);
-    command.args([
-        "-d",
-        &define(
-            "SshHelperPath",
-            &binary.with_file_name("automexia-ssh-helper.exe"),
-        ),
-    ]);
-    command.args([
-        "-d",
-        &define(
-            "IconPath",
-            &workspace.join("assets/brand/automexia-terminal.ico"),
-        ),
-    ]);
-    command.args(["-d", &define("LicensePath", &workspace.join("LICENSE"))]);
-    command.args(["-d", &define("NoticePath", &workspace.join("NOTICE.md"))]);
-    command.args([
-        "-d",
-        &define("ThirdPartyPath", &workspace.join("THIRD_PARTY_NOTICES.md")),
-    ]);
-    command.args(["-d", &define("ReadmePath", &workspace.join("README.md"))]);
-    command.args([
-        "-d",
-        &define("ShellIntegrationRoot", &workspace.join("shell-integration")),
-    ]);
-    command.args(["-o"]);
-    command.arg(&msi);
-    command.arg(workspace.join("packaging/windows/automexia-arm64.wxs"));
-    command.current_dir(&workspace);
-    run_command(command, "WiX 5 ARM64 MSI")?;
-    require(
-        msi.is_file(),
-        &format!("WiX 5 did not produce {}", msi.display()),
-    )
 }
 
 fn portable_archive(

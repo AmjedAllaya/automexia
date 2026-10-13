@@ -447,6 +447,9 @@ jobs:
         with:
           tool: cargo-llvm-cov@0.6.18
 
+      - name: Verify native Windows runtime dependency gate
+        run: python -m unittest discover -s tools/ci -p test_windows_runtime_dependencies.py
+
       - name: Enforce commit-bound Windows coverage regression baseline
         shell: pwsh
         run: |

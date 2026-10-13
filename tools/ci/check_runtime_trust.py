@@ -332,7 +332,7 @@ def validate_release(workflow: dict[str, Any]) -> None:
     )
 
 
-def validate_packaging(xtask: str, arm_wix: str) -> None:
+def validate_packaging(xtask: str, arm_wix: str, arm_packaging: str) -> None:
     require(
         "copy_bounded_resource_tree(\n        &root().join" in xtask
         and '&staging.join("shell-integration")' in xtask
@@ -340,7 +340,9 @@ def validate_packaging(xtask: str, arm_wix: str) -> None:
         "portable packages must include a bounded, non-linked integration tree",
     )
     require(
-        "ShellIntegrationRoot" in xtask
+        "mod windows_package;" in xtask
+        and "use windows_package::package_windows_arm64;" in xtask
+        and "ShellIntegrationRoot" in arm_packaging
         and "AutomexiaShellRootComponent" in arm_wix
         and "AutomexiaShellCompletionPowerShellComponent" in arm_wix,
         "ARM64 MSI must include the complete shell integration resource tree",
@@ -372,6 +374,7 @@ def validate_repository() -> float:
     validate_packaging(
         read("tools/xtask/src/main.rs"),
         read("packaging/windows/automexia-arm64.wxs"),
+        read("tools/xtask/src/windows_package.rs"),
     )
     workflow = yaml.safe_load(read(".github/workflows/release.yml"))
     require(isinstance(workflow, dict), "release workflow is not a mapping")

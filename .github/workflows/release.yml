@@ -508,6 +508,10 @@ jobs:
       if: runner.os == 'Windows'
       shell: bash
       run: python -m unittest discover -s tools/ci -p test_release_identity.py -k native_windows_resources
+    - name: Verify Windows runtime dependency gate
+      if: runner.os == 'Windows'
+      shell: bash
+      run: python -m unittest discover -s tools/ci -p test_windows_runtime_dependencies.py
     - name: Native version smoke
       shell: bash
       run: 'set -euo pipefail
@@ -919,6 +923,9 @@ jobs:
         $env:AUTOMEXIA_PACKAGE_SKIP_BUILD = '1'
         cargo xtask package --target ${{ matrix.target }}
         if ($LASTEXITCODE -ne 0) { throw 'cargo xtask package failed' }
+        $env:AUTOMEXIA_REQUIRE_WIX3_BRANDING_TEST = if ('${{ matrix.target }}' -eq 'x86_64-pc-windows-msvc') { '1' } else { '0' }
+        python tools/ci/test_windows_installer_branding.py
+        if ($LASTEXITCODE -ne 0) { throw 'Windows installer branding regression failed' }
         $packageDir = "target/package/${{ matrix.target }}"
         $msi = @(Get-ChildItem $packageDir -File -Filter *.msi)
         $zip = @(Get-ChildItem $packageDir -File -Filter *.zip)

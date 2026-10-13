@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization Culture="en-us" xmlns="http://wixtoolset.org/schemas/v4/wxl">
+  <String Id="WelcomeDlgTitle" Value="{\WixUI_Font_Bigger}Welcome to Automexia Terminal" />
+  <String Id="WelcomeDlgDescription" Value="A flexible, open-source terminal for focused command-line work. Click Next to set up Automexia." />
+  <String Id="MaintenanceWelcomeDlgTitle" Value="{\WixUI_Font_Bigger}Manage Automexia Terminal" />
+  <String Id="MaintenanceWelcomeDlgDescription" Value="Automexia is already installed. Click Next to view setup options, or Cancel to leave it as it is." />
+  <String Id="InstallDirDlgTitle" Value="{\WixUI_Font_Title}Choose an install folder" />
+  <String Id="InstallDirDlgDescription" Value="Use this folder, or click Change to choose another." />
+  <String Id="LicenseAgreementDlgTitle" Value="{\WixUI_Font_Title}Automexia license" />
+  <String Id="LicenseAgreementDlgDescription" Value="Review the MIT license before continuing." />
+  <String Id="VerifyReadyDlgInstallText" Value="Click Install to add Automexia to your computer. Click Back to review your choices." />
+  <String Id="VerifyReadyDlgRepairText" Value="Click Repair to restore missing or damaged Automexia files." />
+  <String Id="VerifyReadyDlgRemoveText" Value="Click Remove to uninstall Automexia from your computer." />
+  <String Id="VerifyReadyDlgChangeText" Value="Click Change to apply your setup choices." />
+  <String Id="VerifyReadyDlgUpdateText" Value="Click Update to update Automexia." />
+  <String Id="ProgressDlgTextInstalling" Value="Installing Automexia. This may take a moment." />
+  <String Id="ProgressDlgTextRepairing" Value="Repairing Automexia. This may take a moment." />
+  <String Id="ProgressDlgTextRemoving" Value="Removing Automexia. This may take a moment." />
+  <String Id="ProgressDlgTextChanging" Value="Updating your Automexia setup. This may take a moment." />
+  <String Id="ProgressDlgTextUpdating" Value="Updating Automexia. This may take a moment." />
+  <String Id="ExitDialogTitle" Value="{\WixUI_Font_Bigger}Setup complete" />
+  <String Id="ExitDialogDescription" Value="Click Finish to close Automexia setup." />
+  <String Id="UserExitTitle" Value="{\WixUI_Font_Bigger}Setup cancelled" />
+  <String Id="UserExitDescription1" Value="Automexia setup was cancelled. Run the installer again when you are ready." />
+  <String Id="UserExitDescription2" Value="Click Finish to close." />
+</WixLocalization>

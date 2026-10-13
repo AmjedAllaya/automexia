@@ -108,6 +108,11 @@ powershell -NoProfile -File tools/brand/generate-platform-assets.ps1
 The generator produces the documented Linux PNG sizes, Windows ICO, and macOS
 ICNS assets. Run `cargo ready` afterward.
 
+Windows setup uses the same mark, a blue-black welcome panel, and cyan/violet
+accents. Its instructions remain native text on white backgrounds. See
+[`assets/brand/README.md`](../assets/brand/README.md) for the separate Windows
+installer-artwork generator and safe text areas.
+
 ## Stable-release approval
 
 Generated raster assets are development inputs, not automatic stable-release

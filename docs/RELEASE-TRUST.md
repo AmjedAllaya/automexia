@@ -49,6 +49,14 @@ product version of each Automexia executable must equal the release tag.
 Microsoft runtime files retain their vendor version and original signature; the
 pinned recipe in `packaging/windows/conpty-runtime.json` owns their hashes.
 
+Windows MSVC application builds link the C/C++ runtime statically. Before
+creating either MSI or ZIP, packaging checks all four applications and all
+three vendor PE files with Microsoft's DUMPBIN. Missing inspection tools,
+incomplete output, or external Visual C++ runtime imports block packaging,
+including when `AUTOMEXIA_PACKAGE_SKIP_BUILD` is set. This check does not
+replace installation and launch on a clean customer OS. The published
+`0.0.2-alpha` predates this gate; see [the workaround](TROUBLESHOOTING.md#windows-reports-a-missing-c-runtime-dll).
+
 Raw executables, app directories, symbol files, signing material, build logs,
 and unsigned staging artifacts are forbidden. Every expected architecture must
 be present, files must be regular non-symlinks, and package sizes are bounded.
