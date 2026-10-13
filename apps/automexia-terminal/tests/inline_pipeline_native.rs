@@ -804,10 +804,14 @@ mod ssh_native {
                 )
                 .unwrap()
                 .unwrap();
+                // This local ConPTY fixture may report the long spelling of an
+                // 8.3 temporary path. Both names must resolve to our directory.
+                let expected_directory = dunce::canonicalize(&first).unwrap();
                 assert!(
-                    cwd.path.as_ref().is_some_and(|path| path
-                        .remote_text()
-                        .eq_ignore_ascii_case(&first.to_string_lossy())),
+                    cwd.path.as_ref().is_some_and(|path| {
+                        dunce::canonicalize(path.remote_text())
+                            .is_ok_and(|actual| actual == expected_directory)
+                    }),
                     "native helper must publish its actual isolated working directory"
                 );
                 assert!(
