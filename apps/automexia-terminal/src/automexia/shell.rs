@@ -458,6 +458,7 @@ mod tests {
         let setup = r#"
 $ErrorActionPreference = 'Stop'
 try {
+    [IO.File]::WriteAllText($env:AUTOMEXIA_SCOPE_PHASE, 'readline')
     Import-Module PSReadLine -ErrorAction Stop
     Set-PSReadLineOption -HistorySaveStyle SaveNothing -HistorySavePath (Join-Path $env:AUTOMEXIA_CONFIG_HOME 'unused-history')
     $global:AutomexiaScopeProbeCalls = 0
@@ -468,8 +469,10 @@ try {
     }
     $global:AutomexiaScopeProbeOutput = [IO.StringWriter]::new()
     [Console]::SetOut($global:AutomexiaScopeProbeOutput)
+    [IO.File]::WriteAllText($env:AUTOMEXIA_SCOPE_PHASE, 'bootstrap')
 "#;
         let assertions = r#"
+    [IO.File]::WriteAllText($env:AUTOMEXIA_SCOPE_PHASE, 'assertions')
     $null = $global:AutomexiaScopeProbeOutput.GetStringBuilder().Clear()
     $null = prompt
     if ($global:AutomexiaScopeProbeOutput.ToString().Contains('133;D') -or
@@ -505,8 +508,10 @@ try {
         $explicit.Count -ne 2 -or $explicit[0] -cne 'literal [scope]' -or
         $explicit[1] -cne '; no-evaluation') { exit 88 }
     $inputBeforeReload = (Get-Command PSConsoleHostReadLine).ScriptBlock.ToString()
+    [IO.File]::WriteAllText($env:AUTOMEXIA_SCOPE_PHASE, 'reload')
 "#;
         let repeat_assertions = r#"
+    [IO.File]::WriteAllText($env:AUTOMEXIA_SCOPE_PHASE, 'repeat-assertions')
     if ((Get-Command PSConsoleHostReadLine).ScriptBlock.ToString() -cne
         $inputBeforeReload) { exit 89 }
     $global:AutomexiaScopeProbeLine = 'second literal input'
@@ -523,6 +528,7 @@ try {
             "{setup}{POWERSHELL_SESSION_BOOTSTRAP};{assertions}\
              {POWERSHELL_SESSION_BOOTSTRAP};{repeat_assertions}"
         );
+        let phase_path = config.join("scope-phase");
         let mut command = Command::new(program);
         command
             .args([
@@ -537,6 +543,7 @@ try {
             .current_dir(&config)
             .env("AUTOMEXIA_SHELL_INTEGRATION_ROOT", root)
             .env("AUTOMEXIA_CONFIG_HOME", &config)
+            .env("AUTOMEXIA_SCOPE_PHASE", &phase_path)
             .env("AUTOMEXIA_SHELL_INTEGRATION", "1")
             .env("AUTOMEXIA_CONTEXT_PATH_HINTS", "0")
             .env("AUTOMEXIA_AMX", "0")
@@ -544,6 +551,9 @@ try {
             .env("AUTOMEXIA_PLAIN_CMD", "0")
             .env("AUTOMEXIA_COMPLETION_DISABLED", "1")
             .env("TERM_PROGRAM", "Automexia")
+            // A pwsh-launched test must not inject PowerShell 7 modules into
+            // Windows PowerShell. Let the selected host construct its defaults.
+            .env_remove("PSModulePath")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
@@ -564,7 +574,19 @@ try {
                 _ => {
                     let _ = child.kill();
                     let _ = child.wait();
-                    panic!("PowerShell scope probe did not complete within its deadline");
+                    use std::io::Read;
+                    let mut recorded = String::new();
+                    if let Ok(file) = fs::File::open(&phase_path) {
+                        let _ = file.take(64).read_to_string(&mut recorded);
+                    }
+                    let phase = match recorded.as_str() {
+                        "readline" | "bootstrap" | "assertions" | "reload"
+                        | "repeat-assertions" => recorded.as_str(),
+                        _ => "startup-or-unavailable",
+                    };
+                    panic!(
+                        "PowerShell scope probe exceeded its deadline (phase {phase})"
+                    );
                 }
             }
         };

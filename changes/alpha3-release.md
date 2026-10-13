@@ -4,3 +4,5 @@ Changed
   setup. Preserve prior immutable releases, clear download names, signing
   disclosures, and the native package and reproducibility gates.
 - Check the Debian package version before starting native release builds.
+- Isolate native PowerShell scope tests from the parent shell's module paths
+  and report a fixed, bounded stage when a probe cannot finish.
