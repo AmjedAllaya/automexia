@@ -397,7 +397,7 @@ It compares configuration and preference file hashes and terminal input througho
 An invalid store in the isolated fixture exercises asynchronous package-inventory
 failure and reopening to retry; core controls and temporary choices remain usable.
 
-## Interactive PowerShell startup
+## Interactive Windows shell startup
 
 `cargo test -p automexia-terminal --lib automexia::shell::tests --locked`
 checks the actual startup bootstrap with real integration scripts, including
@@ -408,12 +408,20 @@ scope cases run with the `powershell_core_session_keeps` filter and `-- --ignore
 `cargo test -p automexia-terminal --test powershell_startup --locked` runs the
 native Windows PowerShell ConsoleHost and PSReadLine input loop. It checks idle
 output before input, exactly one submitted command/result, then stable idle input.
-PowerShell 7 uses the same test with `-- --ignored`. Both suites isolate config
-and history, retain deadlines and cleanup ownership, and avoid logging shell
+PowerShell 7 uses the `native_pwsh_bootstrap` filter with `-- --ignored`.
+Both suites isolate config and history, retain deadlines and cleanup ownership, and avoid logging shell
 content. Linux Bash/Zsh/Fish use the existing native shell integration gates;
 these checks do not substitute for unavailable native macOS or desktop evidence.
 A host without a PowerShell profile path reports native profile-directory
 metadata as external; the isolated profile and reparse-safety cases still run.
+
+`python tools/ci/check_windows_shell_startup.py` requires CMD, Windows PowerShell
+and PowerShell 7 startup tests beside the pinned ConPTY runtime shipped in the
+packages. It checks both CMD resource layouts, prompt metadata, command execution
+and idle output. The CMD case is excluded from bare Cargo runs because older
+inbox ConPTY versions discard its prompt markers. The required CI driver includes
+that case and rejects missing tests. Use `--compare-inbox` only to diagnose a
+backend difference; the comparison fails if either backend fails.
 
 The opt-in native session-metadata roundtrip requires PowerShell 7, a default
 WSL Bash distribution with Automexia shell integration installed, and Windows

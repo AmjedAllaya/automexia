@@ -285,6 +285,7 @@ fn assert_cmd_idle(editor: &Editor, completed_commands: usize) {
 }
 
 #[test]
+#[ignore = "requires packaged ConPTY; check_windows_shell_startup.py runs this required native case"]
 fn native_cmd_bootstrap_loads_packaged_prompt_through_real_launch_arguments() {
     // Exercise normalized_args -> CreateProcessW -> CMD -> the shipped hook.
     // A string-only bootstrap test cannot detect MSVC escaping breaking CMD.
