@@ -61,7 +61,7 @@ pub fn create_pty(
     rows: u16,
 ) -> Result<Pty, std::io::Error> {
     let exec = shell
-        .map(|shell| build_command_line(shell, &args))
+        .map(|shell| build_shell_command_line(shell, &args))
         .transpose()?;
     conpty::new(
         None,
@@ -110,6 +110,49 @@ pub fn create_exact_pty(
 
 fn invalid_command_line() -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, "invalid Windows launch string")
+}
+
+/// Interactive shell launches may carry one complete CMD command string.
+/// CMD does not decode MSVC backslash-escaped quotes. /S removes only our outer
+/// quotes, preserving the command's own quoted paths and shell syntax.
+/// Structured exact-executable launches keep build_command_line's argv contract.
+fn build_shell_command_line(program: &str, args: &[String]) -> io::Result<String> {
+    let basename = program.rsplit(['/', '\\']).next().unwrap_or(program);
+    let command_tail = args.split_last().filter(|(_, prefix)| {
+        (basename.eq_ignore_ascii_case("cmd") || basename.eq_ignore_ascii_case("cmd.exe"))
+            && prefix.last().is_some_and(|flag| {
+                flag.eq_ignore_ascii_case("/C") || flag.eq_ignore_ascii_case("/K")
+            })
+    });
+    let Some((command, prefix)) = command_tail else {
+        return build_command_line(program, args);
+    };
+    // Validate before allocating the command or its native UTF-16 copy. Reuse
+    // the existing prefix validator; count the raw tail, separator and quotes.
+    let prefix_line = build_command_line(program, prefix)?;
+    let add_strip_quotes = !prefix.iter().any(|flag| flag.eq_ignore_ascii_case("/S"));
+    let overhead = if add_strip_quotes { 6 } else { 3 };
+    let remaining = conpty::MAX_NATIVE_STRING_UNITS
+        .checked_sub(1 + prefix_line.encode_utf16().count() + overhead)
+        .ok_or_else(invalid_command_line)?;
+    let mut units = 0;
+    for character in command.chars() {
+        units += character.len_utf16();
+        if character == '\0' || units > remaining {
+            return Err(invalid_command_line());
+        }
+    }
+    // /S must precede /C or /K: everything after that switch is CMD language.
+    let mut line = if add_strip_quotes {
+        let (mode, switches) = prefix.split_last().ok_or_else(invalid_command_line)?;
+        format!("{} /S {mode}", build_command_line(program, switches)?)
+    } else {
+        prefix_line
+    };
+    line.push_str(" \"");
+    line.push_str(command);
+    line.push('"');
+    Ok(line)
 }
 
 fn quoted_argument_units(argument: &str, limit: usize) -> io::Result<usize> {
@@ -479,6 +522,69 @@ mod command_line_tests {
                 .unwrap(),
             "wsl.exe --distribution Ubuntu"
         );
+    }
+
+    #[test]
+    fn cmd_shell_command_preserves_native_quotes_without_changing_exact_argv() {
+        let command = r#"set "FIXTURE=hello world" & call "%FIXTURE_ROOT%\hook.cmd""#;
+        for program in ["cmd.exe", r"C:\Windows\System32\CMD.EXE", "cmd"] {
+            for mode in ["/C", "/k"] {
+                let args = vec!["/D".into(), mode.into(), command.into()];
+                let expected = format!("{program} /D /S {mode} \"{command}\"");
+                assert_eq!(build_shell_command_line(program, &args).unwrap(), expected);
+                assert!(build_command_line(program, &args)
+                    .unwrap()
+                    .contains(r#"\"FIXTURE"#));
+                let with_s = vec!["/D".into(), "/S".into(), mode.into(), command.into()];
+                assert_eq!(
+                    build_shell_command_line(program, &with_s).unwrap(),
+                    expected
+                );
+            }
+        }
+        for program in ["pwsh.exe", "not-cmd.exe"] {
+            let args = vec!["/K".into(), command.into()];
+            assert_eq!(
+                build_shell_command_line(program, &args).unwrap(),
+                build_command_line(program, &args).unwrap()
+            );
+        }
+        let args = vec!["/C".into(), "fixture.cmd".into(), "literal argument".into()];
+        assert_eq!(
+            build_shell_command_line("cmd.exe", &args).unwrap(),
+            build_command_line("cmd.exe", &args).unwrap()
+        );
+    }
+
+    #[test]
+    fn cmd_shell_command_retains_native_length_and_nul_guards() {
+        for prefix in [vec!["/K".to_string()], vec!["/S".into(), "/K".into()]] {
+            let empty = build_shell_command_line(
+                "cmd.exe",
+                &[prefix.clone(), vec![String::new()]].concat(),
+            )
+            .unwrap();
+            let available =
+                conpty::MAX_NATIVE_STRING_UNITS - 1 - empty.encode_utf16().count();
+            for tail in [
+                "x".repeat(available),
+                format!("{}x", "🙂".repeat((available - 1) / 2)),
+            ] {
+                let mut args = prefix.clone();
+                args.push(tail);
+                assert!(build_shell_command_line("cmd.exe", &args).is_ok());
+            }
+            for tail in ["x".repeat(available + 1), "bad\0tail".into()] {
+                let mut args = prefix.clone();
+                args.push(tail);
+                assert_eq!(
+                    build_shell_command_line("cmd.exe", &args)
+                        .unwrap_err()
+                        .kind(),
+                    io::ErrorKind::InvalidInput
+                );
+            }
+        }
     }
 }
 

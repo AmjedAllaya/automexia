@@ -32,6 +32,9 @@ tags and timing need integration. Command Prompt supports integration without
 PowerShell scripts: launch `automexia -e cmd.exe`, or create a profile whose
 **Executable** is `cmd.exe`.
 
+CMD startup preserves its native command-string quoting. Structured tool launches
+retain exact argument handling; they do not gain shell evaluation.
+
 To use PowerShell integration, first run `Get-ExecutionPolicy -List`. If your
 organization controls the policy, ask its administrator to allow the integration.
 Otherwise, you can explicitly allow local scripts for Automexia's child sessions

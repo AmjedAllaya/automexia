@@ -8,6 +8,7 @@ This release fixes missing `MSVCP140.dll`, `VCRUNTIME140.dll` and
 `VCRUNTIME140_1.dll` errors on fresh Windows installations. Automexia and its
 helpers include their C++ runtime; a separate Visual C++ Redistributable is no
 longer needed. MSI setup now uses the Automexia logo, colors and concise steps.
+CMD prompt integration also loads correctly from packaged resource paths.
 
 Download names still identify the platform, processor and package type. On
 Windows, startup explains when PowerShell policy blocks command tags and timing.

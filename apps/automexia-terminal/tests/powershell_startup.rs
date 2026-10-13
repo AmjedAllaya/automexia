@@ -186,3 +186,98 @@ fn native_windows_powershell_bootstrap_stays_idle_until_explicit_input() {
 fn native_pwsh_bootstrap_stays_idle_until_explicit_input() {
     native_startup("pwsh.exe");
 }
+
+#[test]
+fn native_cmd_bootstrap_loads_packaged_prompt_through_real_launch_arguments() {
+    // Exercise normalized_args -> CreateProcessW -> CMD -> the shipped hook.
+    // A string-only bootstrap test cannot detect MSVC escaping breaking CMD.
+    let isolated = tempfile::tempdir().expect("isolated CMD fixture");
+    let integration = isolated.path().join("resources with spaces & Unicode é");
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../shell-integration/cmd");
+    for flattened in [false, true] {
+        let root = integration.join(if flattened { "flat" } else { "nested" });
+        let hooks = if flattened {
+            root.clone()
+        } else {
+            root.join("cmd")
+        };
+        std::fs::create_dir_all(&hooks).expect("CMD fixture resources");
+        for entry in std::fs::read_dir(&source).expect("tracked CMD resources") {
+            let entry = entry.expect("CMD resource entry");
+            if entry.file_type().expect("CMD resource type").is_file() {
+                std::fs::copy(entry.path(), hooks.join(entry.file_name()))
+                    .expect("isolated CMD resource copy");
+            }
+        }
+        let environment = vec![
+            ("TERM_PROGRAM".into(), "Automexia".into()),
+            ("AUTOMEXIA_SHELL_INTEGRATION".into(), "1".into()),
+            (
+                "AUTOMEXIA_SHELL_INTEGRATION_ROOT".into(),
+                root.to_string_lossy().into_owned(),
+            ),
+            (
+                "AUTOMEXIA_CONFIG_HOME".into(),
+                isolated
+                    .path()
+                    .join("config")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            ("AUTOMEXIA_CMD_USER_BASE64".into(), "Zml4dHVyZQ==".into()),
+            ("AUTOMEXIA_CMD_PATH_BASE64".into(), "Y21kLmV4ZQ==".into()),
+            ("AUTOMEXIA_CMD_REFERENCE_V1".into(), "1".into()),
+            (
+                "AUTOMEXIA_CMD_REFERENCE".into(),
+                "00000000000000000000000000000000".into(),
+            ),
+            (
+                "AUTOMEXIA_CMD_REFERENCE_BASE64".into(),
+                "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=".into(),
+            ),
+            ("AUTOMEXIA_AMX".into(), "0".into()),
+            ("AUTOMEXIA_PLAIN_LS".into(), "1".into()),
+        ];
+        let pty = teletypewriter::create_pty(
+            Some("cmd.exe"),
+            normalized_args(Some("cmd.exe"), &[], true),
+            &Some(isolated.path().to_string_lossy().into_owned()),
+            Some(environment),
+            146,
+            28,
+        )
+        .unwrap_or_else(|_| panic!("native CMD startup launch"));
+        let editor = Editor::launch(pty, 146, 28);
+        wait_for_prompt(&editor, 1);
+        assert_eq!(
+            editor
+                .terminal
+                .lock()
+                .user_vars
+                .get("automexia_shell_name")
+                .map(String::as_str),
+            Some("CMD")
+        );
+        assert_idle(&editor, 1);
+        for byte in b"echo CMD-STARTUP-ACCEPTED" {
+            let virtual_key = if *byte == b'-' {
+                0xbd
+            } else {
+                u16::from(byte.to_ascii_uppercase())
+            };
+            editor.key(virtual_key, 0, u16::from(*byte), std::slice::from_ref(byte));
+        }
+        editor.key(13, 28, 13, b"\r");
+        wait_for_prompt(&editor, 2);
+        assert_idle(&editor, 2);
+        assert_eq!(
+            visible_state(&editor)
+                .3
+                .iter()
+                .filter(|row| row.trim_matches([' ', '\0']) == "CMD-STARTUP-ACCEPTED")
+                .count(),
+            1
+        );
+    }
+}
