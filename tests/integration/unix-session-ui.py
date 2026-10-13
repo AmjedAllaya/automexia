@@ -507,6 +507,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
             driver = None
             sequence = 0
             shell_pids: set[int] = set()
+            picker_history = []
             try:
                 def state() -> dict:
                     check(process.poll() is None, "application exited")
@@ -517,6 +518,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                     for panel in value.get("panels", []):
                         if panel.get("shell_pid"):
                             shell_pids.add(panel["shell_pid"])
+                    record_picker_state(picker_history, value)
                     return value
 
                 wake_sequence = 0
@@ -1202,6 +1204,7 @@ def run_case(binary: Path, captures: Path, backend: str, shell: str, scale: floa
                         "header_pointer": True, "native_maximize_restore": True if MACOS else None,
                         "native_ax_caption": True if MACOS else None}
             except Exception as error:
+                error.picker_history = picker_history
                 if driver:
                     try:
                         error.native_focus = driver.focus_snapshot()
@@ -1250,7 +1253,7 @@ def native_failure_state(state: dict) -> dict:
                               ("open", "ready", "list_focused", "save_pending")
                               if type(settings.get(key)) is bool}
         result["settings"]["confirmation_visible"] = bool(settings.get("confirmation"))
-        for key in ("catalog_revision", "last_color_dismissal"):
+        for key in ("catalog_revision", "last_color_dismissal", "previous_color_dismissal", "color_open_generation"):
             value = settings.get(key)
             if type(value) is int and 0 <= value <= 2**64 - 1:
                 result["settings"][key] = value
@@ -1272,6 +1275,19 @@ def native_failure_state(state: dict) -> dict:
     return result
 
 
+def record_picker_state(history: list, state: dict) -> None:
+    # Keep only fixed semantic state transitions. No colors, text, paths or IDs.
+    settings = native_failure_state(state).get("settings", {})
+    keys = ("catalog_revision", "last_color_dismissal", "previous_color_dismissal",
+            "color_open_generation", "color_focus", "color_browsing")
+    current = {key: settings[key] for key in keys if key in settings}
+    if "color_focus" not in current and not history:
+        return
+    if not history or history[-1] != current:
+        history.append(current)
+        del history[:-32]
+
+
 def failure_details(error: BaseException) -> dict:
     # Never publish exception messages, filesystem paths, command text or
     # arbitrary traceback frames. Fixed owners, line numbers and errno identify
@@ -1286,6 +1302,8 @@ def failure_details(error: BaseException) -> dict:
             if type(focus.get(key)) is bool}
     if isinstance(error, Failure) and hasattr(error, "observed"):
         result["observed"] = error.observed
+    if getattr(error, "picker_history", None):
+        result["picker_history"] = error.picker_history
     if isinstance(error, OSError):
         result["errno"] = error.errno
     owners = {"unix-session-ui.py": "native-ui", "macos_driver.py": "native-input",

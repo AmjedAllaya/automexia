@@ -6033,6 +6033,8 @@ fn opened_color(alpha: bool) -> SettingsView {
 fn shared_color_picker_cancellation_diagnostic_tracks_site_and_resets_on_open() {
     let mut view = opened_color(false);
     assert!(view.native_test_snapshot()["last_color_dismissal"].is_null());
+    assert!(view.native_test_snapshot()["previous_color_dismissal"].is_null());
+    assert_eq!(view.native_test_snapshot()["color_open_generation"], 1);
     let cancellation_line = line!() + 1;
     view.cancel_color();
     assert_eq!(
@@ -6049,6 +6051,17 @@ fn shared_color_picker_cancellation_diagnostic_tracks_site_and_resets_on_open() 
     named(&mut view, NamedKey::Enter);
     assert!(view.color_editor.is_some());
     assert!(view.native_test_snapshot()["last_color_dismissal"].is_null());
+    assert_eq!(
+        view.native_test_snapshot()["previous_color_dismissal"],
+        cancellation_line
+    );
+    assert_eq!(view.native_test_snapshot()["color_open_generation"], 2);
+    view.color_open_generation = u64::MAX;
+    view.open_color();
+    assert_eq!(
+        view.native_test_snapshot()["color_open_generation"],
+        u64::MAX
+    );
 }
 
 #[test]

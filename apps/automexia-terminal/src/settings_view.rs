@@ -371,6 +371,10 @@ pub(crate) struct SettingsView {
     color_editor: Option<ColorEditor>,
     #[cfg(feature = "native-gui-test-hooks")]
     last_color_dismissal: Option<u32>,
+    #[cfg(feature = "native-gui-test-hooks")]
+    previous_color_dismissal: Option<u32>,
+    #[cfg(feature = "native-gui-test-hooks")]
+    color_open_generation: u64,
     color_favorites: Vec<[u8; 4]>,
     color_suggestions: Vec<[u8; 4]>,
     pending_color_favorite: Option<ColorFavoriteIntent>,
@@ -780,6 +784,8 @@ impl SettingsView {
             "open": self.is_open(), "ready": ready,
             "catalog_revision": self.catalog.as_ref().map(Catalog::revision),
             "last_color_dismissal": self.last_color_dismissal,
+            "previous_color_dismissal": self.previous_color_dismissal,
+            "color_open_generation": self.color_open_generation,
             "gallery": self.gallery_snapshot(),
             "font_picker": self.font_picker_snapshot(),
             "profiles": self.profiles.as_ref().map(|p| serde_json::json!({"busy":p.busy,"editing":p.draft.is_some(),"selected":p.selected.is_some()})),

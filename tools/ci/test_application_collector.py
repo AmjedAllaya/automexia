@@ -72,15 +72,38 @@ class CollectorTests(unittest.TestCase):
 
     def test_native_color_cancellation_diagnostics_are_bounded_integers_only(self):
         probe = unix_ui_probe()
+        keys = ("catalog_revision", "last_color_dismissal", "previous_color_dismissal", "color_open_generation")
         for value in (None, True, -1, 2**64, "private path", {"draft": "private"}):
-            state = probe.native_failure_state({"settings": {
-                "catalog_revision": value, "last_color_dismissal": value}})["settings"]
-            self.assertNotIn("catalog_revision", state)
-            self.assertNotIn("last_color_dismissal", state)
+            state = probe.native_failure_state({"settings": dict.fromkeys(keys, value)})["settings"]
+            for key in keys:
+                self.assertNotIn(key, state)
         state = probe.native_failure_state({"settings": {
             "catalog_revision": 7, "last_color_dismissal": 1900}})["settings"]
         self.assertEqual(state["catalog_revision"], 7)
         self.assertEqual(state["last_color_dismissal"], 1900)
+
+    def test_native_picker_trace_retains_bounded_redacted_transitions(self):
+        import json
+        probe = unix_ui_probe()
+        history = []
+        probe.record_picker_state(history, {"settings": {"catalog_revision": 1}})
+        self.assertEqual(history, [])
+        for revision in range(40):
+            state = {"settings": {"catalog_revision": revision, "color_open_generation": 2,
+                "previous_color_dismissal": 100, "query": "private query", "color_editor": {
+                    "draft_color": "private color", "palette": {"focus": "Swatch(0)", "browsing": True}}}}
+            probe.record_picker_state(history, state)
+            probe.record_picker_state(history, state)
+        self.assertEqual(len(history), 32)
+        self.assertEqual(history[0]["catalog_revision"], 8)
+        self.assertEqual(history[-1]["previous_color_dismissal"], 100)
+        probe.record_picker_state(history, {"settings": {"catalog_revision": 40, "last_color_dismissal": 200}})
+        self.assertNotIn("color_focus", history[-1])
+        error = probe.Failure("fixed picker failure")
+        error.picker_history = history
+        report = probe.failure_details(error)
+        self.assertEqual(report["picker_history"], history)
+        self.assertNotIn("private", json.dumps(report))
 
     def test_native_color_failure_keeps_only_fixed_focus_and_browsing(self):
         import json

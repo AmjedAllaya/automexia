@@ -54,6 +54,7 @@ function Start-RecoveryFixture {
     [IO.File]::Delete($snapshotPath)
     [IO.File]::Delete($controlPath)
     $child = Start-Process -FilePath $Binary -WorkingDirectory $root -WindowStyle Hidden -PassThru
+    [void]$child.Handle
     $until = [DateTime]::UtcNow.AddSeconds(20)
     do {
         Start-Sleep -Milliseconds 50
@@ -62,10 +63,8 @@ function Start-RecoveryFixture {
     } while ($handles.Count -eq 0 -and -not $child.HasExited -and [DateTime]::UtcNow -lt $until)
     if ($child.HasExited -or $handles.Count -eq 0) {
         if (-not $child.HasExited) {
-            foreach ($ownedId in @(Get-AutomexiaOwnedProcessIds $child.Id $configRoot)) {
-                Stop-Process -Id $ownedId -Force -ErrorAction SilentlyContinue
-            }
-            Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue
+            $owned = @(Get-AutomexiaPinnedOwnedProcesses $child $configRoot $fixtureStartedAt)
+            Stop-AutomexiaPinnedProcesses @($owned + $child)
         }
         $child.Dispose()
         throw 'Recovery fixture did not open its native window'
@@ -85,17 +84,17 @@ function Wait-RecoveryFrame {
 }
 function Stop-RecoveryFixture {
     param([switch]$Crash)
-    $owned = @(Get-AutomexiaOwnedProcessIds $process.Id $configRoot)
-    if ($Crash) { Stop-Process -Id $process.Id -Force }
-    else {
-        [void]$process.CloseMainWindow()
-        Start-Sleep -Milliseconds 200
-        if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x59, $false, $false, $false)) { throw 'Could not confirm fixture close' }
-    }
-    if (-not $process.WaitForExit(15000)) { throw 'Recovery fixture did not exit' }
-    foreach ($childId in $owned) {
-        $remaining = Get-Process -Id $childId -ErrorAction SilentlyContinue
-        if ($null -ne $remaining) { Stop-Process -Id $childId -Force -ErrorAction SilentlyContinue }
+    $owned = @(Get-AutomexiaPinnedOwnedProcesses $process $configRoot $fixtureStartedAt)
+    try {
+        if ($Crash) { $process.Kill() }
+        else {
+            [void]$process.CloseMainWindow()
+            Start-Sleep -Milliseconds 200
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x59, $false, $false, $false)) { throw 'Could not confirm fixture close' }
+        }
+        if (-not $process.WaitForExit(15000)) { throw 'Recovery fixture did not exit' }
+    } finally {
+        Stop-AutomexiaPinnedProcesses $owned
     }
 }
 
@@ -133,7 +132,7 @@ Stop-RecoveryFixture -Crash
 $started = Start-RecoveryFixture
 $process = $started.Process; $window = $started.Window
 $frame = Wait-RecoveryFrame { param($f) [bool]$f.recovery_ready }
-if (@(Get-AutomexiaOwnedProcessIds $process.Id $configRoot).Count -ne 0) {
+if (@(Get-AutomexiaOwnedProcessIds $process $configRoot $fixtureStartedAt).Count -ne 0) {
     throw 'A process launched before recovery consent'
 }
 $beforeDismissal = [IO.File]::ReadAllText($checkpoint)
@@ -158,7 +157,7 @@ if ([string]$frame.renderer_backend -ne $recoveryBackend) { throw 'Restore chang
 if ([int]$frame.window_tab_count -ne 4 -or [int]$frame.active_window_tab_index -ne 3 -or [int]$frame.panel_count -ne 2) {
     throw 'Restored topology or selection differs from the saved workspace'
 }
-$shells = @(Get-AutomexiaOwnedProcessIds $process.Id $configRoot | ForEach-Object {
+$shells = @(Get-AutomexiaOwnedProcessIds $process $configRoot $fixtureStartedAt | ForEach-Object {
     Get-Process -Id $_ -ErrorAction SilentlyContinue
 } | Where-Object { $_.ProcessName -in @('powershell', 'pwsh') })
 if ($shells.Count -ne 6) { throw 'Restore did not create six independent live shell processes' }
@@ -204,7 +203,7 @@ $frame = Wait-RecoveryFrame { param($f) -not [bool]$f.recovery_active -and $null
 if ([bool]$frame.recovery_ready) { throw 'A trivial terminal reopen asked to restore' }
 if (-not (Test-Path -LiteralPath $archivePath)) { throw 'Start clean erased the manual recovery candidate' }
 $originalWindow = $window
-$originalShells = @(Get-AutomexiaOwnedProcessIds $process.Id $configRoot)
+$originalShells = @(Get-AutomexiaOwnedProcessIds $process $configRoot $fixtureStartedAt)
 $script:testStage = 'manual recovery into additional windows'
 Send-AutomexiaTestControl 'restore-previous:manual-restore'
 $until = [DateTime]::UtcNow.AddSeconds(30)

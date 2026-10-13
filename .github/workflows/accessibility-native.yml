@@ -102,6 +102,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test -p automexia-terminal --test powershell_startup --features visual-test-hooks --locked
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify native Windows fixture process ownership
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: '& tests/integration/windows-process-ownership-tests.ps1'
       - name: Capture actual grid and UI primitives and prove mutation detection
         id: visual
         shell: bash
@@ -150,6 +154,10 @@ jobs:
         run: |
           & tests/integration/resize-stress-windows.ps1 -Binary target/debug/automexia.exe -UseCpuRenderer -SharedColorPickerOnly
           & tests/integration/resize-stress-windows.ps1 -Binary target/debug/automexia.exe -SharedColorPickerOnly
+      - name: Native Windows session recovery process ownership
+        if: always() && !cancelled() && runner.os == 'Windows' && steps.visual.outcome != 'skipped'
+        shell: powershell
+        run: '& tests/integration/resize-stress-windows.ps1 -Binary target/debug/automexia.exe -UseCpuRenderer -SessionRecoveryOnly'
       - name: Native Windows opaque defaults and continuous compositor opacity
         if: always() && !cancelled() && runner.os == 'Windows' && steps.visual.outcome != 'skipped'
         shell: powershell
@@ -201,8 +209,8 @@ jobs:
             python tests/integration/unix-session-ui.py --binary target/debug/automexia --backend webgpu --shell default --launch-mode default --captures "artifacts/visual-quality/native-macos/repeated-metal-$attempt" --timeout 120
           done
           # CPU presentation may observe isZoomed before the resize frame.
-          # Repeat both shells from the captured native coordinate race.
-          for attempt in {1..4}; do
+          # Repeat both shells for coordinate and intermittent picker-focus races.
+          for attempt in {1..12}; do
             python tests/integration/unix-session-ui.py --binary target/debug/automexia --backend cpu --shell bash --shell fish --launch-mode default --captures "artifacts/visual-quality/native-macos/repeated-cpu-$attempt" --timeout 120
           done
       - name: Retain native macOS session diagnostics

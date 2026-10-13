@@ -629,6 +629,8 @@ impl SettingsView {
         });
         #[cfg(feature = "native-gui-test-hooks")]
         {
+            self.previous_color_dismissal = self.last_color_dismissal;
+            self.color_open_generation = self.color_open_generation.saturating_add(1);
             self.last_color_dismissal = None;
         }
         self.preedit.clear();
