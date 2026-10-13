@@ -369,6 +369,17 @@ class ArtifactTests(unittest.TestCase):
             with self.assertRaises(ValueError): compiled_executable(json.dumps(item).encode(), 'helper', 'bin')
 
 class FailureDiagnosticTests(unittest.TestCase):
+    def test_failure_reports_test_line_without_traceback_paths_or_values(self):
+        from check_ssh_library import failure_summary
+        output = ('FAIL: test_receipt (__main__.Tests.test_receipt)\n'
+                  'Traceback (most recent call last):\n'
+                  '  File "private-checkout/test_transfer.py", line 134, in test_receipt\n'
+                  '    self.assertEqual(private_value, other_private_value)\n'
+                  '  File "private-runtime/unittest/case.py", line 873, in assertEqual\n'
+                  'AssertionError: private-output\n')
+        self.assertEqual(failure_summary(output), [
+            'FAIL test_receipt: AssertionError (test line 134)'])
+
     def test_python_failure_keeps_test_shell_and_exception_type_only(self):
         from check_ssh_library import failure_summary
         output = ("ERROR: test_prompt (__main__.AdapterTests.test_prompt) (shell='fish')\n"

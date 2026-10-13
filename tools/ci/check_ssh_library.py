@@ -41,6 +41,11 @@ def failure_summary(output: bytes | str) -> list[str]:
             summary += f' [{shell[1]}]'
         if kind:
             summary += f': {kind[1]}'
+        # Keep the failing assertion actionable without exposing paths or data.
+        frame = re.search(r'(?m)^  File "[^\n]*", line ([1-9][0-9]{0,5}), in '
+                          + re.escape(match[2]) + r'\s*$', block)
+        if frame:
+            summary += f' (test line {frame[1]})'
         summaries.append(summary)
         if len(summaries) == 20:
             break

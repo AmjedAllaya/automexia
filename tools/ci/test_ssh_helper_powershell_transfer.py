@@ -131,12 +131,14 @@ class Fixture {
         prefix = f'AMXSSHUPLOAD1|3|7|{self.nonce}|{len(self.payload)}|{self.digest}|'.encode()
         self.assertTrue(output.startswith(prefix), output.decode(errors='replace'))
         returned = base64.b64decode(output.removeprefix(prefix).strip(), validate=True).decode('utf-8')
-        self.assertEqual(Path(returned), self.directory)
+        # Windows may expand an 8.3 TEMP alias when reporting the same directory.
+        self.assertTrue(Path(returned).is_absolute())
+        self.assertTrue(Path(returned).samefile(self.directory))
         self.assertEqual((self.directory / 'helper.exe').read_bytes(), self.payload)
         self.assertTrue(self.marker.exists())
-        script = self.case / 'acl.ps1'
-        script.write_text("""param([string]$Directory)
+        script = """$Directory=$env:AMX_TEST_ACL_DIRECTORY
 $ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
 $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 function Read-Acl($item){if($PSVersionTable.PSVersion.Major-lt6){$item.GetAccessControl()}else{[IO.FileSystemAclExtensions]::GetAccessControl($item)}}
 $d=Read-Acl (New-Object IO.DirectoryInfo($Directory))
@@ -148,8 +150,14 @@ foreach($item in @((New-Object IO.DirectoryInfo($Directory)),(New-Object IO.File
  }
 }
 [Console]::Write('PRIVATE')
-""", encoding='utf-8-sig')
-        code, output = bounded([POWERSHELL, '-NoLogo', '-NoProfile', '-NonInteractive', '-File', str(script), str(self.directory)])
+"""
+        # Inspect inline, like the generated upload command, without changing
+        # the machine's script execution policy. Keep the path out of source.
+        environment = os.environ.copy()
+        environment['AMX_TEST_ACL_DIRECTORY'] = str(self.directory)
+        encoded = base64.b64encode(script.encode('utf-16-le')).decode('ascii')
+        code, output = bounded([POWERSHELL, '-NoLogo', '-NoProfile', '-NonInteractive',
+                                '-EncodedCommand', encoded], environment=environment)
         self.assertEqual((code, output), (0, b'PRIVATE'))
 
     def test_truncated_transfer_is_rejected_before_execution(self) -> None:
