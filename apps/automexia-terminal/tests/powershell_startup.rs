@@ -71,7 +71,11 @@ fn wait_for_prompt(editor: &Editor, expected: u64) {
         }
         assert!(
             Instant::now() < deadline,
-            "native shell did not reach its real editable prompt"
+            "native shell did not reach its real editable prompt: expected={expected}, latest={latest:?}, active={}, cmd={}, input_rows={}, cursor_col={}",
+            terminal.user_vars.get("automexia_prompt_active").is_some_and(|value| value == "1"),
+            terminal.user_vars.get("automexia_shell_name").is_some_and(|value| value == "CMD"),
+            terminal.visible_rows().iter().filter(|row| row.semantic_prompt_id.is_some()).count(),
+            terminal.grid.cursor.pos.col.0,
         );
     }
 }
@@ -196,6 +200,10 @@ fn native_cmd_bootstrap_loads_packaged_prompt_through_real_launch_arguments() {
     let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../shell-integration/cmd");
     for flattened in [false, true] {
+        eprintln!(
+            "native CMD bootstrap layout: {}",
+            if flattened { "flat" } else { "nested" }
+        );
         let root = integration.join(if flattened { "flat" } else { "nested" });
         let hooks = if flattened {
             root.clone()
