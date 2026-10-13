@@ -190,13 +190,18 @@ class ReleaseManifestTests(unittest.TestCase):
                 )
 
     def test_public_alpha_sboms_project_locations_and_reject_private_data(self) -> None:
+        self._check_public_alpha_sboms("0.0.1-alpha")
+
+    def test_current_alpha_sboms_project_locations_and_reject_private_data(self) -> None:
+        self._check_public_alpha_sboms("0.0.2-alpha")
+
+    def _check_public_alpha_sboms(self, version: str) -> None:
         import hashlib
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             output, raw, scan = (root / name for name in ("release", "raw", "scan"))
             for directory in (output, raw, scan):
                 directory.mkdir()
-            version = "0.0.1-alpha"
             for name in MANIFEST.package_names(version).values():
                 (output / name).write_bytes(b"package fixture")
             write_application_sboms(raw, version)

@@ -335,6 +335,14 @@ class PublicSbomPreparationTests(unittest.TestCase):
     def prepare(self) -> None:
         DISTRIBUTION.prepare_public_sboms(self.source, self.output, self.scan, VERSION)
 
+    def test_unapproved_prerelease_is_rejected_before_outputs_are_written(self) -> None:
+        self.write(*sbom_documents())
+        for version in ("0.0.3-alpha", "0.0.2-beta", "v0.0.2-alpha"):
+            with self.subTest(version=version):
+                with self.assertRaisesRegex(DISTRIBUTION.DistributionError, "authorized alpha"):
+                    DISTRIBUTION.prepare_public_sboms(self.source, self.output, self.scan, version)
+                self.assertEqual(list(self.output.iterdir()), [])
+
     def test_real_cli_preserves_graph_hashes_and_licenses_and_never_copies_raw_paths(self) -> None:
         spdx, cdx = sbom_documents()
         spdx["packages"].append({"SPDXID": "SPDXRef-DocumentRoot-Directory-fixture", "name": "sbom-input",
