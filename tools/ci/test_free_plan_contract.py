@@ -20,6 +20,20 @@ CACHE_INITIALIZER = r'''printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v2\n' "$RU
 
 
 class FreePlanContractTests(unittest.TestCase):
+    def test_native_windows_process_ownership_has_real_ci_coverage(self):
+        import yaml
+
+        workflow = yaml.safe_load((ROOT / '.github/workflows/accessibility-native.yml').read_text())
+        steps = [step for job in workflow['jobs'].values() for step in job.get('steps', [])]
+        for command in ('windows-process-ownership-tests.ps1', '-SessionRecoveryOnly'):
+            matching = [step for step in steps if command in step.get('run', '')]
+            self.assertEqual(len(matching), 1, command)
+            step = matching[0]
+            self.assertEqual(step['shell'], 'powershell')
+            self.assertIn("runner.os == 'Windows'", step['if'])
+            self.assertNotIn('-ModelOnly', step['run'])
+            self.assertFalse(step.get('continue-on-error', False))
+
     def test_published_package_diagnostic_is_explicit_read_only_and_bounded(self) -> None:
         import yaml
 

@@ -286,20 +286,6 @@ class VisualQualityTests(unittest.TestCase):
         with patch.object(visual.qa_process, 'run', return_value=SimpleNamespace(timed_out=False, error=None, return_code=0)), self.assertRaises(RuntimeError):
             visual.build_test_binary()
 
-    def test_native_windows_process_ownership_has_real_ci_coverage(self):
-        import yaml
-
-        workflow = yaml.safe_load((visual.ROOT / '.github/workflows/accessibility-native.yml').read_text())
-        steps = [step for job in workflow['jobs'].values() for step in job.get('steps', [])]
-        for command in ('windows-process-ownership-tests.ps1', '-SessionRecoveryOnly'):
-            matching = [step for step in steps if command in step.get('run', '')]
-            self.assertEqual(len(matching), 1, command)
-            step = matching[0]
-            self.assertEqual(step['shell'], 'powershell')
-            self.assertIn("runner.os == 'Windows'", step['if'])
-            self.assertNotIn('-ModelOnly', step['run'])
-            self.assertFalse(step.get('continue-on-error', False))
-
     def test_windows_persistence_oracles_share_the_current_preference_owner(self):
         # A stale literal once made save checks read v12 after migration to v14.
         # Empty obsolete files must never satisfy no-save/cancel checks.
