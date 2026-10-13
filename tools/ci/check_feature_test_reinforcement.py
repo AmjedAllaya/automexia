@@ -374,6 +374,7 @@ NATIVE_CONTRACT_SOURCES = {
     "windows_pipes": "teletypewriter/src/windows/pipes.rs",
     "sugarloaf_cpu": "sugarloaf/src/renderer/cpu.rs",
     "native_driver": "tests/integration/resize-stress-windows.ps1",
+    "native_processes": "tests/integration/windows-process-ownership.ps1",
     "resize_listing_tests": "rio-vt/tests/live_resize.rs",
     "resize_listing_fixture": "rio-vt/tests/fixtures/live-resize-output.sh",
     "resize_bench": "rio-vt/benches/vt_input.rs",
@@ -1211,7 +1212,7 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     _require_order(
         shutdown,
         (
-            "Get-AutomexiaOwnedProcessIds $process.Id $configRoot",
+            "Get-AutomexiaPinnedOwnedProcesses $process $configRoot",
             "$process.CloseMainWindow()",
             "$shutdownTimer.ElapsedMilliseconds -lt 500",
             "if ([AutomexiaResizeDriver]::IsWindowVisible($window))",
@@ -1221,6 +1222,18 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
         ),
         "native process shutdown",
     )
+    _require_fragments(shutdown, ("-not $_.HasExited",), "pinned native child shutdown")
+    _require_fragments(driver, ("windows-process-ownership.ps1", "Stop-AutomexiaPinnedProcesses $cleanupOwners"), "pinned native process cleanup")
+    process_owner = sources["native_processes"]
+    _require_fragments(process_owner, (
+        "(Get-AutomexiaProcessBirth $child.CreationDate) -lt $parentBirth",
+        "(Get-AutomexiaProcessBirth $rootRow.CreationDate) -ne $rootBirth",
+        "$Snapshot.Count -gt 4096", "$owned.Count -gt 512",
+        "$candidate.Dispose()", "$owned.Dispose()", "$owned.Kill()",
+    ), "native fixture process identity")
+    _require_order(process_owner, ("[void]$candidate.Handle", "$candidate.StartTime", "$pinned.Add($candidate)"), "native fixture handle acquisition")
+    if "Stop-Process -Id" in process_owner or "Stop-Process -Id" in driver:
+        raise ReinforcementError("native fixture cleanup must retain process handles")
     _require_fragments(driver, ("$windowCloseTimer.ElapsedMilliseconds -lt 500", "if ([AutomexiaResizeDriver]::IsWindowVisible($newWindow))", "dismissal_ceiling_milliseconds = 500"), "separate native window dismissal")
 
 

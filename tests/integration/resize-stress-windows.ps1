@@ -1346,57 +1346,12 @@ function Assert-AutomexiaCommandResultPaintIsolation {
     }
 }
 
-function Get-AutomexiaDescendantProcessIds {
-    param([int]$RootProcessId)
-
-    $processes = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId)
-    $frontier = @($RootProcessId)
-    $seen = [Collections.Generic.HashSet[int]]::new()
-    while ($frontier.Count -gt 0) {
-        $parent = [int]$frontier[0]
-        if ($frontier.Count -eq 1) {
-            $frontier = @()
-        } else {
-            $frontier = @($frontier[1..($frontier.Count - 1)])
-        }
-        foreach ($child in @($processes | Where-Object { [int]$_.ParentProcessId -eq $parent })) {
-            $childId = [int]$child.ProcessId
-            if ($seen.Add($childId)) {
-                $frontier += $childId
-            }
-        }
-    }
-    return @($seen | Sort-Object)
-}
-
-function Get-AutomexiaOwnedProcessIds {
-    param(
-        [int]$RootProcessId,
-        [string]$FixtureConfigRoot
-    )
-
-    $owned = [Collections.Generic.HashSet[int]]::new()
-    foreach ($processId in @(Get-AutomexiaDescendantProcessIds $RootProcessId)) {
-        [void]$owned.Add([int]$processId)
-    }
-    if (-not [string]::IsNullOrWhiteSpace($FixtureConfigRoot)) {
-        foreach ($candidate in @(Get-CimInstance Win32_Process |
-                Select-Object ProcessId, CommandLine)) {
-            if ($null -ne $candidate.CommandLine -and
-                $candidate.CommandLine.IndexOf(
-                    $FixtureConfigRoot,
-                    [StringComparison]::OrdinalIgnoreCase) -ge 0) {
-                [void]$owned.Add([int]$candidate.ProcessId)
-            }
-        }
-    }
-    return @($owned | Sort-Object)
-}
+. (Join-Path $PSScriptRoot 'windows-process-ownership.ps1')
 
 function Get-AutomexiaDescendantCount {
-    param([int]$RootProcessId)
+    param([Diagnostics.Process]$RootProcess)
 
-    return @(Get-AutomexiaOwnedProcessIds $RootProcessId $configRoot).Count
+    return @(Get-AutomexiaOwnedProcessIds $RootProcess $configRoot $fixtureStartedAt).Count
 }
 
 function Get-AutomexiaResourceSample {
@@ -1412,7 +1367,7 @@ function Get-AutomexiaResourceSample {
         thread_count = [int64]$AutomexiaProcess.Threads.Count
         private_bytes = [int64]$AutomexiaProcess.PrivateMemorySize64
         working_set_bytes = [int64]$AutomexiaProcess.WorkingSet64
-        descendant_process_count = [int64](Get-AutomexiaDescendantCount $AutomexiaProcess.Id)
+        descendant_process_count = [int64](Get-AutomexiaDescendantCount $AutomexiaProcess)
     }
 }
 
@@ -1513,6 +1468,7 @@ $controlPath = Join-Path ([System.IO.Path]::GetTempPath()) (
     'automexia-control-{0}.txt' -f [guid]::NewGuid().ToString('N'))
 $configRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
     'automexia-resize-config-{0}' -f [guid]::NewGuid().ToString('N'))
+$fixtureStartedAt = [DateTime]::UtcNow
 $previousSnapshot = $env:AUTOMEXIA_RESIZE_SNAPSHOT
 $previousControl = $env:AUTOMEXIA_NATIVE_TEST_CONTROL
 $previousConfigHome = $env:AUTOMEXIA_CONFIG_HOME
@@ -1692,6 +1648,7 @@ $wallpaperConfig
     $env:AUTOMEXIA_CONFIG_HOME = $configRoot
     $env:AUTOMEXIA_VISUAL_TEST_FIXTURE = 's1-standard-v1'
     $process = Start-Process -FilePath $Binary -WorkingDirectory $root -WindowStyle Hidden -PassThru
+    [void]$process.Handle
 
     # Process.MainWindowHandle can transiently select Winit's internal event
     # target because it is created before Automexia's titled application HWND.
@@ -4062,7 +4019,7 @@ $wallpaperConfig
         Write-Host ($cmdReady | ConvertTo-Json -Depth 10)
         # Report only executable names and process relationships; arguments and
         # paths can contain private shell/provider data.
-        $cmdStartupProcesses = @(Get-AutomexiaOwnedProcessIds $process.Id $configRoot |
+        $cmdStartupProcesses = @(Get-AutomexiaOwnedProcessIds $process $configRoot $fixtureStartedAt |
             Select-Object -First 32 | ForEach-Object {
                 Get-CimInstance Win32_Process -Filter "ProcessId = $_" |
                     Select-Object Name, ProcessId, ParentProcessId
@@ -6049,7 +6006,7 @@ $wallpaperConfig
 
     $script:testStage = 'application process-tree shutdown'
     $ownedDescendantsAtShutdown = @(
-        Get-AutomexiaOwnedProcessIds $process.Id $configRoot)
+        Get-AutomexiaPinnedOwnedProcesses $process $configRoot $fixtureStartedAt)
     if (-not $process.CloseMainWindow()) {
         throw 'Automexia did not accept the native close request'
     }
@@ -6083,7 +6040,7 @@ $wallpaperConfig
     $ownedExitDeadline = [DateTime]::UtcNow.AddSeconds(10)
     do {
         $remainingOwnedProcesses = @($ownedDescendantsAtShutdown | Where-Object {
-            $null -ne (Get-Process -Id $_ -ErrorAction SilentlyContinue)
+            -not $_.HasExited
         })
         if ($remainingOwnedProcesses.Count -eq 0) {
             break
@@ -6115,30 +6072,28 @@ $wallpaperConfig
             [Text.UTF8Encoding]::new($false))
         Move-Item -LiteralPath $temporaryReport -Destination $reportPath -Force
     }
+    $process.Dispose()
     $process = $null
     Write-Host ($successSummary + ', owned shutdown ' +
         $shutdownTimer.ElapsedMilliseconds + 'ms')
 } finally {
-    if ($null -ne $process -and -not $process.HasExited) {
-        $ownedDescendantsAtShutdown = @(
-            Get-AutomexiaOwnedProcessIds $process.Id $configRoot)
-        [void]$process.CloseMainWindow()
-        if (-not $process.WaitForExit(15000)) {
-            Stop-Process -Id $process.Id -Force
-        }
-    }
-    foreach ($ownedProcessId in $ownedDescendantsAtShutdown) {
-        if ($null -ne (Get-Process -Id $ownedProcessId -ErrorAction SilentlyContinue)) {
-            try {
-                Stop-Process -Id $ownedProcessId -Force
-            } catch {
-                # A descendant can finish between lookup and cleanup. Preserve
-                # the original assertion failure while retaining other errors.
-                if ($_.FullyQualifiedErrorId -notlike 'NoProcessFoundForGivenId,*') {
-                    throw
-                }
+    $cleanupFailure = $null
+    try {
+        if ($null -ne $process -and -not $process.HasExited) {
+            if ($ownedDescendantsAtShutdown.Count -eq 0) {
+                $ownedDescendantsAtShutdown = @(
+                    Get-AutomexiaPinnedOwnedProcesses $process $configRoot $fixtureStartedAt)
             }
+            [void]$process.CloseMainWindow()
+            [void]$process.WaitForExit(15000)
         }
+    } catch { $cleanupFailure = $_ }
+    try {
+        $cleanupOwners = @($ownedDescendantsAtShutdown)
+        if ($null -ne $process) { $cleanupOwners += $process }
+        Stop-AutomexiaPinnedProcesses $cleanupOwners
+    } catch {
+        if ($null -eq $cleanupFailure) { $cleanupFailure = $_ }
     }
     if ($null -eq $previousSnapshot) {
         Remove-Item Env:AUTOMEXIA_RESIZE_SNAPSHOT -ErrorAction SilentlyContinue
@@ -6169,4 +6124,5 @@ $wallpaperConfig
         throw 'Refusing cleanup outside the owned temporary configuration root'
     }
     Remove-Item -LiteralPath $resolvedFixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
+    if ($null -ne $cleanupFailure) { throw $cleanupFailure }
 }

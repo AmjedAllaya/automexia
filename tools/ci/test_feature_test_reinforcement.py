@@ -1103,6 +1103,11 @@ class FeatureTestReinforcementTests(unittest.TestCase):
             ("native_driver", "NonOpaquePixelCount = nonOpaquePixels", "NonOpaquePixelCount = 0"),
             ("native_driver", "AMX_CAPTURE_INPUT_59217", ""),
             ("native_driver", "$process.CloseMainWindow()", "$process.Kill()"),
+            ("native_driver", "-not $_.HasExited", "$true"),
+            ("native_processes", "[void]$candidate.Handle", ""),
+            ("native_processes", "(Get-AutomexiaProcessBirth $child.CreationDate) -lt $parentBirth", "$false"),
+            ("native_processes", "(Get-AutomexiaProcessBirth $rootRow.CreationDate) -ne $rootBirth", "$false"),
+            ("native_processes", "$owned.Kill()", "Stop-Process -Id $owned.Id -Force"),
         )
         for owner, old, new in mutations:
             with self.subTest(owner=owner, removed=old):
