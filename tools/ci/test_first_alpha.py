@@ -12,11 +12,12 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class FirstAlphaTests(unittest.TestCase):
     def test_exact_owner_authorized_identity_only(self):
-        alpha.validate_identity('0.0.2-alpha', 'v0.0.2-alpha', 'a' * 40)
+        alpha.validate_identity('0.0.3-alpha', 'v0.0.3-alpha', 'a' * 40)
         for version, tag, commit in [('1.0.0', 'v1.0.0', 'a'*40),
                                      ('0.0.1-alpha', '0.0.1_alpha', 'a'*40),
-                                     ('0.0.3-alpha', 'v0.0.3-alpha', 'a'*40),
-                                     ('0.0.2-alpha', 'v0.0.2-alpha', 'main')]:
+                                     ('0.0.2-alpha', 'v0.0.2-alpha', 'a'*40),
+                                     ('0.0.4-alpha', 'v0.0.4-alpha', 'a'*40),
+                                     ('0.0.3-alpha', 'v0.0.3-alpha', 'main')]:
             with self.subTest(version=version, tag=tag, commit=commit):
                 with self.assertRaises(ValueError):
                     alpha.validate_identity(version, tag, commit)
@@ -70,7 +71,7 @@ class FirstAlphaTests(unittest.TestCase):
         self.assertEqual(report['checksum_manifest'], 'minisign')
 
     def test_publisher_rejects_missing_or_forged_signing_disclosure(self):
-        manifest = {'version': '0.0.2-alpha', 'tag': 'v0.0.2-alpha',
+        manifest = {'version': '0.0.3-alpha', 'tag': 'v0.0.3-alpha',
                     'source_commit': 'a'*40, 'channel': 'first-alpha',
                     'os_signing': alpha.signing_disclosure(),
                     'branding': {'stable_approval': False}}

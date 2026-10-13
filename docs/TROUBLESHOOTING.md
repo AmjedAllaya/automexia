@@ -12,9 +12,10 @@ inside the affected Windows installation, then reopen Automexia. Choose **X64**
 for the Intel/AMD package or **ARM64** for the ARM package. Reinstalling the same
 Automexia MSI does not supply these files.
 
-The source fix links the runtime into Automexia and its helpers. It also rejects
-Windows packages with external Visual C++ runtime imports. Existing release
-downloads remain unchanged until a replacement release is published.
+The `0.0.3-alpha` packages link the runtime into Automexia and its helpers.
+Their build rejects external Visual C++ runtime imports. When available on
+[Releases](https://github.com/AmjedAllaya/automexia/releases), install that version
+instead. Earlier immutable downloads keep their original dependencies.
 
 ## Antivirus reports PowerShell or shell-integration behavior
 

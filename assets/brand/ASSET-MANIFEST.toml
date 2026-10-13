@@ -67,8 +67,8 @@ path = "assets/brand/REDISTRIBUTION-RIGHTS.md"
 status = "missing"
 
 [first_alpha]
-version = "0.0.2-alpha"
+version = "0.0.3-alpha"
 owner_authorized = true
 source_sha256 = "196c25ca8208671b9a19a581de4fae2e849b707b9ee2c4371ae6dc6ac6be015e"
-approved_at = "2026-10-12"
+approved_at = "2026-10-13"
 evidence = "assets/brand/FIRST-ALPHA-APPROVAL.md"

@@ -46,14 +46,14 @@ jobs:
         import tomllib
         from pathlib import Path
         version = tomllib.loads(Path('Cargo.toml').read_text())['workspace']['package']['version']
-        if version != '0.0.2-alpha':
+        if version != '0.0.3-alpha':
             raise SystemExit('first-alpha workflow cannot publish another version')
         PY
         main_commit="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
         python tools/ci/first_alpha.py authorize --commit "$GITHUB_SHA" --main "$main_commit" --ref "$GITHUB_REF" --acknowledgement "$ACKNOWLEDGEMENT"
         python tools/ci/first_alpha.py brand > "$RUNNER_TEMP/first-alpha-brand.json"
         printf 'commit=%s
-        version=0.0.2-alpha
+        version=0.0.3-alpha
         ' "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
       id: identity
       env:
@@ -739,7 +739,7 @@ jobs:
         codesign --force --sign - "$app"
         codesign --verify --deep --strict "$app"
         codesign -dv "$app" 2>&1 | grep -F 'Signature=adhoc'
-        hdiutil create -volname 'Automexia Terminal Alpha' -srcfolder dist -ov -format UDZO packages/automexia-terminal-0.0.2-alpha-universal.dmg
+        hdiutil create -volname 'Automexia Terminal Alpha' -srcfolder dist -ov -format UDZO packages/automexia-terminal-0.0.3-alpha-universal.dmg
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
         name: packages-macos-universal

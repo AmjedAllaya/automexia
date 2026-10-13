@@ -4,6 +4,9 @@ The project owner authorized distribution of the existing owner-supplied
 Automexia artwork for `0.0.1-alpha` on 2026-10-12. On the same date, the owner
 authorized `0.0.2-alpha` through the same unsigned Windows and ad-hoc-signed
 macOS alpha channel, retaining the existing artwork.
+On 2026-10-13, the owner requested updated release files with the DLL fixes and
+branded installer. `0.0.3-alpha` carries those changes through the same channel
+and retains the approved artwork; earlier releases remain immutable.
 The source image and its SHA-256 remain recorded in `ASSET-MANIFEST.toml`.
 
 The release verifies that source digest, all eight PNG dimensions, and the

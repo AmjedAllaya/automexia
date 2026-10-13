@@ -194,11 +194,13 @@ class ReleaseManifestTests(unittest.TestCase):
 
     def test_current_alpha_sboms_project_locations_and_reject_private_data(self) -> None:
         self._check_public_alpha_sboms("0.0.2-alpha")
+        self._check_public_alpha_sboms("0.0.3-alpha")
 
     def _check_public_alpha_sboms(self, version: str) -> None:
         import hashlib
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            # Scanner locations use the canonical root, not a Windows TEMP alias.
+            root = Path(temporary).resolve()
             output, raw, scan = (root / name for name in ("release", "raw", "scan"))
             for directory in (output, raw, scan):
                 directory.mkdir()

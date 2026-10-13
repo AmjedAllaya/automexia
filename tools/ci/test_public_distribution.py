@@ -323,7 +323,8 @@ class PublicSbomPreparationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        # Match the scanner's canonical root even when Windows TEMP uses 8.3 names.
+        self.root = Path(self.temporary.name).resolve()
         self.source, self.output, self.scan = (self.root / name for name in ("private", "public", "scan"))
         for directory in (self.source, self.output, self.scan):
             directory.mkdir()
@@ -337,7 +338,7 @@ class PublicSbomPreparationTests(unittest.TestCase):
 
     def test_unapproved_prerelease_is_rejected_before_outputs_are_written(self) -> None:
         self.write(*sbom_documents())
-        for version in ("0.0.3-alpha", "0.0.2-beta", "v0.0.2-alpha"):
+        for version in ("0.0.4-alpha", "0.0.2-beta", "v0.0.2-alpha"):
             with self.subTest(version=version):
                 with self.assertRaisesRegex(DISTRIBUTION.DistributionError, "authorized alpha"):
                     DISTRIBUTION.prepare_public_sboms(self.source, self.output, self.scan, version)

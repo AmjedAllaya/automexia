@@ -4825,6 +4825,7 @@ fn windows_installer_version(version: &str) -> Result<&str, String> {
     let numeric = match version {
         "0.0.1-alpha" => "0.0.1",
         "0.0.2-alpha" => "0.0.2",
+        "0.0.3-alpha" => "0.0.3",
         _ => version,
     };
     let fields = numeric.split('.').collect::<Vec<_>>();
@@ -5895,13 +5896,14 @@ mod tests {
     fn first_alpha_uses_numeric_windows_installer_metadata() {
         assert_eq!(windows_installer_version("0.0.1-alpha").unwrap(), "0.0.1");
         assert_eq!(windows_installer_version("0.0.2-alpha").unwrap(), "0.0.2");
+        assert_eq!(windows_installer_version("0.0.3-alpha").unwrap(), "0.0.3");
         assert_eq!(
             windows_installer_version("255.255.65535").unwrap(),
             "255.255.65535"
         );
         for invalid in [
             "0.0.1_alpha",
-            "0.0.3-alpha",
+            "0.0.4-alpha",
             "01.2.3",
             "1.2.3\n",
             "1.2.3-beta",

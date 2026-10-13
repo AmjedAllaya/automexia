@@ -19,8 +19,9 @@ The first public multi-platform tag is **`0.0.1_alpha`**, a GitHub prerelease
 that does not replace the stable “Latest” release. Its Cargo/application version
 is `0.0.1-alpha`; Windows MSI and Apple's numeric bundle fields use `0.0.1`.
 Apple's additional `AutomexiaReleaseVersion` field preserves the full version.
-The next authorized alpha is `v0.0.2-alpha`, with application version
-`0.0.2-alpha` and numeric package version `0.0.2`. Stable versions use `vX.Y.Z`.
+The next authorized alpha is `v0.0.3-alpha`, with application version
+`0.0.3-alpha` and numeric package version `0.0.3`. Earlier published alphas
+remain immutable. Stable versions use `vX.Y.Z`.
 
 `.github/workflows/release.yml` starts when an approved internal
 `release/<version>` PR merges into protected `main`. The version must be an
@@ -31,7 +32,7 @@ release helpers and shell integration. That production channel retains its
 independent review, provenance and signing requirements. Owner-authorized alphas use the explicitly
 unsigned [first-alpha channel](docs/public-release/FIRST-ALPHA-NOTES.md) in
 `.github/workflows/first-alpha.yml`. It requires native quality, packaging and
-reproducibility gates, currently publishes only `v0.0.2-alpha`, and cannot publish a stable
+reproducibility gates, currently publishes only `v0.0.3-alpha`, and cannot publish a stable
 version. Windows is unsigned; macOS uses ad-hoc code signatures for execution
 but is not notarized. Signed checksums bind the final packages and disclosures.
 No OS trust or stable/long-duration certification is implied.
@@ -89,7 +90,7 @@ clarifications can make those downloads clearer without replacing them.
 For local release preparation, run the helper with the workspace version:
 
 ```text
-cargo xtask release --version 0.0.2-alpha
+cargo xtask release --version 0.0.3-alpha
 ```
 
 On its first invocation for a version, this command assembles reviewed

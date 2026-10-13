@@ -9,7 +9,7 @@ packaging, and accessibility APIs.
 Build and run all three desktop platforms from the [same source workflow](INSTALLATION.md).
 
 Public packages belong to **[Automexia Releases](https://github.com/AmjedAllaya/automexia/releases)**.
-The current release candidate is `v0.0.2-alpha`; `0.0.1_alpha` remains immutable. The matrix below
+The current release candidate is `v0.0.3-alpha`; `0.0.1_alpha` remains immutable. The matrix below
 specifies package targets and verification ownership; only assets actually
 published on that page have completed release publication. The old separate
 Linux binary repository is no longer a publication destination.

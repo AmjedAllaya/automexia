@@ -122,7 +122,7 @@ windowing and rendering adapters. BSD and other Unix systems are best-effort.
 | macOS | Unix PTY; native macOS windowing and Metal/WGPU | Xcode Command Line Tools |
 
 Download published builds from **[this repository's Releases](https://github.com/AmjedAllaya/automexia/releases)**.
-The current prerelease candidate is `v0.0.2-alpha`: Windows x64/Arm64
+The current prerelease candidate is `v0.0.3-alpha`: Windows x64/Arm64
 MSI and portable ZIP, Linux x64/Arm64 DEB/RPM/tar.gz, and a universal macOS DMG.
 A package is available only after its native validation, signing and publication
 gates pass; this source change alone does not mean the release is published.
