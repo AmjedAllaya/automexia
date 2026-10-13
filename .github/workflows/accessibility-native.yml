@@ -98,6 +98,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          cargo test -p teletypewriter --lib --locked windows::command_
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test -p automexia-terminal --lib --features visual-test-hooks --locked automexia::shell::tests::
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test -p automexia-terminal --test powershell_startup --features visual-test-hooks --locked

@@ -230,10 +230,23 @@ fn cmd_prompt_ready(editor: &Editor, completed_commands: usize) -> bool {
 
 fn wait_for_cmd_prompt(editor: &Editor, completed_commands: usize) {
     let deadline = Instant::now() + Duration::from_secs(20);
+    // ConPTY can deliver the input marker before its remaining cursor updates.
+    // Start idle assertions only after a complete, stable editable frame.
+    let mut stable = None;
     loop {
         service_protocol(editor);
         if cmd_prompt_ready(editor, completed_commands) {
-            return;
+            let state = visible_state(editor);
+            match &stable {
+                Some((previous, since)) if previous == &state => {
+                    if Instant::now().duration_since(*since) >= Duration::from_secs(1) {
+                        return;
+                    }
+                }
+                _ => stable = Some((state, Instant::now())),
+            }
+        } else {
+            stable = None;
         }
         if Instant::now() >= deadline {
             let terminal = editor.terminal.lock();
@@ -249,9 +262,17 @@ fn assert_cmd_idle(editor: &Editor, completed_commands: usize) {
     let mut stable = None;
     while Instant::now() < deadline {
         service_protocol(editor);
+        let terminal = editor.terminal.lock();
+        let row = &terminal.grid[terminal.grid.cursor.pos.row];
+        let diagnostic = (
+            row.semantic_prompt,
+            row.semantic_input,
+            terminal.grid.cursor.pos.col.0,
+        );
+        drop(terminal);
         assert!(
             cmd_prompt_ready(editor, completed_commands),
-            "idle CMD lost its editable prompt or emitted unexpected command output"
+            "idle CMD lost its editable prompt after {completed_commands} commands: {diagnostic:?}"
         );
         if stable.is_none() && Instant::now() >= checkpoint {
             stable = Some(visible_state(editor));
