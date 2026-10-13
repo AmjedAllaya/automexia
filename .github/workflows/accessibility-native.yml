@@ -102,7 +102,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test -p automexia-terminal --lib --features visual-test-hooks --locked automexia::shell::tests::
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo test -p automexia-terminal --test powershell_startup --features visual-test-hooks --locked
+          python tools/ci/check_windows_shell_startup.py --compare-inbox
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify native Windows fixture process ownership
         if: runner.os == 'Windows'
@@ -238,6 +238,7 @@ jobs:
             artifacts/visual-quality/captures/*--*.png
             artifacts/visual-quality/diffs
             artifacts/visual-quality/native-linux
+            artifacts/windows-shell-startup/summary.json
           if-no-files-found: error
           retention-days: 14
       - name: Preserve full candidate images for failed or missing baselines
