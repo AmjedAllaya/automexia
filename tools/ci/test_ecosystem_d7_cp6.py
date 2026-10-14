@@ -46,14 +46,14 @@ class EcosystemD7Cp6Tests(unittest.TestCase):
         owner = CHECKER.ROOT / "Cargo.toml"
         original_read = Path.read_text
         source = original_read(owner, encoding="utf-8")
-        self.assertIn('wasmtime = { version = "48.0.4"', source)
+        self.assertIn('wasmtime = { version = "48.0.6"', source)
 
-        for vulnerable in ("48.0.1", "48.0.3"):
+        for vulnerable in ("48.0.1", "48.0.3", "48.0.4", "48.0.5"):
             with self.subTest(version=vulnerable):
                 def read(path, *args, **kwargs):
                     if path == owner:
                         return source.replace(
-                            'wasmtime = { version = "48.0.4"',
+                            'wasmtime = { version = "48.0.6"',
                             f'wasmtime = {{ version = "{vulnerable}"',
                             1,
                         )

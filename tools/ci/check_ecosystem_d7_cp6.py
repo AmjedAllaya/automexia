@@ -758,7 +758,7 @@ def _validate_implementation() -> int:
             '"automexia-ecosystem-runtime"',
             'zip = { version = "=8.6.0", default-features = false',
             'ed25519-dalek = { version = "3.0.0", default-features = false',
-            'wasmtime = { version = "48.0.4", default-features = false',
+            'wasmtime = { version = "48.0.6", default-features = false',
             'wit-parser = "=0.254.2"',
             'wat = "=1.254.2"',
         ),
