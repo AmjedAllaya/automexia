@@ -7,7 +7,7 @@ Local builds are not signed release packages.
 
 For published installers and portable packages, use
 **[Automexia Releases](https://github.com/AmjedAllaya/automexia/releases)**.
-The `v0.0.3-alpha` pipeline targets Windows MSI/ZIP, Linux DEB/RPM/tar.gz and a
+The `v0.0.4-alpha` pipeline targets Windows MSI/ZIP, Linux DEB/RPM/tar.gz and a
 universal macOS DMG. Check the release's assets and validation notes; source
 availability does not mean a signed package has been published.
 

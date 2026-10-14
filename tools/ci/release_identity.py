@@ -13,9 +13,9 @@ from pathlib import Path
 
 FIRST_ALPHA_VERSION = "0.0.1-alpha"
 FIRST_ALPHA_TAG = "0.0.1_alpha"
-CURRENT_ALPHA_VERSION = "0.0.3-alpha"
-CURRENT_ALPHA_TAG = "v0.0.3-alpha"
-ALPHA_VERSIONS = frozenset((FIRST_ALPHA_VERSION, "0.0.2-alpha", CURRENT_ALPHA_VERSION))
+CURRENT_ALPHA_VERSION = "0.0.4-alpha"
+CURRENT_ALPHA_TAG = "v0.0.4-alpha"
+ALPHA_VERSIONS = frozenset((FIRST_ALPHA_VERSION, "0.0.2-alpha", "0.0.3-alpha", CURRENT_ALPHA_VERSION))
 STABLE = re.compile(r"(?:0|[1-9][0-9]{0,4})\.(?:0|[1-9][0-9]{0,4})\.(?:0|[1-9][0-9]{0,4})")
 
 

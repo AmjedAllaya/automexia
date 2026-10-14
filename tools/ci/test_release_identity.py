@@ -25,6 +25,8 @@ class ReleaseIdentityTests(unittest.TestCase):
         self.assertEqual(identity.native_version("0.0.2-alpha"), "0.0.2")
         self.assertEqual(identity.release_tag("0.0.3-alpha"), "v0.0.3-alpha")
         self.assertEqual(identity.native_version("0.0.3-alpha"), "0.0.3")
+        self.assertEqual(identity.release_tag("0.0.4-alpha"), "v0.0.4-alpha")
+        self.assertEqual(identity.native_version("0.0.4-alpha"), "0.0.4")
         self.assertEqual(identity.release_tag("1.2.3"), "v1.2.3")
         self.assertEqual(identity.native_version("255.255.65535"), "255.255.65535")
 
@@ -106,7 +108,7 @@ class ReleaseIdentityTests(unittest.TestCase):
         guard = step["run"].split("rustup toolchain install", 1)[0]
         for branch, success in (("release/0.0.1-alpha", True), ("release/1.2.3", True),
                                 ("release/0.0.2-alpha", True), ("release/0.0.3-alpha", True),
-                                ("release/0.0.4-alpha", False),
+                                ("release/0.0.4-alpha", True), ("release/0.0.5-alpha", False),
                                 ("release/0.0.1_alpha", False),
                                 ("release/01.2.3", False), ("release/1.2.3+test", False)):
             with self.subTest(branch=branch):

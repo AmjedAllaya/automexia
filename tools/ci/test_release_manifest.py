@@ -195,6 +195,7 @@ class ReleaseManifestTests(unittest.TestCase):
     def test_current_alpha_sboms_project_locations_and_reject_private_data(self) -> None:
         self._check_public_alpha_sboms("0.0.2-alpha")
         self._check_public_alpha_sboms("0.0.3-alpha")
+        self._check_public_alpha_sboms("0.0.4-alpha")
 
     def _check_public_alpha_sboms(self, version: str) -> None:
         import hashlib

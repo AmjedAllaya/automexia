@@ -32,7 +32,7 @@ def native_evidence():
 
 def manifest():
     return {"schema": 1, "project": "automexia-terminal", "source_repository": "https://github.com/" + owner.REPOSITORY,
-            "version": "0.0.3-alpha", "tag": "v0.0.3-alpha", "source_commit": SHA,
+            "version": "0.0.4-alpha", "tag": "v0.0.4-alpha", "source_commit": SHA,
             "channel": "first-alpha", "os_signing": owner.alpha.signing_disclosure(), "branding": {"stable_approval": False}}
 
 
@@ -55,8 +55,8 @@ def make_bundle(directory):
 
 
 def remote(records, *, draft=True, immutable=False):
-    return {"id": 45, "tag_name": "v0.0.3-alpha", "target_commitish": SHA, "prerelease": True, "draft": draft, "immutable": immutable,
-            "body": "Alpha fixture notes", "name": "Automexia Terminal v0.0.3-alpha",
+    return {"id": 45, "tag_name": "v0.0.4-alpha", "target_commitish": SHA, "prerelease": True, "draft": draft, "immutable": immutable,
+            "body": "Alpha fixture notes", "name": "Automexia Terminal v0.0.4-alpha",
             "assets": [{"name": name, "digest": "sha256:" + digest, "size": size, "state": "uploaded"} for name, (digest, size) in records.items()]}
 
 
@@ -160,7 +160,7 @@ class BundleTests(unittest.TestCase):
         path.write_text(json.dumps(data))
         with self.assertRaises(ValueError):
             owner.validate_bundle(self.bundle)
-        path.write_text('{"version":"0.0.3-alpha","version":"1.0.0"}')
+        path.write_text('{"version":"0.0.4-alpha","version":"1.0.0"}')
         with self.assertRaises(ValueError):
             owner.validate_bundle(self.bundle)
 

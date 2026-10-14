@@ -48,7 +48,7 @@ accesskit_unix = { path = "third-party/accesskit-unix" }
 accesskit_macos = { path = "third-party/accesskit-macos" }
 
 [workspace.package]
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 authors = [
     "Automexia Contributors",
     "Raphael Amorim <rapha850@gmail.com>",
@@ -77,25 +77,25 @@ shell-integration-environment = "AUTOMEXIA_SHELL_INTEGRATION"
 
 [workspace.dependencies]
 accesskit = "=0.25.1"
-automexia-keybindings = { path = "automexia-keybindings", version = "0.0.3-alpha" }
-automexia-extension-api = { path = "automexia-extension-api", version = "0.0.3-alpha" }
-automexia-extension-runtime = { path = "automexia-extension-runtime", version = "0.0.3-alpha" }
-automexia-ecosystem = { path = "automexia-ecosystem", version = "0.0.3-alpha" }
-automexia-ecosystem-runtime = { path = "automexia-ecosystem-runtime", version = "0.0.3-alpha" }
-automexia-connectivity = { path = "automexia-connectivity", version = "0.0.3-alpha" }
-automexia-ssh-integration = { path = "automexia-ssh-integration", version = "0.0.3-alpha" }
-automexia-terminal-protocol = { path = "automexia-terminal-protocol", version = "0.0.3-alpha" }
-automexia-command-productivity = { path = "automexia-command-productivity", version = "0.0.3-alpha" }
-automexia-devops = { path = "automexia-devops", version = "0.0.3-alpha" }
-automexia-devops-aws = { path = "extensions/devops-aws", version = "0.0.3-alpha" }
-automexia-devops-azure = { path = "extensions/devops-azure", version = "0.0.3-alpha" }
-automexia-devops-gcp = { path = "extensions/devops-gcp", version = "0.0.3-alpha" }
-automexia-devops-kubernetes = { path = "extensions/devops-kubernetes", version = "0.0.3-alpha" }
-automexia-devops-openshift = { path = "extensions/devops-openshift", version = "0.0.3-alpha" }
-automexia-devops-teleport = { path = "extensions/devops-teleport", version = "0.0.3-alpha" }
-automexia-devops-ssh = { path = "extensions/devops-ssh", version = "0.0.3-alpha" }
-automexia-image = { path = "automexia-image", version = "0.0.3-alpha" }
-automexia-ui-model = { path = "automexia-ui-model", version = "0.0.3-alpha" }
+automexia-keybindings = { path = "automexia-keybindings", version = "0.0.4-alpha" }
+automexia-extension-api = { path = "automexia-extension-api", version = "0.0.4-alpha" }
+automexia-extension-runtime = { path = "automexia-extension-runtime", version = "0.0.4-alpha" }
+automexia-ecosystem = { path = "automexia-ecosystem", version = "0.0.4-alpha" }
+automexia-ecosystem-runtime = { path = "automexia-ecosystem-runtime", version = "0.0.4-alpha" }
+automexia-connectivity = { path = "automexia-connectivity", version = "0.0.4-alpha" }
+automexia-ssh-integration = { path = "automexia-ssh-integration", version = "0.0.4-alpha" }
+automexia-terminal-protocol = { path = "automexia-terminal-protocol", version = "0.0.4-alpha" }
+automexia-command-productivity = { path = "automexia-command-productivity", version = "0.0.4-alpha" }
+automexia-devops = { path = "automexia-devops", version = "0.0.4-alpha" }
+automexia-devops-aws = { path = "extensions/devops-aws", version = "0.0.4-alpha" }
+automexia-devops-azure = { path = "extensions/devops-azure", version = "0.0.4-alpha" }
+automexia-devops-gcp = { path = "extensions/devops-gcp", version = "0.0.4-alpha" }
+automexia-devops-kubernetes = { path = "extensions/devops-kubernetes", version = "0.0.4-alpha" }
+automexia-devops-openshift = { path = "extensions/devops-openshift", version = "0.0.4-alpha" }
+automexia-devops-teleport = { path = "extensions/devops-teleport", version = "0.0.4-alpha" }
+automexia-devops-ssh = { path = "extensions/devops-ssh", version = "0.0.4-alpha" }
+automexia-image = { path = "automexia-image", version = "0.0.4-alpha" }
+automexia-ui-model = { path = "automexia-ui-model", version = "0.0.4-alpha" }
 
 # Note: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#multiple-locations
 # Sugarloaf example uses path when used locally, but uses

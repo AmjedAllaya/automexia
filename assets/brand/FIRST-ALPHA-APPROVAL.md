@@ -7,6 +7,8 @@ macOS alpha channel, retaining the existing artwork.
 On 2026-10-13, the owner requested updated release files with the DLL fixes and
 branded installer. `0.0.3-alpha` carries those changes through the same channel
 and retains the approved artwork; earlier releases remain immutable.
+On 2026-10-15, the owner requested the next alpha after verifying the WSL fixes.
+`0.0.4-alpha` retains this artwork and the same unsigned/ad-hoc channel.
 The source image and its SHA-256 remain recorded in `ASSET-MANIFEST.toml`.
 
 The release verifies that source digest, all eight PNG dimensions, and the

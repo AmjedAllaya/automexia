@@ -1,3 +1,11 @@
+automexia-terminal (0.0.4~alpha-1) unstable; urgency=medium
+
+  * Preserve WSL distro, user, shell and directory when cloning sessions.
+  * Restore Linux-native Git prompt metadata and improve Fish alias reloads.
+  * Strengthen shell, Unicode, prompt-boundary and process-cleanup checks.
+
+ -- Automexia Contributors <AmjedAllaya@users.noreply.github.com>  Thu, 15 Oct 2026 00:00:00 +0000
+
 automexia-terminal (0.0.3~alpha-1) unstable; urgency=medium
 
   * Release updated native packages with self-contained Windows C++ runtimes.

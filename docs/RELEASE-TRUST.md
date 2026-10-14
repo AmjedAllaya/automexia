@@ -288,7 +288,7 @@ either external trust decision.
 
 ## Owner-authorized first alpha
 
-The current `v0.0.3-alpha` prerelease uses the explicit unsigned distribution mode
+The current `v0.0.4-alpha` candidate uses the explicit unsigned distribution mode
 under `.github/workflows/first-alpha.yml`. This exception does not apply to
 production/stable release gates above. It retains native build, final package,
 reproducibility, dependency, accessibility and visual CI gates. Windows

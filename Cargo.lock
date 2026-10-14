@@ -523,7 +523,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "automexia-command-productivity"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-connectivity",
  "automexia-extension-api",
@@ -538,7 +538,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-connectivity"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-extension-api",
  "base64",
@@ -551,7 +551,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-devops"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-extension-api",
  "criterion",
@@ -567,7 +567,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-devops-aws"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-command-productivity",
  "automexia-connectivity",
@@ -580,7 +580,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-devops-azure"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-command-productivity",
  "automexia-connectivity",
@@ -592,7 +592,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-devops-gcp"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-command-productivity",
  "automexia-connectivity",
@@ -605,7 +605,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-devops-kubernetes"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-command-productivity",
  "automexia-connectivity",
@@ -621,7 +621,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-devops-openshift"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-command-productivity",
  "automexia-connectivity",
@@ -633,7 +633,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-devops-ssh"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-extension-api",
  "criterion",
@@ -649,7 +649,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-devops-teleport"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-command-productivity",
  "automexia-connectivity",
@@ -664,7 +664,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-ecosystem"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "criterion",
  "proptest",
@@ -676,7 +676,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-ecosystem-runtime"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-command-productivity",
  "automexia-ecosystem",
@@ -698,7 +698,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-extension-api"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "criterion",
  "serde",
@@ -708,7 +708,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-extension-runtime"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-extension-api",
  "loom",
@@ -716,7 +716,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-image"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "image",
  "libc",
@@ -725,7 +725,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-keybindings"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "criterion",
  "proptest",
@@ -736,7 +736,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-renderer-benchmarks"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "criterion",
  "parking_lot",
@@ -747,7 +747,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-ssh-integration"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-connectivity",
  "automexia-terminal-protocol",
@@ -757,7 +757,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-terminal"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -844,11 +844,11 @@ dependencies = [
 
 [[package]]
 name = "automexia-terminal-protocol"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 
 [[package]]
 name = "automexia-ui-model"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "accesskit",
  "automexia-command-productivity",
@@ -3488,7 +3488,7 @@ dependencies = [
 
 [[package]]
 name = "librio"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "bitflags 2.13.1",
  "corcovado",
@@ -3502,7 +3502,7 @@ dependencies = [
 
 [[package]]
 name = "librio-wasm"
-version = "0.0.3-alpha"
+version = "0.0.4-alpha"
 dependencies = [
  "js-sys",
  "librio",
