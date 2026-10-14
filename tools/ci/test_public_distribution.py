@@ -338,7 +338,7 @@ class PublicSbomPreparationTests(unittest.TestCase):
 
     def test_unapproved_prerelease_is_rejected_before_outputs_are_written(self) -> None:
         self.write(*sbom_documents())
-        for version in ("0.0.4-alpha", "0.0.2-beta", "v0.0.2-alpha"):
+        for version in ("0.0.5-alpha", "0.0.2-beta", "v0.0.2-alpha"):
             with self.subTest(version=version):
                 with self.assertRaisesRegex(DISTRIBUTION.DistributionError, "authorized alpha"):
                     DISTRIBUTION.prepare_public_sboms(self.source, self.output, self.scan, version)

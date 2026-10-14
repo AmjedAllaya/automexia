@@ -18,7 +18,7 @@ class Boundaries(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         package = HERE.parents[1]/'automexia-ssh-integration'
         shutil.copytree(package, self.root/'automexia-ssh-integration', ignore=shutil.ignore_patterns('__pycache__','target'))
         shutil.copytree(HERE.parents[1]/'automexia-terminal-protocol', self.root/'automexia-terminal-protocol', ignore=shutil.ignore_patterns('__pycache__','target'))

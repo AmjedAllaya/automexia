@@ -144,7 +144,8 @@ class QaProcessTests(unittest.TestCase):
         with mock.patch.object(PROCESS.subprocess, 'Popen', side_effect=OSError('fixture')):
             with self.assertRaises(OSError):
                 self.run_code('pass')
-        # Interrupt the supervisor's host wait, not a fake child completion.
+        # Depending on native scheduling this can interrupt reader startup or
+        # the supervisor's host wait. Both paths must retire every real owner.
         original = threading.Condition.wait
         def interrupt(condition, *args, **kwargs):
             if threading.current_thread() is threading.main_thread() and args:

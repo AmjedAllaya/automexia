@@ -99,7 +99,11 @@ def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=Fals
             assign = lambda key, value: f"$env:{key} = '" + value.replace("'", "''") + "'"
             remove = lambda key: f"Remove-Item Env:{key} -ErrorAction SilentlyContinue"
             loop = lambda body: f"for ($i=0; $i -lt {repeat}; $i++) {{ {body} }}"
-            args = [shutil.which(shell), "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "-"]
+            # Run this locally generated, trusted fixture under an explicit
+            # process policy. A fresh Windows default can otherwise block it
+            # before any prompt assertion executes.
+            args = [shutil.which(shell), "-NoLogo", "-NoProfile", "-NonInteractive",
+                    "-ExecutionPolicy", "RemoteSigned", "-Command", "-"]
         elif shell == "fish":
             script = 'source "$AUTOMEXIA_HINT_SOURCE"' + ('\n' if inspect_identity else ' >/dev/null 2>/dev/null\n')
             script += 'functions -q __automexia_fish_prompt automexia_completion_health; or exit 91\n'

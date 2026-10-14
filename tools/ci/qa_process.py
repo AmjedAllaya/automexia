@@ -228,6 +228,7 @@ success while an owned process or reader remains unretired.
     job = None
     assigned = False
     readers: list[threading.Thread] = []
+    started_readers: list[threading.Thread] = []
     condition = threading.Condition()
     state: dict[str, object] = {'done': False, 'code': None, 'error': None}
     deadline = time.monotonic() + timeout_seconds
@@ -281,6 +282,9 @@ success while an owned process or reader remains unretired.
             threading.Thread(target=control, name='automexia-qa-exit', daemon=True),
         ]
         for reader in readers:
+            # An interrupt can arrive after native creation but before start()
+            # acknowledges it. Retain that attempted reader for bounded cleanup.
+            started_readers.append(reader)
             reader.start()
         if time.monotonic() < deadline:
             process.stdin.write(b'G')
@@ -314,9 +318,19 @@ success while an owned process or reader remains unretired.
                         if remaining <= 0:
                             raise OSError('QA native cleanup deadline exceeded')
                         time.sleep(min(0.01, remaining))
-                for reader in readers:
-                    if reader.ident is not None:
-                        reader.join(timeout=max(0, cleanup_deadline - time.monotonic()))
+                for reader in started_readers:
+                    while True:
+                        remaining = max(0, cleanup_deadline - time.monotonic())
+                        try:
+                            reader.join(timeout=remaining)
+                            break
+                        except RuntimeError:
+                            # These are new dedicated readers, never the caller.
+                            # join() can reject a start not yet acknowledged by
+                            # Python even though its native thread already exists.
+                            if remaining <= 0:
+                                raise OSError('QA reader start state is unresolved') from None
+                            time.sleep(min(0.01, remaining))
                 if any(reader.is_alive() for reader in readers):
                     raise OSError('QA reader cleanup deadline exceeded')
                 for stream in (process.stdin, process.stdout, process.stderr):

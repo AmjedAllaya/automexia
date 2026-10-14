@@ -2896,6 +2896,17 @@ fn verify_extension_worker_contract(source: &str) -> TaskResult {
     )
 }
 
+fn verify_wsl_clone_contract(launch: &str) -> TaskResult {
+    require(
+        launch.contains("CloneLaunchError::incomplete_wsl")
+            && launch.contains("incomplete_nested_wsl_never_silently_opens_powershell")
+            && launch.contains("valid_directory_text")
+            && !launch.contains("terminal_title")
+            && !launch.contains("visible_text"),
+        "WSL session cloning may infer launch identity from presentation text or silently fall back",
+    )
+}
+
 fn verify_architecture() -> TaskResult {
     run_python("tools/ci/check_ssh_boundaries.py")?;
     run_python("tools/ci/check_prompt_discovery.py")?;
@@ -3250,13 +3261,7 @@ fn verify_architecture() -> TaskResult {
             && context.contains("ContextManager::create_context"),
         "session cloning does not pass through an immutable launch descriptor and fresh context",
     )?;
-    require(
-        launch.contains("No PowerShell fallback was opened")
-            && launch.contains("valid_directory_text")
-            && !launch.contains("terminal_title")
-            && !launch.contains("visible_text"),
-        "WSL session cloning may infer launch identity from presentation text or silently fall back",
-    )?;
+    verify_wsl_clone_contract(&launch)?;
     require(
         context.contains("report_clone_error")
             && context.contains("RioEvent::ReportToAssistant")
@@ -5660,6 +5665,23 @@ mod tests {
     #[test]
     fn architecture_contract_self_verifies() {
         verify_architecture().unwrap();
+    }
+
+    #[test]
+    fn wsl_clone_contract_uses_typed_failures_and_rejects_presentation_identity() {
+        let source =
+            read(&root().join("apps/automexia-terminal/src/context/launch.rs")).unwrap();
+        verify_wsl_clone_contract(&source).unwrap();
+        for marker in [
+            "CloneLaunchError::incomplete_wsl",
+            "incomplete_nested_wsl_never_silently_opens_powershell",
+            "valid_directory_text",
+        ] {
+            assert!(verify_wsl_clone_contract(&source.replace(marker, "")).is_err());
+        }
+        for forbidden in ["terminal_title", "visible_text"] {
+            assert!(verify_wsl_clone_contract(&(source.clone() + forbidden)).is_err());
+        }
     }
 
     #[test]

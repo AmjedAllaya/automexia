@@ -96,7 +96,7 @@ class MarkdownAnchorTests(unittest.TestCase):
 
     def test_real_consumers_reject_missing_and_stale_anchors(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             guide = root / "guide.md"
             guide.write_text(
                 "# Title\n## Repeated\n## Repeated\n```\n## Hidden\n```\n",
@@ -123,7 +123,7 @@ class MarkdownAnchorTests(unittest.TestCase):
 
     def test_repository_parses_each_target_once_without_retaining_stale_results(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             guide = root / "guide.md"
             guide.write_text("# First\n## Second\n", encoding="utf-8")
             (root / "links.md").write_text(
