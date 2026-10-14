@@ -316,7 +316,7 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
   typeset -g __automexia_alias_reason=
   typeset -g __automexia_alias_generation=
   typeset -g __automexia_alias_loaded_path=
-  typeset -g __automexia_alias_records=
+  typeset -ga __automexia_alias_record_kinds=() __automexia_alias_record_names=() __automexia_alias_record_definitions=()
   typeset -g __automexia_alias_collisions=
 
   __automexia_alias_hash_stream() {
@@ -331,36 +331,41 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
     fi
   }
 
-  __automexia_alias_hash_file() {
-    local file=$1
+  __automexia_alias_hash_files() {
+    local output line digest openssl_format=0
     if builtin whence -p sha256sum >/dev/null 2>&1; then
-      command sha256sum -- "$file" | command awk '{print $1}'
+      output=$(command sha256sum -- "$@") || return 1
     elif builtin whence -p shasum >/dev/null 2>&1; then
-      command shasum -a 256 -- "$file" | command awk '{print $1}'
+      output=$(command shasum -a 256 -- "$@") || return 1
     elif builtin whence -p openssl >/dev/null 2>&1; then
-      command openssl dgst -sha256 "$file" | command awk '{print $NF}'
+      output=$(command openssl dgst -sha256 "$@") || return 1
+      openssl_format=1
     else
       return 127
     fi
-  }
-
-  __automexia_alias_private_mode() {
-    local file_path=$1
-    local -a modes
-    zmodload zsh/stat 2>/dev/null || return 1
-    zstat -A modes +mode -- "$file_path" 2>/dev/null || return 1
-    (( ${#modes} == 1 && (modes[1] & 63) == 0 ))
+    reply=()
+    for line in "${(@f)output}"; do
+      if (( openssl_format )); then digest=${line##* }; else digest=${line%% *}; fi
+      [[ $digest =~ '^[0-9a-f]{64}$' ]] || return 1
+      reply+=("$digest")
+    done
+    (( ${#reply} == $# ))
   }
 
   __automexia_alias_real_private_directory() {
-    [[ -d $1 && ! -h $1 ]] && __automexia_alias_private_mode "$1"
+    local -A metadata
+    zmodload zsh/stat 2>/dev/null || return 1
+    zstat -L -H metadata -- "$1" 2>/dev/null || return 1
+    (( (metadata[mode] & 8#170000) == 8#040000 && (metadata[mode] & 63) == 0 ))
   }
 
   __automexia_alias_real_private_file() {
     local file_path=$1 maximum=$2
-    [[ -f $file_path && ! -h $file_path ]] || return 1
-    __automexia_alias_private_mode "$file_path" || return 1
-    [[ $(command wc -c <"$file_path") -le $maximum ]]
+    local -A metadata
+    zmodload zsh/stat 2>/dev/null || return 1
+    zstat -L -H metadata -- "$file_path" 2>/dev/null || return 1
+    (( (metadata[mode] & 8#170000) == 8#100000 &&
+       (metadata[mode] & 63) == 0 && metadata[size] <= maximum ))
   }
 
   __automexia_alias_consent() {
@@ -377,24 +382,23 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
     return 1
   }
 
-  __automexia_alias_current_definition_digest() {
-    local kind=$1 name=$2 definition
+  __automexia_alias_current_definition() {
+    local kind=$1 name=$2
     case $kind in
-      A) definition=$(builtin alias -- "$name" 2>/dev/null) || return 1 ;;
-      F) definition=$(functions -- "$name" 2>/dev/null) || return 1 ;;
+      A) (( ${+aliases[$name]} )) || return 1; REPLY=${aliases[$name]} ;;
+      F) (( ${+functions[$name]} )) || return 1; REPLY=${functions[$name]} ;;
       *) return 1 ;;
     esac
-    print -rn -- "$definition" | __automexia_alias_hash_stream
   }
 
   __automexia_alias_owned_public() {
-    local requested=$1 kind name expected actual
-    while IFS='|' read -r kind name expected; do
-      [[ $kind == A && $name == "$requested" ]] || continue
-      actual=$(__automexia_alias_current_definition_digest "$kind" "$name") || return 1
-      [[ $actual == "$expected" ]]
+    local requested=$1 index REPLY
+    for (( index=1; index <= ${#__automexia_alias_record_names}; index++ )); do
+      [[ $__automexia_alias_record_kinds[$index] == A && $__automexia_alias_record_names[$index] == "$requested" ]] || continue
+      __automexia_alias_current_definition A "$requested" || return 1
+      [[ $REPLY == "$__automexia_alias_record_definitions[$index]" ]]
       return
-    done <<<"$__automexia_alias_records"
+    done
     return 1
   }
 
@@ -405,12 +409,14 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
 
   __automexia_alias_runtime_fingerprint() {
     local requested=$1 command_path classification
+    local -a reply
     classification=$(whence -w "$requested" 2>/dev/null) || return 1
     case $classification in
       "$requested: command")
         command_path=$(whence -p "$requested" 2>/dev/null) || return 1
         [[ -f $command_path && ! -h $command_path ]] || return 1
-        __automexia_alias_hash_file "$command_path"
+        __automexia_alias_hash_files "$command_path" || return 1
+        print -r -- "$reply[1]"
         ;;
       "$requested: builtin"|"$requested: reserved")
         print -rn -- "zsh|Builtin|$requested|shell-builtin" |
@@ -420,10 +426,32 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
     esac
   }
 
+  __automexia_alias_read_bounded() {
+    local limit=$1 chunk read_status
+    local -i total=0 bytes=0
+    REPLY=
+    zmodload zsh/system 2>/dev/null || return 1
+    while (( total <= limit )); do
+      if sysread -s $((limit + 1 - total)) -c bytes chunk; then
+        (( total += bytes ))
+        (( total <= limit )) || return 1
+        [[ $chunk != *$'\0'* ]] || return 1
+        REPLY+=$chunk
+      else
+        read_status=$?
+        (( read_status == 5 )) && return 0
+        return 1
+      fi
+    done
+    return 1
+  }
+
   __automexia_alias_prepare() {
-    local pointer manifest manifest_hash line count=0 tag extra
+    local pointer manifest manifest_hash line count=0 tag
     local manifest_lines=0 manifest_valid=1
-    local name expected actual
+    local name expected actual REPLY
+    local -a reply manifest_records fields
+    local manifest_contents
 
     __automexia_alias_reason=
     __automexia_alias_collisions=
@@ -453,12 +481,13 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
       __automexia_alias_reason=current
       return 1
     }
-    IFS= read -r __automexia_alias_candidate_generation <"$pointer" || {
+    __automexia_alias_read_bounded 80 <"$pointer" || {
       __automexia_alias_state=tampered
       __automexia_alias_reason=current-read
       return 1
     }
-    [[ $(command wc -l <"$pointer") -eq 1 ]] || {
+    __automexia_alias_candidate_generation=${REPLY%$'\n'}
+    [[ $REPLY == "$__automexia_alias_candidate_generation"$'\n' ]] || {
       __automexia_alias_state=tampered
       __automexia_alias_reason=current-lines
       return 1
@@ -485,17 +514,37 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
       __automexia_alias_reason=manifest-file
       return 1
     }
-    manifest_hash=$(__automexia_alias_hash_file "$manifest") || {
+    __automexia_alias_candidate_shell_directory="$__automexia_alias_candidate_directory/zsh"
+    __automexia_alias_candidate_path="$__automexia_alias_candidate_shell_directory/automexia-aliases.zsh"
+    __automexia_alias_real_private_directory "$__automexia_alias_candidate_shell_directory" &&
+      __automexia_alias_real_private_file "$__automexia_alias_candidate_path" 1114112 || {
+      __automexia_alias_state=tampered
+      __automexia_alias_reason=artifact-file
+      return 1
+    }
+    __automexia_alias_hash_files "$manifest" "$__automexia_alias_candidate_path" || {
       __automexia_alias_state=unavailable
       __automexia_alias_reason=sha256
       return 1
     }
+    manifest_hash=$reply[1]
+    actual=$reply[2]
     [[ $manifest_hash == "$__automexia_alias_candidate_generation" ]] || {
       __automexia_alias_state=tampered
       __automexia_alias_reason=manifest-digest
       return 1
     }
-    while IFS= read -r line; do
+    # Bound allocation even if the manifest grows after its metadata check.
+    __automexia_alias_read_bounded 65536 <"$manifest" || {
+      __automexia_alias_state=tampered
+      __automexia_alias_reason=manifest-file
+      return 1
+    }
+    manifest_contents=$REPLY
+    [[ $manifest_contents == *$'\n' ]] || manifest_valid=0
+    manifest_contents=${manifest_contents%$'\n'}
+    manifest_records=("${(@f)manifest_contents}")
+    for line in "${manifest_records[@]}"; do
       manifest_lines=$((manifest_lines + 1))
       case $manifest_lines in
         1) [[ $line == automexia-alias-generation-v1 ]] || manifest_valid=0 ;;
@@ -508,18 +557,24 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
         8)
           [[ $line == 'shell=zsh|'* ]] || manifest_valid=0
           count=$((count + 1))
-          IFS='|' read -r tag __automexia_alias_candidate_file \
-            __automexia_alias_candidate_sha __automexia_alias_candidate_artifact \
-            __automexia_alias_candidate_ready __automexia_alias_candidate_decisions \
-            __automexia_alias_candidate_names __automexia_alias_candidate_overrides extra <<<"$line"
+          fields=("${(@s:|:)line}")
+          (( ${#fields} == 8 )) || { manifest_valid=0; break; }
+          tag=$fields[1]
+          __automexia_alias_candidate_file=$fields[2]
+          __automexia_alias_candidate_sha=$fields[3]
+          __automexia_alias_candidate_artifact=$fields[4]
+          __automexia_alias_candidate_ready=$fields[5]
+          __automexia_alias_candidate_decisions=$fields[6]
+          __automexia_alias_candidate_names=$fields[7]
+          __automexia_alias_candidate_overrides=$fields[8]
           ;;
         9) [[ $line == 'shell=fish|'* ]] || manifest_valid=0 ;;
         10) [[ $line == 'shell=cmd|'* ]] || manifest_valid=0 ;;
         *) manifest_valid=0 ;;
       esac
-    done <"$manifest"
+    done
     [[ $manifest_lines -eq 10 && $manifest_valid -eq 1 &&
-       $count -eq 1 && $tag == shell=zsh && -z $extra &&
+       $count -eq 1 && $tag == shell=zsh &&
        $__automexia_alias_candidate_file == automexia-aliases.zsh &&
        $__automexia_alias_candidate_sha =~ '^[0-9a-f]{64}$' &&
        $__automexia_alias_candidate_artifact =~ '^[0-9a-f]{64}$' &&
@@ -530,23 +585,6 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
       return 1
     }
 
-    __automexia_alias_candidate_shell_directory="$__automexia_alias_candidate_directory/zsh"
-    __automexia_alias_real_private_directory "$__automexia_alias_candidate_shell_directory" || {
-      __automexia_alias_state=tampered
-      __automexia_alias_reason=shell-directory
-      return 1
-    }
-    __automexia_alias_candidate_path="$__automexia_alias_candidate_shell_directory/$__automexia_alias_candidate_file"
-    __automexia_alias_real_private_file "$__automexia_alias_candidate_path" 1114112 || {
-      __automexia_alias_state=tampered
-      __automexia_alias_reason=artifact-file
-      return 1
-    }
-    actual=$(__automexia_alias_hash_file "$__automexia_alias_candidate_path") || {
-      __automexia_alias_state=unavailable
-      __automexia_alias_reason=sha256
-      return 1
-    }
     [[ $actual == "$__automexia_alias_candidate_sha" ]] || {
       __automexia_alias_state=tampered
       __automexia_alias_reason=artifact-digest
@@ -587,22 +625,21 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
   }
 
   __automexia_alias_activate_candidate() {
-    local name definition digest target
+    local name target REPLY
     source "$__automexia_alias_candidate_path" || return 1
-    __automexia_alias_records=
+    __automexia_alias_record_kinds=() __automexia_alias_record_names=() __automexia_alias_record_definitions=()
     for name in ${(s:,:)__automexia_alias_candidate_names}; do
-      definition=$(builtin alias -- "$name" 2>/dev/null) || return 1
-      digest=$(print -rn -- "$definition" | __automexia_alias_hash_stream) || return 1
-      __automexia_alias_records="${__automexia_alias_records}${__automexia_alias_records:+
-}A|$name|$digest"
-      target=${definition#*=}
-      target=${target#\'}
-      target=${target%\'}
+      __automexia_alias_current_definition A "$name" || return 1
+      __automexia_alias_record_kinds+=(A)
+      __automexia_alias_record_names+=("$name")
+      __automexia_alias_record_definitions+=("$REPLY")
+      target=$REPLY
       if [[ $target =~ '^_automexia_cp3_[0-9a-f]{16}$' ]] &&
-         [[ $(whence -w "$target" 2>/dev/null) == "$target: function" ]]; then
-        digest=$(__automexia_alias_current_definition_digest F "$target") || return 1
-        __automexia_alias_records="${__automexia_alias_records}
-F|$target|$digest"
+         (( ${+functions[$target]} )); then
+        __automexia_alias_current_definition F "$target" || return 1
+        __automexia_alias_record_kinds+=(F)
+        __automexia_alias_record_names+=("$target")
+        __automexia_alias_record_definitions+=("$REPLY")
       fi
     done
     __automexia_alias_generation=$__automexia_alias_candidate_generation
@@ -614,8 +651,10 @@ F|$target|$digest"
   automexia_aliases_reload() {
     local old_generation=$__automexia_alias_generation
     local old_path=$__automexia_alias_loaded_path
-    local old_records=$__automexia_alias_records
-    local kind name expected actual
+    local -a old_kinds=("${__automexia_alias_record_kinds[@]}")
+    local -a old_names=("${__automexia_alias_record_names[@]}")
+    local -a old_definitions=("${__automexia_alias_record_definitions[@]}")
+    local kind name index REPLY
 
     if ! __automexia_alias_prepare; then
       [[ -n $old_generation ]] && __automexia_alias_reason="reload-$__automexia_alias_state-lkg"
@@ -625,33 +664,36 @@ F|$target|$digest"
       __automexia_alias_state=ready
       return 0
     }
-    while IFS='|' read -r kind name expected; do
-      [[ -n $kind ]] || continue
-      actual=$(__automexia_alias_current_definition_digest "$kind" "$name") || {
+    for (( index=1; index <= ${#old_names}; index++ )); do
+      kind=$old_kinds[$index] name=$old_names[$index]
+      __automexia_alias_current_definition "$kind" "$name" || {
         __automexia_alias_state=reload-conflict
         __automexia_alias_reason=definition-changed
         return 1
       }
-      [[ $actual == "$expected" ]] || {
+      [[ $REPLY == "$old_definitions[$index]" ]] || {
         __automexia_alias_state=reload-conflict
         __automexia_alias_reason=definition-changed
         return 1
       }
-    done <<<"$old_records"
+    done
 
-    while IFS='|' read -r kind name expected; do
+    for (( index=1; index <= ${#old_names}; index++ )); do
+      kind=$old_kinds[$index] name=$old_names[$index]
       case $kind in
         A) builtin unalias -- "$name" ;;
         F) unfunction -- "$name" ;;
       esac
-    done <<<"$old_records"
+    done
     if __automexia_alias_activate_candidate; then
       return 0
     fi
     [[ -n $old_path && -f $old_path && ! -h $old_path ]] && source "$old_path"
     __automexia_alias_generation=$old_generation
     __automexia_alias_loaded_path=$old_path
-    __automexia_alias_records=$old_records
+    __automexia_alias_record_kinds=("${old_kinds[@]}")
+    __automexia_alias_record_names=("${old_names[@]}")
+    __automexia_alias_record_definitions=("${old_definitions[@]}")
     __automexia_alias_state=reload-failed-lkg
     __automexia_alias_reason=activation
     return 1

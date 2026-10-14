@@ -7,6 +7,8 @@ pub(crate) mod paste;
 mod recovery;
 pub mod renderable;
 pub mod title;
+#[cfg(any(windows, test))]
+mod wsl_preflight;
 
 use automexia_extension_api::{EnvironmentCapsule, OperationId, SessionId};
 
@@ -438,6 +440,8 @@ pub struct ContextManager<T: EventListener> {
     /// bounded undo window. They are isolated per OS-window manager.
     parked_topologies: VecDeque<ParkedTopLevel<T>>,
     restored_topologies: VecDeque<RestoredTopLevel>,
+    #[cfg(windows)]
+    wsl_preflight: wsl_preflight::WslPreflight,
 }
 
 pub fn create_dead_context<T: rio_backend::event::EventListener>(
@@ -1111,6 +1115,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             closing_routes: ClosingRoutes::default(),
             parked_topologies: VecDeque::new(),
             restored_topologies: VecDeque::new(),
+            #[cfg(windows)]
+            wsl_preflight: wsl_preflight::WslPreflight::new(),
         })
     }
 
@@ -1154,6 +1160,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             closing_routes: ClosingRoutes::default(),
             parked_topologies: VecDeque::new(),
             restored_topologies: VecDeque::new(),
+            #[cfg(windows)]
+            wsl_preflight: wsl_preflight::WslPreflight::new(),
         })
     }
 
@@ -2510,6 +2518,22 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         split_down: bool,
         sugarloaf: &mut Sugarloaf,
     ) -> bool {
+        #[cfg(windows)]
+        if self.defer_wsl_clone(
+            rich_text_id,
+            wsl_preflight::Action::Split { down: split_down },
+        ) {
+            return false;
+        }
+        self.clone_split_now(rich_text_id, split_down, sugarloaf)
+    }
+
+    fn clone_split_now(
+        &mut self,
+        rich_text_id: usize,
+        split_down: bool,
+        sugarloaf: &mut Sugarloaf,
+    ) -> bool {
         match self.create_cloned_context(rich_text_id) {
             Ok(new_context) => {
                 let new_route_id = new_context.route_id;
@@ -2532,6 +2556,18 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     /// shell/profile/distro/user/current-directory intent as the visible tab,
     /// but owns a separate PTY, terminal grid, history and input queue.
     pub fn clone_local_tab(
+        &mut self,
+        rich_text_id: usize,
+        sugarloaf: &mut Sugarloaf,
+    ) -> bool {
+        #[cfg(windows)]
+        if self.defer_wsl_clone(rich_text_id, wsl_preflight::Action::LocalTab) {
+            return false;
+        }
+        self.clone_local_tab_now(rich_text_id, sugarloaf)
+    }
+
+    fn clone_local_tab_now(
         &mut self,
         rich_text_id: usize,
         sugarloaf: &mut Sugarloaf,
@@ -2570,34 +2606,98 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         self.create_cloned_context(rich_text_id)
     }
 
+    fn cloned_launch(&self) -> Result<SessionLaunchDescriptor, String> {
+        let source = self.current();
+        if source.terminal.lock().integration_scope_active() {
+            return Err("This SSH session cannot be cloned automatically. Open a new terminal and connect explicitly.".to_owned());
+        }
+        let live = if source.renderable_content.session_metadata.readiness()
+            == crate::renderer::session_metadata::MetadataReadiness::Complete
+        {
+            LiveSessionMetadata {
+                current_directory: source.renderable_content.current_directory.clone(),
+                distro: source.renderable_content.shell_distro.clone(),
+                user: source.renderable_content.shell_user.clone(),
+                shell_name: source.renderable_content.shell_name.clone(),
+                shell_path: source.renderable_content.shell_path.clone(),
+            }
+        } else {
+            // Incomplete metadata retains old labels for history, but cannot
+            // select a guest shell or directory for a new independent PTY.
+            LiveSessionMetadata::default()
+        };
+        source
+            .launch_descriptor
+            .fresh_clone(&live)
+            .map_err(|error| error.to_string())
+    }
+
+    #[cfg(windows)]
+    fn defer_wsl_clone(
+        &mut self,
+        rich_text: usize,
+        action: wsl_preflight::Action,
+    ) -> bool {
+        // Model-only contexts intentionally have no native process adapter.
+        #[cfg(test)]
+        if self.config.dead_pty {
+            return false;
+        }
+        let launch = match self.cloned_launch() {
+            Ok(launch) => launch,
+            Err(error) => {
+                self.report_clone_error(error);
+                return true;
+            }
+        };
+        if !launch.is_wsl() {
+            return false;
+        }
+        let proxy = self.event_proxy.clone();
+        let window = self.window_id;
+        let request = wsl_preflight::Request {
+            route: self.current_route,
+            launch,
+            action,
+            rich_text,
+        };
+        match self.wsl_preflight.start(request, move || proxy.send_event(RioEvent::Render, window)) {
+            automexia_extension_runtime::RefreshSubmission::Queued => {},
+            automexia_extension_runtime::RefreshSubmission::Busy => self.report_clone_error("A WSL clone check is already running. Wait for it to finish, then retry.".into()),
+            _ => self.report_clone_error("The WSL clone check could not start. Retry when background work finishes.".into()),
+        }
+        true
+    }
+
+    #[cfg(windows)]
+    pub fn finish_wsl_clone(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        if !self.wsl_preflight.is_pending() {
+            return false;
+        }
+        let launch = self.cloned_launch().ok();
+        let Some((request, result)) =
+            self.wsl_preflight.take(self.current_route, launch.as_ref())
+        else {
+            return false;
+        };
+        if let Err(error) = result {
+            self.report_clone_error(error.into());
+            return false;
+        }
+        match request.action {
+            wsl_preflight::Action::Split { down } => {
+                self.clone_split_now(request.rich_text, down, sugarloaf)
+            }
+            wsl_preflight::Action::LocalTab => {
+                self.clone_local_tab_now(request.rich_text, sugarloaf)
+            }
+        }
+    }
+
     fn create_cloned_context(&self, rich_text_id: usize) -> Result<Context<T>, String> {
         let (launch, cursor, blinking, dimension, seed, brand, source_capsule_id) = {
+            let launch = self.cloned_launch()?;
             let source = self.current();
-            if source.terminal.lock().integration_scope_active() {
-                return Err("This SSH session cannot be cloned automatically. Open a new terminal and connect explicitly.".to_owned());
-            }
-            let live = if source.renderable_content.session_metadata.readiness()
-                == crate::renderer::session_metadata::MetadataReadiness::Complete
-            {
-                LiveSessionMetadata {
-                    current_directory: source
-                        .renderable_content
-                        .current_directory
-                        .clone(),
-                    distro: source.renderable_content.shell_distro.clone(),
-                    user: source.renderable_content.shell_user.clone(),
-                    shell_name: source.renderable_content.shell_name.clone(),
-                    shell_path: source.renderable_content.shell_path.clone(),
-                }
-            } else {
-                // Incomplete metadata retains old labels for history, but cannot
-                // select a guest shell or directory for a new independent PTY.
-                LiveSessionMetadata::default()
-            };
-            let launch = source
-                .launch_descriptor
-                .fresh_clone(&live)
-                .map_err(|error| error.to_string())?;
             (
                 launch,
                 source.cursor_from_ref(),
@@ -2616,9 +2716,6 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                 source.environment_capsule.session_id,
             )
         };
-
-        #[cfg(all(target_os = "windows", not(test)))]
-        launch::validate_wsl_distribution(&launch).map_err(|error| error.to_string())?;
 
         let mut cloned_config = self.config.clone();
         cloned_config.shell = Shell {

@@ -1,54 +1,44 @@
 //! Killable isolation for WSL-backed prompt configuration reads. This is not a
-//! general provider runner: only the current application executable is launched.
-use std::io::{Read, Write};
+//! general provider runner: only package-owned application entrypoints are launched.
+use std::io::Read;
 use std::os::windows::{io::AsRawHandle, process::CommandExt};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use automexia_devops::{kubernetes, KubernetesContext};
+use automexia_devops::kubernetes;
+pub use automexia_devops::prompt_helper::dispatch_helper;
+use automexia_devops::prompt_helper::{Context, HELPER_FLAG, MAX_REQUEST, MAX_RESPONSE};
 use automexia_extension_api::SessionFacts;
 use automexia_extension_runtime::CancellationToken;
 use windows_sys::Win32::System::Pipes::PeekNamedPipe;
 
-const HELPER_FLAG: &str = "--internal-prompt-context-v1";
-const MAX_REQUEST: usize = 8192;
-const MAX_RESPONSE: usize = 4096;
 const DEADLINE: Duration = Duration::from_millis(1500);
 const POLL: Duration = Duration::from_millis(10);
 
-/// Called before application configuration, logging, migration or GUI startup.
-pub fn dispatch_helper() -> Option<i32> {
-    let mut arguments = std::env::args_os().skip(1);
-    if arguments.next().as_deref() != Some(std::ffi::OsStr::new(HELPER_FLAG)) {
-        return None;
+fn helper_executable(current: &std::path::Path) -> std::path::PathBuf {
+    use std::os::windows::fs::MetadataExt;
+    let console = current.with_file_name("amx.exe");
+    // Never select a PATH entry or a reparse-point executable. Single-binary
+    // developer builds retain the existing desktop dispatch as a fallback.
+    if std::fs::symlink_metadata(&console).is_ok_and(|metadata| {
+        metadata.is_file() && metadata.file_attributes() & 0x400 == 0
+    }) {
+        console
+    } else {
+        current.to_path_buf()
     }
-    let result = (|| {
-        let request = arguments.next()?;
-        if arguments.next().is_some() {
-            return None;
-        }
-        let request = request.to_str()?;
-        if request.len() > MAX_REQUEST {
-            return None;
-        }
-        let session: SessionFacts = serde_json::from_str(request).ok()?;
-        let context = kubernetes::from_wsl_session(&session);
-        let bytes = serde_json::to_vec(&context).ok()?;
-        if bytes.len() > MAX_RESPONSE {
-            return None;
-        }
-        std::io::stdout().lock().write_all(&bytes).ok()?;
-        Some(())
-    })();
-    // No error, path or parser excerpt can escape on stderr/stdout.
-    Some(if result.is_some() { 0 } else { 2 })
 }
 
 pub(super) fn refresh(
     session: &SessionFacts,
+    include_git: bool,
+    include_kubernetes: bool,
     cancellation: &CancellationToken,
-) -> Option<KubernetesContext> {
-    if cancellation.is_cancelled() || kubernetes::wsl_paths(session).is_none() {
+) -> Option<Context> {
+    if cancellation.is_cancelled()
+        || !kubernetes::is_wsl_session(session)
+        || !(include_git || include_kubernetes)
+    {
         return None;
     }
     let mut request = session.clone();
@@ -59,25 +49,47 @@ pub(super) fn refresh(
     let hints = request
         .environment
         .iter()
-        .filter(|(name, _)| matches!(name.as_str(), "HOME" | "KUBECONFIG"))
+        .filter(|(name, _)| {
+            include_kubernetes && matches!(name.as_str(), "HOME" | "KUBECONFIG")
+        })
         .collect::<std::collections::BTreeMap<_, _>>();
     wire["environment"] = serde_json::to_value(hints).ok()?;
-    let request = serde_json::to_string(&wire).ok()?;
+    let request = serde_json::to_string(&serde_json::json!({
+        "session": wire, "git": include_git, "kubernetes": include_kubernetes,
+    }))
+    .ok()?;
     if request.len() > MAX_REQUEST {
         return None;
     }
-    let executable = std::env::current_exe().ok()?;
+    let executable = helper_executable(&std::env::current_exe().ok()?);
     let mut command = Command::new(executable);
     command.args([HELPER_FLAG, &request]);
     let bytes = run_child(&mut command, cancellation, DEADLINE).ok()?;
-    let result: Option<KubernetesContext> = serde_json::from_slice(&bytes).ok()?;
-    result.filter(|context| {
-        [&context.context, &context.namespace].iter().all(|label| {
+    let mut result: Context = serde_json::from_slice(&bytes).ok()?;
+    if !include_git {
+        result.git_branch = None;
+    }
+    if !include_kubernetes {
+        result.kubernetes = None;
+    }
+    valid_context(&result).then_some(result)
+}
+
+fn valid_context(context: &Context) -> bool {
+    context
+        .git_branch
+        .iter()
+        .chain(
+            context
+                .kubernetes
+                .iter()
+                .flat_map(|context| [&context.context, &context.namespace]),
+        )
+        .all(|label| {
             !label.is_empty()
                 && label.chars().count() <= 96
-                && automexia_devops::sanitize_label(label) == **label
+                && automexia_devops::sanitize_label(label) == *label
         })
-    })
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -184,6 +196,38 @@ fn run_child(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn helper_scope_and_projection_are_explicit_and_bounded() {
+        for label in ["", "bad\nlabel", &"x".repeat(97)] {
+            assert!(!valid_context(&Context {
+                git_branch: Some(label.into()),
+                ..Context::default()
+            }));
+        }
+        assert!(valid_context(&Context {
+            git_branch: Some("fixture-branch".into()),
+            ..Context::default()
+        }));
+        assert!(serde_json::from_str::<Context>(
+            r#"{"git_branch":null,"kubernetes":null,"extra":1}"#
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn helper_selects_only_a_regular_adjacent_console_entrypoint() {
+        let directory = tempfile::tempdir().unwrap();
+        let desktop = directory.path().join("automexia.exe");
+        let console = directory.path().join("amx.exe");
+        assert_eq!(helper_executable(&desktop), desktop);
+        std::fs::create_dir(&console).unwrap();
+        assert_eq!(helper_executable(&desktop), desktop);
+        std::fs::remove_dir(&console).unwrap();
+        std::fs::write(&console, b"fixture").unwrap();
+        assert_eq!(helper_executable(&desktop), console);
+    }
 
     #[test]
     fn helper_process_fixture() {

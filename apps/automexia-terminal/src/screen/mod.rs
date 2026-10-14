@@ -639,6 +639,9 @@ fn write_native_resize_snapshot(
                     .and_then(|result| result.completed_at)
                     .map(|timestamp| timestamp.unix_ms),
                 "has_result": row.semantic_command_result.is_some(),
+                "input_ready": row.semantic_input.is_some_and(|input| {
+                    !input.command_complete && !input.continuation
+                }),
                 "boundary_source_generation": row
                     .semantic_command_boundary
                     .and_then(|boundary| boundary.source_prompt_id),
@@ -6728,6 +6731,23 @@ impl Screen<'_> {
         let (window_update, any_panel_dirty) = self
             .renderer
             .run(&mut self.sugarloaf, &mut self.context_manager);
+        // Compare the completed request against this frame's fresh shell
+        // metadata. A clone changes topology, so draw it on the next frame
+        // instead of mixing old layout data with the new active route.
+        #[cfg(windows)]
+        if self.context_manager.finish_wsl_clone(&mut self.sugarloaf) {
+            self.context_manager.invalidate_topology_redo();
+            // Search coordinates belong to the old terminal. Do not transfer
+            // its match selection or vi cursor to the newly created process.
+            self.search_state.dfas = None;
+            self.exit_search();
+            self.relayout_current_grid();
+            self.resize_top_or_bottom_line();
+            self.clear_selection();
+            self.mark_dirty();
+            self.context_manager.request_render();
+            return None;
+        }
         if update_scrolled_selection {
             let point = self.mouse_position(self.display_offset());
             self.update_selection(point, self.mouse.square_side);

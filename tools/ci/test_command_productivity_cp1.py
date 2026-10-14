@@ -89,9 +89,11 @@ class Cp1PolicyTests(unittest.TestCase):
         original_bounded_text = POLICY.bounded_text
         contract_path = ROOT / "shell-integration/bash/automexia.bash"
         required = (
-            "__automexia_alias_real_private_directories",
-            "stat -c '%a %s'",
-            "stat -f '%Lp %z'",
+            "__automexia_alias_verify_entries",
+            "stat -c '%f %s'",
+            "stat -f '%p %z'",
+            "(numeric_mode & 0170000) == 0100000",
+            "(numeric_mode & 077) == 0",
         )
         for removed in required:
             with self.subTest(removed=removed):

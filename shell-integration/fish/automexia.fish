@@ -247,30 +247,33 @@ function __automexia_initialize
         set -g __automexia_alias_collisions
 
         function __automexia_alias_hash_stream
-            if type -q sha256sum
-                command sha256sum | read -l digest rest
-                echo $digest
-            else if type -q shasum
-                command shasum -a 256 | read -l digest rest
-                echo $digest
-            else if type -q openssl
-                command openssl dgst -sha256 | read -l label digest
-                echo $digest
+            set -l output
+            # Match external execution without autoloading shell functions.
+            if command --query sha256sum
+                set output (command sha256sum); or return 1
+                string match -rg '^([0-9a-f]{64})[ \t]' -- "$output"
+            else if command --query shasum
+                set output (command shasum -a 256); or return 1
+                string match -rg '^([0-9a-f]{64})[ \t]' -- "$output"
+            else if command --query openssl
+                set output (command openssl dgst -sha256); or return 1
+                string match -rg ' ([0-9a-f]{64})$' -- "$output"
             else
                 return 127
             end
         end
 
         function __automexia_alias_hash_file --argument-names file
-            if type -q sha256sum
-                command sha256sum -- "$file" | read -l digest rest
-                echo $digest
-            else if type -q shasum
-                command shasum -a 256 -- "$file" | read -l digest rest
-                echo $digest
-            else if type -q openssl
-                command openssl dgst -sha256 "$file" | read -l label digest
-                echo $digest
+            set -l output
+            if command --query sha256sum
+                set output (command sha256sum -- "$file"); or return 1
+                string match -rg '^([0-9a-f]{64})[ \t]' -- "$output"
+            else if command --query shasum
+                set output (command shasum -a 256 -- "$file"); or return 1
+                string match -rg '^([0-9a-f]{64})[ \t]' -- "$output"
+            else if command --query openssl
+                set output (command openssl dgst -sha256 "$file"); or return 1
+                string match -rg ' ([0-9a-f]{64})$' -- "$output"
             else
                 return 127
             end
@@ -280,6 +283,7 @@ function __automexia_initialize
             set -g __automexia_alias_stat_reply
             set -g __automexia_alias_stat_reply (command stat -c '%a|%s' -- $argv 2>/dev/null)
             or set -g __automexia_alias_stat_reply (command stat -f '%Lp|%z' $argv 2>/dev/null)
+            or return 1
             test (count $__automexia_alias_stat_reply) -eq (count $argv)
         end
 
@@ -293,56 +297,40 @@ function __automexia_initialize
             for candidate in "$pointer" "$manifest" "$artifact"
                 test -f "$candidate"; and not test -L "$candidate"; or return 1
             end
-            set -l verified (command sh -c '
-                if metadata=$(stat -c "%a|%s" -- "$@" 2>/dev/null); then
-                    :
-                elif metadata=$(stat -f "%Lp|%z" "$@" 2>/dev/null); then
-                    :
-                else
-                    exit 1
-                fi
-                printf "%s\n" "$metadata" | while IFS= read -r line; do
-                    printf "M|%s\n" "$line"
-                done
-                if command -v sha256sum >/dev/null 2>&1; then
-                    sha256sum -- "$7" "$8" | while IFS=" " read -r digest rest; do
-                        printf "H|%s\n" "$digest"
-                    done
-                elif command -v shasum >/dev/null 2>&1; then
-                    shasum -a 256 -- "$7" "$8" | while IFS=" " read -r digest rest; do
-                        printf "H|%s\n" "$digest"
-                    done
-                elif command -v openssl >/dev/null 2>&1; then
-                    openssl dgst -sha256 "$7" "$8" | while read -r label digest; do
-                        printf "H|%s\n" "$digest"
-                    done
-                else
-                    exit 127
-                fi
-            ' automexia-alias-verify "$generated" "$__automexia_alias_root" \
+            __automexia_alias_stat_metadata "$generated" "$__automexia_alias_root" \
                 "$generations" "$pointer" "$directory" "$shell_directory" \
-                "$manifest" "$artifact"); or return 1
-            test (count $verified) -eq 10; or return 1
-            for index in 1 2 3 4 5 6 7 8
-                set -l fields (string split '|' -- "$verified[$index]")
-                test (count $fields) -eq 3; and test "$fields[1]" = M; and \
-                    string match -qr '^[0-7]{3,4}$' -- "$fields[2]"; and \
-                    test (string sub -s -2 -- "$fields[2]") = 00; and \
-                    string match -qr '^[0-9]+$' -- "$fields[3]"; or return 1
-            end
+                "$manifest" "$artifact"; or return 1
+            set -l verified $__automexia_alias_stat_reply
+            test (count $verified) -eq 8; or return 1
+            # Reject any invalid row in one builtin pass. Re-splitting eight
+            # records and checking each field separately dominates small reloads.
+            string match -rvq '^[0-7]{1,2}00\|[0-9]+$' -- $verified; and return 1
             set -l pointer_fields (string split '|' -- "$verified[4]")
             set -l manifest_fields (string split '|' -- "$verified[7]")
             set -l artifact_fields (string split '|' -- "$verified[8]")
-            test "$pointer_fields[3]" -le 80; and \
-                test "$manifest_fields[3]" -le 65536; and \
-                test "$artifact_fields[3]" -le 1114112; or return 1
-            set -l manifest_hash (string split '|' -- "$verified[9]")
-            set -l artifact_hash (string split '|' -- "$verified[10]")
-            test (count $manifest_hash) -eq 2; and test "$manifest_hash[1]" = H; and \
-                string match -qr '^[0-9a-f]{64}$' -- "$manifest_hash[2]"; and \
-                test (count $artifact_hash) -eq 2; and test "$artifact_hash[1]" = H; and \
-                string match -qr '^[0-9a-f]{64}$' -- "$artifact_hash[2]"; or return 1
-            set -g __automexia_alias_hash_pair_reply "$manifest_hash[2]" "$artifact_hash[2]"
+            test "$pointer_fields[2]" -le 80; and \
+                test "$manifest_fields[2]" -le 65536; and \
+                test "$artifact_fields[2]" -le 1114112; or return 1
+            # Check byte ceilings before hashing; launch one exact command for
+            # both files and parse its result with Fish builtins.
+            set -l hashes
+            set -l pattern '^([0-9a-f]{64})[ \t]'
+            if command --query sha256sum
+                set hashes (command sha256sum -- "$manifest" "$artifact"); or return 1
+            else if command --query shasum
+                set hashes (command shasum -a 256 -- "$manifest" "$artifact"); or return 1
+            else if command --query openssl
+                set hashes (command openssl dgst -sha256 "$manifest" "$artifact"); or return 1
+                set pattern ' ([0-9a-f]{64})$'
+            else
+                return 127
+            end
+            test (count $hashes) -eq 2; or return 1
+            set -g __automexia_alias_hash_pair_reply
+            for hash in $hashes
+                set -l digest (string match -rg "$pattern" -- "$hash"); or return 1
+                set -ga __automexia_alias_hash_pair_reply "$digest"
+            end
         end
         function __automexia_alias_private_root_entries --argument-names pointer
             set -l generated "$__automexia_alias_config_root/generated"
@@ -480,10 +468,20 @@ function __automexia_initialize
                 set -g __automexia_alias_reason generation-directory
                 return 1
             end
-            set -l manifest_lines
-            while read -l line
-                set -a manifest_lines "$line"
-            end <"$manifest"
+            # Read one bounded buffer. Canonical manifests contain ASCII records
+            # with a final LF; compare the byte count to detect a consumed NUL.
+            set -l manifest_contents
+            set -l fish_read_limit 65537
+            read -z manifest_contents <"$manifest"
+            set -l manifest_metadata (string split '|' -- "$__automexia_alias_stat_reply[7]")
+            if not string match -qr '^[\x20-\x7e\n]+\n$' -- "$manifest_contents"; or \
+                    test (string length -- "$manifest_contents") -ne "$manifest_metadata[2]"
+                set -g __automexia_alias_state tampered
+                set -g __automexia_alias_reason manifest-file
+                return 1
+            end
+            set -l manifest_lines (string split \n -- "$manifest_contents")
+            set -e manifest_lines[-1]
             if test (count $manifest_lines) -ne 10; or \
                     test "$manifest_lines[1]" != automexia-alias-generation-v1; or \
                     test "$manifest_lines[2]" != schema=1; or \
@@ -541,7 +539,7 @@ function __automexia_initialize
                     set -g __automexia_alias_reason alias-name
                     return 1
                 end
-                if type -q "$name"; and not __automexia_alias_owned_public "$name"
+                if not __automexia_alias_owned_public "$name"; and type -q "$name"
                     if not __automexia_alias_consent "$name"
                         set -a __automexia_alias_collisions "$name"
                         continue

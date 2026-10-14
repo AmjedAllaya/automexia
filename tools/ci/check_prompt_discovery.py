@@ -6,10 +6,13 @@ from check_command_productivity import rust_code_without_comments_and_literals
 ROOT = Path(__file__).resolve().parents[2]
 OWNERS = {
     "helper": "apps/automexia-terminal/src/automexia/prompt_discovery.rs",
+    "protocol": "automexia-devops/src/prompt_helper.rs",
+    "console": "apps/automexia-terminal/src/bin/amx.rs",
     "main": "apps/automexia-terminal/src/main.rs",
     "runtime": "apps/automexia-terminal/src/automexia/runtime.rs",
     "parser": "automexia-devops/src/kubernetes.rs",
     "context": "automexia-devops/src/context.rs",
+    "git": "automexia-devops/src/wsl_git.rs",
     "renderer": "apps/automexia-terminal/src/renderer/devops_status.rs",
 }
 
@@ -21,7 +24,6 @@ def validate(sources: dict[str, str]) -> None:
                 "start.elapsed() >= deadline", "stop_and_reap(&mut child)", "child.try_wait()",
                 "MAX_RESPONSE", "PeekNamedPipe", "Stdio::null()"]
     required.extend([
-        "const MAX_REQUEST: usize = 8192;", "const MAX_RESPONSE: usize = 4096;",
         "const DEADLINE: Duration = Duration::from_millis(1500);",
         "const POLL: Duration = Duration::from_millis(10);",
     ])
@@ -29,6 +31,19 @@ def validate(sources: dict[str, str]) -> None:
         raise ValueError("prompt helper lifecycle boundary changed")
     if re.findall(r"Command::new\s*\(\s*([^)]*?)\s*\)", helper) != ["executable"] or any(token in helper for token in ['println!', 'eprintln!', 'tracing::']):
         raise ValueError("prompt helper gained unreviewed launch or diagnostic authority")
+    if any(token not in helper for token in ["helper_executable(&std::env::current_exe().ok()?)",
+                                             "metadata.is_file()", "metadata.file_attributes() & 0x400 == 0"]):
+        raise ValueError("prompt helper lost package-owned entrypoint selection")
+    protocol = sources["protocol"].split("#[cfg(test)]", 1)[0]
+    if any(token not in protocol for token in ["pub const MAX_REQUEST: usize = 8192;",
+                                               "pub const MAX_RESPONSE: usize = 4096;",
+                                               "request.len() > MAX_REQUEST", "bytes.len() <= MAX_RESPONSE"]):
+        raise ValueError("prompt helper protocol limits changed")
+    if any(token in protocol for token in ("println!", "eprintln!", "tracing::")):
+        raise ValueError("prompt helper protocol gained unreviewed diagnostics")
+    console = sources["console"]
+    if console.index("prompt_helper::dispatch_helper()") > console.index("Command::new(executable)"):
+        raise ValueError("console prompt helper forwards to the desktop")
     main = sources["main"]
     if main.index("prompt_discovery::dispatch_helper()") > main.index("panic::attach_handler()"):
         raise ValueError("prompt helper initializes application state")
@@ -63,10 +78,18 @@ def validate(sources: dict[str, str]) -> None:
     context = sources["context"].split("#[cfg(all(test", 1)[0]
     if "let kubernetes = if view.wsl.is_some()" not in context or "kubernetes_context(host_home" in context:
         raise ValueError("guest context can select the host cluster")
-    for name in ["parser", "context"]:
+    for name in ["parser", "context", "git", "protocol"]:
         production = sources[name].split("#[cfg(test)]", 1)[0].split("#[cfg(all(test", 1)[0]
         if any(token in production for token in ["std::process", "Command::new", "std::net", ".spawn("]):
             raise ValueError("passive extension gained launch or network authority")
+    git = sources["git"].split("#[cfg(test)]", 1)[0]
+    for token in ["const MAX_GIT_BYTES: usize = 4096;", "const MAX_ANCESTORS: usize = 64;",
+                  "kubernetes::wsl_path(", "kubernetes::wsl_guest_entry(", "kubernetes::reparse_point(&metadata)"]:
+        if token not in git:
+            raise ValueError("WSL Git discovery lost its bounded guest filesystem boundary")
+    compact_helper = re.sub(r"\s+", "", protocol)
+    if any(token not in compact_helper for token in ["request.git.then(", "request.kubernetes.then(", "crate::wsl_git::from_wsl_session("]):
+        raise ValueError("WSL prompt discovery lost independent feature scopes")
     parser = sources["parser"]
     for token in ["pub const MAX_BYTES: usize = 1024 * 1024;", "pub const MAX_FILES: usize = 16;",
                   "const MAX_CONTEXTS: usize = 256;", "max_depth: 32,", "max_documents: 1,",

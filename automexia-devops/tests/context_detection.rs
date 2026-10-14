@@ -519,6 +519,25 @@ fn git_only_scope_tracks_branch_without_reading_other_local_context() {
         .is_none());
 }
 
+#[cfg(windows)]
+#[test]
+fn wsl_git_never_publishes_a_windows_mount_guess_before_guest_discovery() {
+    let temporary = tempfile::tempdir().unwrap();
+    let project = temporary.path().join("project");
+    write(&project, ".git/HEAD", "ref: refs/heads/host-canary\n");
+    let mut session = facts(temporary.path(), &project);
+    let path = project.to_str().unwrap().replace('\\', "/");
+    session.cwd = Some(format!("/mnt/{}{}", path[..1].to_lowercase(), &path[2..]).into());
+    session.distro = Some("Fixture-Distro".into());
+    session.shell_name = Some("bash".into());
+    session.shell_user = Some("fixture".into());
+    session.shell_integration = true;
+    assert!(automexia_devops::detect_git_only(&session)
+        .git_branch
+        .is_none());
+    assert!(automexia_devops::detect(&session).git_branch.is_none());
+}
+
 #[test]
 fn native_file_context_changes_are_seen_by_the_next_refresh() {
     isolated_fixture("mutations");

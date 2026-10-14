@@ -451,6 +451,74 @@ system and packaged ConPTY runtime when validating Windows delivery. These
 process tests do not establish GUI pixels; the shared glyph and native rendering
 gates remain separate.
 
+## WSL version, distro and shell matrix
+
+Run these checks inside an approved disposable Windows environment. They also
+accept a staged local checkout, so validation does not require a push. Each case
+names an installed distro and its expected WSL version:
+
+```powershell
+python tools/ci/native_wsl_shell_matrix.py --case Ubuntu-24.04=1 --case Debian=2 --report target/wsl-shell-matrix.json
+```
+
+The driver verifies the actual versions before running anything. It requires
+Python 3, Git, Bash, Zsh and Fish inside each selected distro. Use `--shells bash`
+for a deliberately narrower run; missing requested shells fail. It runs the
+existing shell behavior suites, checks real prompt identity and directory
+markers, and records 30 startup-plus-first-hook samples after three warmups.
+Sources used for measurements are staged on the Linux filesystem. The report
+includes the QA supervisor's process overhead; it is not input-to-pixel latency
+or a baseline/candidate speedup claim. Existing adapter and alias-reload
+performance budgets still apply for all three shells. A timing failure does
+not skip later behavioral assertions. The matrix retains each shell's result
+and still fails if any suite, identity check or benchmark fails.
+
+Each shell suite also checks tampering, permissions, symlinks, byte limits,
+malformed manifests and failed hash commands through
+`test_shell_artifact_validation.py`. The report
+keeps separate adapter and alias-reload p95 values against the unchanged 50 ms
+limit. Fish times enabled loading inside the shell and verifies that the fixture
+loaded; interpreter startup and disabled mode cannot stand in for that work.
+
+Nightly and release WSL jobs require `AUTOMEXIA_TEST_WSL_CASES`, for example
+`Ubuntu-24.04=1;Debian=2`. The existing `AUTOMEXIA_TEST_WSL_DISTRO` still selects
+the independent native clone/resize case. Configure these only on the approved
+isolated runner. The jobs retain `wsl-shell-matrix.json`; an absent distro,
+wrong WSL version, failed suite or missing prerequisite cannot produce a pass.
+
+The same jobs run `native_wsl_git_prompt.py` against the built application and
+the explicitly selected distro. It creates disposable Linux repositories,
+checks branch changes, worktrees, detached HEAD, disabled Git and rejected
+symlinks, then removes its fixtures. To run it without a push:
+
+```powershell
+python tools/ci/native_wsl_git_prompt.py --binary target/debug/amx.exe --distro Ubuntu-24.04 --report target/wsl-git-prompt.json
+```
+
+The report retains each launch time, failed checks, cleanup status and binary
+identity. The five-second bound includes Windows process creation. Compare cold
+and warm launches using the same build profile; use an optimized build when
+assessing release startup. A delayed debug-image launch is not a measurement of
+Git parsing, and a later pass does not erase the first failure.
+The bundled `amx.exe` handles the restricted request directly, without loading
+the desktop image. The native check also copies this entrypoint into a temporary
+folder without the desktop executable to catch accidental forwarding. The
+desktop entrypoint keeps protocol support for single-binary developer builds.
+Native WSL commands wait for the shell's editable input boundary, not just the
+start of its context rows. A short deliberate prompt delay tests this ordering;
+it is fault injection, separate from startup measurements. The fixture reads
+UTF-8 snapshots explicitly and checks Unicode command output.
+
+`test_windows_wsl_transport.ps1` separately checks the real Windows process
+adapter with a controlled executable: exact argv, UTF-8 without a BOM, nonzero
+exit, blocked stdin, output limits and client cleanup. It is part of the Windows
+shell gate and does not require WSL. Its result is not native Linux evidence.
+
+These checks do not certify every distro, WSLg, graphics, networking, or the
+full Windows GUI. Keep the ConPTY, clone, resize and application gates alongside
+them. If WSL 2 cannot start in a nested VM, record it as unavailable rather than
+substituting WSL 1 or changing the host's virtualization settings.
+
 ## Live resize preservation
 
 `cargo xtask test resize-stress` runs the library stress tests **and** the

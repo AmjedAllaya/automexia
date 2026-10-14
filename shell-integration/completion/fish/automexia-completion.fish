@@ -38,15 +38,17 @@ function __automexia_completion_initialize
     __automexia_completion_directory_safe; and set __automexia_completion_path_safe 1
 
     function __automexia_completion_hash --argument-names file
-        if type -q sha256sum
-            command sha256sum -- "$file" | read -l digest remainder
-            printf '%s\n' "$digest"
-        else if type -q shasum
-            command shasum -a 256 -- "$file" | read -l digest remainder
-            printf '%s\n' "$digest"
-        else if type -q openssl
-            command openssl dgst -sha256 "$file" | read -l label digest
-            printf '%s\n' "$digest"
+        set -l output
+        # Hash tools run externally; their lookup must not autoload functions.
+        if command --query sha256sum
+            set output (command sha256sum -- "$file"); or return 1
+            string match -rg '^([0-9a-f]{64})[ \t]' -- "$output"
+        else if command --query shasum
+            set output (command shasum -a 256 -- "$file"); or return 1
+            string match -rg '^([0-9a-f]{64})[ \t]' -- "$output"
+        else if command --query openssl
+            set output (command openssl dgst -sha256 "$file"); or return 1
+            string match -rg ' ([0-9a-f]{64})$' -- "$output"
         else
             return 127
         end
@@ -56,13 +58,18 @@ function __automexia_completion_initialize
         set -l file "$__automexia_completion_root/fish/$target.fish"
         test -f "$file"; and not test -L "$file"; or return 0
         test -f "$file.sha256"; and not test -L "$file.sha256"; or return 0
-        test (command wc -c <"$file") -le 1114112; or return 0
-        test (command wc -c <"$file.sha256") -le 192; or return 0
         set -l existing (complete -c "$target")
         if test (count $existing) -gt 0
             set -ga __automexia_completion_collisions $target
             return 0
         end
+        set -l sizes (command stat -c '%s' -- "$file" "$file.sha256" 2>/dev/null)
+        or set sizes (command stat -f '%z' "$file" "$file.sha256" 2>/dev/null)
+        or return 0
+        test (count $sizes) -eq 2; and \
+            string match -qr '^[0-9]{1,7}$' -- "$sizes[1]"; and \
+            string match -qr '^[0-9]{1,3}$' -- "$sizes[2]"; and \
+            test "$sizes[1]" -le 1114112; and test "$sizes[2]" -le 192; or return 0
         set -l expected_digests
         while read -l expected
             string match -qr '^[0-9a-f]{64}$' -- "$expected"; or return 0

@@ -778,15 +778,21 @@ fn process_refresh(mut request: RefreshRequest) {
         #[cfg(target_os = "windows")]
         let snapshot = {
             let mut snapshot = snapshot;
-            if request.scope.devops
-                && automexia_devops::kubernetes::is_wsl_session(&request.session)
-            {
+            if automexia_devops::kubernetes::is_wsl_session(&request.session) {
                 publish_devops_progress(&request, &snapshot);
                 let context = super::prompt_discovery::refresh(
                     &request.session,
+                    request.scope.git,
+                    request.scope.devops,
                     &request.cancellation,
                 );
-                devops::attach_kubernetes_context(&mut snapshot, context);
+                let context = context.unwrap_or_default();
+                if request.scope.git {
+                    snapshot.git_branch = context.git_branch;
+                }
+                if request.scope.devops {
+                    devops::attach_kubernetes_context(&mut snapshot, context.kubernetes);
+                }
             }
             snapshot
         };

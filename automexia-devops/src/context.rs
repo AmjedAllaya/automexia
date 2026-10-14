@@ -44,7 +44,11 @@ pub fn detect_git_only(session: &SessionFacts) -> DevOpsSnapshot {
     {
         let view = session_view(session, None);
         DevOpsSnapshot {
-            git_branch: git_branch(view.cwd.as_deref())
+            git_branch: view
+                .wsl
+                .is_none()
+                .then(|| git_branch(view.cwd.as_deref()))
+                .flatten()
                 .map(|value| sanitize_label(&value)),
             ..DevOpsSnapshot::default()
         }
@@ -135,7 +139,7 @@ fn detect_native(session: &SessionFacts, include_git: bool) -> DevOpsSnapshot {
                 .and_then(terraform_from_automexia_json)
         });
 
-    let git_branch = include_git
+    let git_branch = (include_git && view.wsl.is_none())
         .then(|| {
             git_branch(cwd)
                 .or_else(|| project_context.as_ref().and_then(git_from_automexia_json))
@@ -304,7 +308,8 @@ fn windows_wsl_session_view(session: &SessionFacts) -> Option<SessionView> {
     // lookup can inherit unbounded provider/filesystem latency and stall the
     // single bounded extension worker. Shell-published distro/version metadata
     // provides the visible OS identity, /mnt/<drive> paths map directly to the
-    // host filesystem for Git/project discovery. Unmapped guest locations and
+    // host filesystem for project discovery. Git reads belong to the isolated
+    // guest helper even on mounted drives. Unmapped guest locations and
     // unavailable provider context never fall back to the host's identity.
     let distro_label = session
         .os_version
@@ -836,16 +841,17 @@ fn git_branch(cwd: Option<&Path>) -> Option<String> {
             _ => return None,
         };
 
-        let head = read_small_text(&head_path)?;
-        let head = head.trim();
-        if let Some(branch) = head.strip_prefix("ref: refs/heads/") {
-            return Some(branch.to_string());
-        }
-        if !head.is_empty() {
-            return Some(head.chars().take(8).collect());
-        }
-        return None;
+        return git_head_label(&read_small_text(&head_path)?);
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn git_head_label(head: &str) -> Option<String> {
+    let head = head.trim();
+    if let Some(branch) = head.strip_prefix("ref: refs/heads/") {
+        return Some(branch.to_owned());
+    }
+    (!head.is_empty()).then(|| head.chars().take(8).collect())
 }
 
 #[cfg(not(target_arch = "wasm32"))]

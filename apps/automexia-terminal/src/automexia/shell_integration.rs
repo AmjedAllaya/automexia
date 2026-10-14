@@ -11,12 +11,27 @@ use std::process::Command;
 pub const ROOT_ENV: &str = "AUTOMEXIA_SHELL_INTEGRATION_ROOT";
 const CLI_ENV: &str = "AUTOMEXIA_CLI";
 
-fn cli_wslenv(existing: &str) -> String {
+fn session_wslenv(existing: &str) -> String {
+    const OWNED: [&str; 4] = [
+        "AUTOMEXIA_CLI/up",
+        "TERM_PROGRAM/u",
+        "AUTOMEXIA_SHELL_INTEGRATION/u",
+        "COLORTERM/u",
+    ];
     let mut entries: Vec<_> = existing
         .split(':')
-        .filter(|part| !part.is_empty() && part.split('/').next() != Some(CLI_ENV))
+        .filter(|part| {
+            !part.is_empty()
+                && !OWNED.iter().any(|owned| {
+                    part.split('/').next().is_some_and(|name| {
+                        owned.split('/').next().is_some_and(|owned_name| {
+                            name.eq_ignore_ascii_case(owned_name)
+                        })
+                    })
+                })
+        })
         .collect();
-    entries.push("AUTOMEXIA_CLI/up");
+    entries.extend(OWNED);
     entries.join(":")
 }
 
@@ -177,7 +192,7 @@ pub fn prepare_session_environment() -> Option<PathBuf> {
     if cfg!(windows) {
         env::set_var(
             "WSLENV",
-            cli_wslenv(&env::var("WSLENV").unwrap_or_default()),
+            session_wslenv(&env::var("WSLENV").unwrap_or_default()),
         );
     }
     match &root {
@@ -352,10 +367,10 @@ mod tests {
     #[test]
     fn google_command_wslenv_path_translation_is_unique_and_one_way() {
         assert_eq!(
-            cli_wslenv("KEEP/u:AUTOMEXIA_CLI/l:OTHER/p:AUTOMEXIA_CLI"),
-            "KEEP/u:OTHER/p:AUTOMEXIA_CLI/up"
+            session_wslenv("KEEP/u:AUTOMEXIA_CLI/l:OTHER/p:AUTOMEXIA_CLI"),
+            "KEEP/u:OTHER/p:AUTOMEXIA_CLI/up:TERM_PROGRAM/u:AUTOMEXIA_SHELL_INTEGRATION/u:COLORTERM/u"
         );
-        assert_eq!(cli_wslenv(&cli_wslenv("")), "AUTOMEXIA_CLI/up");
+        assert_eq!(session_wslenv(&session_wslenv("")), session_wslenv(""));
         assert!(cmd_alias_safe("bin/Automexia Terminal/automexia.exe"));
         for path in [
             "",
@@ -366,6 +381,17 @@ mod tests {
         ] {
             assert!(!cmd_alias_safe(path));
         }
+    }
+
+    #[test]
+    fn wsl_identity_replaces_conflicting_direction_and_translation_flags() {
+        let value = session_wslenv(
+            "TERM_PROGRAM/w:term_program/p:COLORTERM/l:AUTOMEXIA_SHELL_INTEGRATION/w:KEEP/up",
+        );
+        assert_eq!(
+            value,
+            "KEEP/up:AUTOMEXIA_CLI/up:TERM_PROGRAM/u:AUTOMEXIA_SHELL_INTEGRATION/u:COLORTERM/u"
+        );
     }
 
     #[test]

@@ -42,6 +42,21 @@ class PlatformCoverageTests(unittest.TestCase):
             PLATFORM.WINDOWS_RELEASE_TRUST_SCRIPT.read_text(encoding="utf-8")
         )
 
+    def test_wsl_version_matrix_cannot_be_removed(self) -> None:
+        for workflow, job_name, validate in (
+            (self.nightly, "native-wsl-session-clone", PLATFORM.validate_nightly),
+            (self.release, "native-wsl-resilience", PLATFORM.validate_release),
+        ):
+            for driver in ("native_wsl_shell_matrix.py", "native_wsl_git_prompt.py"):
+                with self.subTest(job=job_name, driver=driver):
+                    altered = copy.deepcopy(workflow)
+                    altered["jobs"][job_name]["steps"] = [
+                        step for step in altered["jobs"][job_name]["steps"]
+                        if driver not in step.get("run", "")
+                    ]
+                    with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "distro/version/shell"):
+                        validate(altered)
+
     def test_macos_frontend_cannot_restore_a_hard_framework_link(self) -> None:
         source = PLATFORM.MACOS_BUILD_SCRIPT.read_text(encoding="utf-8")
         altered = source.replace("-weak_framework", "-framework")

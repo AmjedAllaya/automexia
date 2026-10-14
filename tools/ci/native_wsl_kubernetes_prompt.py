@@ -119,11 +119,12 @@ def verify(binary: pathlib.Path, distro: str, report: pathlib.Path) -> None:
 
     def read(expected: dict | None) -> None:
         start = time.perf_counter()
-        result = run([str(binary), "--internal-prompt-context-v1", json.dumps(request)], timeout=5)
+        result = run([str(binary), "--internal-prompt-context-v2", json.dumps({
+            "session": request, "git": False, "kubernetes": True})], timeout=5)
         samples.append((time.perf_counter() - start) * 1000)
         if result.returncode or result.stderr:
             raise RuntimeError("native helper startup failed")
-        if json.loads(result.stdout) != expected or b"fixture-private-canary" in result.stdout:
+        if json.loads(result.stdout) != {"kubernetes": expected, "git_branch": None} or b"fixture-private-canary" in result.stdout:
             raise RuntimeError("native helper projection mismatch or disclosure")
 
     try:
@@ -155,7 +156,7 @@ def verify(binary: pathlib.Path, distro: str, report: pathlib.Path) -> None:
         if run([*prefix, "clear", "--value", fixture]).returncode:
             raise RuntimeError("native fixture clear failed")
         read(None)
-        invalid = run([str(binary), "--internal-prompt-context-v1", "not-json"])
+        invalid = run([str(binary), "--internal-prompt-context-v2", "not-json"])
         if invalid.returncode != 2 or invalid.stdout or invalid.stderr:
             raise RuntimeError("invalid helper request was not rejected silently")
     finally:

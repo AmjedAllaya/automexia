@@ -24,6 +24,12 @@ fn exit_code(status: ExitStatus) -> i32 {
 }
 
 fn main() {
+    // Serve the bounded prompt protocol without loading the desktop image.
+    #[cfg(windows)]
+    if let Some(code) = automexia_devops::prompt_helper::dispatch_helper() {
+        process::exit(code);
+    }
+
     let Some(executable) = env::current_exe().ok().map(|path| {
         path.with_file_name(if cfg!(windows) {
             "automexia.exe"

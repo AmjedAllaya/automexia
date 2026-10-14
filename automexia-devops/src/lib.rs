@@ -6,6 +6,11 @@ mod context;
 pub mod kubernetes;
 mod locations;
 mod model;
+#[cfg(windows)]
+#[doc(hidden)]
+pub mod prompt_helper;
+#[cfg(any(windows, test))]
+pub mod wsl_git;
 
 use automexia_extension_api::{
     compact_label, compact_middle, Capability, ContextContribution, ContractError,

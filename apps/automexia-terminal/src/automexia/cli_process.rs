@@ -1,4 +1,4 @@
-//! Explicit CLI process ownership, separate from GUI/PTY ownership.
+//! Bounded CLI/background-query process ownership, separate from PTY ownership.
 use process_wrap::std::{ChildWrapper, CommandWrap};
 use std::{
     io::{self, Read},

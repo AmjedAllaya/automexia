@@ -30,8 +30,9 @@ The distribution and validated shell username are projected immediately from
 shell metadata without waiting for discovery. Window-title changes no longer
 cancel valid discovery or discard its cache; directory, process, shell identity
 and path-hint changes still do. During initial WSL discovery, the existing worker
-publishes available Git/context fields before waiting for the guest Kubernetes
-read. The existing 100 ms pending-context timer observes this intermediate state;
+publishes available local context before waiting for guest Git and Kubernetes
+reads. Git does not guess Linux mount mappings from the Windows filesystem.
+The existing 100 ms pending-context timer observes this intermediate state;
 the completion wake publishes the final result. An ordinary background refresh
 retains the previous namespace until it completes, avoiding a periodic blink.
 No additional worker, persistent cache or faster idle polling is introduced.
@@ -51,6 +52,14 @@ short-lived application helper with a 1.5-second deadline, cancellation, a 4 KiB
 reply limit and native child reaping. A slow/unavailable guest never selects the
 Windows host's cluster as a substitute. Nothing invokes kubectl, a shell, an
 authentication helper or a Kubernetes API in the product discovery path.
+The bundled console entrypoint serves this request directly, avoiding repeated
+desktop-image startup. A single-binary developer build uses desktop dispatch.
+
+The same helper reads Git HEAD metadata in Linux-native repositories and linked
+worktrees. Git and Kubernetes have independent read scopes. Git metadata is
+limited to 4 KiB per file and 64 parent directories; links, device/remote paths
+and traversal outside the selected distro are rejected. Missing or slow reads
+omit the branch rather than borrowing a Windows repository's branch.
 
 The passive parser accepts YAML mapping reordering, quoted labels, inline maps
 and JSON. The first file defining a named context wins, including an omitted

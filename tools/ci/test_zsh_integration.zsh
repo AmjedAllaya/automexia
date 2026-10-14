@@ -58,6 +58,7 @@ expected_path=$'\e[38;2;88;113;141m/\e[38;2;98;176;255msrv\e[38;2;88;113;141m/\e
 automexia_aliases_health | grep -qF 'state=ready'
 [[ $(axt) == first ]]
 
+performance_failed=0
 zmodload zsh/datetime
 typeset -a alias_samples
 for iteration in {1..25}; do
@@ -67,7 +68,8 @@ for iteration in {1..25}; do
   (( iteration > 5 )) && alias_samples+=("$elapsed")
 done
 zsh_alias_reload_p95=$(printf '%s\n' "${alias_samples[@]}" | sort -n | sed -n '19p')
-(( zsh_alias_reload_p95 <= 0.050 ))
+printf 'SHELL_BENCHMARK shell=zsh operation=alias-reload p95=%s unit=s\n' "$zsh_alias_reload_p95"
+(( zsh_alias_reload_p95 <= 0.050 )) || performance_failed=1
 
 second_alias_generation=$(
   python3 "$root/tools/ci/create_cp31_alias_fixture.py" \
@@ -126,7 +128,8 @@ for iteration in {1..25}; do
   (( iteration > 5 )) && adapter_samples+=("$elapsed")
 done
 zsh_adapter_p95=$(printf '%s\n' "${adapter_samples[@]}" | sort -n | sed -n '19p')
-(( zsh_adapter_p95 <= 0.050 ))
+printf 'SHELL_BENCHMARK shell=zsh operation=adapter p95=%s unit=s\n' "$zsh_adapter_p95"
+(( zsh_adapter_p95 <= 0.050 )) || performance_failed=1
 
 unset AUTOMEXIA_COMPLETION_ADAPTER_ZSH_LOADED AUTOMEXIA_COMPLETION_DISABLED
 unset '_comps[kubectl]'
@@ -152,4 +155,10 @@ overlong_root=${overlong_root// /x}
 export AUTOMEXIA_CONFIG_HOME="/$overlong_root"
 source "$root/shell-integration/completion/zsh/automexia-completion.zsh"
 automexia_completion_health | grep -qF 'state=unsafe-path/native-fallback'
+python3 "$root/tools/ci/test_shell_artifact_validation.py" --shell zsh
+print 'PASS: Zsh behavioral assertions completed'
+if (( performance_failed )); then
+  print -u2 "FAIL: Zsh benchmark limit exceeded: adapter-p95=${zsh_adapter_p95}s, alias-reload-p95=${zsh_alias_reload_p95}s"
+  exit 1
+fi
 print "PASS: Zsh integration is prompt-safe, native-first, digest-verified, linked-parent-safe, disable-safe, idempotent, adapter-p95=${zsh_adapter_p95}s, alias-reload-p95=${zsh_alias_reload_p95}s, and command-neutral"

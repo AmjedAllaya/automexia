@@ -90,25 +90,6 @@ pub fn setup_environment_variables(
 
     std::env::set_var("COLORTERM", "truecolor");
     std::env::set_var(product::SHELL_INTEGRATION_ENV, "1");
-    #[cfg(target_os = "windows")]
-    {
-        // Carry Automexia's identity through wsl.exe without changing
-        // distro prompts for terminals launched outside Automexia.
-        let mut wslenv = std::env::var("WSLENV").unwrap_or_default();
-        for entry in [
-            "TERM_PROGRAM/u",
-            "AUTOMEXIA_SHELL_INTEGRATION/u",
-            "COLORTERM/u",
-        ] {
-            if !wslenv.split(':').any(|part| part == entry) {
-                if !wslenv.is_empty() {
-                    wslenv.push(':');
-                }
-                wslenv.push_str(entry);
-            }
-        }
-        std::env::set_var("WSLENV", wslenv);
-    }
     std::env::remove_var("DESKTOP_STARTUP_ID");
     std::env::remove_var("XDG_ACTIVATION_TOKEN");
     #[cfg(target_os = "macos")]

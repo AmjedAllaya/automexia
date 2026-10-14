@@ -29,27 +29,34 @@ __automexia_completion_path_safe=0
 __automexia_completion_directory_safe && __automexia_completion_path_safe=1
 
 __automexia_completion_hash() {
-  local file=$1
+  local file=$1 output
   if command -v sha256sum >/dev/null 2>&1; then
-    command sha256sum -- "$file" | command awk '{print $1}'
+    output=$(exec sha256sum -- "$file") || return 1
+    REPLY=${output%% *}
   elif command -v shasum >/dev/null 2>&1; then
-    command shasum -a 256 -- "$file" | command awk '{print $1}'
+    output=$(exec shasum -a 256 -- "$file") || return 1
+    REPLY=${output%% *}
   elif command -v openssl >/dev/null 2>&1; then
-    command openssl dgst -sha256 "$file" | command awk '{print $NF}'
+    output=$(exec openssl dgst -sha256 "$file") || return 1
+    REPLY=${output##* }
   else
     return 127
   fi
 }
 
 __automexia_load_completion() {
-  local target=$1 file expected alternate actual digest digest_count
+  local target=$1 file expected alternate actual digest digest_count sizes first second extra REPLY
   file="$__automexia_completion_root/bash/$target.bash"
   [[ -f $file && ! -L $file && -f $file.sha256 && ! -L $file.sha256 ]] || return 0
-  [[ $(wc -c <"$file") -le 1114112 && $(wc -c <"$file.sha256") -le 192 ]] || return 0
   if complete -p "$target" >/dev/null 2>&1; then
     __automexia_completion_collisions="${__automexia_completion_collisions}${__automexia_completion_collisions:+,}$target"
     return 0
   fi
+  sizes=$(exec stat -c '%s' -- "$file" "$file.sha256" 2>/dev/null) ||
+    sizes=$(exec stat -f '%z' "$file" "$file.sha256" 2>/dev/null) || return 0
+  first=${sizes%%$'\n'*} second=${sizes#*$'\n'}
+  [[ $sizes == *$'\n'* && $first =~ ^[0-9]{1,7}$ && $second =~ ^[0-9]{1,3}$ ]] || return 0
+  (( 10#$first <= 1114112 && 10#$second <= 192 )) || return 0
   expected=''
   alternate=''
   digest_count=0
@@ -64,7 +71,8 @@ __automexia_load_completion() {
     fi
   done <"$file.sha256"
   ((digest_count >= 1)) || return 0
-  actual=$(__automexia_completion_hash "$file") || return 0
+  __automexia_completion_hash "$file" || return 0
+  actual=$REPLY
   [[ $actual == "$expected" || $actual == "$alternate" ]] || return 0
   # shellcheck disable=SC1090 # The exact, user-private, digest-verified path is intentional.
   . "$file"

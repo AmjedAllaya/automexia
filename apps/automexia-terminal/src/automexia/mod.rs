@@ -75,3 +75,6 @@ pub mod ui;
 pub mod visual_test_hooks;
 #[cfg(windows)]
 pub(crate) mod windows_pipe_security;
+#[cfg(any(windows, test))]
+#[doc(hidden)]
+pub mod wsl;

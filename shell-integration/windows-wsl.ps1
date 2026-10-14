@@ -1,9 +1,11 @@
 $script:AutomexiaWslPayloadBytesLimit = 6MB
+$script:AutomexiaWslOutputCharsLimit = 65536
 
 function Invoke-AutomexiaWslScript(
     [string]$WslExecutable,
     [string]$Distribution,
-    [string]$Script
+    [string]$Script,
+    [ValidateRange(100, 300000)][int]$TimeoutMilliseconds = 60000
 ) {
     if ([string]::IsNullOrWhiteSpace($WslExecutable) -or
         -not (Test-Path -LiteralPath $WslExecutable -PathType Leaf)) {
@@ -42,6 +44,8 @@ function Invoke-AutomexiaWslScript(
     $utf8NoBom = [Text.UTF8Encoding]::new($false)
     $previousInputEncoding = [Console]::InputEncoding
     $previousOutputEncoding = [Console]::OutputEncoding
+    $started = $false
+    $timer = [Diagnostics.Stopwatch]::StartNew()
     try {
         try {
             [Console]::InputEncoding = $utf8NoBom
@@ -49,23 +53,68 @@ function Invoke-AutomexiaWslScript(
             if (-not $process.Start()) {
                 throw "Unable to start WSL integration process for $Distribution"
             }
+            $started = $true
         } finally {
             [Console]::InputEncoding = $previousInputEncoding
             [Console]::OutputEncoding = $previousOutputEncoding
         }
-        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-        $stderrTask = $process.StandardError.ReadToEndAsync()
-        $process.StandardInput.BaseStream.Write($payloadBytes, 0, $payloadBytes.Length)
-        $process.StandardInput.BaseStream.Close()
-        $process.WaitForExit()
-        $stdout = $stdoutTask.Result.Replace([string][char]0, '')
-        $stderr = $stderrTask.Result.Replace([string][char]0, '')
+        $streams = @(
+            foreach ($reader in @($process.StandardOutput, $process.StandardError)) {
+                $buffer = New-Object char[] 4096
+                [pscustomobject]@{
+                    Reader = $reader
+                    Buffer = $buffer
+                    Text = [Text.StringBuilder]::new()
+                    Pending = $reader.ReadAsync($buffer, 0, $buffer.Length)
+                    Done = $false
+                }
+            }
+        )
+        # A distro which never reads stdin must not trap a synchronous 6 MiB
+        # write. One deadline covers stdin, both bounded readers and client exit.
+        $write = $process.StandardInput.BaseStream.WriteAsync($payloadBytes, 0, $payloadBytes.Length)
+        $inputClosed = $false
+        while ($true) {
+            if ($timer.ElapsedMilliseconds -ge $TimeoutMilliseconds) {
+                throw 'WSL integration exceeded its deadline. Check the selected distro and retry.'
+            }
+            if (-not $inputClosed -and $write.IsCompleted) {
+                $write.GetAwaiter().GetResult()
+                $process.StandardInput.BaseStream.Close()
+                $inputClosed = $true
+            }
+            foreach ($stream in $streams) {
+                if (-not $stream.Done -and $stream.Pending.IsCompleted) {
+                    $count = $stream.Pending.GetAwaiter().GetResult()
+                    if ($count -eq 0) {
+                        $stream.Done = $true
+                    } else {
+                        if ($stream.Text.Length + $count -gt $script:AutomexiaWslOutputCharsLimit) {
+                            throw 'WSL integration exceeded its output limit.'
+                        }
+                        [void]$stream.Text.Append($stream.Buffer, 0, $count)
+                        $stream.Pending = $stream.Reader.ReadAsync($stream.Buffer, 0, $stream.Buffer.Length)
+                    }
+                }
+            }
+            if ($inputClosed -and $streams[0].Done -and $streams[1].Done -and $process.HasExited) { break }
+            Start-Sleep -Milliseconds 5
+        }
         return [pscustomobject]@{
             ExitCode = $process.ExitCode
-            Stdout = $stdout
-            Stderr = $stderr
+            Stdout = $streams[0].Text.ToString().Replace([string][char]0, '')
+            Stderr = $streams[1].Text.ToString().Replace([string][char]0, '')
         }
     } finally {
-        $process.Dispose()
+        try {
+            if ($started -and -not $process.HasExited) {
+                # Own this client only. Never terminate a distro shared with
+                # other terminals as a side effect of an installer failure.
+                $process.Kill()
+                if (-not $process.WaitForExit(2000)) { throw 'WSL client cleanup did not finish.' }
+            }
+        } finally {
+            $process.Dispose()
+        }
     }
 }

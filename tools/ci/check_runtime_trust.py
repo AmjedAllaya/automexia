@@ -187,6 +187,11 @@ def validate_windows_wake_registration(source: str) -> None:
 def validate_wsl(source: str) -> None:
     require(
         "AutomexiaWslPayloadBytesLimit" in source
+        and "AutomexiaWslOutputCharsLimit" in source
+        and "TimeoutMilliseconds" in source
+        and "WriteAsync" in source
+        and "ReadAsync" in source
+        and "$process.Kill()" in source
         and "RedirectStandardInput" in source
         and "--exec sh -s" in source,
         "WSL integration must use bounded raw standard input and a fixed shell command",

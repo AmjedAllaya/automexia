@@ -95,21 +95,22 @@ def measure_fish(adapter: Path) -> float:
     if not executable:
         raise RuntimeError("Fish is not installed")
     environment = os.environ.copy()
-    baseline = [executable, "--no-config", "-c", "true"]
+    environment.pop("AUTOMEXIA_COMPLETION_DISABLED", None)
+    environment.pop("AUTOMEXIA_COMPLETION_ADAPTER_FISH_LOADED", None)
     candidate = [
         executable,
         "--no-config",
         "-c",
-        'source "$argv[1]"',
+        'time source "$argv[1]"; '
+        'contains -- kubectl $__automexia_completion_loaded; or exit 1',
         str(adapter),
     ]
-    overheads: list[float] = []
+    samples: list[float] = []
     for iteration in range(WARMUPS + SAMPLES):
-        baseline_ms = run_exact(baseline, environment)
-        candidate_ms = run_exact(candidate, environment)
+        elapsed_ms = run_fish_timed(candidate, environment)
         if iteration >= WARMUPS:
-            overheads.append(max(0.0, candidate_ms - baseline_ms))
-    return percentile_95(overheads)
+            samples.append(elapsed_ms)
+    return percentile_95(samples)
 
 
 def measure_fish_alias_reload(config_root: Path) -> float:
@@ -128,7 +129,7 @@ def measure_fish_alias_reload(config_root: Path) -> float:
         "--no-config",
         "-c",
         'source "$argv[1]" >/dev/null; '
-        f"time for iteration in (seq {ALIAS_RELOAD_BATCH}); "
+        f"time for iteration in {' '.join(str(index) for index in range(ALIAS_RELOAD_BATCH))}; "
         "automexia_aliases_reload >/dev/null; or exit 1; end",
         str(integration),
     ]
@@ -160,17 +161,20 @@ def main() -> int:
     except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError) as error:
         print(f"completion adapter benchmark failed: {error}", file=sys.stderr)
         return 1
-    if p95_ms > MAX_P95_MS:
-        print(
-            f"shell operation p95 exceeded {MAX_P95_MS:.0f} ms: "
-            f"shell={args.shell} p95={p95_ms:.2f} ms",
-            file=sys.stderr,
-        )
-        return 1
+    print(
+        f"SHELL_BENCHMARK shell={args.shell} operation={operation} p95={p95_ms:.6f} unit=ms"
+    )
     print(
         f"shell={args.shell} {operation}-p95={p95_ms:.2f}ms "
         f"budget={MAX_P95_MS:.0f}ms"
     )
+    if p95_ms > MAX_P95_MS:
+        print(
+            f"shell operation p95 exceeded {MAX_P95_MS:.0f} ms: "
+            f"shell={args.shell} operation={operation} p95={p95_ms:.2f} ms",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

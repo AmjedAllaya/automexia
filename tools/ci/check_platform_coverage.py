@@ -280,6 +280,10 @@ def validate_nightly(workflow: dict[str, Any]) -> None:
 
     wsl = job(workflow, "native-wsl-session-clone", "nightly.yml")
     require("--native-wsl" in commands(wsl), "nightly WSL must exercise native distro/user/directory cloning")
+    require("native_wsl_shell_matrix.py" in commands(wsl)
+            and "native_wsl_git_prompt.py" in commands(wsl)
+            and "AUTOMEXIA_TEST_WSL_CASES" in commands(wsl),
+            "nightly WSL must declare and verify distro/version/shell cases")
 
     windows = job(workflow, "unsigned-windows", "nightly.yml")
     require(
@@ -432,6 +436,11 @@ def validate_release(workflow: dict[str, Any]) -> None:
     )
 
     preflight = job(workflow, "preflight", "release.yml")
+    wsl = job(workflow, "native-wsl-resilience", "release.yml")
+    require("native_wsl_shell_matrix.py" in commands(wsl)
+            and "native_wsl_git_prompt.py" in commands(wsl)
+            and "AUTOMEXIA_TEST_WSL_CASES" in commands(wsl),
+            "release WSL must declare and verify distro/version/shell cases")
     preflight_needs = {str(item) for item in preflight.get("needs", [])}
     controlled_assurance_gates = (
         "native-gui-resilience",

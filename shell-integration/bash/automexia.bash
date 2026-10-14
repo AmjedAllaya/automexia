@@ -413,7 +413,7 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
   __automexia_alias_reason=
   __automexia_alias_generation=
   __automexia_alias_loaded_path=
-  __automexia_alias_records=
+  __automexia_alias_record_kinds=() __automexia_alias_record_names=() __automexia_alias_record_definitions=()
   __automexia_alias_collisions=
 
   __automexia_alias_hash_stream() {
@@ -448,33 +448,67 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
     fi
   }
 
-  __automexia_alias_real_private_directories() {
-    local output path mode count=0
-    for path in "$@"; do
-      [[ -d $path && ! -L $path ]] || return 1
+  __automexia_alias_verify_entries() {
+    local output line kind maximum path mode size numeric_mode count=0 bsd_mode=0
+    local paths=() kinds=() maxima=()
+    while (( $# )); do
+      (( $# >= 3 )) || return 1
+      kind=$1 maximum=$2 path=$3
+      shift 3
+      [[ $kind == D || $kind == F ]] || return 1
+      paths+=("$path") kinds+=("$kind") maxima+=("$maximum")
     done
-    output=$(command stat -c '%a' "$@" 2>/dev/null) ||
-      output=$(command stat -f '%Lp' "$@" 2>/dev/null) || return 1
-    while IFS= read -r mode; do
-      [[ $mode =~ ^[0-7]{3,4}$ ]] || return 1
-      (( (8#$mode & 077) == 0 )) || return 1
+    # Both stat dialects default to lstat. Check type and permissions from the
+    # same result, including rejection of symlinks, without probing each twice.
+    output=$(exec stat -c '%f %s' -- "${paths[@]}" 2>/dev/null) || {
+      bsd_mode=1
+      output=$(exec stat -f '%p %z' "${paths[@]}" 2>/dev/null) || return 1
+    }
+    while [[ -n $output ]]; do
+      line=${output%%$'\n'*}
+      if [[ $output == *$'\n'* ]]; then output=${output#*$'\n'}; else output=''; fi
+      mode=${line%% *} size=${line#* }
+      (( count < ${#paths[@]} )) || return 1
+      [[ $size =~ ^[0-9]{1,18}$ ]] || return 1
+      if (( bsd_mode )); then
+        [[ $mode =~ ^[0-7]{5,7}$ ]] || return 1
+        numeric_mode=$((8#$mode))
+      else
+        [[ $mode =~ ^[0-9a-fA-F]{4,6}$ ]] || return 1
+        numeric_mode=$((16#$mode))
+      fi
+      (( (numeric_mode & 077) == 0 )) || return 1
+      if [[ ${kinds[$count]} == D ]]; then
+        (( (numeric_mode & 0170000) == 0040000 )) || return 1
+      else
+        (( (numeric_mode & 0170000) == 0100000 && 10#$size <= maxima[count] )) || return 1
+      fi
       count=$((count + 1))
-    done <<<"$output"
-    (( count == $# ))
+    done
+    (( count == ${#paths[@]} ))
   }
 
-  __automexia_alias_real_private_directory() {
-    __automexia_alias_real_private_directories "$1"
-  }
-
-  __automexia_alias_real_private_file() {
-    local path=$1 maximum=$2 output mode size extra
-    [[ -f $path && ! -L $path ]] || return 1
-    output=$(command stat -c '%a %s' "$path" 2>/dev/null) ||
-      output=$(command stat -f '%Lp %z' "$path" 2>/dev/null) || return 1
-    read -r mode size extra <<<"$output"
-    [[ -z $extra && $mode =~ ^[0-7]{3,4}$ && $size =~ ^[0-9]+$ ]] || return 1
-    (( (8#$mode & 077) == 0 && size <= maximum ))
+  __automexia_alias_hash_pair() {
+    local output line digest openssl_format=0
+    __automexia_alias_hash_pair_reply=()
+    if command -v sha256sum >/dev/null 2>&1; then
+      output=$(exec sha256sum -- "$1" "$2") || return 1
+    elif command -v shasum >/dev/null 2>&1; then
+      output=$(exec shasum -a 256 -- "$1" "$2") || return 1
+    elif command -v openssl >/dev/null 2>&1; then
+      output=$(exec openssl dgst -sha256 "$1" "$2") || return 1
+      openssl_format=1
+    else
+      return 127
+    fi
+    while [[ -n $output ]]; do
+      line=${output%%$'\n'*}
+      if [[ $output == *$'\n'* ]]; then output=${output#*$'\n'}; else output=''; fi
+      if (( openssl_format )); then digest=${line##* }; else digest=${line%% *}; fi
+      [[ $digest =~ ^[0-9a-f]{64}$ ]] || return 1
+      __automexia_alias_hash_pair_reply+=("$digest")
+    done
+    (( ${#__automexia_alias_hash_pair_reply[@]} == 2 ))
   }
 
   __automexia_alias_consent() {
@@ -497,24 +531,31 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
     return 1
   }
 
-  __automexia_alias_current_definition_digest() {
-    local kind=$1 name=$2 definition
+  __automexia_alias_current_definition() {
+    local kind=$1 name=$2
     case $kind in
-      A) definition=$(builtin alias -- "$name" 2>/dev/null) || return 1 ;;
-      F) definition=$(declare -f -- "$name" 2>/dev/null) || return 1 ;;
+      A)
+        builtin alias -- "$name" >/dev/null 2>&1 || return 1
+        if (( BASH_VERSINFO[0] >= 4 )); then
+          REPLY=${BASH_ALIASES[$name]}
+        else
+          REPLY=$(builtin alias -- "$name" 2>/dev/null) || return 1
+          REPLY=${REPLY#*=} REPLY=${REPLY#\'} REPLY=${REPLY%\'}
+        fi
+        ;;
+      F) REPLY=$(declare -f -- "$name" 2>/dev/null) || return 1 ;;
       *) return 1 ;;
     esac
-    printf '%s' "$definition" | __automexia_alias_hash_stream
   }
 
   __automexia_alias_owned_public() {
-    local requested=$1 kind name expected actual
-    while IFS='|' read -r kind name expected; do
-      [[ $kind == A && $name == "$requested" ]] || continue
-      actual=$(__automexia_alias_current_definition_digest "$kind" "$name") || return 1
-      [[ $actual == "$expected" ]]
+    local requested=$1 index REPLY
+    for (( index=0; index < ${#__automexia_alias_record_names[@]}; index++ )); do
+      [[ ${__automexia_alias_record_kinds[$index]} == A && ${__automexia_alias_record_names[$index]} == "$requested" ]] || continue
+      __automexia_alias_current_definition A "$requested" || return 1
+      [[ $REPLY == "${__automexia_alias_record_definitions[$index]}" ]]
       return
-    done <<<"$__automexia_alias_records"
+    done
     return 1
   }
 
@@ -538,9 +579,11 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
   }
 
   __automexia_alias_prepare() {
-    local pointer manifest manifest_hash line count=0 tag extra
+    local pointer manifest manifest_hash line count=0 tag
+    local fields=()
     local manifest_lines=0 manifest_valid=1
-    local name expected actual kind old_ifs
+    local manifest_contents=''
+    local name expected actual kind old_ifs pointer_data=''
 
     __automexia_alias_reason=
     __automexia_alias_collisions=
@@ -555,31 +598,33 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
       __automexia_alias_reason="config-root"
       return 1
     }
-    __automexia_alias_real_private_directories \
-      "$__automexia_alias_config_root/generated" \
-      "$__automexia_alias_root" "$__automexia_alias_root/generations" || {
-      __automexia_alias_state=unsafe-permissions
-      __automexia_alias_reason=directory
-      return 1
-    }
-
     pointer=$__automexia_alias_root/current
-    __automexia_alias_real_private_file "$pointer" 80 || {
+    [[ -f $pointer && ! -L $pointer ]] || {
       __automexia_alias_state=uninitialized
       __automexia_alias_reason=current
       return 1
     }
-    IFS= read -r __automexia_alias_candidate_generation <"$pointer" || {
-      __automexia_alias_state=tampered
-      __automexia_alias_reason="current-read"
-      return 1
-    }
-    [[ $(command wc -l <"$pointer") -eq 1 ]] || {
+    # Read at most 81 bytes, including newlines; a NUL or hitting the limit is
+    # invalid. Permission checks follow before any manifest/artifact is read.
+    if LC_ALL=C IFS= read -r -d '' -n 81 pointer_data <"$pointer"; then
       __automexia_alias_state=tampered
       __automexia_alias_reason="current-lines"
       return 1
+    fi
+    __automexia_alias_candidate_generation=${pointer_data%$'\n'}
+    [[ $pointer_data == "$__automexia_alias_candidate_generation"$'\n' ]] || {
+      __automexia_alias_state=tampered
+      __automexia_alias_reason=current-format
+      return 1
     }
     if [[ $__automexia_alias_candidate_generation == disabled ]]; then
+      __automexia_alias_verify_entries \
+        D 0 "$__automexia_alias_config_root/generated" D 0 "$__automexia_alias_root" \
+        D 0 "$__automexia_alias_root/generations" F 9 "$pointer" || {
+        __automexia_alias_state=unsafe-permissions
+        __automexia_alias_reason=current
+        return 1
+      }
       __automexia_alias_state=disabled
       return 1
     fi
@@ -590,28 +635,40 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
     }
 
     __automexia_alias_candidate_directory="$__automexia_alias_root/generations/$__automexia_alias_candidate_generation"
-    __automexia_alias_real_private_directory "$__automexia_alias_candidate_directory" || {
+    __automexia_alias_candidate_shell_directory="$__automexia_alias_candidate_directory/bash"
+    __automexia_alias_candidate_path="$__automexia_alias_candidate_shell_directory/automexia-aliases.bash"
+    manifest=$__automexia_alias_candidate_directory/generation.manifest
+    __automexia_alias_verify_entries \
+      D 0 "$__automexia_alias_config_root/generated" D 0 "$__automexia_alias_root" \
+      D 0 "$__automexia_alias_root/generations" F 65 "$pointer" \
+      D 0 "$__automexia_alias_candidate_directory" D 0 "$__automexia_alias_candidate_shell_directory" \
+      F 65536 "$manifest" F 1114112 "$__automexia_alias_candidate_path" || {
       __automexia_alias_state=tampered
       __automexia_alias_reason="generation-directory"
       return 1
     }
-    manifest=$__automexia_alias_candidate_directory/generation.manifest
-    __automexia_alias_real_private_file "$manifest" 65536 || {
-      __automexia_alias_state=tampered
-      __automexia_alias_reason="manifest-file"
-      return 1
-    }
-    manifest_hash=$(__automexia_alias_hash_file "$manifest") || {
+    __automexia_alias_hash_pair "$manifest" "$__automexia_alias_candidate_path" || {
       __automexia_alias_state=unavailable
       __automexia_alias_reason=sha256
       return 1
     }
+    manifest_hash=${__automexia_alias_hash_pair_reply[0]}
     [[ $manifest_hash == "$__automexia_alias_candidate_generation" ]] || {
       __automexia_alias_state=tampered
       __automexia_alias_reason="manifest-digest"
       return 1
     }
-    while IFS= read -r line; do
+    # Bound the read itself, including if the file grows after stat. Bash 3.2
+    # supports this builtin; NUL bytes and reaching the byte ceiling are invalid.
+    if LC_ALL=C IFS= read -r -d '' -n 65537 manifest_contents <"$manifest"; then
+      __automexia_alias_state=tampered
+      __automexia_alias_reason="manifest-file"
+      return 1
+    fi
+    while [[ -n $manifest_contents ]]; do
+      [[ $manifest_contents == *$'\n'* ]] || { manifest_valid=0; break; }
+      line=${manifest_contents%%$'\n'*}
+      manifest_contents=${manifest_contents#*$'\n'}
       manifest_lines=$((manifest_lines + 1))
       case $manifest_lines in
         1) [[ $line == automexia-alias-generation-v1 ]] || manifest_valid=0 ;;
@@ -623,23 +680,31 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
         7)
           [[ $line == 'shell=bash|'* ]] || manifest_valid=0
           count=$((count + 1))
-          old_ifs=$IFS
-          IFS='|'
-          read -r tag __automexia_alias_candidate_file \
-            __automexia_alias_candidate_sha __automexia_alias_candidate_artifact \
-            __automexia_alias_candidate_ready __automexia_alias_candidate_decisions \
-            __automexia_alias_candidate_names __automexia_alias_candidate_overrides extra <<<"$line"
-          IFS=$old_ifs
+          # A here-string makes read consume this record one byte at a time.
+          # Split the already bounded buffer with builtins instead.
+          while [[ $line == *'|'* && ${#fields[@]} -lt 8 ]]; do
+            fields+=("${line%%|*}")
+            line=${line#*|}
+          done
+          fields+=("$line")
+          (( ${#fields[@]} == 8 )) || { manifest_valid=0; break; }
+          tag=${fields[0]}
+          __automexia_alias_candidate_file=${fields[1]}
+          __automexia_alias_candidate_sha=${fields[2]}
+          __automexia_alias_candidate_artifact=${fields[3]}
+          __automexia_alias_candidate_ready=${fields[4]}
+          __automexia_alias_candidate_decisions=${fields[5]}
+          __automexia_alias_candidate_names=${fields[6]}
+          __automexia_alias_candidate_overrides=${fields[7]}
           ;;
         8) [[ $line == 'shell=zsh|'* ]] || manifest_valid=0 ;;
         9) [[ $line == 'shell=fish|'* ]] || manifest_valid=0 ;;
         10) [[ $line == 'shell=cmd|'* ]] || manifest_valid=0 ;;
-        *) manifest_valid=0 ;;
+        *) manifest_valid=0; break ;;
       esac
-    done <"$manifest"
+    done
     [[ $manifest_lines -eq 10 && $manifest_valid -eq 1 &&
        $count -eq 1 && $tag == shell=bash &&
-       $extra == '' &&
        $__automexia_alias_candidate_file == automexia-aliases.bash &&
        $__automexia_alias_candidate_sha =~ ^[0-9a-f]{64}$ &&
        $__automexia_alias_candidate_artifact =~ ^[0-9a-f]{64}$ &&
@@ -650,23 +715,7 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
       return 1
     }
 
-    __automexia_alias_candidate_shell_directory="$__automexia_alias_candidate_directory/bash"
-    __automexia_alias_real_private_directory "$__automexia_alias_candidate_shell_directory" || {
-      __automexia_alias_state=tampered
-      __automexia_alias_reason="shell-directory"
-      return 1
-    }
-    __automexia_alias_candidate_path="$__automexia_alias_candidate_shell_directory/$__automexia_alias_candidate_file"
-    __automexia_alias_real_private_file "$__automexia_alias_candidate_path" 1114112 || {
-      __automexia_alias_state=tampered
-      __automexia_alias_reason="artifact-file"
-      return 1
-    }
-    actual=$(__automexia_alias_hash_file "$__automexia_alias_candidate_path") || {
-      __automexia_alias_state=unavailable
-      __automexia_alias_reason=sha256
-      return 1
-    }
+    actual=${__automexia_alias_hash_pair_reply[1]}
     [[ $actual == "$__automexia_alias_candidate_sha" ]] || {
       __automexia_alias_state=tampered
       __automexia_alias_reason="artifact-digest"
@@ -712,34 +761,30 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
   }
 
   __automexia_alias_activate_candidate() {
-    local name definition digest target old_ifs
+    local name target old_ifs REPLY
     # shellcheck source=/dev/null
     . "$__automexia_alias_candidate_path" || return 1
-    __automexia_alias_records=
+    __automexia_alias_record_kinds=() __automexia_alias_record_names=() __automexia_alias_record_definitions=()
     old_ifs=$IFS
     IFS=,
     for name in $__automexia_alias_candidate_names; do
-      definition=$(builtin alias -- "$name" 2>/dev/null) || {
+      __automexia_alias_current_definition A "$name" || {
         IFS=$old_ifs
         return 1
       }
-      digest=$(printf '%s' "$definition" | __automexia_alias_hash_stream) || {
-        IFS=$old_ifs
-        return 1
-      }
-      __automexia_alias_records="${__automexia_alias_records}${__automexia_alias_records:+
-}A|$name|$digest"
-      target=${definition#*=}
-      target=${target#\'}
-      target=${target%\'}
+      __automexia_alias_record_kinds+=(A)
+      __automexia_alias_record_names+=("$name")
+      __automexia_alias_record_definitions+=("$REPLY")
+      target=$REPLY
       if [[ $target =~ ^_automexia_cp3_[0-9a-f]{16}$ ]] &&
          declare -f -- "$target" >/dev/null 2>&1; then
-        digest=$(__automexia_alias_current_definition_digest F "$target") || {
+        __automexia_alias_current_definition F "$target" || {
           IFS=$old_ifs
           return 1
         }
-        __automexia_alias_records="${__automexia_alias_records}
-F|$target|$digest"
+        __automexia_alias_record_kinds+=(F)
+        __automexia_alias_record_names+=("$target")
+        __automexia_alias_record_definitions+=("$REPLY")
       fi
     done
     IFS=$old_ifs
@@ -753,8 +798,10 @@ F|$target|$digest"
   automexia_aliases_reload() {
     local old_generation=$__automexia_alias_generation
     local old_path=$__automexia_alias_loaded_path
-    local old_records=$__automexia_alias_records
-    local kind name expected actual
+    local old_kinds=("${__automexia_alias_record_kinds[@]}")
+    local old_names=("${__automexia_alias_record_names[@]}")
+    local old_definitions=("${__automexia_alias_record_definitions[@]}")
+    local kind name index REPLY
 
     if ! __automexia_alias_prepare; then
       [[ -n $old_generation ]] && __automexia_alias_reason="reload-$__automexia_alias_state-lkg"
@@ -764,26 +811,27 @@ F|$target|$digest"
       __automexia_alias_state=ready
       return 0
     }
-    while IFS='|' read -r kind name expected; do
-      [[ -n $kind ]] || continue
-      actual=$(__automexia_alias_current_definition_digest "$kind" "$name") || {
+    for (( index=0; index < ${#old_names[@]}; index++ )); do
+      kind=${old_kinds[$index]} name=${old_names[$index]}
+      __automexia_alias_current_definition "$kind" "$name" || {
         __automexia_alias_state=reload-conflict
         __automexia_alias_reason="definition-changed"
         return 1
       }
-      [[ $actual == "$expected" ]] || {
+      [[ $REPLY == "${old_definitions[$index]}" ]] || {
         __automexia_alias_state=reload-conflict
         __automexia_alias_reason="definition-changed"
         return 1
       }
-    done <<<"$old_records"
+    done
 
-    while IFS='|' read -r kind name expected; do
+    for (( index=0; index < ${#old_names[@]}; index++ )); do
+      kind=${old_kinds[$index]} name=${old_names[$index]}
       case $kind in
         A) builtin unalias -- "$name" ;;
         F) unset -f -- "$name" ;;
       esac
-    done <<<"$old_records"
+    done
     if __automexia_alias_activate_candidate; then
       return 0
     fi
@@ -793,7 +841,9 @@ F|$target|$digest"
     [[ -n $old_path && -f $old_path && ! -L $old_path ]] && . "$old_path"
     __automexia_alias_generation=$old_generation
     __automexia_alias_loaded_path=$old_path
-    __automexia_alias_records=$old_records
+    __automexia_alias_record_kinds=("${old_kinds[@]}")
+    __automexia_alias_record_names=("${old_names[@]}")
+    __automexia_alias_record_definitions=("${old_definitions[@]}")
     __automexia_alias_state=reload-failed-lkg
     __automexia_alias_reason=activation
     return 1

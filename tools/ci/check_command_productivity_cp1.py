@@ -194,22 +194,24 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
             "Remove-AutomexiaOwnedFile",
         },
         "shell-integration/bash/automexia.bash": {
-            "__automexia_alias_real_private_directories",
-            "stat -c '%a %s'", "stat -f '%Lp %z'",
+            "__automexia_alias_verify_entries",
+            "stat -c '%f %s'", "stat -f '%p %z'",
+            "(numeric_mode & 0170000) == 0100000", "(numeric_mode & 077) == 0",
         },
         "tools/ci/test_shell_sources.sh": {
             "stale-owned-source-line", "relative-root", "config-link",
             "Application Support/io.github.AmjedAllaya.AutomexiaTerminal",
         },
         "tools/ci/test_shell_integration.sh": {
-            "interrupted refresh", "4097",
+            "interrupted refresh", "4097", "test_shell_artifact_validation.py",
         },
         "tools/ci/test_zsh_integration.zsh": {
             "interrupted refresh", "4097", "compinit -i -D",
             "automexia-test-insecure-canary",
+            "test_shell_artifact_validation.py",
         },
         "tools/ci/test_fish_integration.fish": {
-            "interrupted refresh", "4097",
+            "interrupted refresh", "4097", "test_shell_artifact_validation.py",
         },
         "tools/ci/test_shell_integration.ps1": {
             "relative-config-root", "interrupted refresh", "4097",

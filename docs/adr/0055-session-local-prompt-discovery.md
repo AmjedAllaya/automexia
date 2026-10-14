@@ -35,7 +35,7 @@ existing PTY worker ceiling; exhaustion rejects new discovery without evicting
 live routes. Parked undo topologies remain live owners until actually discarded.
 
 Generic session serialization excludes location and selector hints, and session
-Debug output redacts values. The application-owned WSL Kubernetes helper
+Debug output redacts values. The application-owned WSL prompt helper
 transport still opts in to HOME and KUBECONFIG only. No persistence or upload is
 introduced. Native Windows discovery rejects
 UNC and device paths so terminal metadata cannot request implicit network
@@ -51,11 +51,18 @@ separate bounded guest read is reviewed. A published GCP project can identify
 an explicit guest selection without such a file.
 
 The former Windows-host fallback cannot represent a WSL session truthfully.
-Guest-backed filesystem reads run in a short-lived copy of the application,
-before logging, configuration migration, GUI or provider initialization. The
+Guest-backed filesystem reads run through the existing package-owned `amx.exe`
+console entrypoint, before logging, configuration migration, GUI or provider
+initialization. One restricted protocol owner in `automexia-devops` serves both
+entrypoints; the desktop dispatch remains available for single-binary development.
+This avoids loading the full desktop image for each read. The
 application owns the executable identity, request, output limit, deadline,
-cancellation and child reaping. The helper reads bounded configuration documents
-and returns only context and namespace. It never launches WSL, kubectl, a shell,
+cancellation and child reaping. Its internal v2 request independently gates Git
+and Kubernetes reads; Git-only requests transport no configuration hints. Git
+reads at most 64 ancestors and 4096 bytes per metadata file, supports normal
+repositories and linked worktrees, and rejects reparse points and paths outside
+the selected distro. The helper reads bounded configuration documents
+and returns only a branch, context and namespace. It never launches WSL, Git, kubectl, a shell,
 credential plugins or a network client. Failure cannot select the host cluster.
 This is isolation of the host's existing filesystem-read implementation, not a
 general process-launch capability granted to the extension or terminal output.

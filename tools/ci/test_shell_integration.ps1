@@ -711,6 +711,7 @@ if ($wslTransportSource -notmatch 'AutomexiaWslPayloadBytesLimit' -or
 }
 . $pathSafetyPath
 . $wslTransportPath
+& (Join-Path $PSScriptRoot 'test_windows_wsl_transport.ps1')
 $unsafeDistributionRejected = $false
 try {
     Invoke-AutomexiaWslScript $pathSafetyPath 'unsafe distribution' 'printf ok' | Out-Null
@@ -731,12 +732,14 @@ $wslExecutable = Get-Command wsl.exe -ErrorAction SilentlyContinue
 if ($wslExecutable) {
     $rawDistributions = @(& $wslExecutable.Source --list --quiet 2>$null)
     if ($LASTEXITCODE -eq 0) {
-        $smokeDistribution = @(
+        $installedDistributions = @(
             $rawDistributions |
                 ForEach-Object { ([string]$_).Replace([string][char]0, '').Trim() } |
                 Where-Object { $_ -and $_ -notmatch '^(?i:docker-desktop(?:-data)?)$' }
-        ) | Select-Object -First 1
+        )
+        $smokeDistribution = $env:AUTOMEXIA_TEST_WSL_DISTRO
         if ($smokeDistribution) {
+            if ($smokeDistribution -notin $installedDistributions) { throw 'Requested WSL transport distro is not installed' }
             $smokeScript = "printf 'AUTOMEXIA_WSL_TRANSPORT_OK\n'"
             $smokeResult = Invoke-AutomexiaWslScript `
                 $wslExecutable.Source $smokeDistribution $smokeScript
@@ -744,8 +747,14 @@ if ($wslExecutable) {
                 $smokeResult.Stdout -notmatch 'AUTOMEXIA_WSL_TRANSPORT_OK') {
                 throw "Windows WSL stdin transport smoke failed for $smokeDistribution"
             }
+        } else {
+            Write-Output 'EXTERNAL: native WSL transport requires an explicitly selected AUTOMEXIA_TEST_WSL_DISTRO'
         }
+    } elseif ($env:AUTOMEXIA_TEST_WSL_DISTRO) {
+        throw 'Requested native WSL transport inventory failed'
     }
+} elseif ($env:AUTOMEXIA_TEST_WSL_DISTRO) {
+    throw 'Requested native WSL transport requires wsl.exe'
 }
 $cloudTags = @('9000001A', '9000601A', '9000F01A') |
     ForEach-Object { [Convert]::ToUInt32($_, 16) }
@@ -1205,4 +1214,4 @@ function Assert-StageCleanupDoesNotDeleteReplacement([string]$ScriptText) {
 
 Assert-StageCleanupDoesNotDeleteReplacement $installerSource
 Assert-StageCleanupDoesNotDeleteReplacement $uninstall
-Write-Output 'PASS: shell integration is idempotent, UTF-8-safe, WSL-isolated, native-completion-safe on PowerShell/Bash/Zsh/Fish, composite-folder-aware, pipeline-safe, semantically path-colored, three-row prompt-identified, full-path, resize-safe, script-safe, and uninstallable'
+Write-Output 'PASS: Windows shell-integration checks and transport fixtures completed; native WSL coverage is reported separately'

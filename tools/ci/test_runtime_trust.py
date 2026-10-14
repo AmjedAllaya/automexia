@@ -209,6 +209,14 @@ class RuntimeTrustTests(unittest.TestCase):
         with self.assertRaisesRegex(TRUST.RuntimeTrustError, "bounded raw|encoded or nested"):
             TRUST.validate_wsl(source)
 
+    def test_wsl_transport_must_bound_writes_reads_and_cleanup(self) -> None:
+        for token in ("AutomexiaWslOutputCharsLimit", "TimeoutMilliseconds",
+                      "WriteAsync", "ReadAsync", "$process.Kill()"):
+            with self.subTest(token=token):
+                source = self.read("shell-integration/windows-wsl.ps1").replace(token, "removed")
+                with self.assertRaises(TRUST.RuntimeTrustError):
+                    TRUST.validate_wsl(source)
+
     def test_unsigned_script_packaging_is_rejected(self) -> None:
         workflow = yaml.safe_load(self.read(".github/workflows/release.yml"))
         altered = copy.deepcopy(workflow)

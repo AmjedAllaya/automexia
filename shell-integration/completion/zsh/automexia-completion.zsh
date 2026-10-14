@@ -29,28 +29,34 @@ typeset -g __automexia_completion_path_safe=0
 __automexia_completion_directory_safe && __automexia_completion_path_safe=1
 
 __automexia_completion_hash() {
-  local file=$1
+  local file=$1 output
   if (( $+commands[sha256sum] )); then
-    command sha256sum -- "$file" | command awk '{print $1}'
+    output=$(command sha256sum -- "$file") || return 1
+    REPLY=${output%% *}
   elif (( $+commands[shasum] )); then
-    command shasum -a 256 -- "$file" | command awk '{print $1}'
+    output=$(command shasum -a 256 -- "$file") || return 1
+    REPLY=${output%% *}
   elif (( $+commands[openssl] )); then
-    command openssl dgst -sha256 "$file" | command awk '{print $NF}'
+    output=$(command openssl dgst -sha256 "$file") || return 1
+    REPLY=${output##* }
   else
     return 127
   fi
 }
 
 __automexia_load_completion() {
-  local target=$1 file expected alternate actual digest digest_count
+  local target=$1 file expected alternate actual digest digest_count REPLY
+  local -a sizes
   file="$__automexia_completion_root/zsh/$target.zsh"
   [[ -f $file && ! -h $file && -f $file.sha256 && ! -h $file.sha256 ]] || return 0
-  [[ $(wc -c <"$file") -le 1114112 && $(wc -c <"$file.sha256") -le 192 ]] || return 0
   if (( ${+_comps[$target]} )); then
     __automexia_completion_collisions="${__automexia_completion_collisions}${__automexia_completion_collisions:+,}$target"
     return 0
   fi
   (( $+functions[compdef] )) || return 0
+  zmodload zsh/stat 2>/dev/null || return 0
+  zstat -A sizes +size -- "$file" "$file.sha256" 2>/dev/null || return 0
+  (( ${#sizes} == 2 && sizes[1] <= 1114112 && sizes[2] <= 192 )) || return 0
   expected=''
   alternate=''
   digest_count=0
@@ -65,7 +71,8 @@ __automexia_load_completion() {
     fi
   done <"$file.sha256"
   ((digest_count >= 1)) || return 0
-  actual=$(__automexia_completion_hash "$file") || return 0
+  __automexia_completion_hash "$file" || return 0
+  actual=$REPLY
   [[ $actual == "$expected" || $actual == "$alternate" ]] || return 0
   source "$file"
   __automexia_completion_loaded="${__automexia_completion_loaded}${__automexia_completion_loaded:+,}$target"

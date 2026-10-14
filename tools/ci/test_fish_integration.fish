@@ -27,10 +27,12 @@ string match -q '*managed-candidate*' -- (complete -c kubectl); or exit 1
 string match -q '*state=ready*' -- (automexia_aliases_health); or exit 1
 test (axt) = first; or exit 1
 
-# The helper subtracts a source-only process pair and reports a real
-# alias-reload-p95 over 20 post-warmup samples of three reloads each.
+# Time the operation inside Fish, excluding interpreter startup. Keep 20
+# post-warmup samples of three reloads each.
+set performance_failed 0
 set fish_alias_benchmark (python3 "$root/tools/ci/measure_completion_adapter.py" \
-    --shell fish --alias-config-root "$AUTOMEXIA_CONFIG_HOME"); or exit 1
+    --shell fish --alias-config-root "$AUTOMEXIA_CONFIG_HOME"); or set performance_failed 1
+string match -qr '^shell=fish alias-reload-p95=[0-9]+\.[0-9]+ms budget=50ms$' -- $fish_alias_benchmark; or set performance_failed 1
 set second_alias_generation (python3 "$root/tools/ci/create_cp31_alias_fixture.py" \
     --config-root "$AUTOMEXIA_CONFIG_HOME" --alias ayt --value second); or exit 1
 test "$second_alias_generation" != "$alias_generation"; or exit 1
@@ -91,7 +93,10 @@ set -e AUTOMEXIA_COMPLETION_ADAPTER_FISH_LOADED
 source "$root/shell-integration/completion/fish/automexia-completion.fish"; or exit 1
 string match -q '*state=disabled*' -- (automexia_completion_health); or exit 1
 
-set fish_adapter_benchmark (python3 "$root/tools/ci/measure_completion_adapter.py" --shell fish); or exit 1
+set fish_adapter_benchmark (python3 "$root/tools/ci/measure_completion_adapter.py" --shell fish); or set performance_failed 1
+# Command substitution returns a list of lines. Preserve each receipt as its
+# own line so the matrix can parse both operations even when a budget fails.
+printf '%s\n' $fish_alias_benchmark $fish_adapter_benchmark
 
 set -e AUTOMEXIA_COMPLETION_ADAPTER_FISH_LOADED AUTOMEXIA_COMPLETION_DISABLED
 complete -e -c kubectl
@@ -117,4 +122,10 @@ set -gx AUTOMEXIA_CONFIG_HOME "/"(string repeat -n 4097 x)
 source "$root/shell-integration/completion/fish/automexia-completion.fish"; or exit 1
 string match -q '*state=unsafe-path/native-fallback*' -- (automexia_completion_health); or exit 1
 
+python3 "$root/tools/ci/test_shell_artifact_validation.py" --shell fish; or exit 1
+echo 'PASS: Fish behavioral assertions completed'
+if test $performance_failed -ne 0
+    echo 'FAIL: Fish benchmark validation failed' >&2
+    exit 1
+end
 echo "PASS: Fish integration is syntax-valid, editor-owned, digest-verified, linked-parent-safe, native-first, disable-safe, $fish_adapter_benchmark, $fish_alias_benchmark, and health-reporting"

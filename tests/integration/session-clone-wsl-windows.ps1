@@ -14,15 +14,16 @@ if (-not (Test-Path -LiteralPath $Binary -PathType Leaf)) {
 Add-Type -Path (Join-Path $PSScriptRoot 'windows-native-window-locator.cs')
 
 
+if ([string]::IsNullOrWhiteSpace($Distro)) {
+    throw 'Controlled WSL clone test requires an explicit AUTOMEXIA_TEST_WSL_DISTRO'
+}
 $installed = @(& wsl.exe --list --quiet | ForEach-Object {
     $_.Replace(([char]0).ToString(), [string]::Empty).Trim()
 } | Where-Object { $_ })
-if ([string]::IsNullOrWhiteSpace($Distro)) {
-    $Distro = $installed | Select-Object -First 1
-}
+if ($LASTEXITCODE -ne 0) { throw 'Controlled WSL inventory failed' }
 if ([string]::IsNullOrWhiteSpace($Distro) -or
     -not ($installed | Where-Object { $_ -eq $Distro })) {
-    throw "Controlled WSL clone test requires an installed distro. Set AUTOMEXIA_TEST_WSL_DISTRO; installed: $($installed -join ', ')"
+    throw 'Controlled WSL clone test requires the explicitly selected distro to be installed'
 }
 
 function Read-Snapshot {
@@ -31,7 +32,7 @@ function Read-Snapshot {
     do {
         if (Test-Path -LiteralPath $snapshotPath -PathType Leaf) {
             try {
-                $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json
+                $snapshot = Get-Content -LiteralPath $snapshotPath -Raw -Encoding UTF8 | ConvertFrom-Json
                 if ([int64]$snapshot.sequence -gt $After) { return $snapshot }
             } catch {}
         }
@@ -43,6 +44,13 @@ function Read-Snapshot {
 function Active-Panel {
     param($Snapshot)
     return @($Snapshot.panels | Where-Object { [bool]$_.active })[0]
+}
+
+function Test-ShellInputReady {
+    param($Snapshot)
+    return @($Snapshot.semantic_rows | Where-Object {
+        $_.input_ready -and [int64]$_.generation -eq [int64]$Snapshot.latest_prompt_id
+    }).Count -gt 0
 }
 
 function Send-AutomexiaTestControl {
@@ -81,7 +89,7 @@ try {
     $bashRcWsl = "$wslConfigRoot/.automexia-test-bashrc"
     [IO.File]::WriteAllText(
         $bashRcWindows,
-        "source '$wslRoot/shell-integration/bash/automexia.bash'`n",
+        "source '$wslRoot/shell-integration/bash/automexia.bash'`nPROMPT_COMMAND+=('sleep 0.2')`n",
         [Text.UTF8Encoding]::new($false))
 
     $tomlDistro = $Distro.Replace('\', '\\').Replace('"', '\"')
@@ -126,16 +134,17 @@ args = ["--distribution", "$tomlDistro", "--cd", "$tomlRoot", "--exec", "bash", 
     while (($null -eq (Active-Panel $initial).shell_distro -or
             $null -eq (Active-Panel $initial).shell_user -or
             $null -eq (Active-Panel $initial).shell_path -or
-            -not [bool]$initial.full_path_visible) -and
+            -not [bool]$initial.full_path_visible -or
+            -not (Test-ShellInputReady $initial)) -and
            [DateTime]::UtcNow -lt $readyDeadline) {
         $initial = Read-Snapshot -After ([int64]$initial.sequence)
     }
     $source = Active-Panel $initial
     if ($source.shell_distro -ne $Distro -or
         -not $source.current_directory.StartsWith('/') -or
-        [int64]$source.shell_pid -le 0) {
+        [int64]$source.shell_pid -le 0 -or -not (Test-ShellInputReady $initial)) {
         Write-Host ($initial | ConvertTo-Json -Depth 8)
-        throw 'Initial WSL distro/user/shell/cwd metadata is incomplete'
+        throw 'Initial WSL metadata or editable input boundary is incomplete'
     }
 
     # Shell-source tests prove emitted OSC bytes, but not the ConPTY/grid/
@@ -148,6 +157,13 @@ args = ["--distribution", "$tomlDistro", "--cd", "$tomlRoot", "--exec", "bash", 
             Name = 'stdout'
             Command = "printf '%s\n' AMX_WSL_STDOUT_84201"
             Tokens = @('AMX_WSL_STDOUT_84201')
+            ExitCode = 0
+            HasOutput = $true
+        },
+        [pscustomobject]@{
+            Name = 'unicode'
+            Command = "printf 'AMX_WSL_\316\251\n'"
+            Tokens = @(('AMX_WSL_' + [char]0x03A9))
             ExitCode = 0
             HasOutput = $true
         },
@@ -175,6 +191,9 @@ args = ["--distribution", "$tomlDistro", "--cd", "$tomlRoot", "--exec", "bash", 
     )
     $resultProbe = $initial
     foreach ($case in $resultCases) {
+        if (-not (Test-ShellInputReady $resultProbe)) {
+            throw 'Native WSL command reached the harness before the editable input boundary'
+        }
         $previousPromptId = [int64]$resultProbe.latest_prompt_id
         $previousResultKey = if ($null -eq $resultProbe.command_result_key) {
             -1
@@ -214,7 +233,7 @@ args = ["--distribution", "$tomlDistro", "--cd", "$tomlRoot", "--exec", "bash", 
             }
             $complete = [string]$resultReady.last_control -eq $control -and
                 [int64]$resultReady.latest_prompt_id -gt $previousPromptId -and
-                $tokensVisible -and $resultMatches
+                $tokensVisible -and $resultMatches -and (Test-ShellInputReady $resultReady)
             if (-not $complete) {
                 $resultReady = Read-Snapshot -After ([int64]$resultReady.sequence)
             }

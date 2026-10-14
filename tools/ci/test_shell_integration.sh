@@ -208,6 +208,7 @@ automexia_completion_health | grep -qF 'collisions=docker'
 automexia_aliases_health | grep -qF 'state=ready'
 [[ $(axt) == first ]]
 
+performance_failed=0
 alias_samples=''
 for iteration in {1..25}; do
   sample=$(
@@ -217,7 +218,8 @@ for iteration in {1..25}; do
   (( iteration > 5 )) && alias_samples+="$sample"$'\n'
 done
 bash_alias_reload_p95=$(printf '%s' "$alias_samples" | sort -n | sed -n '19p')
-awk -v p95="$bash_alias_reload_p95" 'BEGIN { if (p95 !~ /^[0-9]+([.][0-9]+)?$/ || p95 > 0.050) { print "FAIL: Bash alias reload p95 invalid or exceeds 0.050s: " p95 > "/dev/stderr"; exit 1 } }'
+printf 'SHELL_BENCHMARK shell=bash operation=alias-reload p95=%s unit=s\n' "$bash_alias_reload_p95"
+awk -v p95="$bash_alias_reload_p95" 'BEGIN { if (p95 !~ /^[0-9]+([.][0-9]+)?$/ || p95 > 0.050) { print "FAIL: Bash alias reload p95 invalid or exceeds 0.050s: " p95 > "/dev/stderr"; exit 1 } }' || performance_failed=1
 
 second_alias_generation=$(
   python3 "$root/tools/ci/create_cp31_alias_fixture.py" \
@@ -302,7 +304,8 @@ for iteration in {1..25}; do
   (( iteration > 5 )) && adapter_samples+="$sample"$'\n'
 done
 bash_adapter_p95=$(printf '%s' "$adapter_samples" | sort -n | sed -n '19p')
-awk -v p95="$bash_adapter_p95" 'BEGIN { if (p95 !~ /^[0-9]+([.][0-9]+)?$/ || p95 > 0.050) { print "FAIL: Bash completion adapter p95 invalid or exceeds 0.050s: " p95 > "/dev/stderr"; exit 1 } }'
+printf 'SHELL_BENCHMARK shell=bash operation=adapter p95=%s unit=s\n' "$bash_adapter_p95"
+awk -v p95="$bash_adapter_p95" 'BEGIN { if (p95 !~ /^[0-9]+([.][0-9]+)?$/ || p95 > 0.050) { print "FAIL: Bash completion adapter p95 invalid or exceeds 0.050s: " p95 > "/dev/stderr"; exit 1 } }' || performance_failed=1
 
 unset AUTOMEXIA_COMPLETION_ADAPTER_BASH_LOADED AUTOMEXIA_COMPLETION_DISABLED
 complete -r kubectl 2>/dev/null || true
@@ -329,4 +332,7 @@ export AUTOMEXIA_CONFIG_HOME="/$overlong_root"
 source "$root/shell-integration/completion/bash/automexia-completion.bash"
 automexia_completion_health | grep -qF 'state=unsafe-path/native-fallback'
 
+python3 "$root/tools/ci/test_shell_artifact_validation.py" --shell bash
+echo 'PASS: Bash behavioral assertions completed'
+if (( performance_failed )); then exit 1; fi
 echo "PASS: Bash integration is prompt-safe, native-first, digest-verified, linked-parent-safe, disable-safe, idempotent, adapter-p95=${bash_adapter_p95}s, alias-reload-p95=${bash_alias_reload_p95}s, and readable icon-listing aware"

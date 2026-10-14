@@ -44,6 +44,34 @@ fn safe_component(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
 }
 
+/// Translate only an absolute Linux path within the selected WSL distribution.
+pub(crate) fn wsl_path(distro: &str, absolute: &str) -> Option<std::path::PathBuf> {
+    if !safe_component(distro)
+        || absolute.len() > 4096
+        || !absolute.starts_with('/')
+        || absolute.starts_with("//")
+        || absolute.contains('\\')
+        || absolute.chars().any(char::is_control)
+    {
+        return None;
+    }
+    let components = absolute
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect::<Vec<_>>();
+    if components.len() > 128
+        || components
+            .iter()
+            .any(|part| *part == ".." || part.contains(':'))
+    {
+        return None;
+    }
+    Some(std::path::PathBuf::from(format!(
+        "\\\\wsl.localhost\\{distro}\\{}",
+        components.join("\\")
+    )))
+}
+
 /// Pure WSL path translation; no provider lookup and no host-home fallback.
 pub fn wsl_paths(
     session: &automexia_extension_api::SessionFacts,
@@ -94,27 +122,7 @@ pub fn wsl_paths(
         } else {
             format!("{}/{}", session.cwd.as_ref()?.to_str()?, value)
         };
-        if !absolute.starts_with('/')
-            || absolute.starts_with("//")
-            || absolute.contains('\\')
-            || absolute.chars().any(char::is_control)
-        {
-            return None;
-        }
-        let components = absolute
-            .split('/')
-            .filter(|part| !part.is_empty() && *part != ".")
-            .collect::<Vec<_>>();
-        if components
-            .iter()
-            .any(|part| *part == ".." || part.contains(':'))
-        {
-            return None;
-        }
-        let path = std::path::PathBuf::from(format!(
-            "\\\\wsl.localhost\\{distro}\\{}",
-            components.join("\\")
-        ));
+        let path = wsl_path(distro, &absolute)?;
         if !paths.contains(&path) {
             paths.push(path);
         }
@@ -347,7 +355,7 @@ pub(crate) fn local_entry(path: &std::path::Path) -> LocalEntry {
 }
 
 #[cfg(windows)]
-fn reparse_point(metadata: &std::fs::Metadata) -> bool {
+pub(crate) fn reparse_point(metadata: &std::fs::Metadata) -> bool {
     use std::os::windows::fs::MetadataExt as _;
     const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
     metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
@@ -384,7 +392,7 @@ pub(crate) fn open_local_file(path: &std::path::Path) -> Option<std::fs::File> {
 /// Inspect only a guest path constructed from the integrated WSL session.
 /// Native discovery must continue to reject arbitrary UNC paths.
 #[cfg(windows)]
-fn wsl_guest_entry(path: &std::path::Path) -> LocalEntry {
+pub(crate) fn wsl_guest_entry(path: &std::path::Path) -> LocalEntry {
     let mut cursor = std::path::PathBuf::new();
     let mut count = 0usize;
     for component in path.components() {

@@ -78,11 +78,6 @@ impl CloneLaunchError {
             "Cannot clone this WSL session yet because its {field} metadata is unavailable. Wait for the prompt to finish loading and retry."
         ))
     }
-
-    #[cfg(all(target_os = "windows", not(test)))]
-    fn unavailable_wsl(message: impl Into<String>) -> Self {
-        Self(message.into())
-    }
 }
 
 impl fmt::Display for CloneLaunchError {
@@ -335,22 +330,33 @@ impl SessionLaunchDescriptor {
         if let Some(cwd) = linux_cwd.as_deref() {
             args.extend(["--cd".to_string(), cwd.to_string()]);
         }
+        // Shell options belong to the shell which received them. Reusing Bash's
+        // --rcfile after entering Fish or Zsh breaks the new session. Compare
+        // basenames to allow /bin -> /usr/bin aliases without host filesystem IO.
+        let shell_args = if let Some(stored) = stored.filter(|stored| {
+            stored.shell_path.as_deref().map(wsl_shell_name)
+                == shell_path.map(wsl_shell_name)
+                && shell_path.is_some()
+                && stored
+                    .distro
+                    .as_deref()
+                    .is_none_or(|original| original.eq_ignore_ascii_case(distro))
+                && stored
+                    .user
+                    .as_deref()
+                    .is_none_or(|original| Some(original) == user)
+        }) {
+            stored.shell_args.clone()
+        } else if shell_path
+            .is_some_and(|path| matches!(wsl_shell_name(path), "bash" | "zsh" | "fish"))
+        {
+            vec!["-l".to_string()]
+        } else {
+            Vec::new()
+        };
         if let Some(shell_path) = shell_path {
             args.extend(["--exec".to_string(), shell_path.to_string()]);
-            if let Some(stored) = stored {
-                args.extend(stored.shell_args.iter().cloned());
-            }
-            if stored.is_none()
-                && live.shell_name.as_deref().is_some_and(|shell| {
-                    shell.eq_ignore_ascii_case("bash")
-                        || shell.eq_ignore_ascii_case("zsh")
-                })
-            {
-                // A nested WSL session has no argv descriptor. A login-shell
-                // flag keeps profile/integration loading equivalent while the
-                // ConPTY stdin/stdout pair supplies interactive TTY semantics.
-                args.push("-l".to_string());
-            }
+            args.extend(shell_args.iter().cloned());
         }
 
         let program = if self.is_wsl() {
@@ -362,7 +368,7 @@ impl SessionLaunchDescriptor {
             distro: Some(distro.to_string()),
             user: user.map(ToOwned::to_owned),
             shell_path: shell_path.map(ToOwned::to_owned),
-            shell_args: stored.map(|wsl| wsl.shell_args.clone()).unwrap_or_default(),
+            shell_args,
             linux_cwd,
         });
 
@@ -387,66 +393,6 @@ pub fn environment_overrides(
     rio_backend::config::environment::parse_environment(entries)
 }
 
-/// Reject a stale/uninstalled WSL profile before opening a pane that would
-/// immediately exit. This check runs only for an explicit WSL descriptor.
-#[cfg(all(target_os = "windows", not(test)))]
-pub fn validate_wsl_distribution(
-    descriptor: &SessionLaunchDescriptor,
-) -> Result<(), CloneLaunchError> {
-    use std::os::windows::process::CommandExt;
-    use std::process::Command;
-
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-    let Some(distro) = descriptor.wsl_distro() else {
-        return Ok(());
-    };
-    let program = descriptor.program().unwrap_or("wsl.exe");
-    let output = Command::new(program)
-        .args(["--list", "--quiet"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|error| {
-            CloneLaunchError::unavailable_wsl(format!(
-                "Could not query WSL distributions using `{program}`: {error}. Run `wsl --list --verbose` to repair WSL."
-            ))
-        })?;
-    if !output.status.success() {
-        return Err(CloneLaunchError::unavailable_wsl(format!(
-            "WSL could not enumerate installed distributions (exit {}). Run `wsl --list --verbose` for details.",
-            output.status
-        )));
-    }
-
-    let decoded = decode_wsl_list(&output.stdout);
-    if decoded
-        .lines()
-        .map(|line| line.trim().trim_start_matches('*').trim())
-        .any(|installed| installed.eq_ignore_ascii_case(distro))
-    {
-        return Ok(());
-    }
-
-    Err(CloneLaunchError::unavailable_wsl(format!(
-        "The WSL distribution `{distro}` is not installed. Run `wsl --list --verbose`, install or restore that distribution, then retry. No PowerShell fallback was opened."
-    )))
-}
-
-#[cfg(all(target_os = "windows", not(test)))]
-fn decode_wsl_list(bytes: &[u8]) -> String {
-    if bytes.contains(&0) {
-        let words = bytes
-            .chunks_exact(2)
-            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-            .collect::<Vec<_>>();
-        String::from_utf16_lossy(&words)
-            .trim_start_matches('\u{feff}')
-            .to_string()
-    } else {
-        String::from_utf8_lossy(bytes).into_owned()
-    }
-}
-
 fn bounded_optional(value: Option<&str>) -> Result<Option<BoundedText>, ContractError> {
     value
         .filter(|value| !value.trim().is_empty())
@@ -460,15 +406,13 @@ fn nonempty(value: Option<&str>) -> Option<&str> {
 
 fn validated_directory(path: &std::path::Path, posix_only: bool) -> Option<String> {
     let path = path.to_string_lossy();
-    let path = path.trim();
-    valid_directory_text(path, posix_only).then(|| path.to_owned())
+    valid_directory_text(&path, posix_only).then(|| path.into_owned())
 }
 
 /// OSC 7 supplies a logical path for the child environment, which may belong
 /// to WSL even while the host process is Windows. Validate it portably instead
 /// of asking the host `Path` implementation to interpret another OS's syntax.
 fn valid_directory_text(path: &str, posix_only: bool) -> bool {
-    let path = path.trim();
     if path.is_empty() || path.chars().any(char::is_control) {
         return false;
     }
@@ -519,6 +463,10 @@ fn is_command_prompt_program(program: Option<&str>) -> bool {
     )
 }
 
+fn wsl_shell_name(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
 fn parse_wsl_launch(args: &[String]) -> WslLaunch {
     let mut launch = WslLaunch::default();
     let mut index = 0;
@@ -535,6 +483,12 @@ fn parse_wsl_launch(args: &[String]) -> WslLaunch {
             "-d" | "--distribution" => take_value(&mut launch.distro),
             "-u" | "--user" => take_value(&mut launch.user),
             "--cd" => take_value(&mut launch.linux_cwd),
+            // These options consume a value but do not describe the Linux
+            // executable. A following positional token starts CommandLine.
+            "--shell-type" | "--distribution-id" => {
+                index += usize::from(args.get(index + 1).is_some());
+            }
+            "--" => break,
             "-e" | "--exec" => {
                 if let Some(shell) = args.get(index + 1) {
                     launch.shell_path = Some(shell.clone());
@@ -549,6 +503,9 @@ fn parse_wsl_launch(args: &[String]) -> WslLaunch {
                     launch.user = Some(value.to_string());
                 } else if let Some(value) = argument.strip_prefix("--cd=") {
                     launch.linux_cwd = Some(value.to_string());
+                } else if !argument.starts_with('-') {
+                    // Child flags such as `bash --user` are never WSL options.
+                    break;
                 }
             }
         }
@@ -765,6 +722,139 @@ mod tests {
             .args()
             .windows(2)
             .any(|pair| pair == ["--cd", "/home/alice/safe"]));
+    }
+
+    fn wsl_facts(shell: &str) -> LiveSessionMetadata {
+        LiveSessionMetadata {
+            current_directory: Some(PathBuf::from("/home/alice/work tree ")),
+            distro: Some("Debian".into()),
+            user: Some("alice".into()),
+            shell_name: Some(shell.into()),
+            shell_path: Some(format!("/usr/bin/{shell}")),
+        }
+    }
+
+    #[test]
+    fn wsl_clone_chain_preserves_login_shell_and_exact_directory() {
+        let source = descriptor("powershell.exe", &[], r"C:\work");
+        let facts = wsl_facts("zsh");
+        let first = source.fresh_wsl_clone(&facts).unwrap();
+        let second = first.fresh_wsl_clone(&facts).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(second.args().last().map(String::as_str), Some("-l"));
+        assert!(second
+            .args()
+            .windows(2)
+            .any(|pair| { pair == ["--cd", "/home/alice/work tree "] }));
+    }
+
+    #[test]
+    fn wsl_clone_does_not_pass_old_shell_options_to_a_new_shell() {
+        let source = descriptor(
+            "wsl.exe",
+            &[
+                "-d",
+                "Debian",
+                "-e",
+                "/bin/bash",
+                "--noprofile",
+                "--rcfile",
+                "/tmp/bashrc",
+                "-i",
+            ],
+            r"C:\work",
+        );
+        for shell in ["fish", "zsh", "sh"] {
+            let clone = source.fresh_wsl_clone(&wsl_facts(shell)).unwrap();
+            let exec = clone.args().iter().position(|arg| arg == "--exec").unwrap();
+            let expected: Vec<String> = if shell == "sh" {
+                vec![format!("/usr/bin/{shell}")]
+            } else {
+                vec![format!("/usr/bin/{shell}"), "-l".into()]
+            };
+            assert_eq!(&clone.args()[exec + 1..], expected);
+        }
+    }
+
+    #[test]
+    fn wsl_parser_stops_at_linux_command_boundaries() {
+        for arguments in [
+            vec![
+                "-d",
+                "Debian",
+                "--",
+                "bash",
+                "--user",
+                "child-user",
+                "--cd",
+                "/child",
+            ],
+            vec![
+                "-d",
+                "Debian",
+                "bash",
+                "--user",
+                "child-user",
+                "--cd",
+                "/child",
+            ],
+            vec![
+                "-d",
+                "Debian",
+                "--shell-type",
+                "login",
+                "bash",
+                "--user",
+                "child-user",
+            ],
+        ] {
+            let parsed = parse_wsl_launch(
+                &arguments.into_iter().map(str::to_owned).collect::<Vec<_>>(),
+            );
+            assert_eq!(parsed.distro.as_deref(), Some("Debian"));
+            assert_eq!(parsed.user, None);
+            assert_eq!(parsed.linux_cwd, None);
+        }
+    }
+
+    #[test]
+    fn wsl_clone_does_not_reuse_profile_options_across_known_guest_identities() {
+        let source = descriptor(
+            "wsl.exe",
+            &[
+                "-d",
+                "Debian",
+                "-u",
+                "alice",
+                "-e",
+                "/bin/bash",
+                "--rcfile",
+                "/home/alice/custom-rc",
+                "-i",
+            ],
+            r"C:\work",
+        );
+        let same = wsl_facts("bash");
+        assert!(source
+            .fresh_wsl_clone(&same)
+            .unwrap()
+            .args()
+            .iter()
+            .any(|arg| arg == "--rcfile"));
+        for changed in [
+            LiveSessionMetadata {
+                distro: Some("Other-Distro".into()),
+                ..same.clone()
+            },
+            LiveSessionMetadata {
+                user: Some("other-user".into()),
+                ..same.clone()
+            },
+        ] {
+            let clone = source.fresh_wsl_clone(&changed).unwrap();
+            assert_eq!(clone.args().last().map(String::as_str), Some("-l"));
+            assert!(!clone.args().iter().any(|arg| arg == "--rcfile"));
+        }
     }
 
     #[cfg(target_os = "windows")]

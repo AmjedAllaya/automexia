@@ -15,6 +15,16 @@ including PowerShell/CMD profile, Unix shell, WSL distribution/user, and the
 validated logical current directory. It never shares a PTY or silently falls
 back to another shell.
 
+On Windows, a WSL clone checks distribution availability on one bounded
+background worker per window. The check owns its client process, output limits,
+deadline and cancellation. It publishes the result before waking the window.
+A changed source route or launch descriptor discards the result; it cannot
+open a tab in another pane. A closed window cancels its check without joining
+the worker on the interface thread. The existing PTY owner creates the session
+only after the check succeeds.
+An app-wide query slot retains any unconfirmed process cleanup across window
+closure. Later requests retry that exact owner before another query can start.
+
 Classic Automexia `Ctrl+T` creates a window-level tab,
 `Ctrl+Shift+T` creates a local tab in the selected pane, and
 `Ctrl+Shift+N` creates an OS window. When a pane owns more than one local tab,
