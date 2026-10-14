@@ -221,7 +221,7 @@ jobs:
           done
       - name: Retain native macOS session diagnostics
         if: always() && runner.os == 'macOS'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: native-macos-session-${{ matrix.runner }}
           path: |
@@ -232,7 +232,7 @@ jobs:
           retention-days: 14
       - name: Preserve exact geometry, environment and mutation reports
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: controlled-visual-${{ matrix.runner }}
           path: |
@@ -247,7 +247,7 @@ jobs:
           retention-days: 14
       - name: Preserve full candidate images for failed or missing baselines
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: visual-candidates-${{ matrix.runner }}
           path: |
@@ -296,7 +296,7 @@ jobs:
           cargo bench -p teletypewriter --bench pty_io --locked -- --measurement-time 1 --warm-up-time 1
       - name: Retain macOS benchmark raw data
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: macos-microbench-${{ matrix.runner }}
           path: |
