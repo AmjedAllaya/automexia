@@ -42,6 +42,12 @@ The final event-loop callback repeats the broadcast safely before clearing
 routes, and product quit actions return through that owned application path
 instead of terminating the process directly.
 
+Managed PTY senders acknowledge shutdown through their one-way cancellation
+signal. They do not enqueue a second shutdown message after waking the worker,
+which may already have closed its ordinary channel. Repeated cancellation is
+safe; completion remains verified by the owned worker join. Unmanaged recording
+channels keep ordinary shutdown-message delivery and disconnection errors.
+
 Native lifecycle evidence captures the exact temporary-fixture process
 identities before closing the application because ConPTY hosting may reparent a
 shell. It verifies the owner and every captured descendant exit within a bounded

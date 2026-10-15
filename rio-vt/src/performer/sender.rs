@@ -26,9 +26,11 @@ impl PtySender {
             if let Some(shutdown) = &self.shutdown {
                 // This wakeup is independent of the ordinary channel's pending
                 // count. A blocked paste must not hide Shutdown behind Resize.
-                shutdown
+                // The worker can drop its receiver as soon as it wakes, so
+                // acknowledge this signal without a redundant channel send.
+                return shutdown
                     .set_readiness(Ready::readable())
-                    .map_err(channel::SendError::Io)?;
+                    .map_err(channel::SendError::Io);
             }
         }
         self.channel.send(message)
@@ -90,5 +92,33 @@ mod tests {
         );
         clone.send(Msg::Shutdown).unwrap();
         assert!(sender.shutdown_requested());
+    }
+
+    #[test]
+    fn managed_shutdown_uses_only_the_cancellation_signal() {
+        let (raw, receiver) = channel::channel();
+        let (sender, _registration) = PtySender::managed(raw);
+        sender.send(Msg::Shutdown).unwrap();
+        assert!(sender.shutdown_requested());
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Empty)
+        ));
+
+        // The worker may drop its receiver immediately after the wakeup.
+        // Cancellation stays idempotent; ordinary input still reports closure.
+        drop(receiver);
+        sender.send(Msg::Shutdown).unwrap();
+        assert!(sender.send(Msg::Input(Cow::Borrowed(b"x"))).is_err());
+    }
+
+    #[test]
+    fn unmanaged_shutdown_keeps_ordinary_channel_delivery() {
+        let (raw, receiver) = channel::channel();
+        let sender = PtySender::from(raw);
+        sender.send(Msg::Shutdown).unwrap();
+        assert!(matches!(receiver.try_recv(), Ok(Msg::Shutdown)));
+        drop(receiver);
+        assert!(sender.send(Msg::Shutdown).is_err());
     }
 }

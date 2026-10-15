@@ -868,11 +868,14 @@ fn abandoned_image_upload_expires(output: &[u8]) {
         }
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
+    let worker_still_active =
+        matches!(worker.completion.try_recv(), Err(mpsc::TryRecvError::Empty));
     sender.send(Msg::Shutdown).unwrap();
     assert!(
         worker.join_timeout(std::time::Duration::from_secs(3)),
         "owned worker cleanup"
     );
+    assert!(worker_still_active, "expiry must not stop the PTY worker");
     assert!(admitted, "fixture reached the production upload path");
     assert!(
         retired,
