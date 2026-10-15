@@ -7,6 +7,30 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
     <DirectoryRef Id="INSTALLDIR">
+      <Directory Id="AutomexiaPowerShellModules" Name="powershell-modules">
+        <Directory Id="AutomexiaPSReadLine" Name="PSReadLine">
+          <Directory Id="AutomexiaPSReadLineVersion" Name="2.4.5">
+            <Component Id="AutomexiaPowerShellEditor" Guid="*" Win64="yes">
+              <File Id="AutomexiaEditorManifest" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\PSReadLine.psd1" KeyPath="yes" />
+              <File Id="AutomexiaEditorScript" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\PSReadLine.psm1" />
+              <File Id="AutomexiaEditorFormat" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\PSReadLine.format.ps1xml" />
+              <File Id="AutomexiaEditorAssembly" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\Microsoft.PowerShell.PSReadLine.dll" />
+              <File Id="AutomexiaEditorPager" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\Microsoft.PowerShell.Pager.dll" />
+              <File Id="AutomexiaEditorLicense" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\License.txt" />
+            </Component>
+            <Directory Id="AutomexiaEditorNetStandard" Name="netstd">
+              <Component Id="AutomexiaEditorNetStandardAssembly" Guid="*" Win64="yes">
+                <File Id="AutomexiaEditorNetStandardPolyfiller" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\netstd\Microsoft.PowerShell.PSReadLine.Polyfiller.dll" KeyPath="yes" />
+              </Component>
+            </Directory>
+            <Directory Id="AutomexiaEditorNet6" Name="net6plus">
+              <Component Id="AutomexiaEditorNet6Assembly" Guid="*" Win64="yes">
+                <File Id="AutomexiaEditorNet6Polyfiller" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\net6plus\Microsoft.PowerShell.PSReadLine.Polyfiller.dll" KeyPath="yes" />
+              </Component>
+            </Directory>
+          </Directory>
+        </Directory>
+      </Directory>
       <Component Id="AutomexiaConptyComponent" Guid="*" Win64="yes">
         <File Id="AutomexiaConpty" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_CONPTY_ROOT)\conpty.dll" Name="conpty.dll" KeyPath="yes" />
       </Component>
@@ -55,6 +79,9 @@
       </Component>
     </DirectoryRef>
     <ComponentGroup Id="AutomexiaContextMenuComponents">
+      <ComponentRef Id="AutomexiaPowerShellEditor" />
+      <ComponentRef Id="AutomexiaEditorNetStandardAssembly" />
+      <ComponentRef Id="AutomexiaEditorNet6Assembly" />
       <ComponentRef Id="AutomexiaConptyComponent" />
       <ComponentRef Id="AutomexiaConptyX64HostComponent" />
       <ComponentRef Id="AutomexiaConptyArm64HostComponent" />

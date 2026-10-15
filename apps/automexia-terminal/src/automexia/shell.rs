@@ -27,7 +27,10 @@ const POWERSHELL_SESSION_BOOTSTRAP: &str = concat!(
 );
 
 #[cfg(target_os = "windows")]
-fn powershell_session_options(args: &[String], core: bool) -> (bool, bool, bool) {
+fn powershell_session_options(
+    args: &[String],
+    core: bool,
+) -> (bool, bool, bool, Option<String>) {
     // Admit known interactive host options, leaving command parsing to the host.
     // ConsoleHost prefixes and their precedence follow PowerShell v7.5.3's
     // CommandLineParameterParser; values are never scanned as host switches.
@@ -37,12 +40,13 @@ fn powershell_session_options(args: &[String], core: bool) -> (bool, bool, bool)
 
     let mut has_no_logo = false;
     let mut has_no_exit = false;
+    let mut execution_policy = None;
     let mut arguments = args.iter();
     while let Some(argument) = arguments.next() {
         let lower = argument.to_ascii_lowercase();
         let Some(option) = lower.strip_prefix('-').or_else(|| lower.strip_prefix('/'))
         else {
-            return (has_no_logo, has_no_exit, false);
+            return (has_no_logo, has_no_exit, false, execution_policy);
         };
         if matches_option(option, "nologo", 3) {
             has_no_logo = true;
@@ -81,16 +85,46 @@ fn powershell_session_options(args: &[String], core: bool) -> (bool, bool, bool)
             || (!core && option == "psconsolefile")
         {
             // The host consumes one literal value, even if it looks like a flag.
-            if arguments.next().is_none() {
-                return (has_no_logo, has_no_exit, false);
+            let Some(value) = arguments.next() else {
+                return (has_no_logo, has_no_exit, false, execution_policy);
+            };
+            if matches_option(option, "executionpolicy", 2) || option == "ep" {
+                execution_policy = Some(value.clone());
             }
         } else {
             // Explicit execution, positional scripts, noninteractive/server
             // modes, and unknown options never acquire an implicit command.
-            return (has_no_logo, has_no_exit, false);
+            return (has_no_logo, has_no_exit, false, execution_policy);
         }
     }
-    (has_no_logo, has_no_exit, true)
+    (has_no_logo, has_no_exit, true, execution_policy)
+}
+
+#[cfg(windows)]
+pub fn windows_editor_policy_permits(
+    args: &[String],
+    environment: &[(String, String)],
+) -> bool {
+    let (_, _, interactive, override_policy) = powershell_session_options(args, false);
+    if !interactive {
+        return false;
+    }
+    let inherited = match std::env::var("PSExecutionPolicyPreference") {
+        Ok(value) => Some(value),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(std::env::VarError::NotUnicode(_)) => return false,
+    };
+    let process = override_policy
+        .as_deref()
+        .or_else(|| {
+            environment
+                .iter()
+                .rev()
+                .find(|(key, _)| key.eq_ignore_ascii_case("PSExecutionPolicyPreference"))
+                .map(|(_, value)| value.as_str())
+        })
+        .or(inherited.as_deref());
+    super::powershell_policy::permits(process)
 }
 
 pub fn normalized_program(program: Option<&str>) -> Option<String> {
@@ -113,6 +147,72 @@ pub fn normalized_program(program: Option<&str>) -> Option<String> {
     {
         program.map(ToOwned::to_owned)
     }
+}
+
+/// Give only integrated, interactive Windows PowerShell sessions the packaged
+/// editor. Keep PowerShell 7, explicit commands and other shell adapters intact.
+#[cfg(windows)]
+pub fn prepare_windows_session_environment(
+    program: Option<&str>,
+    args: &[String],
+    environment: &mut Vec<(String, String)>,
+    module_root: Option<&str>,
+    integration_available: bool,
+    policy_permits: bool,
+) {
+    let program = normalized_program(program).unwrap_or_default();
+    let basename = program.rsplit(['/', '\\']).next().unwrap_or(&program);
+    let disabled = environment
+        .iter()
+        .rev()
+        .find(|(key, _)| key.eq_ignore_ascii_case("AUTOMEXIA_SHELL_INTEGRATION"))
+        .map(|(_, value)| value == "0")
+        .unwrap_or_else(|| {
+            std::env::var("AUTOMEXIA_SHELL_INTEGRATION").is_ok_and(|value| value == "0")
+        });
+    let Some(module_root) = module_root
+        .filter(|root| !root.is_empty() && std::path::Path::new(root).is_absolute())
+    else {
+        return;
+    };
+    if !policy_permits
+        || disabled
+        || !integration_available
+        || !(basename.eq_ignore_ascii_case("powershell")
+            || basename.eq_ignore_ascii_case("powershell.exe"))
+        || !powershell_session_options(args, false).2
+    {
+        return;
+    }
+    let existing = environment
+        .iter()
+        .rev()
+        .find(|(key, _)| key.eq_ignore_ascii_case("PSModulePath"))
+        .map(|(_, value)| value.clone())
+        .or_else(|| std::env::var("PSModulePath").ok());
+    let mut paths = vec![std::path::PathBuf::from(module_root)];
+    if let Some(existing) = existing {
+        paths.extend(std::env::split_paths(&existing));
+    } else {
+        // Startup already resolved Known Folder/system defaults. Creating a
+        // session performs no filesystem lookup or global environment mutation.
+        let Ok(defaults) =
+            std::env::var(super::shell_integration::POWERSHELL_DEFAULT_PATH_ENV)
+        else {
+            return;
+        };
+        paths.extend(std::env::split_paths(&defaults));
+    }
+    let Ok(value) = std::env::join_paths(paths) else {
+        return;
+    };
+    // Match the launch broker's trusted environment value bound. An optional
+    // editor must not turn a valid inherited module path into a rejected launch.
+    let Some(value) = value.to_str().filter(|value| value.len() <= 16 * 1024) else {
+        return;
+    };
+    environment.retain(|(key, _)| !key.eq_ignore_ascii_case("PSModulePath"));
+    environment.push(("PSModulePath".into(), value.into()));
 }
 
 #[cfg(target_os = "windows")]
@@ -157,7 +257,7 @@ pub fn normalized_args(
         }
 
         let core = matches!(basename, "pwsh" | "pwsh.exe");
-        let (has_no_logo, has_no_exit, accepts_session_bootstrap) =
+        let (has_no_logo, has_no_exit, accepts_session_bootstrap, _) =
             powershell_session_options(args, core);
         if !has_no_logo {
             result.insert(0, "-NoLogo".to_string());
@@ -374,6 +474,163 @@ fn prepare_unix_session(
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn packaged_editor_preserves_configured_module_paths_and_session_scope() {
+        let original = vec![
+            ("AUTOMEXIA_SHELL_INTEGRATION".into(), "1".into()),
+            (
+                "PSMODULEPATH".into(),
+                r"D:\example\modules;E:\other\modules".into(),
+            ),
+        ];
+        let mut environment = original.clone();
+        prepare_windows_session_environment(
+            None,
+            &[],
+            &mut environment,
+            Some(r"C:\example app\powershell-modules"),
+            true,
+            true,
+        );
+        assert_eq!(
+            environment
+                .iter()
+                .filter(|(key, _)| key.eq_ignore_ascii_case("PSModulePath"))
+                .count(),
+            1
+        );
+        let value = &environment
+            .iter()
+            .find(|(key, _)| key == "PSModulePath")
+            .unwrap()
+            .1;
+        let paths: Vec<_> = std::env::split_paths(value).collect();
+        assert_eq!(
+            paths,
+            [
+                r"C:\example app\powershell-modules",
+                r"D:\example\modules",
+                r"E:\other\modules"
+            ]
+            .map(std::path::PathBuf::from)
+        );
+        assert_eq!(original[1].1, r"D:\example\modules;E:\other\modules");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn packaged_editor_leaves_other_shells_commands_and_opt_outs_intact() {
+        for (program, args, enabled, root, disabled) in [
+            ("pwsh.exe", vec![], true, Some(r"C:\example\modules"), false),
+            ("cmd.exe", vec![], true, Some(r"C:\example\modules"), false),
+            ("wsl.exe", vec![], true, Some(r"C:\example\modules"), false),
+            (
+                "powershell.exe",
+                vec!["-File".into(), "fixture.ps1".into()],
+                true,
+                Some(r"C:\example\modules"),
+                false,
+            ),
+            (
+                "powershell.exe",
+                vec!["-Command".into(), "Get-Date".into()],
+                true,
+                Some(r"C:\example\modules"),
+                false,
+            ),
+            (
+                "powershell.exe",
+                vec![],
+                false,
+                Some(r"C:\example\modules"),
+                false,
+            ),
+            ("powershell.exe", vec![], true, None, false),
+            (
+                "powershell.exe",
+                vec![],
+                true,
+                Some("relative/modules"),
+                false,
+            ),
+            (
+                "powershell.exe",
+                vec![],
+                true,
+                Some(r"C:\example\modules"),
+                true,
+            ),
+        ] {
+            let original = vec![
+                (
+                    "AUTOMEXIA_SHELL_INTEGRATION".into(),
+                    if disabled { "0" } else { "1" }.into(),
+                ),
+                ("PSModulePath".into(), r"D:\example\modules".into()),
+            ];
+            let mut environment = original.clone();
+            prepare_windows_session_environment(
+                Some(program),
+                &args,
+                &mut environment,
+                root,
+                enabled,
+                true,
+            );
+            assert_eq!(environment, original, "preserve {program} {args:?}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn packaged_editor_preserves_module_paths_when_policy_does_not_permit_it() {
+        let original = vec![("PSModulePath".into(), r"C:\example\system-modules".into())];
+        let mut environment = original.clone();
+        prepare_windows_session_environment(
+            Some("powershell.exe"),
+            &[],
+            &mut environment,
+            Some(r"C:\example\modules"),
+            true,
+            false,
+        );
+        assert_eq!(environment, original);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn packaged_editor_preserves_module_paths_at_launch_value_limit() {
+        let original = vec![("PSModulePath".into(), "x".repeat(16 * 1024))];
+        let mut environment = original.clone();
+        prepare_windows_session_environment(
+            Some("powershell.exe"),
+            &[],
+            &mut environment,
+            Some(r"C:\example\modules"),
+            true,
+            true,
+        );
+        assert_eq!(environment, original);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn packaged_editor_policy_options_are_not_read_from_other_option_values() {
+        let args = vec![
+            "-ConfigurationName".into(),
+            "-ExecutionPolicy".into(),
+            "-NoProfile".into(),
+        ];
+        let (_, _, interactive, policy) = powershell_session_options(&args, false);
+        assert!(interactive);
+        assert!(policy.is_none());
+        let args = vec!["-EP".into(), "RemoteSigned".into(), "-NoProfile".into()];
+        let (_, _, interactive, policy) = powershell_session_options(&args, false);
+        assert!(interactive);
+        assert_eq!(policy.as_deref(), Some("RemoteSigned"));
+    }
 
     #[cfg(target_os = "windows")]
     fn run_policy_probe(policy: &str, assertion: &str) -> std::process::Output {

@@ -17,9 +17,9 @@ rem Keep CMD output and line-editor coverage; use a non-echoing buffered reader
 rem for the no-redraw acknowledgment protocol shared with PowerShell.
 if "%~2"=="line" goto line_probe
 if "%~2"=="buffered" (
-    powershell.exe -NoLogo -NoProfile -NonInteractive -File "%~dp0live-resize-ack.ps1" -CumulativeReceipt
+    powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File "%~dp0live-resize-ack.ps1" -CumulativeReceipt
 ) else (
-    powershell.exe -NoLogo -NoProfile -NonInteractive -File "%~dp0live-resize-ack.ps1"
+    powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File "%~dp0live-resize-ack.ps1"
 )
 if errorlevel 1 exit /b 1
 goto exit_probe

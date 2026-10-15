@@ -105,6 +105,13 @@ pub(super) fn package_windows_arm64(
     ]);
     command.args([
         "-d",
+        &define(
+            "PowerShellEditorRoot",
+            binary.parent().ok_or("release binary has no parent")?,
+        ),
+    ]);
+    command.args([
+        "-d",
         &define("CliBinaryPath", &binary.with_file_name("amx.exe")),
     ]);
     command.args([

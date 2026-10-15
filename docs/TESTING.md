@@ -423,6 +423,14 @@ inbox ConPTY versions discard its prompt markers. The required CI driver include
 that case and rejects missing tests. Use `--compare-inbox` only to diagnose a
 backend difference; the comparison fails if either backend fails.
 
+`python tools/ci/check_windows_editor_resize.py` stages the exact packaged ConPTY
+and PSReadLine runtimes in a temporary directory. It verifies vendor hashes and
+signatures, module selection, standard module availability, native selection,
+pane resize, scrollback, cursor placement and cleanup. Use `--offline` after
+preparing the pinned caches. Windows CI requires this check. Inbox PSReadLine
+2.0.0 has an upstream resize defect; testing a developer-installed newer module
+does not prove the default customer installation works.
+
 The opt-in native session-metadata roundtrip requires PowerShell 7, a default
 WSL Bash distribution with Automexia shell integration installed, and Windows
 ConPTY. It uses Automexia's normal PowerShell bootstrap and user profile, types

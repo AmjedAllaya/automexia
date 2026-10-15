@@ -29,6 +29,9 @@ fn native_powershell_output_retains_selection_after_exit_and_reflow() {
             "-NoLogo".into(),
             "-NoProfile".into(),
             "-NonInteractive".into(),
+            // Permit only this trusted local fixture in its child process.
+            "-ExecutionPolicy".into(),
+            "RemoteSigned".into(),
             "-File".into(),
             fixture.to_string_lossy().into_owned(),
         ],

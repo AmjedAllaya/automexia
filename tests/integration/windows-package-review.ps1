@@ -400,13 +400,17 @@ public static class AuditCoordinates {
         $null = Wait-Nodes { param($n) @($n | Where-Object { $_.Text -match 'PowerShell blocked Automexia shell integration' }).Count -gt 0 }
         $report.policy_notice_visible = $true
     }
-    Type-Text '$r=@{policy=(Get-ExecutionPolicy).ToString();integrated=($env:AUTOMEXIA_SHELL_INTEGRATION -eq "1");promptHook=[bool]$global:AutomexiaShellIntegrationLoaded};$r|ConvertTo-Json -Compress|Set-Content -LiteralPath $env:AUTOMEXIA_AUDIT_RESULT;Write-Output "AUDIT_COMMAND_COMPLETE"' $true
+    Type-Text '$r=@{policy=(Get-ExecutionPolicy).ToString();integrated=($env:AUTOMEXIA_SHELL_INTEGRATION -eq "1");promptHook=[bool]$global:AutomexiaShellIntegrationLoaded;editor=[string](Get-Module PSReadLine).Version};$r|ConvertTo-Json -Compress|Set-Content -LiteralPath $env:AUTOMEXIA_AUDIT_RESULT;Write-Output "AUDIT_COMMAND_COMPLETE"' $true
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     while (-not (Test-Path -LiteralPath $probeFile) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 100 }
     $probe = Get-Content -LiteralPath $probeFile -Raw | ConvertFrom-Json
-    $report.shell = @{ effective_policy = $probe.policy; integration_loaded = $probe.integrated; prompt_hook_loaded = $probe.promptHook }
+    $report.shell = @{ effective_policy = $probe.policy; integration_loaded = $probe.integrated; prompt_hook_loaded = $probe.promptHook; editor_version = $probe.editor }
     if ($probe.policy -ne $Policy) { throw 'Requested policy did not become effective; comparison is invalid' }
     if ($probe.integrated -ne $expectedIntegration -or $probe.promptHook -ne $expectedIntegration) { throw 'Application shell integration did not match effective policy' }
+    if ($PackagePath -and $expectedIntegration -and [version]($CandidateVersion.Split('-')[0]) -ge [version]'0.0.4') {
+        $editorRecipe = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'packaging/windows/powershell-editor.json') -Raw | ConvertFrom-Json
+        if ($probe.editor -cne $editorRecipe.package.version) { throw 'Installed application did not select its packaged PowerShell editor' }
+    }
     $stage = 'customization-controls'
     $cases = @(
         @('Show information tags', 'tags.enabled', 'boolean'),

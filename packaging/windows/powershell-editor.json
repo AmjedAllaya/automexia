@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "package": {
+    "id": "PSReadLine",
+    "version": "2.4.5",
+    "url": "https://www.powershellgallery.com/api/v2/package/PSReadLine/2.4.5",
+    "sha256": "cb9390e9733208456c234a7971d1ec4a917886c239502aab68f4b71aa4bba235",
+    "publisher": "Microsoft Corporation",
+    "license": "MIT",
+    "source": "https://github.com/PowerShell/PSReadLine"
+  },
+  "files": [
+    {
+      "path": "PSReadLine.psd1",
+      "size": 15471,
+      "sha256": "dd8766bd4db0c1d17111b81d145d32448f61f48451d51c780a79be9ca98d837e",
+      "signed": true
+    },
+    {
+      "path": "PSReadLine.psm1",
+      "size": 15076,
+      "sha256": "9bc0252f616067ca5ef1d0328ec0b97c7d31c757f9fc80adee234ea6132a9c7e",
+      "signed": true
+    },
+    {
+      "path": "PSReadLine.format.ps1xml",
+      "size": 26820,
+      "sha256": "1ca887463598d38aa18236a97a4193b2228d1d8434fa73cc8c7932f42a0565cf",
+      "signed": true
+    },
+    {
+      "path": "Microsoft.PowerShell.PSReadLine.dll",
+      "size": 339528,
+      "sha256": "f8e3a5b7e3e8cad2130ce10647564a2a0ea15d98db8a0cc8d589f80154c108e2",
+      "signed": true
+    },
+    {
+      "path": "Microsoft.PowerShell.Pager.dll",
+      "size": 16784,
+      "sha256": "451994c3d3e38d939b4fa5f8594d0207840f45e7a210aa75f81aef85aa17c592",
+      "signed": true
+    },
+    {
+      "path": "netstd/Microsoft.PowerShell.PSReadLine.Polyfiller.dll",
+      "size": 16928,
+      "sha256": "2e63dc86d9240243ccfb07da5d0b4fce2bc5ce5f9952658a7ce68c26bcd3e14c",
+      "signed": true
+    },
+    {
+      "path": "net6plus/Microsoft.PowerShell.PSReadLine.Polyfiller.dll",
+      "size": 14920,
+      "sha256": "6d33ea289b405c64bf5daa9c59e459596cac59ece399d0d215ee9f3d46afd675",
+      "signed": true
+    },
+    {
+      "path": "License.txt",
+      "size": 1324,
+      "sha256": "25c2fdfcdc653f65629233f5ef217a83287733d3c0299c207b0bca865508c463",
+      "signed": false
+    }
+  ]
+}

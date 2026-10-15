@@ -178,6 +178,8 @@ fn native_powershell_first_ctrl_l_clears_visible_rows() {
             "-NoLogo".into(),
             "-NoProfile".into(),
             "-NoExit".into(),
+            "-ExecutionPolicy".into(),
+            "RemoteSigned".into(),
             "-File".into(),
             fixture.to_string_lossy().into_owned(),
         ],

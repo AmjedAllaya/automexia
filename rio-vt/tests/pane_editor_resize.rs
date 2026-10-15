@@ -65,6 +65,8 @@ fn native_powershell_long_prompt_after_minimal_viewport_restores_context_and_inp
             "-NoLogo".into(),
             "-NoProfile".into(),
             "-NoExit".into(),
+            "-ExecutionPolicy".into(),
+            "RemoteSigned".into(),
             "-File".into(),
             fixture.to_string_lossy().into_owned(),
             "-PromptPath".into(),
@@ -185,6 +187,8 @@ fn run_editor_resize(history: usize) {
             "-NoLogo".into(),
             "-NoProfile".into(),
             "-NoExit".into(),
+            "-ExecutionPolicy".into(),
+            "RemoteSigned".into(),
             "-File".into(),
             fixture.to_string_lossy().into_owned(),
             "-HistoryLines".into(),
@@ -277,7 +281,8 @@ fn run_editor_resize(history: usize) {
             .expect("prompt context retained");
         assert!(
             visible[path + 1] == input,
-            "typed input stays beside prompt at step {step}"
+            "typed input stays beside prompt at step {step}; history={history}, native={native:?}, cursor={:?}, rows={visible:?}",
+            terminal.grid.cursor.pos,
         );
         assert_eq!(
             visible.iter().filter(|line| **line == input).count(),

@@ -50,3 +50,32 @@ function Get-ConPtyPackageIdentity {
     $package = (Get-Content -LiteralPath $recipePath -Raw | ConvertFrom-Json).package
     return [ordered]@{ id = $package.id; version = $package.version; sha256 = $package.sha256 }
 }
+
+function Assert-PowerShellEditorRuntime {
+    param([Parameter(Mandatory = $true)][string]$Root)
+    & python (Join-Path $PSScriptRoot 'windows_powershell_editor.py') verify --destination $Root | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'PowerShell editor hash verification failed' }
+    $recipe = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../packaging/windows/powershell-editor.json') -Raw | ConvertFrom-Json
+    $moduleRoot = Join-Path $Root ('powershell-modules\PSReadLine\' + $recipe.package.version)
+    foreach ($file in @($recipe.files | Where-Object { $_.signed })) {
+        $signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $moduleRoot $file.path)
+        if ($signature.Status -ne 'Valid' -or $null -eq $signature.SignerCertificate -or $null -eq $signature.TimeStamperCertificate) {
+            throw 'PowerShell editor vendor signature or timestamp is invalid'
+        }
+        $publisher = $signature.SignerCertificate.GetNameInfo(
+            [Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
+        if ($publisher -cne $recipe.package.publisher) { throw 'PowerShell editor vendor publisher mismatch' }
+        $eku = @($signature.SignerCertificate.Extensions |
+            Where-Object { $_.Oid.Value -eq '2.5.29.37' } |
+            ForEach-Object { $_.EnhancedKeyUsages } |
+            Where-Object { $_.Value -eq '1.3.6.1.5.5.7.3.3' })
+        if ($eku.Count -eq 0) { throw 'PowerShell editor vendor code-signing EKU is missing' }
+    }
+    return @($recipe.files | ForEach-Object { 'powershell-modules/PSReadLine/' + $recipe.package.version + '/' + $_.path })
+}
+
+function Get-PowerShellEditorPackageIdentity {
+    $recipePath = Join-Path $PSScriptRoot '../../packaging/windows/powershell-editor.json'
+    $package = (Get-Content -LiteralPath $recipePath -Raw | ConvertFrom-Json).package
+    return [ordered]@{ id = $package.id; version = $package.version; sha256 = $package.sha256 }
+}

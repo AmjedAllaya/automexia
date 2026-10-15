@@ -59,6 +59,14 @@ Commons NonCommercial terms that are incompatible with unrestricted Automexia
 distribution. No GPL-derived manual scripts are distributed.
 
 
+## Microsoft PSReadLine (Windows packages)
+
+Windows packages also include Microsoft PSReadLine 2.4.5 under
+`powershell-modules/PSReadLine/2.4.5`, with its original Microsoft signatures and
+MIT license in that directory's `License.txt`. Its source, archive and file hashes
+are pinned in `packaging/windows/powershell-editor.json` and the release SBOM.
+Upstream: https://github.com/PowerShell/PSReadLine
+
 ## Microsoft Windows Console ConPTY (Windows packages)
 
 Windows packages include the pinned `Microsoft.Windows.Console.ConPTY` runtime:

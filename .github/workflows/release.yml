@@ -1626,6 +1626,7 @@ jobs:
         Expand-Archive -LiteralPath $zip[0].FullName -DestinationPath $portable -Force
         . ./tools/ci/windows_conpty_trust.ps1
         Assert-ConPtyRuntime -Root $portable -Architecture '${{ matrix.arch }}' | Out-Null
+        Assert-PowerShellEditorRuntime -Root $portable | Out-Null
         foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe', 'automexia-ssh-helper.exe')) {
           $exe = Get-Item -LiteralPath (Join-Path $portable $runtime)
           $exeSig = Get-AuthenticodeSignature -LiteralPath $exe.FullName
@@ -1648,6 +1649,7 @@ jobs:
           }) | Select-Object -First 1
           if (-not $installed) { throw 'installed Automexia executable not found' }
           Assert-ConPtyRuntime -Root $installed.DirectoryName -Architecture '${{ matrix.arch }}' | Out-Null
+          Assert-PowerShellEditorRuntime -Root $installed.DirectoryName | Out-Null
           foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe', 'automexia-ssh-helper.exe')) {
             $exe = Get-Item -LiteralPath (Join-Path $installed.DirectoryName $runtime)
             $installedSig = Get-AuthenticodeSignature -LiteralPath $exe.FullName

@@ -37,6 +37,8 @@ pub mod migration;
 pub mod output_semantics;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod package_customizations;
+#[cfg(windows)]
+pub(crate) mod powershell_policy;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod preferences;
 #[doc(hidden)]

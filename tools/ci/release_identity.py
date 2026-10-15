@@ -76,7 +76,8 @@ def package_native(root: Path, version: str, binaries: Path, output: Path,
     config = native_packager_config(root, version, binaries, output)
     # cargo-packager isolates WiX and retains only its namespaced variables.
     # Bind the vendor path to this invocation, never an inherited override.
-    env = dict(os.environ, CARGO_PACKAGER_AUTOMEXIA_CONPTY_ROOT=str(binaries.resolve()))
+    env = dict(os.environ, CARGO_PACKAGER_AUTOMEXIA_CONPTY_ROOT=str(binaries.resolve()),
+               CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT=str(binaries.resolve()))
     subprocess.run(["cargo", "packager", "--config", json.dumps(config),
                     "--target", target, "--formats", formats],
                    cwd=root / "apps/automexia-terminal", env=env, check=True, timeout=1800)

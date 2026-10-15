@@ -581,6 +581,8 @@ fn native_live_powershell_resize_preserves_output_and_prompt_adjacency() {
         vec![
             "-NoLogo".into(),
             "-NoProfile".into(),
+            "-ExecutionPolicy".into(),
+            "RemoteSigned".into(),
             "-File".into(),
             fixture.to_string_lossy().into_owned(),
         ],
@@ -1211,6 +1213,8 @@ fn native_live_powershell_table_resize_roundtrip_preserves_every_row() {
     let arguments = vec![
         "-NoLogo".into(),
         "-NoProfile".into(),
+        "-ExecutionPolicy".into(),
+        "RemoteSigned".into(),
         "-File".into(),
         fixture.to_string_lossy().into_owned(),
         "-WideTable".into(),
@@ -1232,6 +1236,8 @@ fn native_powershell_exit_with_pending_input_reports_child_exit() {
     let arguments = vec![
         "-NoLogo".into(),
         "-NoProfile".into(),
+        "-ExecutionPolicy".into(),
+        "RemoteSigned".into(),
         "-File".into(),
         fixture.to_string_lossy().into_owned(),
         "-WideTable".into(),
@@ -1274,6 +1280,8 @@ fn native_worker_exit_retains_large_final_output() {
         vec![
             "-NoLogo".into(),
             "-NoProfile".into(),
+            "-ExecutionPolicy".into(),
+            "RemoteSigned".into(),
             "-File".into(),
             fixtures
                 .join("final-output-tail.ps1")

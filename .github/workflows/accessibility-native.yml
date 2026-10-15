@@ -102,11 +102,21 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test -p automexia-terminal --lib --features visual-test-hooks --locked automexia::shell::tests::
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p automexia-terminal --lib --features visual-test-hooks --locked automexia::powershell_policy::tests::
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           # Keep the inbox PowerShell control, then require all three startup
           # cases (including CMD and PowerShell 7) beside the shipped runtime.
           cargo test -p automexia-terminal --test powershell_startup --features visual-test-hooks --locked
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/ci/check_windows_shell_startup.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify packaged Windows editor and native resize contracts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tools/ci -p test_windows_powershell_editor.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/ci/check_windows_editor_resize.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify native Windows fixture process ownership
         if: runner.os == 'Windows'

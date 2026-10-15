@@ -153,6 +153,8 @@ function Expand-TrustedPortableArchive {
             'shell-integration/windows-wsl.ps1',
             'shell-integration/zsh/automexia.zsh'
         )
+        $editorRecipe = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../packaging/windows/powershell-editor.json') -Raw | ConvertFrom-Json
+        $expectedFiles += @($editorRecipe.files | ForEach-Object { 'powershell-modules/PSReadLine/' + $editorRecipe.package.version + '/' + $_.path })
         $observedFiles = (@($fileEntries | Sort-Object -CaseSensitive) -join '|')
         $requiredFiles = (@($expectedFiles | Sort-Object -CaseSensitive) -join '|')
         if ($fileEntries.Count -ne $expectedFiles.Count -or $observedFiles -cne $requiredFiles) {
@@ -189,6 +191,10 @@ function Expand-TrustedPortableArchive {
     } else { 'x64' }
     $vendorFiles = @(Assert-ConPtyRuntime -Root $destination -Architecture $architecture)
     $script:vendorSignatureCount += $vendorFiles.Count
+    $editorFiles = @(Assert-PowerShellEditorRuntime -Root $destination)
+    $editorRecipe = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../packaging/windows/powershell-editor.json') -Raw | ConvertFrom-Json
+    $script:vendorSignatureCount += @($editorRecipe.files | Where-Object { $_.signed }).Count
+    $vendorFiles += $editorFiles
     foreach ($relative in $vendorFiles) {
         $scanName = 'vendor-' + $architecture + '-' + $relative.Replace('/', '-')
         Copy-Item -LiteralPath (Join-Path $destination $relative) -Destination (Join-Path $scanRoot $scanName)
@@ -265,7 +271,7 @@ try {
     $scanMilliseconds = [int64]((Get-Date) - $startedAt).TotalMilliseconds
 
     $evidence = [ordered]@{
-        schema = 4
+        schema = 5
         version = $Version
         scanner = 'Microsoft Defender Antivirus'
         scanner_version = $defender.AMEngineVersion
@@ -284,6 +290,7 @@ try {
         embedded_script_signature_count = $script:embeddedScriptSignatureCount
         vendor_signature_count = $script:vendorSignatureCount
         vendor_package = Get-ConPtyPackageIdentity
+        vendor_editor_package = Get-PowerShellEditorPackageIdentity
         publisher = $ExpectedPublisher
         scan_milliseconds = $scanMilliseconds
         scan_timeout_seconds = $ScanTimeoutSeconds

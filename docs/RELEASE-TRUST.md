@@ -70,10 +70,11 @@ atomically, and verifies that `SHA256SUMS` names every final asset exactly once.
 Controlled Windows evidence is accepted only when its release version, exact
 publisher, artifact count, signature count, and every scanned package name, size, and SHA-256 match those
 final packages; unknown evidence fields and out-of-contract timeouts are rejected.
-Windows trust evidence uses schema 4: ten Automexia runtime/package signatures
+Windows trust evidence uses schema 5: ten Automexia runtime/package signatures
 (two MSI files and all four product executables from each ZIP), sixteen embedded
-PowerShell signatures, and six separate Microsoft vendor signatures. The pinned
-NuGet identity and package SHA-256 are recorded separately. Schema 1, 2 and 3
+PowerShell signatures, and twenty separate Microsoft vendor signatures: six
+ConPTY signatures and fourteen PSReadLine signatures across both architectures.
+Both pinned package identities and SHA-256 values are recorded separately. Schema 1–4
 evidence omit required runtime checks and are rejected.
 Regenerate evidence by running the controlled gate against the final packages;
 changing a schema number or reusing an earlier scan is not a migration.

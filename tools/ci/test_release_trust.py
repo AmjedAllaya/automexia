@@ -152,7 +152,7 @@ class ReleaseTrustTests(unittest.TestCase):
         (final / "release-trust-windows.json").write_text(
             json.dumps(
                 {
-                    "schema": 4,
+                    "schema": 5,
                     "version": "0.4.0",
                     "scanner": "Microsoft Defender Antivirus",
                     "scanner_version": "1.1.1",
@@ -163,8 +163,9 @@ class ReleaseTrustTests(unittest.TestCase):
                     "artifacts": windows_artifacts,
                     "signature_count": 10,
                     "embedded_script_signature_count": 16,
-                    "vendor_signature_count": 6,
+                    "vendor_signature_count": 20,
                     "vendor_package": TRUST.vendor_package_identity(),
+                    "vendor_editor_package": TRUST.editor_package_identity(),
                     "publisher": PUBLISHER,
                     "scan_milliseconds": 10,
                     "scan_timeout_seconds": 900,
@@ -261,9 +262,13 @@ class ReleaseTrustTests(unittest.TestCase):
             ("schema", 1, "exact passing trust evidence"),
             ("schema", 2, "exact passing trust evidence"),
             ("schema", 3, "exact passing trust evidence"),
+            ("schema", 4, "exact passing trust evidence"),
             ("vendor_signature_count", 5, "exact passing trust evidence"),
             ("vendor_signature_count", 7, "exact passing trust evidence"),
+            ("vendor_signature_count", 19, "exact passing trust evidence"),
+            ("vendor_signature_count", 21, "exact passing trust evidence"),
             ("vendor_package", {}, "exact passing trust evidence"),
+            ("vendor_editor_package", {}, "exact passing trust evidence"),
             ("signature_count", 4, "exact passing trust evidence"),
             ("signature_count", 7, "exact passing trust evidence"),
             ("signature_count", 8, "exact passing trust evidence"),
@@ -326,6 +331,37 @@ class ReleaseTrustTests(unittest.TestCase):
         document["packages"].append(copy.deepcopy(document["packages"][-1]))
         path.write_text(json.dumps(document), encoding="utf-8")
         with self.assertRaisesRegex(TRUST.ReleaseTrustError, "conflicting ConPTY"):
+            TRUST.add_vendor_sbom(final, self.policy)
+
+    def test_editor_vendor_sbom_requires_exact_identity_license_and_hash(self) -> None:
+        mutations = (("versionInfo", "version", "0.0.0"),
+                     ("checksums", "hashes", []),
+                     ("licenseDeclared", "licenses", "unreviewed"))
+        for index, (spdx_key, cdx_key, value) in enumerate(mutations):
+            for kind, key in (("spdx", spdx_key), ("cdx", cdx_key)):
+                with self.subTest(kind=kind, field=key):
+                    final = self.prepare_final(f"editor-{index}-{kind}")
+                    path = final / f"automexia-terminal.{kind}.json"
+                    document = json.loads(path.read_text(encoding="utf-8"))
+                    entries = document["packages" if kind == "spdx" else "components"]
+                    editor = next(item for item in entries if item["name"] == "PSReadLine")
+                    editor[key] = value
+                    path.write_text(json.dumps(document), encoding="utf-8")
+                    self.write_checksums(final)
+                    with self.assertRaisesRegex(TRUST.ReleaseTrustError, "PSReadLine"):
+                        TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
+
+    def test_editor_vendor_sbom_cannot_be_missing_or_duplicated(self) -> None:
+        final = self.prepare_final("editor-missing")
+        path = final / "automexia-terminal.spdx.json"
+        document = json.loads(path.read_text(encoding="utf-8"))
+        editor = next(item for item in document["packages"] if item["name"] == "PSReadLine")
+        document["packages"].remove(editor)
+        with self.assertRaisesRegex(TRUST.ReleaseTrustError, "PSReadLine"):
+            TRUST.validate_vendor_sboms(document, json.loads((final / "automexia-terminal.cdx.json").read_text()))
+        document["packages"].extend([editor, copy.deepcopy(editor)])
+        path.write_text(json.dumps(document), encoding="utf-8")
+        with self.assertRaisesRegex(TRUST.ReleaseTrustError, "conflicting PSReadLine"):
             TRUST.add_vendor_sbom(final, self.policy)
 
     def test_vendor_enrichment_is_idempotent_and_preserves_non_windows_sboms(self) -> None:

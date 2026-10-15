@@ -52,6 +52,13 @@ downloaded scripts can still be blocked. For a verified portable ZIP, use
 packages from the official release whose checksums you have verified. Remove the
 argument to restore the inherited policy. Automexia never changes it for you.
 
+Windows packages include a private Microsoft PSReadLine 2.4.5 editor for integrated
+Windows PowerShell sessions. It fixes misplaced input after resizing on systems
+with the older inbox editor. Automexia preserves other module locations and does
+not install a global module. Stricter policies keep the system editor. PowerShell
+7 and explicit script/command launches keep their editor selection. User profiles
+still run normally. Restart Automexia after changing machine or user policies.
+
 ### Linux and macOS startup
 
 Fish integration supports Fish 3.3 and newer, including Ubuntu 22.04's shell.

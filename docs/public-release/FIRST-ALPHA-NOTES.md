@@ -4,6 +4,10 @@ An updated alpha of Automexia Terminal for Windows, Linux and macOS.
 This is prerelease software; keep your current terminal available and back up
 configuration before trying it. Updates are explicit downloads.
 
+Windows packages include a private Microsoft PowerShell editor that fixes
+misplaced input after resizing on fresh Windows installations. No global module
+update is needed. Terminal shutdown and clean-system test coverage are improved.
+
 WSL session cloning now preserves the distro, user, shell and working directory.
 Windows prompt tags can read Git branches from Linux-native repositories and
 worktrees. A smaller bundled helper handles these reads, and Fish reloads aliases

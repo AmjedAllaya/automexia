@@ -818,10 +818,32 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         )))]
         let launch_args = config.shell.args.clone();
 
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
         let mut launch_environment = config.environment.clone();
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        #[cfg(not(any(
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "macos"
+        )))]
         let launch_environment = config.environment.clone();
+        #[cfg(target_os = "windows")]
+        {
+            let module_root =
+                std::env::var(crate::automexia::shell_integration::POWERSHELL_MODULE_ENV)
+                    .ok();
+            let policy_permits = crate::automexia::shell::windows_editor_policy_permits(
+                &config.shell.args,
+                &launch_environment,
+            );
+            crate::automexia::shell::prepare_windows_session_environment(
+                launch_program.as_deref(),
+                &config.shell.args,
+                &mut launch_environment,
+                module_root.as_deref(),
+                crate::automexia::shell_integration::session_available(),
+                policy_permits,
+            );
+        }
         #[cfg(target_os = "linux")]
         let launch_args = {
             let root = std::env::var_os(crate::automexia::shell_integration::ROOT_ENV)

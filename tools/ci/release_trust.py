@@ -18,6 +18,7 @@ from typing import Any
 # Support both the CLI and file-based loading by release/test owners.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import windows_conpty_runtime as CONPTY
+import windows_powershell_editor as EDITOR
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -323,12 +324,25 @@ def vendor_package() -> dict[str, Any]:
 
 
 def vendor_sbom_components() -> tuple[dict[str, Any], dict[str, Any]]:
-    package = vendor_package()
+    return _vendor_sbom_components(vendor_package(), "SPDXRef-Package-Microsoft-Windows-Console-ConPTY")
+
+
+def editor_package_identity() -> dict[str, str]:
+    package = EDITOR.load_recipe()["package"]
+    return {key: package[key] for key in ("id", "version", "sha256")}
+
+
+def _all_vendor_components():
+    return (_vendor_sbom_components(EDITOR.load_recipe()["package"], "SPDXRef-Package-PSReadLine"),
+            vendor_sbom_components())
+
+
+def _vendor_sbom_components(package: dict[str, Any], spdx_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
     purl = f"pkg:nuget/{package['id']}@{package['version']}"
     spdx = {
         "name": package["id"],
         "versionInfo": package["version"],
-        "SPDXID": "SPDXRef-Package-Microsoft-Windows-Console-ConPTY",
+        "SPDXID": spdx_id,
         "downloadLocation": package["url"],
         "filesAnalyzed": False,
         "licenseConcluded": package["license"],
@@ -351,18 +365,19 @@ def vendor_sbom_components() -> tuple[dict[str, Any], dict[str, Any]]:
 
 def validate_vendor_sboms(spdx: Any, cyclonedx: Any) -> None:
     """Require the pinned vendor identity when the release includes Windows."""
-    for document, key, expected in zip(
-        (spdx, cyclonedx), ("packages", "components"), vendor_sbom_components()
+    for document, key, expectations in zip(
+        (spdx, cyclonedx), ("packages", "components"), zip(*reversed(_all_vendor_components()))
     ):
         components = document.get(key) if isinstance(document, dict) else None
-        matches = [item for item in components if isinstance(item, dict)
-                   and str(item.get("name", "")).casefold() == expected["name"].casefold()] \
-            if isinstance(components, list) else []
-        if len(matches) != 1 or any(matches[0].get(field) != value
-                                    for field, value in expected.items()):
-            raise ReleaseTrustError(
-                f"ConPTY {key} must identify the exact pinned NuGet package, MIT license and SHA-256"
-            )
+        for expected in expectations:
+            matches = [item for item in components if isinstance(item, dict)
+                       and str(item.get("name", "")).casefold() == expected["name"].casefold()] \
+                if isinstance(components, list) else []
+            if len(matches) != 1 or any(matches[0].get(field) != value
+                                        for field, value in expected.items()):
+                raise ReleaseTrustError(
+                    f"{expected['name']} {key} must identify the exact pinned NuGet package, MIT license and SHA-256"
+                )
 
 
 def add_vendor_sbom(directory: Path, policy: dict[str, Any], *,
@@ -375,20 +390,22 @@ def add_vendor_sbom(directory: Path, policy: dict[str, Any], *,
     rules = metadata_rules(policy)
     documents = []
     names = ("automexia-terminal.spdx.json", "automexia-terminal.cdx.json")
-    for name, key, expected in zip(names, ("packages", "components"), vendor_sbom_components()):
+    for name, key, expectations in zip(names, ("packages", "components"), zip(*_all_vendor_components())):
         path = directory / name
         document = read_json_bounded(path, rules[name]["max_bytes"])
         components = document.get(key) if isinstance(document, dict) else None
         if not isinstance(components, list):
             raise ReleaseTrustError(f"ConPTY enrichment requires existing {key}")
-        matches = [item for item in components if isinstance(item, dict)
-                   and str(item.get("name", "")).casefold() == expected["name"].casefold()]
-        if matches:
-            if len(matches) != 1 or any(matches[0].get(field) != value
-                                        for field, value in expected.items()):
-                raise ReleaseTrustError("conflicting ConPTY scanner component; inspect before enrichment")
-        else:
-            components.append(expected)
+        for expected in expectations:
+            matches = [item for item in components if isinstance(item, dict)
+                       and str(item.get("name", "")).casefold() == expected["name"].casefold()]
+            if matches:
+                if len(matches) != 1 or any(matches[0].get(field) != value
+                                            for field, value in expected.items()):
+                    label = expected['name'].rsplit('.', 1)[-1]
+                    raise ReleaseTrustError(f"conflicting {label} scanner component; inspect before enrichment")
+            else:
+                components.append(expected)
         # Validate both documents before writing either; bound the final output too.
         if len(json.dumps(document, indent=2).encode("utf-8")) + 1 > rules[name]["max_bytes"]:
             raise ReleaseTrustError(f"ConPTY enrichment exceeds {name} byte limit")
@@ -602,7 +619,7 @@ def verify_metadata(
     )
     windows_package_bytes = sum(path.stat().st_size for path in windows_packages)
     expected_windows = {
-        "schema": 4,
+        "schema": 5,
         "version": version,
         "scanner": "Microsoft Defender Antivirus",
         "artifact_count": 4,
@@ -617,8 +634,9 @@ def verify_metadata(
         ],
         "signature_count": 10,
         "embedded_script_signature_count": 16,
-        "vendor_signature_count": 6,
+        "vendor_signature_count": 6 + 2 * sum(item["signed"] for item in EDITOR.load_recipe()["files"]),
         "vendor_package": vendor_package_identity(),
+        "vendor_editor_package": editor_package_identity(),
         "publisher": expected_windows_publisher,
         "result": "pass",
     }

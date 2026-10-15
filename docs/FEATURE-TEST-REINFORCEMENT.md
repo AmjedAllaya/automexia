@@ -954,6 +954,13 @@ Use isolated configuration/history, bounded child cleanup, and content-free
 diagnostics. Windows PowerShell and explicitly selected PowerShell 7 are separate
 native evidence; unexecuted operating systems remain external.
 
+Windows editor resize evidence uses the private PSReadLine and ConPTY versions
+shipped in MSI and ZIP packages. `tools/ci/check_windows_editor_resize.py` verifies
+vendor identity, exact module selection and standard module availability before
+native selection, resize, scrollback and cleanup cases. Keep the inbox-editor
+failure as upstream compatibility evidence; never let an ambient developer
+module stand in for packaged-runtime coverage.
+
 CMD reference-v1 reinforcement uses the real interactive prompt expander in
 `tools/ci/test_cmd_prompt.py`, with default/ASCII/lambda glyphs, long Unicode
 identities and separate maximum 4096-byte registrations. Echoing PROMPT cannot

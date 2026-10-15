@@ -9,6 +9,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub const ROOT_ENV: &str = "AUTOMEXIA_SHELL_INTEGRATION_ROOT";
+#[cfg(windows)]
+pub const POWERSHELL_MODULE_ENV: &str = "AUTOMEXIA_POWERSHELL_MODULE_ROOT";
+#[cfg(windows)]
+pub const POWERSHELL_DEFAULT_PATH_ENV: &str = "AUTOMEXIA_POWERSHELL_DEFAULT_MODULE_PATH";
 const CLI_ENV: &str = "AUTOMEXIA_CLI";
 
 fn session_wslenv(existing: &str) -> String {
@@ -174,6 +178,57 @@ pub fn discover_root() -> Option<PathBuf> {
 /// and starts no process.
 pub fn prepare_session_environment() -> Option<PathBuf> {
     let root = discover_root();
+    #[cfg(windows)]
+    {
+        let module_root = env::current_exe().ok().and_then(|executable| {
+            let module_root = executable.parent()?.join("powershell-modules");
+            let module = module_root.join("PSReadLine/2.4.5");
+            // Match the package-owned resource trust boundary. No PATH lookup,
+            // module scan, package download or user-profile write occurs here.
+            for path in [&module_root, &module_root.join("PSReadLine"), &module] {
+                use std::os::windows::fs::MetadataExt;
+                let metadata = path.symlink_metadata().ok()?;
+                if !metadata.is_dir() || metadata.file_attributes() & 0x400 != 0 {
+                    return None;
+                }
+            }
+            ["PSReadLine.psd1", "Microsoft.PowerShell.PSReadLine.dll"]
+                .iter()
+                .all(|file| regular_file(&module.join(file)))
+                .then_some(module_root)
+        });
+        match module_root {
+            Some(path) => {
+                super::powershell_policy::initialize();
+                env::set_var(POWERSHELL_MODULE_ENV, path);
+                // Resolve default locations once, before serving input/tabs.
+                // A redirected Documents folder remains a path, not a scan.
+                let mut paths = Vec::new();
+                if let Some(documents) = dirs::document_dir() {
+                    paths.push(documents.join("WindowsPowerShell/Modules"));
+                }
+                if let Some(program_files) = env::var_os("ProgramFiles") {
+                    paths.push(
+                        PathBuf::from(program_files).join("WindowsPowerShell/Modules"),
+                    );
+                }
+                if let Some(system_root) = env::var_os("SystemRoot") {
+                    paths.push(
+                        PathBuf::from(system_root)
+                            .join("System32/WindowsPowerShell/v1.0/Modules"),
+                    );
+                }
+                match env::join_paths(paths) {
+                    Ok(paths) => env::set_var(POWERSHELL_DEFAULT_PATH_ENV, paths),
+                    Err(_) => env::remove_var(POWERSHELL_DEFAULT_PATH_ENV),
+                }
+            }
+            None => {
+                env::remove_var(POWERSHELL_MODULE_ENV);
+                env::remove_var(POWERSHELL_DEFAULT_PATH_ENV);
+            }
+        }
+    }
     // This is the running application, never a PATH search or config-supplied executable.
     match env::current_exe().ok().filter(|path| path.is_absolute()) {
         Some(executable) => {

@@ -1061,7 +1061,22 @@ fn prepare_windows_runtime(destination: &Path, architecture: &str) -> TaskResult
     if env::var("CARGO_NET_OFFLINE").is_ok_and(|value| value == "true" || value == "1") {
         command.arg("--offline");
     }
-    run_command(command, "prepare pinned Windows PTY runtime")
+    run_command(command, "prepare pinned Windows PTY runtime")?;
+    let mut editor = Command::new(
+        python_program().ok_or("Python 3 is required to prepare the Windows editor")?,
+    );
+    editor
+        .current_dir(root())
+        .args([
+            "tools/ci/windows_powershell_editor.py",
+            "prepare",
+            "--destination",
+        ])
+        .arg(destination);
+    if env::var("CARGO_NET_OFFLINE").is_ok_and(|value| value == "true" || value == "1") {
+        editor.arg("--offline");
+    }
+    run_command(editor, "prepare pinned Windows PowerShell editor")
 }
 
 fn debug_binary(identity: &ProductIdentity) -> PathBuf {
@@ -4715,6 +4730,37 @@ fn package_conpty_runtime_files(binary: &Path) -> TaskResult<[PathBuf; 3]> {
     ])
 }
 
+fn package_powershell_editor_files(binary: &Path) -> TaskResult<Vec<PathBuf>> {
+    let recipe: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../packaging/windows/powershell-editor.json"
+    ))
+    .map_err(|_| "PowerShell editor recipe is invalid")?;
+    let version = recipe["package"]["version"]
+        .as_str()
+        .ok_or("PowerShell editor version is missing")?;
+    let directory = binary
+        .parent()
+        .ok_or("release binary has no parent")?
+        .join("powershell-modules/PSReadLine")
+        .join(version);
+    let files = recipe["files"]
+        .as_array()
+        .ok_or("PowerShell editor file list is missing")?;
+    require(
+        files.len() == 8,
+        "PowerShell editor requires exactly eight pinned files",
+    )?;
+    files
+        .iter()
+        .map(|item| {
+            let path = item["path"]
+                .as_str()
+                .ok_or("PowerShell editor file path is missing")?;
+            Ok(directory.join(path))
+        })
+        .collect()
+}
+
 fn require_package_runtime_binaries(binaries: &[PathBuf]) -> TaskResult {
     for binary in binaries {
         require(
@@ -4864,7 +4910,8 @@ fn portable_archive(
     // Validate the entire input set before replacing any previous staging.
     require_package_runtime_binaries(&binaries)?;
     let conpty = if target.contains("windows") {
-        let files = package_conpty_runtime_files(binary)?;
+        let mut files = package_conpty_runtime_files(binary)?.to_vec();
+        files.extend(package_powershell_editor_files(binary)?);
         require_package_runtime_binaries(&files)?;
         Some(files)
     } else {
