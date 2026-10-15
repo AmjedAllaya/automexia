@@ -28,6 +28,19 @@ class PlatformCoverageTests(unittest.TestCase):
         self.s2_assurance = PLATFORM.load_workflow("s2-assurance.yml")
         self.f5_openssh_assurance = PLATFORM.load_workflow("f5-openssh-assurance.yml")
 
+    def test_native_workflows_retain_bounded_failure_diagnostics(self):
+        for filename, job in [('accessibility-native.yml', 'controlled-visual'),
+                              ('windows-editor-native.yml', 'editor')]:
+            with self.subTest(workflow=filename):
+                document = PLATFORM.load_workflow(filename)
+                steps = document['jobs'][job]['steps']
+                uploads = [step for step in steps if step.get('name') == 'Retain bounded Windows editor diagnostics']
+                self.assertEqual(len(uploads), 1)
+                self.assertTrue(uploads[0]['if'].startswith('always()'))
+                self.assertEqual(uploads[0]['with']['retention-days'], 3)
+                self.assertIn('target/native-windows-editor/*.log', uploads[0]['with']['path'])
+                self.assertIn('target/native-windows-editor/summary.json', uploads[0]['with']['path'])
+
     def test_current_workflows_satisfy_the_contract(self) -> None:
         PLATFORM.validate_ci(self.ci)
         PLATFORM.validate_nightly(self.nightly)

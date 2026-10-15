@@ -154,19 +154,6 @@ class EditorTests(unittest.TestCase):
                         self.assertEqual(len(members), 1, 'each editor file must be independently repairable')
                         self.assertEqual(members[0].get('KeyPath'), 'yes')
 
-    def test_native_workflows_retain_bounded_failure_diagnostics(self):
-        import yaml
-        for filename, job in [('accessibility-native.yml', 'controlled-visual'),
-                              ('windows-editor-native.yml', 'editor')]:
-            with self.subTest(workflow=filename):
-                document = yaml.safe_load((EDITOR.ROOT / '.github/workflows' / filename).read_text())
-                steps = document['jobs'][job]['steps']
-                uploads = [step for step in steps if step.get('name') == 'Retain bounded Windows editor diagnostics']
-                self.assertEqual(len(uploads), 1)
-                self.assertTrue(uploads[0]['if'].startswith('always()'))
-                self.assertEqual(uploads[0]['with']['retention-days'], 3)
-                self.assertIn('target/native-windows-editor/*.log', uploads[0]['with']['path'])
-                self.assertIn('target/native-windows-editor/summary.json', uploads[0]['with']['path'])
 
 
 if __name__ == '__main__':
