@@ -1,13 +1,44 @@
-//! ARM64 MSI adapter for the repository-pinned WiX compiler.
+//! Windows runtime payload and ARM64 MSI packaging adapters.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::{
     command_available, normalize_canonical_path, require, root, run, run_command,
     windows_installer_version, ProductIdentity, TaskResult,
 };
+
+pub(super) fn package_powershell_editor_files(binary: &Path) -> TaskResult<Vec<PathBuf>> {
+    let recipe: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../packaging/windows/powershell-editor.json"
+    ))
+    .map_err(|_| "PowerShell editor recipe is invalid")?;
+    let version = recipe["package"]["version"]
+        .as_str()
+        .ok_or("PowerShell editor version is missing")?;
+    let directory = binary
+        .parent()
+        .ok_or("release binary has no parent")?
+        .join("powershell-modules/PSReadLine")
+        .join(version);
+    let files = recipe["files"]
+        .as_array()
+        .ok_or("PowerShell editor file list is missing")?;
+    require(
+        files.len() == 8,
+        "PowerShell editor requires exactly eight pinned files",
+    )?;
+    files
+        .iter()
+        .map(|item| {
+            let path = item["path"]
+                .as_str()
+                .ok_or("PowerShell editor file path is missing")?;
+            Ok(directory.join(path))
+        })
+        .collect()
+}
 
 pub(super) fn package_windows_arm64(
     identity: &ProductIdentity,

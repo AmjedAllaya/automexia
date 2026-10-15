@@ -7,7 +7,7 @@ mod renderer_benchmarks;
 mod visual_diff;
 mod windows_package;
 
-use windows_package::package_windows_arm64;
+use windows_package::{package_powershell_editor_files, package_windows_arm64};
 
 use process_wrap::std::CommandWrap;
 #[cfg(windows)]
@@ -4728,37 +4728,6 @@ fn package_conpty_runtime_files(binary: &Path) -> TaskResult<[PathBuf; 3]> {
         directory.join("x64/OpenConsole.exe"),
         directory.join("arm64/OpenConsole.exe"),
     ])
-}
-
-fn package_powershell_editor_files(binary: &Path) -> TaskResult<Vec<PathBuf>> {
-    let recipe: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../packaging/windows/powershell-editor.json"
-    ))
-    .map_err(|_| "PowerShell editor recipe is invalid")?;
-    let version = recipe["package"]["version"]
-        .as_str()
-        .ok_or("PowerShell editor version is missing")?;
-    let directory = binary
-        .parent()
-        .ok_or("release binary has no parent")?
-        .join("powershell-modules/PSReadLine")
-        .join(version);
-    let files = recipe["files"]
-        .as_array()
-        .ok_or("PowerShell editor file list is missing")?;
-    require(
-        files.len() == 8,
-        "PowerShell editor requires exactly eight pinned files",
-    )?;
-    files
-        .iter()
-        .map(|item| {
-            let path = item["path"]
-                .as_str()
-                .ok_or("PowerShell editor file path is missing")?;
-            Ok(directory.join(path))
-        })
-        .collect()
 }
 
 fn require_package_runtime_binaries(binaries: &[PathBuf]) -> TaskResult {

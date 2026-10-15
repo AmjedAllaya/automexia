@@ -2,6 +2,20 @@
 
 use super::*;
 
+const WINDOWS_VENDOR_FILES: [&str; 11] = [
+    "conpty.dll",
+    "x64/OpenConsole.exe",
+    "arm64/OpenConsole.exe",
+    "powershell-modules/PSReadLine/2.4.5/PSReadLine.psd1",
+    "powershell-modules/PSReadLine/2.4.5/PSReadLine.psm1",
+    "powershell-modules/PSReadLine/2.4.5/PSReadLine.format.ps1xml",
+    "powershell-modules/PSReadLine/2.4.5/Microsoft.PowerShell.PSReadLine.dll",
+    "powershell-modules/PSReadLine/2.4.5/Microsoft.PowerShell.Pager.dll",
+    "powershell-modules/PSReadLine/2.4.5/netstd/Microsoft.PowerShell.PSReadLine.Polyfiller.dll",
+    "powershell-modules/PSReadLine/2.4.5/net6plus/Microsoft.PowerShell.PSReadLine.Polyfiller.dll",
+    "powershell-modules/PSReadLine/2.4.5/License.txt",
+];
+
 #[test]
 fn portable_resource_copy_is_bounded_and_preserves_layout() {
     let temporary = tempfile::tempdir().unwrap();
@@ -55,8 +69,7 @@ fn portable_packages_preserve_all_runtime_binaries_and_target_names() {
             }
         }
         if target.contains("windows") {
-            for relative in ["conpty.dll", "x64/OpenConsole.exe", "arm64/OpenConsole.exe"]
-            {
+            for relative in WINDOWS_VENDOR_FILES {
                 let asset = source.join(relative);
                 fs::create_dir_all(asset.parent().unwrap()).unwrap();
                 fs::write(asset, relative.as_bytes()).unwrap();
@@ -86,8 +99,7 @@ fn portable_packages_preserve_all_runtime_binaries_and_target_names() {
             .unwrap()
             .success());
         if target.contains("windows") {
-            for relative in ["conpty.dll", "x64/OpenConsole.exe", "arm64/OpenConsole.exe"]
-            {
+            for relative in WINDOWS_VENDOR_FILES {
                 assert_eq!(
                     fs::read(extracted.join(relative)).unwrap(),
                     relative.as_bytes()
@@ -115,8 +127,8 @@ fn portable_packages_preserve_all_runtime_binaries_and_target_names() {
 }
 
 #[test]
-fn portable_packages_reject_missing_conpty_before_replacing_staging() {
-    for missing in ["conpty.dll", "x64/OpenConsole.exe", "arm64/OpenConsole.exe"] {
+fn portable_packages_reject_missing_vendor_runtime_before_replacing_staging() {
+    for missing in WINDOWS_VENDOR_FILES {
         let temporary = tempfile::tempdir().unwrap();
         let source = temporary.path().join("release");
         let output = temporary.path().join("packages");
@@ -129,10 +141,10 @@ fn portable_packages_reject_missing_conpty_before_replacing_staging() {
             "amx.exe",
             "automexia-suggestion-helper.exe",
             "automexia-ssh-helper.exe",
-            "conpty.dll",
-            "x64/OpenConsole.exe",
-            "arm64/OpenConsole.exe",
-        ] {
+        ]
+        .into_iter()
+        .chain(WINDOWS_VENDOR_FILES)
+        {
             if relative != missing {
                 let asset = source.join(relative);
                 fs::create_dir_all(asset.parent().unwrap()).unwrap();
