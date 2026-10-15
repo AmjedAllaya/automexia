@@ -133,7 +133,7 @@ jobs:
         with:
           version: v0.16.0
       - name: Install pinned quality tools
-        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8
         with:
           tool: cargo-nextest@0.9.137,cargo-audit@0.22.0,cargo-deny@0.20.2
       - name: Rust formatting
@@ -237,7 +237,7 @@ jobs:
           mkdir -p public-packages
           cp "$package_dir"/*.deb "$package_dir"/*.rpm "$package_dir"/*.tar.gz public-packages/
       - name: Upload exact native package set
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ matrix.artifact }}
           path: public-packages
@@ -256,7 +256,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.authorize.outputs.commit }}
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           pattern: public-linux-*
           path: package-source
@@ -280,7 +280,7 @@ jobs:
             'Unsigned package rehearsal. Do not distribute or activate.' \
             > rehearsal-bundle/REHEARSAL-NOT-A-PUBLIC-RELEASE.txt
       - name: Retain bounded private rehearsal evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: linux-package-rehearsal-${{ needs.authorize.outputs.version }}
           path: rehearsal-bundle
@@ -299,7 +299,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.authorize.outputs.commit }}
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           pattern: public-linux-*
           path: package-source
@@ -328,7 +328,7 @@ jobs:
           cp release-bundle/*.deb release-bundle/*.rpm release-bundle/*.tar.gz sbom-input/packages/
           cp Cargo.lock sbom-input/Cargo.lock
       - name: Generate SPDX SBOM
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c
         with:
           path: sbom-input
           format: spdx-json
@@ -338,7 +338,7 @@ jobs:
           upload-release-assets: false
           dependency-snapshot: false
       - name: Generate CycloneDX SBOM
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c
         with:
           path: sbom-input
           format: cyclonedx-json
@@ -357,7 +357,7 @@ jobs:
           python3 tools/ci/public_distribution.py verify-documents --directory release-bundle
       - name: Retain inventories only in the private source repository
         if: github.event.repository.private == true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: private-build-inventories
           path: sbom-reviewed
@@ -390,7 +390,7 @@ jobs:
           minisign -V -P "$RELEASE_MINISIGN_PUBLIC_KEY" -m release-bundle/SHA256SUMS -x release-bundle/SHA256SUMS.minisig
           python3 tools/ci/public_distribution.py verify-bundle --directory release-bundle
       - name: Upload signed create-once bundle
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: public-linux-release-bundle
           path: release-bundle
@@ -419,7 +419,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.authorize.outputs.commit }}
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: public-linux-release-bundle
           path: release-bundle
@@ -437,7 +437,7 @@ jobs:
           gh release verify-asset --help >/dev/null
       - name: Create repository-scoped one-hour GitHub App token
         id: distribution-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
         with:
           client-id: ${{ vars.AUTOMEXIA_DISTRIBUTION_APP_CLIENT_ID }}
           private-key: ${{ secrets.AUTOMEXIA_DISTRIBUTION_APP_PRIVATE_KEY }}
@@ -496,7 +496,7 @@ jobs:
           mkdir -p activation
           python3 tools/ci/public_distribution.py activation-handoff --manifest release-bundle/public-distribution-manifest-v2.json --output activation/website-activation.json
       - name: Retain exact website activation handoff
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: website-activation-${{ needs.authorize.outputs.version }}
           path: activation/website-activation.json
