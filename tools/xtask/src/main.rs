@@ -7,7 +7,8 @@ mod renderer_benchmarks;
 mod visual_diff;
 mod windows_package;
 
-use windows_package::{package_powershell_editor_files, package_windows_arm64};
+use windows_package::package_powershell_editor_files;
+use windows_package::package_windows_arm64;
 
 use process_wrap::std::CommandWrap;
 #[cfg(windows)]

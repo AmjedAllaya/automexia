@@ -150,6 +150,9 @@ class EditorTests(unittest.TestCase):
                 for component in tree.iter():
                     if component.tag.rsplit('}', 1)[-1] == 'Component' and any(node in files for node in component):
                         self.assertIn(component.attrib['Id'], refs)
+                        members = [node for node in component if node.tag.rsplit('}', 1)[-1] == 'File']
+                        self.assertEqual(len(members), 1, 'each editor file must be independently repairable')
+                        self.assertEqual(members[0].get('KeyPath'), 'yes')
 
 
 if __name__ == '__main__':

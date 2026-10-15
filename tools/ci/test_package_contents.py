@@ -77,6 +77,7 @@ class PackageContentsTests(unittest.TestCase):
             env = {key: value for key, value in os.environ.items()
                    if key.upper() in ("SYSTEMROOT", "TMP", "TEMP")}
             env["CARGO_PACKAGER_AUTOMEXIA_CONPTY_ROOT"] = str(root / "vendor runtime")
+            env["CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT"] = str(root / "editor runtime")
             output = root / "fragment.wixobj"
             result = subprocess.run([executable, "-arch", "x64", "-out", str(output),
                                      str(ROOT / "packaging/windows/automexia.wxs")],

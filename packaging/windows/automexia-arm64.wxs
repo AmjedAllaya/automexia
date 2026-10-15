@@ -33,11 +33,21 @@
               <Directory Id="AutomexiaPSReadLineVersion" Name="2.4.5">
                 <Component Id="AutomexiaPowerShellEditor" Guid="*" Bitness="always64">
                   <File Id="AutomexiaEditorManifest" Source="$(var.PowerShellEditorRoot)\powershell-modules\PSReadLine\2.4.5\PSReadLine.psd1" KeyPath="yes" />
-                  <File Id="AutomexiaEditorScript" Source="$(var.PowerShellEditorRoot)\powershell-modules\PSReadLine\2.4.5\PSReadLine.psm1" />
-                  <File Id="AutomexiaEditorFormat" Source="$(var.PowerShellEditorRoot)\powershell-modules\PSReadLine\2.4.5\PSReadLine.format.ps1xml" />
-                  <File Id="AutomexiaEditorAssembly" Source="$(var.PowerShellEditorRoot)\powershell-modules\PSReadLine\2.4.5\Microsoft.PowerShell.PSReadLine.dll" />
-                  <File Id="AutomexiaEditorPager" Source="$(var.PowerShellEditorRoot)\powershell-modules\PSReadLine\2.4.5\Microsoft.PowerShell.Pager.dll" />
-                  <File Id="AutomexiaEditorLicense" Source="$(var.PowerShellEditorRoot)\powershell-modules\PSReadLine\2.4.5\License.txt" />
+                </Component>
+                <Component Id="AutomexiaPowerShellEditorScript" Guid="*" Bitness="always64">
+                  <File Id="AutomexiaEditorScript" Source="$(var.PowerShellEditorRoot)\powershell-modules\PSReadLine\2.4.5\PSReadLine.psm1" KeyPath="yes" />
+                </Component>
+                <Component Id="AutomexiaPowerShellEditorFormat" Guid="*" Bitness="always64">
+                  <File Id="AutomexiaEditorFormat" Source="$(var.PowerShellEditorRoot)\powershell-modules\PSReadLine\2.4.5\PSReadLine.format.ps1xml" KeyPath="yes" />
+                </Component>
+                <Component Id="AutomexiaPowerShellEditorAssembly" Guid="*" Bitness="always64">
+                  <File Id="AutomexiaEditorAssembly" Source="$(var.PowerShellEditorRoot)\powershell-modules\PSReadLine\2.4.5\Microsoft.PowerShell.PSReadLine.dll" KeyPath="yes" />
+                </Component>
+                <Component Id="AutomexiaPowerShellEditorPager" Guid="*" Bitness="always64">
+                  <File Id="AutomexiaEditorPager" Source="$(var.PowerShellEditorRoot)\powershell-modules\PSReadLine\2.4.5\Microsoft.PowerShell.Pager.dll" KeyPath="yes" />
+                </Component>
+                <Component Id="AutomexiaPowerShellEditorLicense" Guid="*" Bitness="always64">
+                  <File Id="AutomexiaEditorLicense" Source="$(var.PowerShellEditorRoot)\powershell-modules\PSReadLine\2.4.5\License.txt" KeyPath="yes" />
                 </Component>
                 <Directory Id="AutomexiaEditorNetStandard" Name="netstd">
                   <Component Id="AutomexiaEditorNetStandardAssembly" Guid="*" Bitness="always64">
@@ -265,6 +275,11 @@
 
     <Feature Id="AutomexiaTerminalFeature" Title="Automexia Terminal" Level="1">
       <ComponentRef Id="AutomexiaPowerShellEditor" />
+      <ComponentRef Id="AutomexiaPowerShellEditorScript" />
+      <ComponentRef Id="AutomexiaPowerShellEditorFormat" />
+      <ComponentRef Id="AutomexiaPowerShellEditorAssembly" />
+      <ComponentRef Id="AutomexiaPowerShellEditorPager" />
+      <ComponentRef Id="AutomexiaPowerShellEditorLicense" />
       <ComponentRef Id="AutomexiaEditorNetStandardAssembly" />
       <ComponentRef Id="AutomexiaEditorNet6Assembly" />
       <ComponentRef Id="AutomexiaConptyComponent" />

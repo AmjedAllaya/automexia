@@ -12,11 +12,21 @@
           <Directory Id="AutomexiaPSReadLineVersion" Name="2.4.5">
             <Component Id="AutomexiaPowerShellEditor" Guid="*" Win64="yes">
               <File Id="AutomexiaEditorManifest" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\PSReadLine.psd1" KeyPath="yes" />
-              <File Id="AutomexiaEditorScript" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\PSReadLine.psm1" />
-              <File Id="AutomexiaEditorFormat" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\PSReadLine.format.ps1xml" />
-              <File Id="AutomexiaEditorAssembly" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\Microsoft.PowerShell.PSReadLine.dll" />
-              <File Id="AutomexiaEditorPager" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\Microsoft.PowerShell.Pager.dll" />
-              <File Id="AutomexiaEditorLicense" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\License.txt" />
+            </Component>
+            <Component Id="AutomexiaPowerShellEditorScript" Guid="*" Win64="yes">
+              <File Id="AutomexiaEditorScript" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\PSReadLine.psm1" KeyPath="yes" />
+            </Component>
+            <Component Id="AutomexiaPowerShellEditorFormat" Guid="*" Win64="yes">
+              <File Id="AutomexiaEditorFormat" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\PSReadLine.format.ps1xml" KeyPath="yes" />
+            </Component>
+            <Component Id="AutomexiaPowerShellEditorAssembly" Guid="*" Win64="yes">
+              <File Id="AutomexiaEditorAssembly" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\Microsoft.PowerShell.PSReadLine.dll" KeyPath="yes" />
+            </Component>
+            <Component Id="AutomexiaPowerShellEditorPager" Guid="*" Win64="yes">
+              <File Id="AutomexiaEditorPager" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\Microsoft.PowerShell.Pager.dll" KeyPath="yes" />
+            </Component>
+            <Component Id="AutomexiaPowerShellEditorLicense" Guid="*" Win64="yes">
+              <File Id="AutomexiaEditorLicense" Source="$(env.CARGO_PACKAGER_AUTOMEXIA_EDITOR_ROOT)\powershell-modules\PSReadLine\2.4.5\License.txt" KeyPath="yes" />
             </Component>
             <Directory Id="AutomexiaEditorNetStandard" Name="netstd">
               <Component Id="AutomexiaEditorNetStandardAssembly" Guid="*" Win64="yes">
@@ -80,6 +90,11 @@
     </DirectoryRef>
     <ComponentGroup Id="AutomexiaContextMenuComponents">
       <ComponentRef Id="AutomexiaPowerShellEditor" />
+      <ComponentRef Id="AutomexiaPowerShellEditorScript" />
+      <ComponentRef Id="AutomexiaPowerShellEditorFormat" />
+      <ComponentRef Id="AutomexiaPowerShellEditorAssembly" />
+      <ComponentRef Id="AutomexiaPowerShellEditorPager" />
+      <ComponentRef Id="AutomexiaPowerShellEditorLicense" />
       <ComponentRef Id="AutomexiaEditorNetStandardAssembly" />
       <ComponentRef Id="AutomexiaEditorNet6Assembly" />
       <ComponentRef Id="AutomexiaConptyComponent" />

@@ -173,6 +173,20 @@ class RuntimeTrustTests(unittest.TestCase):
                 self.read("shell-integration/cmd/automexia.cmd"),
             )
 
+    def test_powershell_bootstrap_cannot_change_execution_policy(self) -> None:
+        shell = self.read("apps/automexia-terminal/src/automexia/shell.rs").replace(
+            'const POWERSHELL_SESSION_BOOTSTRAP: &str = concat!(',
+            'const POWERSHELL_SESSION_BOOTSTRAP: &str = concat!("ExecutionPolicy Bypass",',
+            1,
+        )
+        with self.assertRaisesRegex(TRUST.RuntimeTrustError, "literal paths, preserve policy"):
+            TRUST.validate_application(
+                self.read("apps/automexia-terminal/src/main.rs"),
+                shell,
+                self.read("apps/automexia-terminal/src/automexia/shell_integration.rs"),
+                self.read("shell-integration/cmd/automexia.cmd"),
+            )
+
     def test_uncaught_powershell_policy_failure_is_rejected(self) -> None:
         shell = self.read(
             "apps/automexia-terminal/src/automexia/shell.rs"

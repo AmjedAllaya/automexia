@@ -105,7 +105,7 @@ def validate_application(main: str, shell: str, integration: str, cmd: str) -> N
         "child shell injection must be gated and use validated session resources",
     )
     bootstrap = section(
-        shell, "const POWERSHELL_SESSION_BOOTSTRAP", "pub fn normalized_program"
+        shell, "const POWERSHELL_SESSION_BOOTSTRAP", "fn powershell_session_options("
     )
     require(
         bootstrap.count("Test-Path -LiteralPath $p") == 2

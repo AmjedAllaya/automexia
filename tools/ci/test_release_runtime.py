@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import json
 import plistlib
 import gzip
 from pathlib import Path
@@ -581,7 +582,7 @@ try {
                     self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_archive_reader_rejects_missing_extra_duplicate_and_unsafe_entries(self) -> None:
-        pwsh = shutil.which("pwsh")
+        pwsh = shutil.which("pwsh") or shutil.which("powershell")
         if pwsh is None:
             self.skipTest("PowerShell unavailable for native archive-reader regression")
         source = (ROOT / "tools/ci/test_release_trust_windows.ps1").read_text(encoding="utf-8")
@@ -592,6 +593,7 @@ try {
         harness = r'''
 param([string]$Archive, [string]$Expected)
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.IO.Compression.FileSystem
 $MaximumArchiveEntries = 4096
 $Version = '0.4.0'
 $temporaryRoots = [System.Collections.Generic.List[string]]::new()
@@ -609,6 +611,11 @@ function Assert-ConPtyRuntime {
     param([string]$Root, [string]$Architecture)
     return @('conpty.dll', 'x64/OpenConsole.exe', 'arm64/OpenConsole.exe')
 }
+function Assert-PowerShellEditorRuntime {
+    param([string]$Root)
+    $recipe = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../packaging/windows/powershell-editor.json') -Raw | ConvertFrom-Json
+    return @($recipe.files | ForEach-Object { 'powershell-modules/PSReadLine/' + $recipe.package.version + '/' + $_.path })
+}
 function Assert-TrustedSignature {
     param([string]$Path, [bool]$RecordEvidence)
     $script:checkedScripts.Add([IO.Path]::GetFileName($Path))
@@ -620,12 +627,15 @@ try {
     try {
         $paths = @(Expand-TrustedPortableArchive -Path $Archive)
         if ($Expected -ne 'pass') { throw 'fixture accepted an invalid archive' }
-        $names = @($paths | ForEach-Object { [IO.Path]::GetFileName($_) } | Sort-Object)
+        [string[]]$names = @($paths | ForEach-Object { [IO.Path]::GetFileName($_) })
+        # Windows PowerShell and PowerShell 7 use different cultural punctuation
+        # ordering. File identity is an ordinal contract on both platforms.
+        [Array]::Sort($names, [StringComparer]::Ordinal)
         if (($names -join '|') -cne 'amx.exe|automexia-ssh-helper.exe|automexia-suggestion-helper.exe|automexia.exe') {
             throw 'archive reader failed to return all four runtime executables'
         }
         if ($script:checkedScripts.Count -ne 8) { throw 'archive reader skipped signed shell assets' }
-        if ($script:vendorSignatureCount -ne 3) { throw 'archive reader skipped vendor signatures' }
+        if ($script:vendorSignatureCount -ne 10) { throw 'archive reader skipped vendor signatures' }
     } catch {
         if ($Expected -eq 'pass' -or $_.Exception.Message -notmatch $Expected) { throw }
         if ($temporaryRoots.Count -ne 0) { throw 'invalid archive was extracted before rejection' }
@@ -644,6 +654,9 @@ try {
         expected = [name + ".exe" for name in RUNTIMES]
         expected += ["LICENSE", "NOTICE.md", "README.md", "THIRD_PARTY_NOTICES.md"]
         vendor = ["conpty.dll", "x64/OpenConsole.exe", "arm64/OpenConsole.exe"]
+        recipe = json.loads((ROOT / "packaging/windows/powershell-editor.json").read_text(encoding="utf-8"))
+        vendor += ["powershell-modules/PSReadLine/" + recipe["package"]["version"] + "/" + item["path"]
+                   for item in recipe["files"]]
         expected += vendor
         expected += ["shell-integration/" + name for name in SHELL_ASSETS]
         cases = [("complete", expected, "pass")]
@@ -658,7 +671,11 @@ try {
         ))
         with tempfile.TemporaryDirectory(prefix="automexia-archive-test-") as directory:
             root = Path(directory)
-            script = root / "exercise.ps1"
+            script = root / "tools/ci/exercise.ps1"
+            script.parent.mkdir(parents=True)
+            recipe_path = root / "packaging/windows/powershell-editor.json"
+            recipe_path.parent.mkdir(parents=True)
+            shutil.copyfile(ROOT / "packaging/windows/powershell-editor.json", recipe_path)
             script.write_text(harness, encoding="utf-8")
             for name, entries, outcome in cases:
                 with self.subTest(case=name):
@@ -666,7 +683,7 @@ try {
                     with zipfile.ZipFile(archive, "w") as output:
                         for entry in entries:
                             output.writestr(entry, "fixture\n")
-                    result = subprocess.run([pwsh, "-NoProfile", "-File", str(script), "-Archive", str(archive), "-Expected", outcome],
+                    result = subprocess.run([pwsh, "-NoProfile", "-ExecutionPolicy", "RemoteSigned", "-File", str(script), "-Archive", str(archive), "-Expected", outcome],
                                             capture_output=True, text=True, timeout=30, check=False)
                     self.assertEqual(result.returncode, 0, result.stderr)
 
