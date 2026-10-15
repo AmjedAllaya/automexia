@@ -167,7 +167,7 @@ class FreePlanContractTests(unittest.TestCase):
         import yaml
 
         pin = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
-        for name in ("ci.yml", "release.yml", "nightly.yml", "linux-early-access.yml", "accessibility-native.yml"):
+        for name in ("ci.yml", "release.yml", "nightly.yml", "linux-early-access.yml", "accessibility-native.yml", "windows-editor-native.yml"):
             with self.subTest(workflow=name):
                 workflow = yaml.safe_load((ROOT / ".github/workflows" / name).read_text(encoding="utf-8"))
                 # A global default cannot override the checkout's toolchain file.

@@ -434,6 +434,8 @@ does not prove the default customer installation works.
 The manual **Windows editor native checks** workflow runs this focused check
 without building a release. Failed runs retain bounded diagnostic logs for three
 days; the same logs are retained by the complete native assurance workflow.
+Probes use Windows PowerShell's native module paths, excluding modules inherited
+from a PowerShell 7 build shell.
 
 The opt-in native session-metadata roundtrip requires PowerShell 7, a default
 WSL Bash distribution with Automexia shell integration installed, and Windows

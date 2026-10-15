@@ -26,6 +26,15 @@ OPTIONAL_WSL_CASES = (
 )
 
 
+def powershell_environment(environment: dict[str, str], module_path: str | None) -> dict[str, str]:
+    # Windows names are case insensitive; Python exposes inherited names in
+    # uppercase. Do not retain a competing key or the build shell's Core modules.
+    child = {key: value for key, value in environment.items() if key.casefold() != 'psmodulepath'}
+    if module_path is not None:
+        child['PSModulePath'] = module_path
+    return child
+
+
 def run(command, report: Path, label: str, environment: dict, timeout: int):
     print(f'CHECK: {label}', flush=True)
     captured = bytearray()
@@ -63,7 +72,8 @@ def verify(report: Path, *, offline=False) -> None:
         if len(module_paths) + len(chunk) > 32 * 1024:
             raise ValueError('Module path output exceeds its bound')
         module_paths.extend(chunk)
-    paths_result = qa_process.run(base + ['-ModulePathOnly'], cwd=ROOT, environment=environment,
+    paths_result = qa_process.run(base + ['-ModulePathOnly'], cwd=ROOT,
+                                 environment=powershell_environment(environment, None),
                                  timeout_seconds=30, consume=capture_paths)
     if (paths_result.return_code or paths_result.timed_out or paths_result.error
             or not 0 < len(module_paths) <= 32 * 1024):
@@ -77,7 +87,7 @@ def verify(report: Path, *, offline=False) -> None:
             stage.prepare(Path(compiled_executable(output, target, 'test')), offline=offline)
             print(f'CHECK: {target}-editor-staging', flush=True)
             EDITOR.prepare_runtime(stage.directory, offline=offline)
-            child = dict(environment, PSModulePath=str(stage.directory / 'powershell-modules') + ';' + existing_paths)
+            child = powershell_environment(environment, str(stage.directory / 'powershell-modules') + ';' + existing_paths)
             run(base + ['-Root', str(stage.directory), '-Load'], report, target + '-vendor', child, 120)
             arguments = [str(stage.executable)]
             if target == 'live_resize':

@@ -114,7 +114,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          python -m unittest discover -s tools/ci -p test_windows_powershell_editor.py
+          python -m unittest discover -s tools/ci -p 'test_windows_*editor*.py'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/ci/check_windows_editor_resize.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

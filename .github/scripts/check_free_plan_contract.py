@@ -50,7 +50,7 @@ except (OSError, ValueError, KeyError, TypeError):
     minimum = None
     errors.append('MSRV authority must be a regular bounded Cargo.toml with an exact version')
 
-compiler_workflows = ('ci.yml', 'linux-early-access.yml', 'release.yml', 'nightly.yml', 'accessibility-native.yml', 'first-alpha.yml', 'windows-package-review.yml')
+compiler_workflows = ('ci.yml', 'linux-early-access.yml', 'release.yml', 'nightly.yml', 'accessibility-native.yml', 'first-alpha.yml', 'windows-package-review.yml', 'windows-editor-native.yml')
 for workflow_name in compiler_workflows:
     workflow_text = (wf / workflow_name).read_text(encoding='utf-8')
     selectors = re.findall(r'(?m)^[ \t]*RUSTUP_TOOLCHAIN:[^\n]*$', workflow_text)
@@ -90,6 +90,7 @@ EXPECTED_WORKFLOWS = {
     's1-assurance.yml',
     's2-assurance.yml',
     'windows-package-review.yml',
+    'windows-editor-native.yml',
 }
 actual_workflows = {p.name for p in wf.iterdir() if p.is_file() and p.suffix in {'.yml', '.yaml'}}
 if actual_workflows != EXPECTED_WORKFLOWS:
