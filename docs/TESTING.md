@@ -431,6 +431,10 @@ preparing the pinned caches. Windows CI requires this check. Inbox PSReadLine
 2.0.0 has an upstream resize defect; testing a developer-installed newer module
 does not prove the default customer installation works.
 
+The manual **Windows editor native checks** workflow runs this focused check
+without building a release. Failed runs retain bounded diagnostic logs for three
+days; the same logs are retained by the complete native assurance workflow.
+
 The opt-in native session-metadata roundtrip requires PowerShell 7, a default
 WSL Bash distribution with Automexia shell integration installed, and Windows
 ConPTY. It uses Automexia's normal PowerShell bootstrap and user profile, types

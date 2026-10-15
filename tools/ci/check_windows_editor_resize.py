@@ -27,6 +27,7 @@ OPTIONAL_WSL_CASES = (
 
 
 def run(command, report: Path, label: str, environment: dict, timeout: int):
+    print(f'CHECK: {label}', flush=True)
     captured = bytearray()
     with (report / (label + '.log')).open('xb') as log:
         def consume(chunk):
@@ -57,6 +58,7 @@ def verify(report: Path, *, offline=False) -> None:
     # Keep default/redirected user, shared and system module locations without
     # persisting their private values in the report or changing the parent.
     module_paths = bytearray()
+    print('CHECK: native Windows PowerShell module paths', flush=True)
     def capture_paths(chunk):
         if len(module_paths) + len(chunk) > 32 * 1024:
             raise ValueError('Module path output exceeds its bound')
@@ -71,7 +73,9 @@ def verify(report: Path, *, offline=False) -> None:
     for target in TARGETS:
         stage = NativeTestStage(report)
         try:
+            print(f'CHECK: {target}-conpty-staging', flush=True)
             stage.prepare(Path(compiled_executable(output, target, 'test')), offline=offline)
+            print(f'CHECK: {target}-editor-staging', flush=True)
             EDITOR.prepare_runtime(stage.directory, offline=offline)
             child = dict(environment, PSModulePath=str(stage.directory / 'powershell-modules') + ';' + existing_paths)
             run(base + ['-Root', str(stage.directory), '-Load'], report, target + '-vendor', child, 120)
@@ -104,6 +108,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
     try:
         verify(args.report_dir.resolve(), offline=args.offline)
-    except (OSError, ValueError, KeyError, UnicodeError):
-        print('FAIL: native Windows editor verification failed; inspect its retained bounded logs', file=sys.stderr)
+    except EDITOR.EditorError as error:
+        # This adapter's typed errors contain only fixed, content-free text.
+        print(f'FAIL: {error}', file=sys.stderr)
+        raise SystemExit(1)
+    except (OSError, ValueError, KeyError, UnicodeError) as error:
+        # Error types and owned phase names are safe; exception text may contain
+        # private paths. Detailed fixture output stays in bounded CI evidence.
+        print(f'FAIL: native Windows editor verification ({type(error).__name__}); inspect retained bounded logs', file=sys.stderr)
         raise SystemExit(1)

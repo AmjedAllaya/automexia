@@ -40,6 +40,7 @@ EXPECTED_WORKFLOWS = {
     "s1-assurance.yml": "S1 controlled assurance",
     "s2-assurance.yml": "S2 controlled activation",
     "windows-package-review.yml": "Published package review",
+    "windows-editor-native.yml": "Windows editor native checks",
 }
 EXPECTED_DEFAULT_BRANCH_EVIDENCE_WORKFLOWS = [
     "ci.yml",

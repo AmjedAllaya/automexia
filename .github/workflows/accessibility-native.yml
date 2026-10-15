@@ -240,6 +240,16 @@ jobs:
             artifacts/native-helper-prompt-timings.json
           if-no-files-found: warn
           retention-days: 14
+      - name: Retain bounded Windows editor diagnostics
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-windows-editor-${{ matrix.runner }}
+          path: |
+            target/native-windows-editor/*.log
+            target/native-windows-editor/summary.json
+          if-no-files-found: warn
+          retention-days: 3
       - name: Preserve exact geometry, environment and mutation reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

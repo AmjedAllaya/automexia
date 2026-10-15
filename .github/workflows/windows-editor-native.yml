@@ -1,0 +1,53 @@
+name: Windows editor native checks
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUSTUP_TOOLCHAIN: '1.96.1'
+  CARGO_INCREMENTAL: '0'
+  CARGO_BUILD_JOBS: '2'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+
+jobs:
+  editor:
+    if: github.repository == 'AmjedAllaya/automexia' && github.actor == github.repository_owner
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - name: Verify the repository toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/ci/rust_toolchain.py verify --kind development
+          if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
+          cargo --version
+          if ($LASTEXITCODE -ne 0) { throw 'cargo identity query failed' }
+      - name: Verify packaged editor and native resize contracts
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tools/ci -p test_windows_powershell_editor.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/ci/check_windows_editor_resize.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Retain bounded Windows editor diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-windows-editor
+          path: |
+            target/native-windows-editor/*.log
+            target/native-windows-editor/summary.json
+          if-no-files-found: warn
+          retention-days: 3
