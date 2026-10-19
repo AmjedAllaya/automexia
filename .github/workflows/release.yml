@@ -209,7 +209,7 @@ jobs:
         if ($LASTEXITCODE -ne 0) { throw 'Native WSL Git prompt failed' }
     - name: Retain WSL version and shell evidence
       if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: release-wsl-shell-matrix
         path: |
@@ -256,7 +256,7 @@ jobs:
         if ($LASTEXITCODE -ne 0) { throw 'compiler installation failed' }
         python tools/ci/rust_toolchain.py verify --kind development
         if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
-    - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+    - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283
       with:
         tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
     - name: Execute the exact native and benchmark release workload
@@ -275,7 +275,7 @@ jobs:
     - name: Enforce the reviewed 30-day baseline
       shell: pwsh
       run: "$measuredAt = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')\n$toolchain = (& rustc --version).Trim()\n$runner = @(\n  '--runner-class', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER_CLASS }}',\n  '--os', 'windows',\n  '--arch', 'x86_64',\n  '--cpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_CPU }}',\n  '--gpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_GPU }}',\n  '--power-mode', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_POWER_MODE }}',\n  '--toolchain', $toolchain,\n  '--profile', 'criterion-release-native-gui'\n)\n& python tools/ci/performance_assurance.py collect-native-resource `\n  --report target/performance/native-resource.json `\n  --output target/performance/native-memory.json `\n  --commit $env:GITHUB_SHA `\n  --operator $env:GITHUB_ACTOR `\n  --measured-at-utc $measuredAt @runner\nif ($LASTEXITCODE -ne 0) { throw 'native memory normalization failed' }\n& python tools/ci/performance_assurance.py collect-criterion `\n  --criterion-root \"target/qa/$env:AUTOMEXIA_QA_RUN_LABEL/benchmark-target/criterion\" `\n  --supplemental target/performance/native-memory.json `\n  --output target/performance/candidate.json `\n  --commit $env:GITHUB_SHA `\n  --operator $env:GITHUB_ACTOR `\n  --measured-at-utc $measuredAt `\n  --require-classified @runner\nif ($LASTEXITCODE -ne 0) { throw 'performance evidence composition failed' }\n& python tools/ci/performance_assurance.py evaluate `\n  --candidate target/performance/candidate.json `\n  --expected-commit $env:GITHUB_SHA `\n  --output target/performance/comparison.json `\n  --require-active\nif ($LASTEXITCODE -ne 0) { throw 'active S2 ratchet rejected this release' }\n"
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       if: always()
       with:
         name: release-evidence-performance-assurance
@@ -318,7 +318,7 @@ jobs:
         if ($LASTEXITCODE -ne 0) { throw ''S1 assurance rejected the release evidence'' }
 
         '
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: release-evidence-s1-assurance
         path: target/s1-assurance/summary.json
@@ -446,7 +446,7 @@ jobs:
     - name: Install native Linux build dependencies
       run: sudo apt-get update && sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core
     - name: Install pinned release quality tools
-      uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+      uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283
       with:
         tool: cargo-nextest@0.9.137,cargo-audit@0.22.0,cargo-deny@0.20.2
     - name: Formatting
@@ -564,7 +564,7 @@ jobs:
         done
 
         cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md README.md "dist/${{ matrix.artifact }}/"
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: ${{ matrix.artifact }}
         path: dist
@@ -609,7 +609,7 @@ jobs:
         ref: ${{ needs.preflight.outputs.commit }}
         persist-credentials: false
     - name: Download exact unsigned package inputs
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: ${{ matrix.artifact }}
         path: reference
@@ -637,7 +637,7 @@ jobs:
 
         '
     - name: Upload cold-build reproducibility evidence
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: release-reproducibility-${{ matrix.target }}
         path: trust/evidence/reproducibility-${{ matrix.target }}.json
@@ -675,7 +675,7 @@ jobs:
         ref: ${{ needs.preflight.outputs.commit }}
         persist-credentials: false
     - name: Download exact unsigned package inputs
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: ${{ matrix.artifact }}
         path: reference
@@ -703,7 +703,7 @@ jobs:
       shell: bash
       run: "set -euo pipefail\nbash tools/ci/check_reproducible_build.sh \\\n  \"trust/evidence/reproducibility-${{ matrix.arch }}.json\" \"reference/${{ matrix.artifact }}\"\n"
     - name: Upload cold-build reproducibility evidence
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: release-reproducibility-${{ matrix.arch }}
         path: trust/evidence/reproducibility-${{ matrix.arch }}.json
@@ -742,7 +742,7 @@ jobs:
         fi
         tar -czf "$RUNNER_TEMP/windows-package-inputs.tar.gz" shell-integration
     - name: Upload minimal unsigned Windows package inputs
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: windows-package-source-inputs
         path: ${{ runner.temp }}/windows-package-inputs.tar.gz
@@ -773,12 +773,12 @@ jobs:
           target: aarch64-pc-windows-msvc
     steps:
     - name: Download unsigned release binary
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: ${{ matrix.artifact }}
         path: staged-binary
     - name: Download minimal package source inputs
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: windows-package-source-inputs
         path: staged-source
@@ -861,7 +861,7 @@ jobs:
           if ($null -eq $signature.TimeStamperCertificate) { throw "missing trusted timestamp: $($file.FullName)" }
         }
     - name: Upload signed runtime inputs
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: signed-inputs-${{ matrix.artifact }}
         path: |
@@ -901,7 +901,7 @@ jobs:
         persist-credentials: false
         ref: ${{ needs.preflight.outputs.commit }}
     - name: Download signed runtime inputs
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: signed-inputs-${{ matrix.artifact }}
         path: signed-inputs
@@ -917,7 +917,7 @@ jobs:
         python tools/ci/rust_toolchain.py verify --kind development
         if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
     - name: Install pinned cargo-packager
-      uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+      uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283
       with:
         tool: cargo-packager@0.11.8
     - name: Restore signed inputs into packaging workspace
@@ -984,7 +984,7 @@ jobs:
           }
         }
     - name: Upload unsigned MSI and signed-content ZIP
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: unsigned-packages-${{ matrix.artifact }}
         path: |
@@ -1017,7 +1017,7 @@ jobs:
           target: aarch64-pc-windows-msvc
     steps:
     - name: Download package produced without signing credentials
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: unsigned-packages-${{ matrix.artifact }}
         path: unsigned
@@ -1081,7 +1081,7 @@ jobs:
         if ($null -eq $signature.TimeStamperCertificate) { throw 'MSI has no trusted timestamp' }
         if (-not (Test-Path "unsigned/automexia-terminal-$env:AUTOMEXIA_VERSION-${{ matrix.target }}.zip")) { throw 'final portable ZIP is missing' }
     - name: Upload final signed Windows packages
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: packages-${{ matrix.artifact }}
         path: |
@@ -1108,12 +1108,12 @@ jobs:
         persist-credentials: false
         ref: ${{ needs.preflight.outputs.commit }}
     - name: Download Intel slice
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: macos-x86_64
         path: staged/x86_64
     - name: Download Apple Silicon slice
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: macos-arm64
         path: staged/arm64
@@ -1143,7 +1143,7 @@ jobs:
         "$app/Contents/MacOS/amx" --version | grep -F "$AUTOMEXIA_VERSION"
         tar -C dist -czf "$RUNNER_TEMP/unsigned-macos-app.tar.gz" 'Automexia Terminal.app'
     - name: Upload unsigned app for isolated signing
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: unsigned-macos-universal-app
         path: ${{ runner.temp }}/unsigned-macos-app.tar.gz
@@ -1164,7 +1164,7 @@ jobs:
       AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
     steps:
     - name: Download unsigned app only
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: unsigned-macos-universal-app
         path: staged
@@ -1256,7 +1256,7 @@ jobs:
         hdiutil detach "$mount"
         mount=''
     - name: Upload notarized DMG
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: packages-macos-universal
         path: dist/automexia-terminal-${{ needs.preflight.outputs.version }}-universal.dmg
@@ -1290,7 +1290,7 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ needs.preflight.outputs.commit }}
-    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: ${{ matrix.artifact }}
         path: staged
@@ -1343,7 +1343,7 @@ jobs:
         lintian "$package_dir"/*.deb
     - name: Clean install, metadata, and uninstall smoke
       run: bash tools/ci/test_linux_package.sh "target/package/${{ matrix.target }}" "$AUTOMEXIA_VERSION"
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: packages-${{ matrix.artifact }}
         path: 'target/package/${{ matrix.target }}/*.deb
@@ -1379,15 +1379,15 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ needs.preflight.outputs.commit }}
-    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: packages-windows-x86_64
         path: trust/windows
-    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: packages-windows-arm64
         path: trust/windows
-    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: packages-linux-x86_64
         path: trust/linux
@@ -1397,7 +1397,7 @@ jobs:
     - name: Native GPU/PTY launch and WSL portable smoke
       shell: pwsh
       run: "$windowsArchive = Get-Item \"trust/windows/automexia-terminal-$env:AUTOMEXIA_VERSION-x86_64-pc-windows-msvc.zip\"\nNew-Item -ItemType Directory -Force smoke/windows-final | Out-Null\nExpand-Archive -LiteralPath $windowsArchive.FullName -DestinationPath smoke/windows-final\n$windows = Get-Item smoke/windows-final/automexia.exe\n& $windows.FullName --version\nif ($LASTEXITCODE -ne 0) { throw 'signed Windows portable smoke failed' }\n$process = Start-Process -FilePath $windows.FullName -PassThru\ntry {\n  Start-Sleep -Seconds 8\n  if ($process.HasExited) { throw \"Automexia exited during the controlled GPU/PTY smoke\" }\n}\nfinally {\n  if (-not $process.HasExited) {\n    Stop-Process -Id $process.Id -Force\n    Wait-Process -Id $process.Id -Timeout 30 -ErrorAction SilentlyContinue\n  }\n}\n$linuxArchive = Get-Item \"trust/linux/automexia-terminal-$env:AUTOMEXIA_VERSION-x86_64-unknown-linux-gnu.tar.gz\"\nNew-Item -ItemType Directory -Force smoke/linux-final | Out-Null\ntar -xzf $linuxArchive.FullName -C smoke/linux-final\nif ($LASTEXITCODE -ne 0) { throw 'could not extract final Linux portable archive' }\n$linux = Get-Item smoke/linux-final/automexia\n$wslPath = (& wsl.exe wslpath -u $linux.FullName).Trim()\n& wsl.exe chmod +x $wslPath\nif ($LASTEXITCODE -ne 0) { throw 'WSL could not prepare the Linux artifact' }\n& wsl.exe $wslPath --version\nif ($LASTEXITCODE -ne 0) { throw 'WSL portable smoke failed' }\n"
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: release-evidence-windows
         path: trust/evidence/release-trust-windows.json
@@ -1425,7 +1425,7 @@ jobs:
         persist-credentials: false
         ref: ${{ needs.preflight.outputs.commit }}
     - name: Download final package artifacts
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         pattern: packages-*
         path: packages
@@ -1444,14 +1444,14 @@ jobs:
         find release-assets -maxdepth 1 -type f \( -name '*.msi' -o -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.tar.gz' -o -name '*.tgz' \) -exec cp {} sbom-input/packages/ \;
         cp Cargo.lock sbom-input/Cargo.lock
     - name: Generate SPDX SBOM
-      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
+      uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c
       with:
         path: sbom-input
         format: spdx-json
         output-file: sbom-raw/automexia-terminal.spdx.json
         upload-artifact: false
     - name: Generate CycloneDX SBOM
-      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
+      uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c
       with:
         path: sbom-input
         format: cyclonedx-json
@@ -1484,7 +1484,7 @@ jobs:
         )
         trap - EXIT
     - name: Upload immutable publication bundle
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: release-publish-bundle
         path: |
@@ -1515,7 +1515,7 @@ jobs:
       contents: read
     steps:
     - name: Download verified publication bundle
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: release-publish-bundle
         path: bundle
@@ -1552,7 +1552,7 @@ jobs:
           -m bundle/SHA256SUMS \
           -x bundle/SHA256SUMS.minisig
     - name: Upload signed immutable publication bundle
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: release-signed-bundle
         path: |
@@ -1601,7 +1601,7 @@ jobs:
         persist-credentials: false
         ref: ${{ needs.preflight.outputs.commit }}
     - name: Download exact final Windows package
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: ${{ matrix.artifact }}
         path: artifacts
@@ -1683,7 +1683,7 @@ jobs:
       contents: read
     steps:
     - name: Download release artifacts
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: packages-macos-universal
         path: artifacts
@@ -1733,7 +1733,7 @@ jobs:
       contents: read
     steps:
     - name: Download release artifacts
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: ${{ matrix.artifact }}
         path: artifacts
@@ -1819,7 +1819,7 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - name: Download verified publication bundle
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: release-signed-bundle
         path: bundle
