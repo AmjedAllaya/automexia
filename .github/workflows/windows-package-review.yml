@@ -73,7 +73,7 @@ jobs:
           RELEASE_VERSION: ${{ inputs.candidate_version }}
           CANDIDATE_STRESS: ${{ inputs.stress_output_highlighting }}
         run: python tools/ci/windows_candidate_review.py
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: windows-candidate-review
@@ -129,7 +129,7 @@ jobs:
           AUDIT_ARCH: ${{ matrix.platform.arch }}
         run: |
           & tests/integration/windows-package-review.ps1 -RepositoryRoot $env:GITHUB_WORKSPACE -Policy $env:AUDIT_POLICY -PackageKind $env:AUDIT_PACKAGE -Architecture $env:AUDIT_ARCH -InternetMark:($env:AUDIT_INTERNET_MARK -eq 'true')
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: windows-package-review-${{ matrix.platform.arch }}-${{ matrix.case.name }}

@@ -60,7 +60,7 @@ jobs:
     - name: WPR resource trace and bounded manifest
       shell: pwsh
       run: tests/integration/wpr-windows.ps1 -OutputDirectory target/native-deep/wpr -DeleteTraceAfterManifest
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       if: always()
       with:
         name: automexia-windows-deep-evidence
@@ -116,7 +116,7 @@ jobs:
         if ($LASTEXITCODE -ne 0) { throw 'Native WSL Git prompt failed' }
     - name: Retain WSL version and shell evidence
       if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: nightly-wsl-shell-matrix
         path: |
@@ -170,7 +170,7 @@ jobs:
         python tools/ci/rust_toolchain.py verify --kind nightly
     - name: Install the nightly-2026-08-25 compiler required by libFuzzer
       run: rustup toolchain install nightly-2026-08-25 --profile minimal
-    - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+    - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283
       with:
         tool: cargo-fuzz@0.13.1
     - name: Fuzz ${{ matrix.target }} with nightly-2026-08-25
@@ -310,14 +310,14 @@ jobs:
         set -euo pipefail
         rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
         python tools/ci/rust_toolchain.py verify --kind development
-    - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+    - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283
       with:
         tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
     - name: Execute and retain Criterion measurements
       run: cargo xtask qa --full --bundle
     - name: Normalize classified latency evidence
       run: "mkdir -p target/performance\nmeasured_at=\"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"\npython tools/ci/performance_assurance.py collect-criterion \\\n  --criterion-root \"target/qa/${AUTOMEXIA_QA_RUN_LABEL}/benchmark-target/criterion\" \\\n  --output target/performance/candidate-linux.json \\\n  --commit \"$GITHUB_SHA\" \\\n  --measured-at-utc \"$measured_at\" \\\n  --operator \"$GITHUB_ACTOR\" \\\n  --runner-class \"${{ vars.AUTOMEXIA_PERFORMANCE_RUNNER_CLASS }}\" \\\n  --os linux \\\n  --arch x86_64 \\\n  --cpu \"${{ vars.AUTOMEXIA_PERFORMANCE_CPU }}\" \\\n  --gpu \"${{ vars.AUTOMEXIA_PERFORMANCE_GPU }}\" \\\n  --power-mode \"${{ vars.AUTOMEXIA_PERFORMANCE_POWER_MODE }}\" \\\n  --toolchain \"$(rustc --version)\" \\\n  --profile criterion-release-linux \\\n  --require-classified\n"
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: automexia-controlled-linux-benchmark-evidence
         path: 'target/performance/candidate-linux.json
@@ -360,7 +360,7 @@ jobs:
         if ($LASTEXITCODE -ne 0) { throw 'compiler installation failed' }
         python tools/ci/rust_toolchain.py verify --kind development
         if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
-    - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+    - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283
       with:
         tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
     - name: Execute native GUI resource stress and controlled benchmarks
@@ -379,7 +379,7 @@ jobs:
     - name: Normalize, compose, and evaluate S2 evidence
       shell: pwsh
       run: "$measuredAt = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')\n$toolchain = (& rustc --version).Trim()\n$runner = @(\n  '--runner-class', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER_CLASS }}',\n  '--os', 'windows',\n  '--arch', 'x86_64',\n  '--cpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_CPU }}',\n  '--gpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_GPU }}',\n  '--power-mode', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_POWER_MODE }}',\n  '--toolchain', $toolchain,\n  '--profile', 'criterion-release-native-gui'\n)\n& python tools/ci/performance_assurance.py collect-native-resource `\n  --report target/performance/native-resource.json `\n  --output target/performance/native-memory.json `\n  --commit $env:GITHUB_SHA `\n  --operator $env:GITHUB_ACTOR `\n  --measured-at-utc $measuredAt @runner\nif ($LASTEXITCODE -ne 0) { throw 'native memory normalization failed' }\n& python tools/ci/performance_assurance.py collect-criterion `\n  --criterion-root \"target/qa/$env:AUTOMEXIA_QA_RUN_LABEL/benchmark-target/criterion\" `\n  --supplemental target/performance/native-memory.json `\n  --output target/performance/candidate-windows.json `\n  --commit $env:GITHUB_SHA `\n  --operator $env:GITHUB_ACTOR `\n  --measured-at-utc $measuredAt `\n  --require-classified @runner\nif ($LASTEXITCODE -ne 0) { throw 'performance evidence composition failed' }\n& python tools/ci/performance_assurance.py evaluate `\n  --candidate target/performance/candidate-windows.json `\n  --expected-commit $env:GITHUB_SHA `\n  --output target/performance/comparison-windows.json\nif ($LASTEXITCODE -ne 0) { throw 'performance comparison failed' }\n"
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       if: always()
       with:
         name: automexia-s2-windows-performance-evidence
@@ -417,7 +417,7 @@ jobs:
         python tools/ci/rust_toolchain.py verify --kind development
         if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
     - run: rustup target add ${{ matrix.target }}
-    - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+    - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283
       if: matrix.target == 'x86_64-pc-windows-msvc'
       with:
         tool: cargo-packager@0.11.8
@@ -439,7 +439,7 @@ jobs:
         $env:AUTOMEXIA_REQUIRE_WIX3_BRANDING_TEST = if ('${{ matrix.target }}' -eq 'x86_64-pc-windows-msvc') { '1' } else { '0' }
         python tools/ci/test_windows_installer_branding.py
         if ($LASTEXITCODE -ne 0) { throw 'Windows installer branding regression failed' }
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: automexia-nightly-${{ matrix.target }}
         path: 'target/package/${{ matrix.target }}/*.msi
@@ -520,7 +520,7 @@ jobs:
         cargo xtask package --target "${{ matrix.target }}"
 
         '
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: automexia-nightly-${{ matrix.target }}
         path: 'target/package/${{ matrix.target }}/*.deb
@@ -552,7 +552,7 @@ jobs:
         rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
         python tools/ci/rust_toolchain.py verify --kind development
     - run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
-    - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+    - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283
       with:
         tool: cargo-packager@0.11.8
     - shell: bash
@@ -570,7 +570,7 @@ jobs:
 
         version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "automexia-terminal") | .version')"
         python tools/ci/release_identity.py package "$version" --binaries target/release --output target/package --target aarch64-apple-darwin --formats app,dmg
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: automexia-nightly-macos-universal
         path: 'target/package/*.app
@@ -620,7 +620,7 @@ jobs:
         if ($LASTEXITCODE -ne 0) { throw 'application measurements failed, regressed, or could not establish a stable comparison' }
     - name: Publish raw measurements and comparison
       if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: application-windows-${{ github.sha }}
         path: |
