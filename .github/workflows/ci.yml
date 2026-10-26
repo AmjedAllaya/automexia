@@ -73,7 +73,7 @@ jobs:
           "$RUNNER_TEMP/actionlint" -color -shellcheck "$RUNNER_TEMP/shellcheck"
 
       - name: Install pinned zizmor 1.21.0
-        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91
         with:
           tool: zizmor@1.21.0
           fallback: none
@@ -138,7 +138,7 @@ jobs:
           persist-credentials: false
 
       - name: Select Python for compiler-policy bootstrap
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12'
       - name: Install pinned Python policy dependency
@@ -176,7 +176,7 @@ jobs:
           version: v0.16.0
 
       - name: Install pinned test runner
-        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91
         with:
           tool: cargo-nextest@0.9.137
 
@@ -259,7 +259,7 @@ jobs:
 
       - name: Preserve visual comparison reports
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: visual-regression-reports
           path: |
@@ -277,7 +277,7 @@ jobs:
 
       - name: Preserve visual candidates for review
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: visual-regression-candidates
           path: |
@@ -300,7 +300,7 @@ jobs:
           persist-credentials: false
 
       - name: Select Python for compiler-policy bootstrap
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12'
       - name: Verify effective Rust compiler and Cargo
@@ -310,7 +310,7 @@ jobs:
           rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
           python tools/ci/rust_toolchain.py verify --kind development
       - name: Install pinned Rust security tools
-        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91
         with:
           tool: cargo-audit@0.22.0,cargo-deny@0.20.2,cargo-vet@0.10.2
 
@@ -374,7 +374,7 @@ jobs:
           persist-credentials: false
 
       - name: Select Python for compiler-policy bootstrap
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12'
       - name: Validate internal release branch, SemVer, version, and protected paths
@@ -429,7 +429,7 @@ jobs:
           persist-credentials: false
 
       - name: Select Python for compiler-policy bootstrap
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12'
       - name: Install pinned Python policy dependency
@@ -443,7 +443,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
 
       - name: Install pinned coverage tool
-        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91
         with:
           tool: cargo-llvm-cov@0.6.18
 

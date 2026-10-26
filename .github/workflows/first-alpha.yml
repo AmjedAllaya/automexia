@@ -32,7 +32,7 @@ jobs:
       with:
         fetch-depth: 0
         persist-credentials: false
-    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
       with:
         python-version: '3.12'
     - name: Validate fixed version, source and owner acknowledgement
@@ -74,7 +74,7 @@ jobs:
         ref: ${{ needs.preflight.outputs.commit }}
         persist-credentials: false
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
       with:
         python-version: '3.12'
     - name: Install pinned Python policy dependency
@@ -102,7 +102,7 @@ jobs:
       run: sudo apt-get update && sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev
         libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core
     - name: Install pinned release quality tools
-      uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+      uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91
       with:
         tool: cargo-nextest@0.9.137,cargo-audit@0.22.0,cargo-deny@0.20.2
     - name: Formatting
@@ -175,7 +175,7 @@ jobs:
         set -euo pipefail
         test "$RUNNER_ARCH" = "${{ matrix.expected_runner_arch }}"
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
       with:
         python-version: '3.12'
     - name: Install pinned Rust toolchain
@@ -251,7 +251,7 @@ jobs:
         done
 
         cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md README.md "dist/${{ matrix.artifact }}/"
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: ${{ matrix.artifact }}
         path: dist
@@ -296,7 +296,7 @@ jobs:
         ref: ${{ needs.preflight.outputs.commit }}
         persist-credentials: false
     - name: Download exact unsigned package inputs
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: ${{ matrix.artifact }}
         path: reference
@@ -304,7 +304,7 @@ jobs:
       shell: bash
       run: test "$RUNNER_ARCH" = "${{ matrix.runner_arch }}"
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
       with:
         python-version: '3.12'
     - name: Install pinned Rust toolchain
@@ -319,7 +319,7 @@ jobs:
       run: |
         python tools/ci/reproducible_build.py "trust/evidence/reproducibility-${{ matrix.target }}.json" --target "${{ matrix.target }}" --reference "reference/${{ matrix.artifact }}"
     - name: Upload cold-build reproducibility evidence
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: release-reproducibility-${{ matrix.target }}
         path: trust/evidence/reproducibility-${{ matrix.target }}.json
@@ -357,7 +357,7 @@ jobs:
         ref: ${{ needs.preflight.outputs.commit }}
         persist-credentials: false
     - name: Download exact unsigned package inputs
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: ${{ matrix.artifact }}
         path: reference
@@ -368,7 +368,7 @@ jobs:
       run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential pkg-config glslang-tools
         libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev binutils
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
       with:
         python-version: '3.12'
     - name: Install pinned Rust toolchain
@@ -385,7 +385,7 @@ jobs:
         bash tools/ci/check_reproducible_build.sh \
           "trust/evidence/reproducibility-${{ matrix.arch }}.json" "reference/${{ matrix.artifact }}"
     - name: Upload cold-build reproducibility evidence
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: release-reproducibility-${{ matrix.arch }}
         path: trust/evidence/reproducibility-${{ matrix.arch }}.json
@@ -419,12 +419,12 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ needs.preflight.outputs.commit }}
-    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: ${{ matrix.artifact }}
         path: staged
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
       with:
         python-version: '3.12'
     - name: Install pinned Rust toolchain
@@ -469,7 +469,7 @@ jobs:
         lintian "$package_dir"/*.deb
     - name: Clean install, metadata, and uninstall smoke
       run: bash tools/ci/test_linux_package.sh "target/package/${{ matrix.target }}" "$AUTOMEXIA_VERSION"
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: packages-${{ matrix.artifact }}
         path: |
@@ -498,12 +498,12 @@ jobs:
         persist-credentials: false
         ref: ${{ needs.preflight.outputs.commit }}
     - name: Download Intel slice
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: macos-x86_64
         path: staged/x86_64
     - name: Download Apple Silicon slice
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: macos-arm64
         path: staged/arm64
@@ -533,7 +533,7 @@ jobs:
         "$app/Contents/MacOS/amx" --version | grep -F "$AUTOMEXIA_VERSION"
         tar -C dist -czf "$RUNNER_TEMP/unsigned-macos-app.tar.gz" 'Automexia Terminal.app'
     - name: Upload unsigned app for isolated signing
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: unsigned-macos-universal-app
         path: ${{ runner.temp }}/unsigned-macos-app.tar.gz
@@ -568,7 +568,7 @@ jobs:
         persist-credentials: false
         ref: ${{ needs.preflight.outputs.commit }}
     - name: Download release artifacts
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: ${{ matrix.artifact }}
         path: artifacts
@@ -657,12 +657,12 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ needs.preflight.outputs.commit }}
-    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: ${{ matrix.artifact }}
         path: staged
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
       with:
         python-version: '3.12'
     - name: Install pinned Rust and packager toolchain
@@ -673,7 +673,7 @@ jobs:
         python tools/ci/rust_toolchain.py verify --kind development
         if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
     - name: Install pinned cargo-packager
-      uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0
+      uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91
       with:
         tool: cargo-packager@0.11.8
     - name: Restore exact native build inputs
@@ -704,7 +704,7 @@ jobs:
         Copy-Item $msi[0].FullName "unsigned/automexia-terminal-$env:AUTOMEXIA_VERSION-${{ matrix.target }}.msi"
         Copy-Item $zip[0].FullName "unsigned/automexia-terminal-$env:AUTOMEXIA_VERSION-${{ matrix.target }}.zip"
     - name: Upload final unsigned Windows alpha packages
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: packages-${{ matrix.artifact }}
         path: |
@@ -723,7 +723,7 @@ jobs:
     permissions:
       contents: read
     steps:
-    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: unsigned-macos-universal-app
         path: staged
@@ -741,7 +741,7 @@ jobs:
         codesign --verify --deep --strict "$app"
         codesign -dv "$app" 2>&1 | grep -F 'Signature=adhoc'
         hdiutil create -volname 'Automexia Terminal Alpha' -srcfolder dist -ov -format UDZO packages/automexia-terminal-0.0.4-alpha-universal.dmg
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: packages-macos-universal
         path: packages/*.dmg
@@ -774,7 +774,7 @@ jobs:
         persist-credentials: false
         ref: ${{ needs.preflight.outputs.commit }}
     - name: Download exact final Windows package
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: ${{ matrix.artifact }}
         path: artifacts
@@ -855,7 +855,7 @@ jobs:
         Copy-Item artifacts/windows-package-review/report.json artifacts/windows-package-review/zip-internet-mark.json
     - name: Retain bounded Windows package results
       if: always() && matrix.arch == 'x86_64'
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: alpha-windows-package-scenarios
         path: artifacts/windows-package-review/*.json
@@ -887,7 +887,7 @@ jobs:
     - name: Install native shell scenario prerequisite
       run: brew install fish
     - name: Download release artifacts
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: packages-macos-universal
         path: artifacts
@@ -933,7 +933,7 @@ jobs:
       with:
         ref: ${{ needs.preflight.outputs.commit }}
         persist-credentials: false
-    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
       with:
         python-version: '3.12'
     - name: Reject failed, cancelled or skipped required evidence
@@ -963,7 +963,7 @@ jobs:
         persist-credentials: false
         ref: ${{ needs.preflight.outputs.commit }}
     - name: Download final package artifacts
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         pattern: packages-*
         path: packages
@@ -982,14 +982,14 @@ jobs:
         find release-assets -maxdepth 1 -type f \( -name '*.msi' -o -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.tar.gz' -o -name '*.tgz' \) -exec cp {} sbom-input/packages/ \;
         cp Cargo.lock sbom-input/Cargo.lock
     - name: Generate SPDX SBOM
-      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
+      uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c
       with:
         path: sbom-input
         format: spdx-json
         output-file: sbom-raw/automexia-terminal.spdx.json
         upload-artifact: false
     - name: Generate CycloneDX SBOM
-      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
+      uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c
       with:
         path: sbom-input
         format: cyclonedx-json
@@ -1023,7 +1023,7 @@ jobs:
         )
         trap - EXIT
     - name: Upload immutable publication bundle
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: release-publish-bundle
         path: |
@@ -1054,7 +1054,7 @@ jobs:
       contents: read
     steps:
     - name: Download verified publication bundle
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: release-publish-bundle
         path: bundle
@@ -1091,7 +1091,7 @@ jobs:
           -m bundle/SHA256SUMS \
           -x bundle/SHA256SUMS.minisig
     - name: Upload signed immutable publication bundle
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: release-signed-bundle
         path: |
