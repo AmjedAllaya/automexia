@@ -112,6 +112,7 @@ function Wait-Nodes([scriptblock]$Predicate) {
                 search_focused = @($search | Where-Object Focused).Count -eq 1
                 search_matches_query = @($search | Where-Object Value -eq $script:settingQuery).Count -eq 1
                 focused_nodes = @($nodes | Where-Object Focused).Count
+                navigation_moves = $script:settingMoves
             }
         }
         if (& $Predicate $nodes) { return ,$nodes }
@@ -152,6 +153,7 @@ function Find-Setting([string]$Query, [string]$Id) {
     $script:settingId = $Id
     $script:settingQuery = $Query
     $script:settingAction = 'open-settings'
+    $script:settingMoves = 0
     for ($i = 0; $i -lt 8; $i++) {
         if (@((Read-Nodes) | Where-Object Name -eq 'Terminal output').Count -eq 1) { break }
         Key 0x1B
@@ -159,10 +161,17 @@ function Find-Setting([string]$Query, [string]$Id) {
     Key 0x53 $true $true
     $nodes = Wait-Nodes { param($n) @($n | Where-Object Name -eq 'Search settings').Count -eq 1 }
     Click-Node @($nodes | Where-Object Name -eq 'Search settings')[0]
+    $null = Wait-Nodes { param($n)
+        @($n | Where-Object Focused).Count -eq 1 -and
+        @($n | Where-Object { $_.Name -eq 'Search settings' -and $_.Focused }).Count -eq 1
+    }
     Key 0x41 $true
     Type-Text $Query
     $script:settingAction = 'find-setting'
-    $nodes = Wait-Nodes { param($n) @($n | Where-Object Id -eq $Id).Count -eq 1 }
+    $nodes = Wait-Nodes { param($n)
+        @($n | Where-Object Id -eq $Id).Count -eq 1 -and
+        @($n | Where-Object { $_.Name -eq 'Search settings' -and $_.Value -eq $Query }).Count -eq 1
+    }
     $node = @($nodes | Where-Object Id -eq $Id)[0]
     if ($node.Type -eq 'ControlType.Button') {
         Click-Node $node
@@ -174,12 +183,31 @@ function Find-Setting([string]$Query, [string]$Id) {
     # interaction and verify the actual focused ID before changing a value.
     $nodes = Read-Nodes
     Click-Node @($nodes | Where-Object Name -eq 'Search settings')[0]
+    $script:settingAction = 'focus-search'
+    $null = Wait-Nodes { param($n)
+        @($n | Where-Object Focused).Count -eq 1 -and
+        @($n | Where-Object { $_.Name -eq 'Search settings' -and $_.Focused }).Count -eq 1
+    }
     Key 0x09
+    # Input delivery and accessibility publication are asynchronous. A fixed
+    # delay can expose the preceding selection and send an extra arrow key.
+    # Acknowledge each transition before issuing another navigation action.
+    $script:settingAction = 'enter-list'
+    $nodes = Wait-Nodes { param($n)
+        @($n | Where-Object Focused).Count -eq 1 -and
+        @($n | Where-Object { $_.Focused -and $_.Id }).Count -eq 1
+    }
     for ($i = 0; $i -lt 32; $i++) {
-        $nodes = Read-Nodes
         $focused = @($nodes | Where-Object { $_.Id -eq $Id -and $_.Focused })
         if ($focused.Count -eq 1) { return $focused[0] }
+        $previousId = @($nodes | Where-Object Focused)[0].Id
+        $script:settingAction = 'move-selection'
         Key 0x28
+        $script:settingMoves++
+        $nodes = Wait-Nodes { param($n)
+            @($n | Where-Object Focused).Count -eq 1 -and
+            @($n | Where-Object { $_.Focused -and $_.Id -and $_.Id -ne $previousId }).Count -eq 1
+        }
     }
     throw 'Setting keyboard focus was not reached'
 }
@@ -432,6 +460,7 @@ public static class AuditCoordinates {
         $entry = [ordered]@{ id = $case[1]; cycle = $report.controls.Count + 1; reached = $false; toggled = $false; persisted = $false; restored = $false }
         $report.controls += $entry
         $node = Find-Setting $case[0] $case[1]
+        $entry.navigation_moves = $script:settingMoves
         $entry.reached = $true
         if (-not $node.Enabled) {
             # settings_catalog.rs intentionally disables this legacy selector in
@@ -461,6 +490,7 @@ public static class AuditCoordinates {
         Stop-OwnedApp
         Start-OwnedApp
         $restored = Find-Setting $case[0] $case[1]
+        $entry.restore_navigation_moves = $script:settingMoves
         $entry.persisted = $restored.$property -eq $after
         if (-not $entry.persisted) { throw 'Setting did not survive restart' }
         # Return to the original value before moving to another independent control.

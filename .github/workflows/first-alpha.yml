@@ -831,6 +831,8 @@ jobs:
           $uninstall = Start-Process msiexec.exe -WindowStyle Hidden -ArgumentList @('/x', "`"$($msi[0].FullName)`"", '/qn', '/norestart') -Wait -PassThru
           if ($uninstall.ExitCode -notin 0, 1605, 3010) { throw "MSI uninstall failed with $($uninstall.ExitCode)" }
         }
+    - name: Verify native settings driver ordering
+      run: python -m unittest discover -s tools/ci -p test_windows_settings_navigation.py
     - name: Exercise fresh installed Windows settings and policy recovery
       if: matrix.arch == 'x86_64'
       shell: pwsh
