@@ -842,8 +842,9 @@ version = "1.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.clipboard-win]]
-version = "5.4.1"
+version = "5.4.3"
 criteria = "safe-to-deploy"
+notes = "Exact-version source delta review: replaces a yanked release, bounds HTML fragment slicing and uses a five-millisecond retry backoff. Unicode APIs, features, dependencies and BSL-1.0 license remain unchanged. See reviews/2026-10-alpha4-dependencies.md."
 
 [[exemptions.cobs]]
 version = "0.3.0"
@@ -3171,8 +3172,9 @@ version = "0.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.zip]]
-version = "8.6.0"
+version = "9.0.0"
 criteria = "safe-to-deploy"
+notes = "Exact-version compatibility review of checksummed source, unchanged enabled compression backend, fallible filename API and bounded in-memory verifier integration. Not a full independent archive-parser audit. See reviews/2026-10-alpha4-dependencies.md."
 
 [[exemptions.zlib-rs]]
 version = "0.6.7"

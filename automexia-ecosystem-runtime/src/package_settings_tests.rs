@@ -181,7 +181,7 @@ fn changing_signed_metadata_without_resigning_fails_existing_verification() {
     let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).unwrap();
-        let name = file.name().to_owned();
+        let name = file.name().unwrap().into_owned();
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes).unwrap();
         if name == SETTINGS_METADATA_ENTRY {

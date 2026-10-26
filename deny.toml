@@ -8,6 +8,9 @@ ignore = [
   { id = "RUSTSEC-2024-0436", reason = "paste is transitive through the latest baremetal 0.33; replacement requires an upstream baremetal release" },
   { id = "RUSTSEC-2026-0249", reason = "smartstring is transitive through the latest glslang 0.8; replacement requires an upstream glslang/librashader migration" },
   { id = "RUSTSEC-2026-0192", reason = "ttf-parser replacement with skrifa is an audited renderer migration scheduled for v0.5" },
+  { id = "RUSTSEC-2026-0370", reason = "Owner-approved maintenance notice: Secret Service and AT-SPI still require zvariant 5; remove when both support zbus 6. See supply-chain/reviews/2026-10-alpha4-dependencies.md" },
+  { id = "RUSTSEC-2026-0371", reason = "Owner-approved maintenance notice: upstream AT-SPI still requires zbus_names 4; remove with its zbus 6 migration. See supply-chain/reviews/2026-10-alpha4-dependencies.md" },
+  { id = "RUSTSEC-2026-0372", reason = "Owner-approved maintenance notice: zvariant_derive follows zvariant 5 until upstream Secret Service and AT-SPI migrate. See supply-chain/reviews/2026-10-alpha4-dependencies.md" },
 ]
 
 [licenses]

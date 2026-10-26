@@ -137,6 +137,14 @@ notes = """
 Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed choice normalization, constant-time comparisons/selections and wrapper contracts. Arithmetic and formatting behavior remain distinct from constant-time operations.
 """
 
+[[audits.ctutils]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+delta = "0.4.2 -> 0.4.4"
+notes = """
+Reviewed both checksummed registry archives, manifests and every changed Rust file. Mask generation now passes through the existing black_box optimization barrier; 32-bit u128 comparisons combine opaque high/low u64 predicates instead of full-width borrow propagation. Trait methods share those predicates, and upstream boundary/property tests cover them. Rust 1.87 fits the pinned compiler; cmov and optional subtle requirements retain the locked graph. No unsafe code, build script, native input, I/O or new authority was added. This is automated source review, not a formal cryptographic audit or a claim of measured constant-time behavior. See reviews/2026-10-alpha4-dependencies.md.
+"""
+
 [[audits.granit-parser]]
 who = "Automexia automated source review"
 criteria = "safe-to-deploy"

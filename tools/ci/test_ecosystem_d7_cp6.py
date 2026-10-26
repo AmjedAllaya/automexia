@@ -46,15 +46,35 @@ class EcosystemD7Cp6Tests(unittest.TestCase):
         owner = CHECKER.ROOT / "Cargo.toml"
         original_read = Path.read_text
         source = original_read(owner, encoding="utf-8")
-        self.assertIn('wasmtime = { version = "48.0.6"', source)
+        self.assertIn('wasmtime = { version = "48.0.7"', source)
 
-        for vulnerable in ("48.0.1", "48.0.3", "48.0.4", "48.0.5"):
+        for vulnerable in ("48.0.1", "48.0.3", "48.0.4", "48.0.5", "48.0.6"):
             with self.subTest(version=vulnerable):
                 def read(path, *args, **kwargs):
                     if path == owner:
                         return source.replace(
-                            'wasmtime = { version = "48.0.6"',
+                            'wasmtime = { version = "48.0.7"',
                             f'wasmtime = {{ version = "{vulnerable}"',
+                            1,
+                        )
+                    return original_read(path, *args, **kwargs)
+
+                with mock.patch.object(Path, "read_text", read):
+                    with self.assertRaises(CHECKER.EcosystemContractError):
+                        CHECKER.validate_repository()
+
+    def test_zip_cannot_return_to_vulnerable_archive_release(self) -> None:
+        owner = CHECKER.ROOT / "Cargo.toml"
+        original_read = Path.read_text
+        source = original_read(owner, encoding="utf-8")
+        self.assertIn('zip = { version = "=9.0.0"', source)
+        for vulnerable in ("8.6.0", "8.6.1"):
+            with self.subTest(version=vulnerable):
+                def read(path, *args, **kwargs):
+                    if path == owner:
+                        return source.replace(
+                            'zip = { version = "=9.0.0"',
+                            f'zip = {{ version = "={vulnerable}"',
                             1,
                         )
                     return original_read(path, *args, **kwargs)

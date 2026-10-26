@@ -84,6 +84,10 @@ This alpha does not claim stable-release or long-duration certification.
 The WSL fixes were exercised with Ubuntu 24.04 on WSL 1 and Bash, Zsh and Fish.
 That run does not certify WSL 2, every distro, WSLg or nested virtualization.
 
+Linux accessibility and credential storage retain three documented upstream
+maintenance exceptions while their libraries migrate to zbus 6. Vulnerability
+checks remain enabled. See the [dependency review](https://github.com/AmjedAllaya/automexia/blob/main/supply-chain/reviews/2026-10-alpha4-dependencies.md).
+
 The application includes tabs and panes, shell integration, searchable settings,
 themes, fonts, keyboard shortcuts and appearance customization. Please report
 reproducible issues with OS/architecture and version, excluding private terminal

@@ -15,6 +15,16 @@ ignore = [
   # RUSTSEC-2026-0192: ttf-parser 0.25.1 replacement requires the audited
   # renderer/font migration already tracked for the next release line.
   "RUSTSEC-2026-0192",
+  # A replacement requires zbus 6 support in both upstream Secret Service and
+  # AT-SPI libraries. Owner-approved maintenance-only exception; see
+  # supply-chain/reviews/2026-10-alpha4-dependencies.md.
+  "RUSTSEC-2026-0370",
+  # A replacement follows the same upstream zbus 6 migration; no patched
+  # standalone zbus_names release exists.
+  "RUSTSEC-2026-0371",
+  # A replacement follows the same upstream zbus 6 migration; no patched
+  # standalone zvariant_derive release exists.
+  "RUSTSEC-2026-0372",
 ]
 
 [database]

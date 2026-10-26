@@ -256,7 +256,10 @@ pub fn verify_bundle_bytes(
                 BundleError::new(BundleErrorCode::UnsafeEntry, "entry name is not UTF-8")
             })?
             .to_owned();
-        if raw_name != file.name()
+        let decoded_name = file.name().map_err(|_| {
+            BundleError::new(BundleErrorCode::UnsafeEntry, "entry name cannot be decoded")
+        })?;
+        if raw_name != decoded_name.as_ref()
             || !safe_relative_path(&raw_name)
             || file.encrypted()
             || file.is_dir()
@@ -844,6 +847,31 @@ mod tests {
         let traversal = fixture_with(Some(("../escape", b"bad", 0o100600)));
         assert_eq!(
             verify(&traversal).unwrap_err().code,
+            BundleErrorCode::UnsafeEntry
+        );
+    }
+
+    #[test]
+    fn utf8_entry_names_verify_and_invalid_raw_names_fail_closed() {
+        let unicode = fixture_with(Some(("payload/caf\u{e9}.txt", b"safe", 0o100600)));
+        assert_eq!(
+            verify(&unicode).unwrap().entry("payload/caf\u{e9}.txt"),
+            Some(&b"safe"[..])
+        );
+
+        let mut invalid = fixture_with(Some(("payload/file", b"safe", 0o100600)));
+        let offsets: Vec<_> = invalid
+            .bundle
+            .windows(b"payload/file".len())
+            .enumerate()
+            .filter_map(|(offset, name)| (name == b"payload/file").then_some(offset))
+            .collect();
+        assert_eq!(offsets.len(), 2, "local and central filename records");
+        for offset in offsets {
+            invalid.bundle[offset] = 0xff;
+        }
+        assert_eq!(
+            verify(&invalid).unwrap_err().code,
             BundleErrorCode::UnsafeEntry
         );
     }
