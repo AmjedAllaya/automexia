@@ -445,7 +445,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "automexia-command-productivity"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-connectivity",
  "blake3",
@@ -457,7 +457,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-connectivity"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-extension-api",
  "base64",
@@ -468,7 +468,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-devops"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-extension-api",
  "dirs",
@@ -481,7 +481,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-devops-aws"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-command-productivity",
  "automexia-connectivity",
@@ -493,7 +493,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-devops-azure"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-command-productivity",
  "automexia-connectivity",
@@ -504,7 +504,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-devops-gcp"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-command-productivity",
  "automexia-connectivity",
@@ -516,7 +516,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-devops-kubernetes"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-command-productivity",
  "automexia-connectivity",
@@ -530,7 +530,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-devops-openshift"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-command-productivity",
  "automexia-connectivity",
@@ -542,7 +542,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-devops-ssh"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-extension-api",
  "glob",
@@ -556,7 +556,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-devops-teleport"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-command-productivity",
  "automexia-connectivity",
@@ -570,7 +570,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-ecosystem"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "serde",
  "serde_json",
@@ -580,7 +580,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-ecosystem-runtime"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-command-productivity",
  "automexia-ecosystem",
@@ -596,7 +596,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-extension-api"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "serde",
  "unicode-segmentation",
@@ -604,7 +604,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-extension-runtime"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-extension-api",
 ]
@@ -637,7 +637,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-image"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "image",
  "libc",
@@ -645,7 +645,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-keybindings"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "serde",
  "serde_json",
@@ -653,7 +653,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-ssh-integration"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "automexia-connectivity",
  "automexia-terminal-protocol",
@@ -662,7 +662,7 @@ dependencies = [
 
 [[package]]
 name = "automexia-terminal"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -743,11 +743,11 @@ dependencies = [
 
 [[package]]
 name = "automexia-terminal-protocol"
-version = "0.4.0"
+version = "0.0.4-alpha"
 
 [[package]]
 name = "automexia-ui-model"
-version = "0.4.0"
+version = "0.0.4-alpha"
 dependencies = [
  "accesskit",
  "automexia-command-productivity",
@@ -1187,9 +1187,9 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "clipboard-win"
-version = "5.4.1"
+version = "5.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bde03770d3df201d4fb868f2c9c59e66a3e4e2bd06692a0fe701e7103c7e84d4"
+checksum = "052af7878466feccda12ba7a6a67d019d712f296809559b47c12c8cc196d3a9a"
 dependencies = [
  "error-code",
 ]
@@ -1490,9 +1490,9 @@ dependencies = [
 
 [[package]]
 name = "ctutils"
-version = "0.4.2"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d5515a3834141de9eafb9717ad39eea8247b5674e6066c404e8c4b365d2a29e"
+checksum = "12218662ccac37d9714f2191252553d67585b97df8c839cbe49e0bde278dc865"
 dependencies = [
  "cmov",
 ]
@@ -4362,6 +4362,7 @@ dependencies = [
  "core-foundation 0.10.1",
  "core-graphics 0.25.0",
  "cursor-icon",
+ "dispatch2",
  "dpi",
  "js-sys",
  "libc",
@@ -6668,9 +6669,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "8.6.0"
+version = "9.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
+checksum = "711e8c9646791c49b7eb799a19c4ae70a9b8372ddc6a1fa4778defd1e2aa5d5e"
 dependencies = [
  "crc32fast",
  "flate2",

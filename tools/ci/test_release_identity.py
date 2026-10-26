@@ -54,6 +54,26 @@ class ReleaseIdentityTests(unittest.TestCase):
             package = tomllib.loads((ROOT / name / "Cargo.toml").read_text())["package"]
             self.assertEqual(dependency["version"], package["version"])
 
+    def test_fuzz_lockfile_tracks_application_identity_and_reviewed_dependencies(self):
+        import tomllib
+        runtime = tomllib.loads((ROOT / "Cargo.lock").read_text())["package"]
+        fuzz = tomllib.loads((ROOT / "fuzz/Cargo.lock").read_text())["package"]
+        local = {item["name"]: item for item in runtime if "source" not in item}
+        fuzz_local = {item["name"]: item for item in fuzz if "source" not in item}
+        shared = local.keys() & fuzz_local.keys()
+        self.assertIn("automexia-terminal", shared)
+        for name in shared:
+            with self.subTest(package=name):
+                self.assertEqual(fuzz_local[name]["version"], local[name]["version"])
+        for name in ("zip", "ctutils", "clipboard-win"):
+            with self.subTest(dependency=name):
+                reviewed = {(item["version"], item["checksum"])
+                            for item in runtime if item["name"] == name}
+                used = {(item["version"], item["checksum"])
+                        for item in fuzz if item["name"] == name}
+                self.assertTrue(reviewed)
+                self.assertEqual(used, reviewed)
+
     def test_rejects_ambiguous_injected_and_unrepresentable_versions(self):
         for value in ("0.0.1_alpha", "v0.0.1-alpha", "01.2.3", "1.2.3\n", "1.2.3;id",
                       "1.2", "1.2.3.4", "1.2.3+dev", "1.2.3-beta", "256.1.1", "1.256.1", "1.2.65536"):

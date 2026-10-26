@@ -36,6 +36,10 @@ dependency names. ZIP's major-version source reorganization requires the owning
 package-verification tests before delivery; the Windows clipboard consumer also
 requires its owning target and native package evidence.
 
+Synchronize the separate fuzz lockfile too. Its shared local-package versions
+and the ZIP, ctutils and Windows clipboard checksums must match the reviewed
+application graph; the release-identity regression rejects future drift.
+
 Retain the immutable Bytecode Alliance Cargo Vet import and refresh only the
 27 existing publisher records for this Wasmtime patch. Preserve all wildcard
 criteria and import scope. ZIP retains an exact-version compatibility exemption
