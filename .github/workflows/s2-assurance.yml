@@ -20,7 +20,7 @@ jobs:
         python tools/ci/test_performance_assurance.py\nmkdir -p target/performance\n\
         python tools/ci/performance_assurance.py validate-baseline \\\n  --expected-source-commit
         \"$GITHUB_SHA\" \\\n  --output target/performance/s2-activation-summary.json\n"
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: automexia-s2-activation-summary
         path: target/performance/s2-activation-summary.json
