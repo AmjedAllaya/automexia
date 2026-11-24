@@ -55,7 +55,7 @@ Choose the closest useful layer and expand only when the claim requires it:
 - integration/conformance/native tests for PTY, shell, provider, protocol, process, persistence, platform, or capability boundaries;
 - property/fuzz tests for hostile structured input, Unicode, fragmentation, malformed data, and limit transitions;
 - renderer-neutral snapshots or controlled raster evidence for owned visual contracts;
-- benchmarks/resource tests when latency, allocation, throughput, sustained operation, or cleanup is part of the change.
+- a measured benchmark for each executable change, using an affected workload and the owning harness. Include resource tests for affected latency, allocation, throughput, sustained operation, or cleanup contracts.
 
 A mock proves only its boundary. A cross-compile cannot replace a native run. Never compute an expected result using the same production mechanism under test.
 
@@ -92,10 +92,10 @@ Use [references/evidence-ladder.md](references/evidence-ladder.md) when more tha
 
 1. During editing, run the narrow failing/characterization test.
 2. After implementation, run the owning target and applicable static checks.
-3. Before delivery, run only the integration/policy/platform/repository gates whose inputs were invalidated by the change.
+3. Before delivery, run the integration, policy, platform, and repository gates affected by the change. Once correctness is verified for the measured path, run its benchmark on the final candidate using `$automexia-performance-investigation`.
 
 Do not rerun an expensive passing check after a later edit that cannot affect it. Capture verbose output to a file when practical and return only pass/fail counts plus relevant failure excerpts; use full output only when it is required evidence. Verify filtered test names and nonzero counts.
 
 ## Completion
 
-Call the affected contract complete only when its applicable exit criteria have current evidence. Leave native OS, hardware, account, assistive-technology, signing, controlled-performance, long-campaign, or human evidence explicitly partial/external when unavailable. State exactly what ran and what remains unavailable.
+Apply the [repository completion gate](../../../AGENTS.md#definition-of-done). Verify all required test and benchmark outcomes before claiming completion. Report unavailable native OS, hardware, account, assistive technology, signing, controlled performance, long-duration, or human-only evidence as incomplete, with the checks that ran and the specific blocker.

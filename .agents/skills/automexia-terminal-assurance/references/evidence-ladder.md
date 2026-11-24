@@ -63,6 +63,7 @@ The final evidence record must name:
 - toolchain, target, feature set, exact commands, executed tests, and outcomes;
 - regression and controls that ran;
 - owning and repository gates that passed;
+- benchmark command, build profile, workload, result, and applicable budget or baseline comparison for executable changes;
 - native platforms and configurations that actually ran;
 - fresh artifacts inspected;
 - unresolved failures, external gates, and practical limits.

@@ -42,17 +42,20 @@ Use the applicable routes without asking the user to name each skill. A small ta
 
 ## Definition of done
 
-A change is complete when applicable items have current evidence:
+Complete a change only after verifying the applicable criteria.
 
-1. outcome, scope, acceptance criteria, non-goals, authority, and prerequisites are clear;
-2. owning implementation, important callers, relevant tests/contracts/feature gates, and task-owned local changes were inspected;
-3. ownership remains singular or is deliberately migrated;
-4. applicable trust, security, compatibility, resource, lifecycle, accessibility, performance, and hot-path constraints hold;
-5. tests reproduce the real contract/failure and relevant negative/boundary cases;
-6. the focused test, owning target, and only broader gates invalidated by the change pass after the final relevant edit;
-7. only documentation/generated artifacts whose truth changed are updated, while unavailable native/external evidence remains explicitly partial.
+1. The outcome, scope, acceptance criteria, non-goals, authority, and prerequisites are clear.
+2. The agent inspected the owning implementation, important callers, relevant tests, contracts, feature gates, and task-owned local changes.
+3. Ownership remains singular or is deliberately migrated.
+4. Applicable trust, security, compatibility, resource, lifecycle, accessibility, performance, and hot-path constraints hold.
+5. Tests exercise the real contract or failure and the relevant negative and boundary cases.
+6. The agent ran the affected test harnesses, owning targets, and required broader gates against the final candidate, with passing results and nonzero test counts.
+7. For every executable change, the agent measured the affected path on the final candidate and verified any required benchmark budgets or baseline comparisons.
+8. Documentation and generated artifacts reflect the changed behavior.
 
 A focused test does not prove every platform. A cross-compile is not a native runtime test. A later pass does not erase an unexplained earlier failure. A zero-test filtered success is not validation.
+
+Declare completion only when 100% of the required acceptance checks have current passing evidence. Run the checks yourself or direct and inspect an authorized delegated run against the exact candidate. Do not assign runnable validation to the user. Diagnose failures, fix in-scope causes, and retry recoverable checks. If any required check remains failed, skipped, or unavailable, finish independent checks and report incomplete validation with the exact blocker. Request user action only for an unavoidable permission, prerequisite, or human-only judgment.
 
 ## Non-negotiable boundaries
 
@@ -108,11 +111,14 @@ For regressions, add or identify a real-path test that fails for the observed re
 
 Keep application execution, builds, project tests, fuzzing, and benchmarks off the personal workstation. Use a verified disposable guest or ephemeral hosted runner through `$automexia-isolated-validation`. Host-side file inspection and VM orchestration are allowed; changing a profile directory alone is not OS isolation. Never clear personal caches or spoof CI variables to bypass a runner guard. If the required environment is unavailable, continue safe static work and report runtime evidence as not run.
 
-Use this ladder:
+For each change, identify the required checks and report the evidence for the final revision. Reuse the owning test harness and benchmark for executable changes. If coverage is missing, add the smallest runnable regression fixture and representative benchmark in the owning suite. For changes limited to prose, instructions, or other non-executable material, run the relevant documentation, policy, or format validators.
 
-1. during editing — narrow failing/characterization test;
-2. after implementation — owning target plus applicable static checks;
-3. before delivery — only affected integration/policy/platform gates and any repository profile explicitly required for this class of change.
+Follow the validation ladder.
+
+1. During editing, run the narrow failing or characterization test.
+2. After implementation, run the focused harness, owning target, and applicable static checks.
+3. Before delivery, run affected integration, policy, and platform gates and any repository profile required for this class of change.
+4. After verifying correctness for the measured path, run the relevant benchmark on the final candidate for each executable change. Follow `$automexia-performance-investigation` for comparable baselines, thresholds, and interpretation.
 
 Do not repeat a broad passing check unless later changes invalidate its inputs. Verify filtered test names/nonzero counts. Inspect fresh generated artifacts only when required by the changed contract or policy.
 
@@ -136,6 +142,6 @@ Load `$automexia-release-readiness` for release/packaging work. Signing, notariz
 
 ## Final handoff
 
-Keep it concise: what changed and its owner; material architecture/reuse decisions; tests/checks after the final relevant edit; native/external evidence actually exercised and remaining gaps; documentation/migration impact; authorized commit/remote/release status; and relevant unrelated work left untouched.
+Report what changed, the commands and outcomes of tests and benchmarks after the final relevant edit, and which native configurations actually ran. Include test counts, benchmark workload and results, material decisions, applicable migration or delivery status, and any remaining failures, skips, or prerequisites. Keep detailed logs in the designated evidence location.
 
 Never claim a clean tree when unrelated changes remain, a native platform that did not run, or completion while an applicable exit criterion is partial/external.
