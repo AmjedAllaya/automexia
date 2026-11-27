@@ -100,7 +100,7 @@ pub(super) fn descriptors(
         "spacing",
         "Button spacing",
         WindowControlSpacing,
-        "Moves the visible buttons closer together or farther apart at the selected size."
+        "Space between the visible buttons."
     );
     choice!(
         icon_size,
