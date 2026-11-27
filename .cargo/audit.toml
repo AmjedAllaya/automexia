@@ -25,6 +25,10 @@ ignore = [
   # A replacement follows the same upstream zbus 6 migration; no patched
   # standalone zvariant_derive release exists.
   "RUSTSEC-2026-0372",
+  # The workspace rio-vt fork rejects external Kitty graphics transports
+  # before resource access. See tests for the local backport and the review
+  # in supply-chain/reviews/2026-11-security-lock-refresh.md.
+  "RUSTSEC-2026-0430",
 ]
 
 [database]

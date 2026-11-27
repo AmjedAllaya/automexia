@@ -11,6 +11,7 @@ ignore = [
   { id = "RUSTSEC-2026-0370", reason = "Owner-approved maintenance notice: Secret Service and AT-SPI still require zvariant 5; remove when both support zbus 6. See supply-chain/reviews/2026-10-alpha4-dependencies.md" },
   { id = "RUSTSEC-2026-0371", reason = "Owner-approved maintenance notice: upstream AT-SPI still requires zbus_names 4; remove with its zbus 6 migration. See supply-chain/reviews/2026-10-alpha4-dependencies.md" },
   { id = "RUSTSEC-2026-0372", reason = "Owner-approved maintenance notice: zvariant_derive follows zvariant 5 until upstream Secret Service and AT-SPI migrate. See supply-chain/reviews/2026-10-alpha4-dependencies.md" },
+  { id = "RUSTSEC-2026-0430", reason = "The local rio-vt fork rejects external Kitty transfers before resource access. Both lockfiles exclude the crates.io release. See supply-chain/reviews/2026-11-security-lock-refresh.md" },
 ]
 
 [licenses]

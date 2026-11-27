@@ -162,7 +162,7 @@ console_error_panic_hook = "0.1.7"
 tracing = "0.1.41"
 objc = { package = "objc-rs", version = "0.3.2" }
 memmap2 = "0.9.11"
-url = "2.5.4"
+url = "2.5.9"
 criterion = { version = "0.8.2", features = ["html_reports"] }
 insta = { version = "1.48.0", features = ["json", "redactions"] }
 loom = "0.7.2"
@@ -172,9 +172,9 @@ dashmap = "6.2.1"
 flate2 = "=1.1.9"
 configparser = { version = "3.2.0", default-features = false }
 time = { version = "=0.3.55", default-features = false, features = ["std", "parsing"] }
-zip = { version = "=9.0.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { version = "=9.0.5", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 ed25519-dalek = { version = "3.0.0", default-features = false, features = ["alloc", "fast", "zeroize"] }
-wasmtime = { version = "48.0.7", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "wat"] }
+wasmtime = { version = "48.0.9", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "wat"] }
 # Keep the tools on the reviewed Wasmtime parser generation (D7/CP6).
 wit-parser = "=0.254.2"
 wat = "=1.254.2"

@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import re
+import tomllib
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+RIO_VT_BACKPORT = "RUSTSEC-2026-0430"
 EXCEPTIONS = {
     "RUSTSEC-2024-0436",
     "RUSTSEC-2025-0141",
@@ -17,6 +19,7 @@ EXCEPTIONS = {
     "RUSTSEC-2026-0370",
     "RUSTSEC-2026-0371",
     "RUSTSEC-2026-0372",
+    RIO_VT_BACKPORT,
 }
 
 
@@ -31,11 +34,22 @@ class RustsecExceptionTests(unittest.TestCase):
 
     def test_every_exception_has_a_documented_upstream_remediation_path(self) -> None:
         source = (ROOT / ".cargo/audit.toml").read_text(encoding="utf-8")
-        for advisory in EXCEPTIONS:
+        for advisory in EXCEPTIONS - {RIO_VT_BACKPORT}:
             with self.subTest(advisory=advisory):
                 position = source.index(advisory)
                 preceding = source[max(0, position - 260):position]
                 self.assertIn("replacement", preceding)
+
+    def test_rio_vt_backport_exception_covers_only_the_local_fork(self) -> None:
+        for lockfile in ("Cargo.lock", "fuzz/Cargo.lock"):
+            with self.subTest(lockfile=lockfile):
+                with (ROOT / lockfile).open("rb") as source:
+                    packages = tomllib.load(source)["package"]
+                rio_vt = [package for package in packages if package["name"] == "rio-vt"]
+                self.assertEqual(
+                    [(package["version"], package.get("source")) for package in rio_vt],
+                    [("0.4.0", None)],
+                )
 
     def test_advisory_database_uses_the_runner_owned_path_neutral_cargo_home(self) -> None:
         source = (ROOT / ".cargo/audit.toml").read_text(encoding="utf-8")

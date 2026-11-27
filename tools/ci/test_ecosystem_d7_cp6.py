@@ -46,14 +46,14 @@ class EcosystemD7Cp6Tests(unittest.TestCase):
         owner = CHECKER.ROOT / "Cargo.toml"
         original_read = Path.read_text
         source = original_read(owner, encoding="utf-8")
-        self.assertIn('wasmtime = { version = "48.0.7"', source)
+        self.assertIn('wasmtime = { version = "48.0.9"', source)
 
-        for vulnerable in ("48.0.1", "48.0.3", "48.0.4", "48.0.5", "48.0.6"):
+        for vulnerable in ("48.0.1", "48.0.3", "48.0.4", "48.0.5", "48.0.6", "48.0.7", "48.0.8"):
             with self.subTest(version=vulnerable):
                 def read(path, *args, **kwargs):
                     if path == owner:
                         return source.replace(
-                            'wasmtime = { version = "48.0.7"',
+                            'wasmtime = { version = "48.0.9"',
                             f'wasmtime = {{ version = "{vulnerable}"',
                             1,
                         )
@@ -67,13 +67,13 @@ class EcosystemD7Cp6Tests(unittest.TestCase):
         owner = CHECKER.ROOT / "Cargo.toml"
         original_read = Path.read_text
         source = original_read(owner, encoding="utf-8")
-        self.assertIn('zip = { version = "=9.0.0"', source)
-        for vulnerable in ("8.6.0", "8.6.1"):
+        self.assertIn('zip = { version = "=9.0.5"', source)
+        for vulnerable in ("8.6.0", "8.6.1", "9.0.0", "9.0.4"):
             with self.subTest(version=vulnerable):
                 def read(path, *args, **kwargs):
                     if path == owner:
                         return source.replace(
-                            'zip = { version = "=9.0.0"',
+                            'zip = { version = "=9.0.5"',
                             f'zip = {{ version = "={vulnerable}"',
                             1,
                         )

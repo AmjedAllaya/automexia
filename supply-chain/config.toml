@@ -622,7 +622,7 @@ version = "2.5.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.async-executor]]
-version = "1.14.0"
+version = "1.14.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.async-io]]
@@ -1263,7 +1263,7 @@ version = "0.3.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.form_urlencoded]]
-version = "1.2.2"
+version = "1.2.3"
 criteria = "safe-to-deploy"
 
 [[exemptions.freetype-sys]]
@@ -2296,7 +2296,7 @@ version = "0.38.44"
 criteria = "safe-to-deploy"
 
 [[exemptions.rustix]]
-version = "1.1.4"
+version = "1.1.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.rustversion]]
@@ -2716,7 +2716,7 @@ version = "0.0.4"
 criteria = "safe-to-deploy"
 
 [[exemptions.url]]
-version = "2.5.8"
+version = "2.5.9"
 criteria = "safe-to-deploy"
 
 [[exemptions.utf8_iter]]
@@ -3172,9 +3172,9 @@ version = "0.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.zip]]
-version = "9.0.0"
+version = "9.0.5"
 criteria = "safe-to-deploy"
-notes = "Exact-version compatibility review of checksummed source, unchanged enabled compression backend, fallible filename API and bounded in-memory verifier integration. Not a full independent archive-parser audit. See reviews/2026-10-alpha4-dependencies.md."
+notes = "Exact-version compatibility review of checksummed source, the existing compression backend and bounded in-memory verification. See reviews/2026-11-security-lock-refresh.md."
 
 [[exemptions.zlib-rs]]
 version = "0.6.7"

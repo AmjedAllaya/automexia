@@ -1296,10 +1296,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         route: usize,
         choice: rio_backend::event::WslSetupChoice,
     ) {
-        self.event_proxy.send_event(
-            RioEvent::WslSetupResponse { route, choice },
-            self.window_id,
-        );
+        self.event_proxy
+            .send_event(RioEvent::WslSetupResponse { route, choice }, self.window_id);
     }
 
     /// Build a one-shot wake-up for an asynchronous DevOps context refresh.
