@@ -14,11 +14,11 @@ const BASH_INSTALL: &str = concat!(
     "install_asset \"$cfg/shell-integration.bash\" <<'AMX_BUNDLED_BASH_HOOK'\n",
     include_str!("../../../../../shell-integration/bash/automexia.bash"),
     "AMX_BUNDLED_BASH_HOOK\n",
-    "install_asset \"$cfg/automexia-completion.bash\" <<'AMX_BUNDLED_BASH_COMPLETION'\n",
+    "install_asset \"$cfg/automexia-completion.bash\" <<'AMX_BUNDLED_TAB_COMPLETION'\n",
     include_str!(
         "../../../../../shell-integration/completion/bash/automexia-completion.bash"
     ),
-    "AMX_BUNDLED_BASH_COMPLETION\n",
+    "AMX_BUNDLED_TAB_COMPLETION\n",
     "install_asset \"$cfg/automexia-os.sh\" <<'AMX_BUNDLED_OS_IDENTITY'\n",
     include_str!("../../../../../shell-integration/posix/automexia-os.sh"),
     "AMX_BUNDLED_OS_IDENTITY\n",

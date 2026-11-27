@@ -670,12 +670,12 @@ where
                     );
                     self.event_proxy
                         .send_event(RioEvent::Render, self.window_id);
-                } else if paste.reviewed_submission.is_none_or(|receipt| {
+                } else if paste.reviewed_submission.as_deref().is_none_or(|receipt| {
                     if !drained {
                         terminal.note_interactive_input();
                         return false;
                     }
-                    terminal.accept_workflow_submission(receipt)
+                    terminal.accept_workflow_submission(*receipt)
                 }) {
                     if guarded {
                         terminal.note_interactive_input();

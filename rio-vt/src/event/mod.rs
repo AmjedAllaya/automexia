@@ -156,8 +156,10 @@ pub struct PasteRequest {
     pub(crate) bracketed: bool,
     #[cfg_attr(not(windows), allow(dead_code))]
     pub(crate) reviewed_command: bool,
+    // Only explicit workflow submissions need a receipt. Keep it out of line
+    // so ordinary PTY messages and their send errors stay compact.
     pub(crate) reviewed_submission:
-        Option<crate::crosswords::command_actions::WorkflowPrompt>,
+        Option<Box<crate::crosswords::command_actions::WorkflowPrompt>>,
     pub(crate) review_destination: Option<crate::crosswords::PasteDestination>,
 }
 
@@ -254,7 +256,7 @@ impl PasteRequest {
             text: text.to_owned(),
             bracketed: true,
             reviewed_command: true,
-            reviewed_submission: Some(prompt),
+            reviewed_submission: Some(Box::new(prompt)),
             review_destination: None,
         })
     }
