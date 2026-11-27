@@ -26,9 +26,7 @@ pub(super) fn style_row(
             ValueOrigin::Default,
         ),
     )?;
-    row.description =
-        "Change the size, spacing, and style of the minimize, maximize, and close buttons."
-            .into();
+    row.description = "Set the size, spacing, and style of title-bar buttons.".into();
     row.keywords = vec![
         "window controls buttons caption".into(),
         "minimize maximize restore close".into(),
