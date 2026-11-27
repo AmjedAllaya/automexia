@@ -2222,9 +2222,10 @@ mod docked_metadata_tests {
             },
         );
 
+        // End the scope with the same zeroed 32-byte fixture secret.
         processor.advance(&mut terminal, concat!(
             "\x1b]1337;SetUserVar=terminal_scope_v1=QU1YU0NPUEUxfGVuZHwwMDAwMDAwMDAwMDAwMDAwMDAw",
-            "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw\x07",
+            "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw\x07",
         ).as_bytes());
         assert_eq!(DockedMetadata::from_terminal(&terminal), local);
     }
