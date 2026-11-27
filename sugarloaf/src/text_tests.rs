@@ -65,6 +65,53 @@ fn mixed_unicode_labels_select_fallback_for_each_grapheme_run() {
 }
 
 #[test]
+fn colored_label_preserves_mixed_font_geometry_and_uses_global_utf8_offsets() {
+    let fonts = fixture_fonts();
+    fonts.inner.write().insert(
+        FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF_ITALIC).unwrap(),
+    );
+    let mut text = Text::new(&fonts);
+    text.init_cpu();
+    text.set_scale_factor(1.5);
+    text.font_resolve.insert(('A', 0), (0, false));
+    text.font_resolve.insert(('Ω', 0), (4, false));
+
+    let label = "AΩΩA";
+    let opts = DrawOpts::default();
+    let runs = text.shape_label(label, &opts);
+    assert_eq!(
+        runs.iter()
+            .map(|(offset, run)| (*offset, run.font_id))
+            .collect::<Vec<_>>(),
+        [(0, 0), (1, 4), (5, 0)]
+    );
+
+    let plain_width = text.draw(4.25, 6.0, label, &opts);
+    let plain = text.instances().to_vec();
+    text.clear();
+    text.begin_modal_layer();
+
+    let mut offsets = Vec::new();
+    let colored_width = text.draw_colored(4.25, 6.0, label, &opts, |byte| {
+        offsets.push(byte);
+        [byte as u8, 192, 128, 255]
+    });
+    assert_eq!(offsets, [0, 1, 3, 5]);
+    assert_eq!(colored_width, plain_width);
+    assert_eq!(colored_width, text.measure(label, &opts));
+    assert!(text.instances().is_empty());
+    assert_eq!(text.modal_instances.len(), 4);
+    assert_eq!(plain.len(), text.modal_instances.len());
+    for ((plain, colored), byte) in plain.iter().zip(&text.modal_instances).zip(offsets) {
+        assert_eq!(colored.pos, plain.pos);
+        assert_eq!(colored.glyph_pos, plain.glyph_pos);
+        assert_eq!(colored.glyph_size, plain.glyph_size);
+        assert_eq!(colored.bearings, plain.bearings);
+        assert_eq!(colored.color, [byte as u8, 192, 128, 255]);
+    }
+}
+
+#[test]
 fn ascii_label_fast_path_preserves_symbol_maps_and_font_replacement() {
     let fonts = fixture_fonts();
     let mut text = Text::new(&fonts);
@@ -85,7 +132,7 @@ fn ascii_label_fast_path_preserves_symbol_maps_and_font_replacement() {
     text.update_font(&replacement);
     let runs = text.shape_label("AB", &opts);
     assert_eq!(
-        runs.iter().map(|run| run.font_id).collect::<Vec<_>>(),
+        runs.iter().map(|(_, run)| run.font_id).collect::<Vec<_>>(),
         [0, 4]
     );
     assert_eq!(text.ascii_faces[0], Some(None));
@@ -1120,7 +1167,7 @@ fn prepared_tag_faces_keep_primary_ui_and_invalidate_on_reload() {
     };
     let chosen = text.shape_label("tag example", &opts);
     assert!(!chosen.is_empty());
-    assert!(chosen.iter().all(|r| r.font_id == 4));
+    assert!(chosen.iter().all(|(_, run)| run.font_id == 4));
     assert_eq!(
         text.shape_for("tag example", &DrawOpts::default())
             .unwrap()

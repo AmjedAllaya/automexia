@@ -979,7 +979,14 @@ pub struct ShellIntegrationCommand {
 #[derive(Subcommand, Debug)]
 pub enum ShellIntegrationAction {
     /// Report session resources and persistent-install state without changes.
-    Doctor,
+    Doctor {
+        /// Check WSL prerequisites in the selected distro or the default distro.
+        #[clap(long, value_name = "DISTRO", num_args = 0..=1, default_missing_value = "")]
+        wsl: Option<String>,
+        /// Show the WSL setup report and offer to install a supported missing package.
+        #[clap(long, requires = "wsl")]
+        offer_install: bool,
+    },
     /// Explicitly install profile integration for shells outside Automexia.
     Install {
         /// Reinstall even when the current fingerprint is already installed.
@@ -1175,6 +1182,27 @@ mod tests {
 
         let normal = Cli::try_parse_from(["automexia"]).unwrap();
         assert!(normal.command.is_none());
+    }
+
+    #[test]
+    fn wsl_setup_offering_install_requires_an_explicit_wsl_check() {
+        assert!(Cli::try_parse_from([
+            "automexia",
+            "shell-integration",
+            "doctor",
+            "--offer-install",
+        ])
+        .is_err());
+        for (token, expected) in [(None, ""), (Some("Ubuntu-24.04"), "Ubuntu-24.04")] {
+            let mut args = vec!["automexia", "shell-integration", "doctor", "--wsl"];
+            args.extend(token);
+            args.push("--offer-install");
+            let parsed = Cli::try_parse_from(args).unwrap();
+            assert!(matches!(parsed.command,
+                Some(CliCommand::ShellIntegration(ShellIntegrationCommand {
+                    action: ShellIntegrationAction::Doctor { wsl: Some(distro), offer_install: true }
+                })) if distro == expected));
+        }
     }
 
     #[test]

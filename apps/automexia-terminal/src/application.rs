@@ -39,6 +39,8 @@ mod profiles;
 mod recovery;
 mod settings;
 mod themes;
+#[cfg(windows)]
+mod wsl_setup;
 
 const CUSTOM_RESIZE_BORDER_PX: f64 = 6.0;
 
@@ -67,6 +69,23 @@ fn prepare_route_redraw(
         return RouteRedrawDecision::Occluded;
     }
     RouteRedrawDecision::Ready
+}
+
+fn finish_overlay_pointer_release(
+    scheduler: &mut Scheduler,
+    screen: &mut crate::screen::Screen<'_>,
+    button: MouseButton,
+) {
+    if matches!(button, MouseButton::Left | MouseButton::Right) {
+        scheduler.unschedule(TimerId::new(
+            Topic::SelectionScrolling,
+            screen.ctx().current_route(),
+        ));
+    }
+    if button == MouseButton::Left {
+        screen.renderer.scrollbar.end_drag();
+        screen.resize_state = None;
+    }
 }
 
 enum RuntimeConfigReload {
@@ -270,6 +289,8 @@ pub struct Application<'a> {
     theme_library: crate::automexia::theme_gallery_io::ThemeLibrary,
     profile_library: crate::automexia::profiles::ProfileLibrary,
     pending_profile: Option<profiles::PendingProfile>,
+    #[cfg(windows)]
+    wsl_setup: wsl_setup::WslSetup,
     pending_theme: Option<themes::PendingTheme>,
     theme_preview: Option<themes::ThemeTarget>,
     prepared_font: Option<(
@@ -373,6 +394,8 @@ impl Application<'_> {
                 Some(event_proxy.clone()),
             ),
             pending_profile: None,
+            #[cfg(windows)]
+            wsl_setup: wsl_setup::WslSetup::new(event_proxy.clone()),
             theme_preview: None,
             prepared_font: None,
             base_config,
@@ -1011,6 +1034,14 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
         self.finish_profile_work(event_loop);
         let window_id = event.window_id;
         match event.payload {
+            #[cfg(windows)]
+            RioEventType::Rio(RioEvent::WslSetupHint { route, receipt }) => {
+                self.start_wsl_setup(window_id, route, None, Some(receipt), false);
+            }
+            #[cfg(windows)]
+            RioEventType::Rio(RioEvent::WslSetupResponse { route, choice }) => {
+                self.handle_wsl_setup_response(window_id, route, choice);
+            }
             RioEventType::Rio(RioEvent::Render) => {
                 if let Some(route) = self.router.routes.get_mut(&window_id) {
                     // Skip rendering for unfocused windows if configured
@@ -1373,6 +1404,8 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
             }
             RioEventType::Rio(RioEvent::ChildExited(route_id, raw_status)) => {
+                #[cfg(windows)]
+                self.finish_wsl_install(window_id, route_id, raw_status);
                 self.recovery_child_exited(window_id);
                 let notification =
                     self.router.routes.get_mut(&window_id).and_then(|route| {
@@ -1908,6 +1941,44 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             return;
         }
 
+        #[cfg(windows)]
+        let wsl_setup_handled = route.window.screen.handle_wsl_setup_window_event(&event);
+        #[cfg(not(windows))]
+        let wsl_setup_handled = false;
+        if wsl_setup_handled
+            || route
+                .window
+                .screen
+                .handle_paste_preview_window_event(&event)
+        {
+            if let WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button,
+                ..
+            } = &event
+            {
+                finish_overlay_pointer_release(
+                    &mut self.scheduler,
+                    &mut route.window.screen,
+                    *button,
+                );
+            }
+            route.window.winit_window.set_cursor(CursorIcon::Default);
+            route.window.winit_window.set_cursor_visible(true);
+            if route
+                .window
+                .screen
+                .ctx()
+                .current()
+                .renderable_content
+                .pending_update
+                .is_dirty()
+            {
+                route.request_redraw();
+            }
+            return;
+        }
+
         if route.window.screen.reject_stale_terminal_ime(&event) {
             route.request_redraw();
             return;
@@ -1988,12 +2059,12 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     state,
                     route.window.screen.renderer.command_palette.is_enabled(),
                 ) {
-                    if button == MouseButton::Left {
-                        let id = route.window.screen.ctx().current_route();
-                        self.scheduler
-                            .unschedule(TimerId::new(Topic::SelectionScrolling, id));
-                        route.window.screen.renderer.scrollbar.end_drag();
-                        route.window.screen.resize_state = None;
+                    if state == ElementState::Released {
+                        finish_overlay_pointer_release(
+                            &mut self.scheduler,
+                            &mut route.window.screen,
+                            button,
+                        );
                     }
                     return;
                 }
@@ -3634,6 +3705,8 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
         self.finish_font_preparation(event_loop);
         self.finish_theme_work(event_loop);
         self.finish_profile_work(event_loop);
+        #[cfg(windows)]
+        self.finish_wsl_setup();
         let scheduled = self.scheduler.update();
         let cleanup = self.router.workers.poll_cleanup();
         let next_wake = scheduled
@@ -3720,12 +3793,18 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
         // destructors in that path as well.
         self.router.config_creation.request_shutdown();
         self.router.hide_windows_for_exit();
+        #[cfg(windows)]
+        self.wsl_setup.request_shutdown();
         let shutdown_requests = self.router.request_pty_shutdown();
         tracing::debug!(shutdown_requests, "final PTY shutdown broadcast completed");
         // Destroy native surfaces before service waits, including backends
         // without visibility control. Context drops only retire worker leases.
         self.router.routes.clear();
         self.recovery.shutdown();
+        #[cfg(windows)]
+        if !self.wsl_setup.finish_shutdown() {
+            tracing::warn!("WSL setup check did not finish before shutdown");
+        }
         if !self
             .router
             .config_creation

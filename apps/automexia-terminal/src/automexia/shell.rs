@@ -1,9 +1,69 @@
-//! Shell launch normalization owned by the Automexia application layer.
+//! Shell launch and reviewed Bash batch preparation owned by the application.
 //!
-//! This is not a command framework. It only suppresses noisy host banners,
-//! loads Automexia's optional prompt/editor integration for the interactive
-//! default shell, and advertises Automexia's terminal identity through the
-//! inherited environment. User commands and PTY bytes are untouched.
+//! Launch normalization suppresses host banners, loads optional interactive
+//! prompt/editor integration, and advertises Automexia's terminal identity.
+
+/// Prepare one physical ASCII line for explicit insertion at a Bash prompt.
+/// Bash chooses a process-substitution path for the exact normalized script,
+/// leaving terminal stdin available to it. The parent tests the external
+/// interpreter's status, so the child can honor `errexit` while the parent
+/// stays open.
+pub fn prepare_bash_paste_batch(text: &str) -> Option<String> {
+    use rio_backend::event::PasteRequest;
+
+    // Bash can lose the conditional's errexit exemption through `builtin command`.
+    const PREFIX: &str = concat!(
+        "if command env BASH_ENV= SHELLOPTS=\"$(",
+        "if [[ -o nounset ]]; then builtin printf 'nounset:'; fi; ",
+        "if [[ -o pipefail ]]; then builtin printf 'pipefail'; fi",
+        ")\" \"${BASH:-/bin/bash}\" --noprofile --norc -e -- ",
+        "<(builtin printf '%s' $'",
+    );
+    const SUFFIX: &str = concat!(
+        "'); then :; else ",
+        "builtin printf 'Bash batch exited with status %d.\\n' \"$?\" >&2 || :; fi",
+    );
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    const OVERHEAD: usize = PREFIX.len() + SUFFIX.len();
+    if text.is_empty()
+        || text.len() > PasteRequest::MAX_BYTES - OVERHEAD
+        || text
+            .chars()
+            .any(|ch| ch.is_control() && !matches!(ch, '\t' | '\n'))
+    {
+        return None;
+    }
+
+    let size = text.bytes().try_fold(OVERHEAD, |size, byte| {
+        let expanded = size
+            + match byte {
+                b'\t' | b'\n' | b'\'' | b'\\' => 2,
+                0x80..=0xff => 4,
+                _ => 1,
+            };
+        (expanded <= PasteRequest::MAX_BYTES).then_some(expanded)
+    })?;
+    let mut batch = String::with_capacity(size);
+    batch.push_str(PREFIX);
+    // ANSI-C quoting restores exactly two hex digits per non-ASCII byte.
+    // Emitting only printable ASCII keeps this safe even without Mode 2004.
+    for byte in text.bytes() {
+        match byte {
+            b'\t' => batch.push_str("\\t"),
+            b'\n' => batch.push_str("\\n"),
+            b'\'' => batch.push_str("\\'"),
+            b'\\' => batch.push_str("\\\\"),
+            0x80..=0xff => {
+                batch.push_str("\\x");
+                batch.push(char::from(HEX[usize::from(byte >> 4)]));
+                batch.push(char::from(HEX[usize::from(byte & 0x0f)]));
+            }
+            _ => batch.push(char::from(byte)),
+        }
+    }
+    batch.push_str(SUFFIX);
+    Some(batch)
+}
 
 #[cfg(target_os = "windows")]
 const POWERSHELL_SESSION_BOOTSTRAP: &str = concat!(
@@ -471,6 +531,122 @@ fn prepare_unix_session(
     unix_session_args(program, args, Some(root), login)
 }
 
+#[cfg(test)]
+mod bash_paste_tests {
+    use super::prepare_bash_paste_batch;
+    use rio_backend::event::PasteRequest;
+
+    #[test]
+    fn bash_paste_batch_passes_literal_source_without_submitting() {
+        let text = "printf '%s\\n' \"$HOME\"\n\tprintf '界'\ntrailing\\";
+        let expected = concat!(
+            r#"if command env BASH_ENV= SHELLOPTS="$(if [[ -o nounset ]]; then builtin printf 'nounset:'; fi; if [[ -o pipefail ]]; then builtin printf 'pipefail'; fi)" "${BASH:-/bin/bash}" --noprofile --norc -e -- <(builtin printf '%s' $'"#,
+            r#"printf \'%s\\n\' "$HOME"\n\tprintf \'\xe7\x95\x8c\'\ntrailing\\"#,
+            r#"'); then :; else builtin printf 'Bash batch exited with status %d.\n' "$?" >&2 || :; fi"#,
+        );
+        let batch = prepare_bash_paste_batch(text).unwrap();
+        assert_eq!(batch, expected);
+        assert!(batch.bytes().all(|byte| (b' '..=b'~').contains(&byte)));
+    }
+
+    #[test]
+    fn bash_paste_batch_rejects_controls_and_bounds_the_quoted_result() {
+        for input in [
+            "",
+            "echo 1\r\necho 2",
+            "printf \0",
+            "echo \u{001b}",
+            "echo \u{0085}",
+        ] {
+            assert!(prepare_bash_paste_batch(input).is_none());
+        }
+
+        let overhead = prepare_bash_paste_batch("x").unwrap().len() - 1;
+        // Three UTF-8 bytes become twelve printable bytes in the prepared line.
+        let at_limit = "x".repeat(PasteRequest::MAX_BYTES - overhead - 12) + "界";
+        assert_eq!(
+            prepare_bash_paste_batch(&at_limit).unwrap().len(),
+            PasteRequest::MAX_BYTES
+        );
+        assert!(prepare_bash_paste_batch(&(at_limit + "x")).is_none());
+        assert!(prepare_bash_paste_batch(&"'".repeat(PasteRequest::MAX_BYTES)).is_none());
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn bash_paste_batch_preserves_stdin_and_returns_to_strict_system_bash() {
+        use super::super::cli_process::{capture, Limits};
+        use std::process::Command;
+        use std::time::Duration;
+
+        let fixture = tempfile::tempdir().unwrap();
+        let entrypoint = fixture.path().join("parent.bash");
+        let terminal_input = fixture.path().join("terminal-input");
+        std::fs::write(&terminal_input, "fixture input\n").unwrap();
+
+        let batch = prepare_bash_paste_batch(concat!(
+            "[[ -o errexit && -o nounset && -o pipefail ]]\n",
+            "[[ ! -o monitor && ! -o history ]]\n",
+            "\tIFS= read -r received\n",
+            "[[ $received == 'fixture input' && $AMX_BATCH_CONTEXT == 'fixture parent' ]]\n",
+            "builtin printf '%s\\n' \"stdin=$received; Unicode=界f; backslash=\\\\; apostrophe='; bang=!\"\n",
+            "cd /\n",
+            "AMX_BATCH_CONTEXT=child\n",
+            "PATH=/dev/null\n",
+            "command __amx_missing_bash_paste_fixture\n",
+            "builtin printf '%s\\n' late",
+        ))
+        .unwrap();
+        let script = format!(
+            concat!(
+                "exec < \"$1\"\n",
+                "set -o history\n",
+                "set -euo pipefail\n",
+                "parent_pid=$$\n",
+                "parent_directory=$PWD\n",
+                "export AMX_BATCH_CONTEXT='fixture parent'\n",
+                "{batch}\n",
+                "[[ $$ == \"$parent_pid\" && $PWD == \"$parent_directory\" ]]\n",
+                "[[ $AMX_BATCH_CONTEXT == 'fixture parent' ]]\n",
+                "[[ -o errexit && -o nounset && -o pipefail && -o history ]]\n",
+                "builtin printf '%s\\n' 'parent ready'\n",
+            ),
+            batch = batch,
+        );
+        std::fs::write(&entrypoint, script).unwrap();
+
+        let mut command = Command::new("/bin/bash");
+        command
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("LC_ALL", "C")
+            .env("HISTFILE", "/dev/null")
+            .current_dir(fixture.path())
+            .args(["--noprofile", "--norc"])
+            .arg(&entrypoint)
+            .arg(&terminal_input);
+        let output = capture(
+            command,
+            Limits {
+                timeout: Duration::from_secs(10),
+                stdout: 512,
+                stderr: 1024,
+            },
+            || false,
+        )
+        .expect("run the protected batch in system Bash");
+        assert!(output.status.success(), "system Bash did not resume");
+        assert_eq!(
+            output.stdout.as_slice(),
+            "stdin=fixture input; Unicode=界f; backslash=\\; apostrophe='; bang=!\nparent ready\n"
+                .as_bytes(),
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("__amx_missing_bash_paste_fixture: command not found"));
+        assert!(stderr.contains("Bash batch exited with status 127."));
+    }
+}
+
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
     use super::*;
@@ -720,8 +896,10 @@ try {
     Set-PSReadLineOption -HistorySaveStyle SaveNothing -HistorySavePath (Join-Path $env:AUTOMEXIA_CONFIG_HOME 'unused-history')
     $global:AutomexiaScopeProbeCalls = 0
     $global:AutomexiaScopeProbeLine = 'literal [scope] ; & input'
+    $global:AutomexiaScopeProbeThrow = $false
     function global:PSConsoleHostReadLine {
         $global:AutomexiaScopeProbeCalls++
+        if ($global:AutomexiaScopeProbeThrow) { throw 'fixture input failed' }
         return $global:AutomexiaScopeProbeLine
     }
     $global:AutomexiaScopeProbeOutput = [IO.StringWriter]::new()
@@ -738,14 +916,16 @@ try {
     try { $line = PSConsoleHostReadLine } catch { exit 81 }
     if ($line -cne $global:AutomexiaScopeProbeLine -or
         $global:AutomexiaScopeProbeCalls -ne 1) { exit 82 }
+    $null = $global:AutomexiaScopeProbeOutput.GetStringBuilder().Clear()
     $global:AutomexiaScopeProbeLine = $null
-    if ($null -ne (PSConsoleHostReadLine)) { exit 83 }
+    if ($null -ne (PSConsoleHostReadLine) -or
+        $global:AutomexiaScopeProbeOutput.GetStringBuilder().Length -ne 0) { exit 83 }
     $global:AutomexiaScopeProbeLine = ''
     if ((PSConsoleHostReadLine) -cne '' -or
         $global:AutomexiaScopeProbeCalls -ne 3) { exit 84 }
     try { $renderedPrompt = prompt } catch { exit 85 }
     if (-not $renderedPrompt.Contains([char]0x03bb) -or
-        -not $renderedPrompt.Contains('133;B') -or
+        -not $renderedPrompt.Contains(([string][char]27) + ']133;B;amx-wsl=1' + [char]7) -or
         -not $global:AutomexiaScopeProbeOutput.ToString().Contains('133;D') -or
         $script:AutomexiaPromptGeneration -ne 2) { exit 86 }
     $null = $global:AutomexiaScopeProbeOutput.GetStringBuilder().Clear()
@@ -778,6 +958,31 @@ try {
     $null = prompt
     if (-not $global:AutomexiaScopeProbeOutput.ToString().Contains('133;D') -or
         $script:AutomexiaPromptGeneration -ne 4) { exit 91 }
+    $esc = [char]27
+    $bel = [char]7
+    foreach ($case in @(
+        @{ Line = 'wsl'; Option = ';amx-wsl=1' },
+        @{ Line = "  WSL.EXE`t"; Option = ';amx-wsl=1' },
+        @{ Line = 'wsl --list'; Option = '' },
+        @{ Line = 'wsl; Get-Date'; Option = '' },
+        @{ Line = '"wsl"'; Option = '' },
+        @{ Line = '& "wsl"'; Option = '' },
+        @{ Line = "wsl`nGet-Date"; Option = '' },
+        @{ Line = ''; Option = '' }
+    )) {
+        $global:AutomexiaScopeProbeLine = $case.Line
+        $null = $global:AutomexiaScopeProbeOutput.GetStringBuilder().Clear()
+        $accepted = PSConsoleHostReadLine
+        $expected = "$esc[0J$esc]1337;SetUserVar=automexia_prompt_active=MA==$bel$esc]133;C$($case.Option)$bel"
+        if ($accepted -cne $case.Line -or $global:AutomexiaScopeProbeOutput.ToString() -cne $expected) { exit 95 }
+    }
+    $global:AutomexiaScopeProbeThrow = $true
+    $null = $global:AutomexiaScopeProbeOutput.GetStringBuilder().Clear()
+    $forwardedError = $false
+    try { $null = PSConsoleHostReadLine } catch {
+        $forwardedError = $_.Exception.Message -ceq 'fixture input failed'
+    }
+    if (-not $forwardedError -or $global:AutomexiaScopeProbeOutput.GetStringBuilder().Length -ne 0) { exit 96 }
     exit 0
 } catch { exit 92 }
 "#;

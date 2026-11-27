@@ -1,0 +1,84 @@
+{
+  "name": "automexia-wsl",
+  "displayName": "Automexia Terminal",
+  "description": "Run Automexia shell sessions in a docked VS Code view and use its CLI in the integrated terminal.",
+  "publisher": "automexia",
+  "version": "0.6.0",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./extension.js",
+  "extensionKind": ["workspace"],
+  "activationEvents": ["onTerminalProfile:automexia.wsl", "onView:automexia.dockedTerminal", "onCommand:automexia.openDockedView", "onCommand:automexia.browseQuickActions", "onCommand:automexia.browseWorkspaces", "onCommand:automexia.openDesktop"],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": false },
+    "virtualWorkspaces": false
+  },
+  "files": ["extension.js", "docked-view.js", "docked-context.js", "desktop-catalog.js", "native-runtime.js", "media", "LICENSE"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "automexia.openDockedView",
+        "title": "Open Docked View",
+        "category": "Automexia"
+      },
+      {
+        "command": "automexia.browseQuickActions",
+        "title": "Browse Quick Actions",
+        "category": "Automexia"
+      },
+      {
+        "command": "automexia.browseWorkspaces",
+        "title": "Browse Saved Workspaces",
+        "category": "Automexia"
+      },
+      {
+        "command": "automexia.openDesktop",
+        "title": "Open Desktop App",
+        "category": "Automexia"
+      }
+    ],
+    "viewsContainers": {
+      "panel": [
+        { "id": "automexia-panel", "title": "Automexia", "icon": "media/icon.png" }
+      ]
+    },
+    "views": {
+      "automexia-panel": [
+        { "id": "automexia.dockedTerminal", "name": "Sessions", "type": "webview" }
+      ]
+    },
+    "terminal": {
+      "profiles": [
+        {
+          "id": "automexia.wsl",
+          "title": "Automexia CLI",
+          "icon": "terminal"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Automexia Terminal",
+      "properties": {
+        "automexia.docked.hostExecutable": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "description": "Optional absolute path to a custom automexia-vscode-host executable. Leave empty to prefer the bundled companion, or search the configured CLI directory and PATH in a source-only installation."
+        },
+        "automexia.terminal.binaryDirectory": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "description": "Optional directory on the terminal host containing the amx and automexia executables. Leave empty to use the bundled tools or normal PATH. Use an absolute path or start with ~/ for the host's home directory."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test test/profile.test.js test/docked-view.test.js test/docked-context.test.js test/desktop-catalog.test.js test/native-runtime.test.js",
+    "test:windows-companion": "node --test test/windows-companion.test.js",
+    "bench": "node test/bench-profile.js"
+  }
+}

@@ -18,6 +18,17 @@ impl Screen<'_> {
             parent: None,
             node: root,
         }];
+        if !welcome && !self.renderer.confirm_quit.is_active() {
+            #[cfg(windows)]
+            if let Some(surface) = self.wsl_setup_accessibility() {
+                elements.extend(surface.elements);
+                return (elements, surface.focus);
+            }
+            if let Some(surface) = self.paste_preview_accessibility() {
+                elements.extend(surface.elements);
+                return (elements, surface.focus);
+            }
+        }
         let overlay = if welcome {
             Some((
                 1,

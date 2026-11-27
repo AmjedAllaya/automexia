@@ -2,6 +2,215 @@ use super::*;
 use proptest::prelude::*;
 
 #[test]
+fn package_progress_preserves_severity_and_source_ranges() {
+    use OperationalPart::{Detail, Measurement, Phase, Subject, Version};
+    use SemanticSeverity::{Error, Info, Success, Warning};
+
+    type Case<'a> = (&'a str, SemanticSeverity, &'a [(OperationalPart, &'a str)]);
+    let cases: &[Case<'_>] = &[
+        (
+            "  \u{2003}Get:1 https://example.invalid/dépot stable/main amd64 unknown amd64 1.2.3 [241 kB]  ",
+            Info,
+            &[
+                (Phase, "Get:1"),
+                (Detail, "https://example.invalid/dépot"),
+                (Subject, "unknown"),
+                (Version, "1.2.3"),
+                (Measurement, "[241 kB]"),
+            ],
+        ),
+        (
+            "Hit:2 https://example.invalid/ubuntu stable InRelease",
+            Info,
+            &[(Phase, "Hit:2"), (Detail, "https://example.invalid/ubuntu")],
+        ),
+        (
+            "Get:2 https://example.invalid/ubuntu stable InRelease [128 kB]",
+            Info,
+            &[
+                (Phase, "Get:2"),
+                (Detail, "https://example.invalid/ubuntu"),
+                (Measurement, "[128 kB]"),
+            ],
+        ),
+        (
+            "Ign:3 https://example.invalid/ubuntu stable InRelease",
+            Warning,
+            &[(Phase, "Ign:3"), (Detail, "https://example.invalid/ubuntu")],
+        ),
+        (
+            "Err:4 https://example.invalid/ubuntu stable InRelease",
+            Error,
+            &[(Phase, "Err:4"), (Detail, "https://example.invalid/ubuntu")],
+        ),
+        (
+            "Fetched 25.3 MB in 3s (8565 kB/s)",
+            Success,
+            &[
+                (Phase, "Fetched"),
+                (Measurement, "25.3 MB"),
+                (Measurement, "3s"),
+                (Measurement, "8565 kB/s"),
+            ],
+        ),
+        (
+            "Preconfiguring packages ...",
+            Info,
+            &[(Phase, "Preconfiguring packages")],
+        ),
+        (
+            "Need to get 1.2 MB/2.4 MB of archives.",
+            Info,
+            &[
+                (Phase, "Need to get"),
+                (Measurement, "1.2 MB"),
+                (Measurement, "2.4 MB"),
+            ],
+        ),
+        (
+            "After this operation, 36 kB of additional disk space will be used.",
+            Info,
+            &[(Phase, "After this operation,"), (Measurement, "36 kB")],
+        ),
+        (
+            "Selecting previously unselected package demo:amd64.",
+            Info,
+            &[(Phase, "Selecting previously unselected package"), (Subject, "demo:amd64")],
+        ),
+        (
+            "(Reading database ... 74789 files and directories currently installed.)",
+            Info,
+            &[(Phase, "(Reading database ..."), (Measurement, "74789")],
+        ),
+        (
+            "(Reading database ... 35%",
+            Info,
+            &[(Phase, "(Reading database ..."), (Measurement, "35%")],
+        ),
+        (
+            "Preparing to unpack .../00-demo_1.2.3_amd64.deb ...",
+            Info,
+            &[(Phase, "Preparing to unpack"), (Subject, ".../00-demo_1.2.3_amd64.deb")],
+        ),
+        (
+            "Unpacking demo:amd64 (5:29.10.1-1~stable+1) over (5:29.10.0-1~stable) ...",
+            Info,
+            &[
+                (Phase, "Unpacking"),
+                (Subject, "demo:amd64"),
+                (Version, "5:29.10.1-1~stable+1"),
+                (Detail, "5:29.10.0-1~stable"),
+            ],
+        ),
+        (
+            "Setting up demo (1.2.3) ...",
+            Info,
+            &[(Phase, "Setting up"), (Subject, "demo"), (Version, "1.2.3")],
+        ),
+        (
+            "Processing triggers for demo (1.2.3) ...",
+            Info,
+            &[(Phase, "Processing triggers for"), (Subject, "demo"), (Version, "1.2.3")],
+        ),
+        (
+            "Current default time zone: 'Etc/UTC'",
+            Info,
+            &[(Phase, "Current default time zone:"), (Subject, "Etc/UTC")],
+        ),
+        (
+            "Local time is now:      Mon Jan  5 08:00:00 UTC 2026.",
+            Info,
+            &[(Phase, "Local time is now:"), (Measurement, "Mon Jan  5 08:00:00 UTC 2026")],
+        ),
+        (
+            "Universal Time is now: Mon Jan  5 08:00:00 UTC 2026.",
+            Info,
+            &[(Phase, "Universal Time is now:"), (Measurement, "Mon Jan  5 08:00:00 UTC 2026")],
+        ),
+        (
+            "Run 'dpkg-reconfigure tzdata' if you wish to change it.",
+            Info,
+            &[(Phase, "Run"), (Subject, "dpkg-reconfigure tzdata")],
+        ),
+        (
+            "Reading package lists... Done",
+            Success,
+            &[(Phase, "Reading package lists... Done")],
+        ),
+        (
+            "Continue? [Y/n] y",
+            Warning,
+            &[(Phase, "Continue?"), (Subject, "[Y/n]")],
+        ),
+        (
+            "E: Failed to fetch https://example.invalid/pkg.deb  404 Not Found",
+            Error,
+            &[(Phase, "E:")],
+        ),
+        (
+            "W: Failed to fetch https://example.invalid/archive stable InRelease",
+            Warning,
+            &[(Phase, "W:")],
+        ),
+    ];
+
+    let mut classifier = RowClassifier::default();
+    for &(row, severity, fields) in cases {
+        let expected = Some(OutputClassification {
+            domain: OutputDomain::General,
+            severity: Some(severity),
+        });
+        let progress = operational_progress(row).expect(row);
+        assert_eq!(progress.severity, severity, "{row}");
+        assert_eq!(classify_row(row), expected, "{row}");
+        assert_eq!(classifier.classify(row), expected, "{row}");
+        let mut last_end = 0;
+        let actual = progress
+            .spans
+            .into_iter()
+            .flatten()
+            .map(|span| {
+                assert!(last_end <= span.start && span.start < span.end, "{row}");
+                last_end = span.end;
+                (span.role, &row[span.start..span.end])
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(actual, fields, "{row}");
+    }
+}
+
+#[test]
+fn package_progress_rejects_ambiguous_prose_and_over_budget_rows() {
+    for row in [
+        "Get:1 packages in stock",
+        "Get: https://example.invalid/archive stable InRelease",
+        "Get:1 https://",
+        "Get:x https://example.invalid/archive stable InRelease",
+        "Prefetched 25.3 MB in 3s (8565 kB/s)",
+        "Fetched some records in 3s",
+        "Fetched 20 packages in 3s",
+        "Need to get 20 packages of archives.",
+        "After this operation, the installer will restart.",
+        "Preparing to unpack the shipment ...",
+        "Setting up a configuration (default) ...",
+        "Continue? [Y/n] yes, please",
+        "E: drive",
+        "Reading package lists... can take a while",
+        "Current default time zone: 'ask your administrator'",
+        "Local time is now: Mon Jan 5 00:00 UTC 2026.",
+        "Universal Time is now: available",
+        "Unpacking demo (1.2.3) ...\nsecond line",
+    ] {
+        assert_eq!(operational_progress(row), None, "{row}");
+    }
+    let oversized = format!(
+        "Get:1 https://example.invalid/{} stable InRelease",
+        "a".repeat(MAX_ROW_BYTES)
+    );
+    assert_eq!(operational_progress(&oversized), None);
+}
+
+#[test]
 fn plain_informational_output_uses_shared_log_palette() {
     for row in [
         "/workspace/project",

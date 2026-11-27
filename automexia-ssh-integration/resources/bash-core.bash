@@ -180,15 +180,16 @@ function __amx_ssh_prompt {
     (( __amx_ssh_initializing )) || builtin printf '\e]133;A;aid=%s\a \n' "$__amx_ssh_prompt_id" >&2
     return "$__amx_status"
 }
-# Capture status before native hooks; wrap after dynamic prompt builders.
+# Capture before native hooks and wrap after prompt builders. The left side of
+# && preserves failures even if the user enables errexit after startup.
 case "$(declare -p PROMPT_COMMAND 2>/dev/null)" in
     'declare -a PROMPT_COMMAND='*|'declare -ax PROMPT_COMMAND='*)
-        PROMPT_COMMAND=(__amx_ssh_capture_status "${PROMPT_COMMAND[@]}" __amx_ssh_prompt) ;;
+        PROMPT_COMMAND=('__amx_ssh_capture_status && :' "${PROMPT_COMMAND[@]}" '__amx_ssh_prompt && :') ;;
     *)
         if [[ -n ${PROMPT_COMMAND:-} ]]; then
-            PROMPT_COMMAND=(__amx_ssh_capture_status "$PROMPT_COMMAND" __amx_ssh_prompt)
+            PROMPT_COMMAND=('__amx_ssh_capture_status && :' "$PROMPT_COMMAND" '__amx_ssh_prompt && :')
         else
-            PROMPT_COMMAND=(__amx_ssh_capture_status __amx_ssh_prompt)
+            PROMPT_COMMAND=('__amx_ssh_capture_status && :' '__amx_ssh_prompt && :')
         fi ;;
 esac
 # Initial wrapping and readiness; empty Enter never invents command completion.

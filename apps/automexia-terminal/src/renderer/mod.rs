@@ -15,6 +15,7 @@ mod inline_tables;
 pub mod island;
 #[cfg(test)]
 mod output_snapshot_tests;
+pub(crate) mod paste_preview;
 pub(crate) mod remote_session_metadata;
 #[cfg(test)]
 mod remote_session_metadata_tests;
@@ -33,6 +34,8 @@ pub(crate) mod timestamps;
 pub mod trail_cursor;
 pub(crate) mod ui_theme;
 pub mod utils;
+#[cfg(windows)]
+pub(crate) mod wsl_setup;
 
 use rio_backend::crosswords::grid::row::{Row, SemanticPrompt};
 use rio_backend::crosswords::grid::Dimensions;
@@ -127,18 +130,25 @@ fn refresh_output_classifications(
             output_eligible,
         );
         if output_eligible {
-            crate::grid_emit::classify_visible_output(
+            crate::grid_emit::classify_visible_output_with_accents(
                 &content.visible_rows,
                 content.columns,
                 first_continues,
                 &mut content.output_classification_pending,
+                &mut content.output_accents_pending,
                 &mut content.output_classification_scratch,
             );
             // A write to the final softwrapped fragment can change the entire
-            // logical row's status, including retained source fragments.
+            // logical row's status or move fields on retained source fragments.
+            let mut previous_accents = content.output_accents.iter().peekable();
+            let mut pending_accents = content.output_accents_pending.iter().peekable();
             for (index, row) in content.visible_rows.iter_mut().enumerate() {
+                let accents_changed = previous_accents
+                    .next_if(|accent| accent.row == index)
+                    != pending_accents.next_if(|accent| accent.row == index);
                 if content.output_classifications.get(index)
                     != content.output_classification_pending.get(index)
+                    || accents_changed
                 {
                     row.dirty = true;
                 }
@@ -147,9 +157,14 @@ fn refresh_output_classifications(
                 &mut content.output_classifications,
                 &mut content.output_classification_pending,
             );
+            std::mem::swap(
+                &mut content.output_accents,
+                &mut content.output_accents_pending,
+            );
             command_results::protect_source_rows(content);
         } else {
             content.output_classifications.clear();
+            content.output_accents.clear();
             content.output_background_protected.clear();
         }
     }

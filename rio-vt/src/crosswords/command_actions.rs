@@ -1,8 +1,13 @@
 //! Explicit command actions read the sole grid/history owner on demand. Handles
 //! contain identity only; neither output nor command text is cached or persisted.
-use super::grid::{row::SemanticPrompt, Dimensions};
+use super::grid::{
+    row::{PromptInputShell, SemanticPrompt},
+    Dimensions,
+};
 use super::style::StyleFlags;
 use super::{ActivePromptPhase, Column, Crosswords, EventListener, Line, Mode, Pos};
+#[cfg(any(windows, test))]
+use std::time::{Duration, Instant};
 
 const MAX_ROWS: usize = 16_384;
 
@@ -27,14 +32,226 @@ pub struct WorkflowPrompt {
     pub prompt: u64,
 }
 
+/// Text-free lifetime stamp for a local Windows prompt's WSL setup hint.
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WslSetupReceipt {
+    host_prompt_generation: u64,
+    integration_scope_revision: u64,
+}
+
+#[cfg(any(windows, test))]
+const WSL_HOST_ENTER_LIFETIME: Duration = Duration::from_secs(2);
+
+#[cfg(any(windows, test))]
+#[derive(Debug)]
+struct WslHostEnter {
+    owner: WslSetupReceipt,
+    received_at: Instant,
+}
+
 #[derive(Debug, Default)]
 pub(super) struct WorkflowInputState {
     pub input_revision: u64,
     pub completed: Option<(u64, i32)>,
     submitted: Option<WorkflowPrompt>,
+    #[cfg(any(windows, test))]
+    host_prompt_generation: u64,
+    #[cfg(any(windows, test))]
+    wsl_prompt_capability: Option<WslSetupReceipt>,
+    #[cfg(any(windows, test))]
+    wsl_host_enter: Option<WslHostEnter>,
 }
 
 impl<U: EventListener> Crosswords<U> {
+    fn windows_host_prompt_shell(&self) -> Option<PromptInputShell> {
+        let variable = |name: &str| self.user_vars.get(name).map(String::as_str);
+        if self.integration_scope_active()
+            || variable("automexia_shell") != Some("1")
+            || variable("automexia_env_pending") == Some("1")
+            || variable("automexia_distro").is_some_and(|distro| !distro.is_empty())
+        {
+            return None;
+        }
+        match variable("automexia_shell_name") {
+            Some("CMD" | "cmd") => Some(PromptInputShell::Cmd),
+            Some("PowerShell") => Some(PromptInputShell::Native),
+            _ => None,
+        }
+    }
+
+    /// Advisory match for a real host Enter. The grid cannot authorize a
+    /// process or specify a WSL distribution.
+    pub fn is_bare_wsl_prompt_input(&self) -> bool {
+        use super::square::Wide;
+
+        const MAX_INPUT_COLUMNS: usize = 4096;
+        if self.mode.intersects(
+            Mode::ALT_SCREEN
+                | Mode::VI
+                | Mode::MOUSE_MODE
+                | Mode::KITTY_KEYBOARD_PROTOCOL,
+        ) || !self.host_clear_input_prompt_active()
+            || self.grid.cursor.should_wrap
+            || self.grid.columns() > MAX_INPUT_COLUMNS
+        {
+            return false;
+        }
+
+        let cursor = self.grid.cursor.pos;
+        let row = &self.grid[cursor.row];
+        let Some(input) = row.semantic_input else {
+            return false;
+        };
+        let Some(expected_shell) = self.windows_host_prompt_shell() else {
+            return false;
+        };
+        if input.continuation
+            || input.command_complete
+            || input.shell != expected_shell
+            || row[self.grid.last_column()].wrapline()
+        {
+            return false;
+        }
+        let expected = match cursor.col.0.checked_sub(input.column) {
+            Some(3) => "wsl",
+            Some(7) => "wsl.exe",
+            _ => return false,
+        };
+        let character = |column| {
+            let pos = Pos::new(cursor.row, Column(column));
+            let cell = self.grid[pos];
+            if cell.wide() != Wide::Narrow
+                || self.grid.style_of(&cell).flags.contains(StyleFlags::HIDDEN)
+            {
+                return None;
+            }
+            let mut text = self.grid.cell_text(pos);
+            let base = text.next()?;
+            text.next().is_none().then_some(base)
+        };
+        // The visual cursor must be at the end of a single editable line.
+        // Reject a suffix left after moving the cursor into a longer command,
+        // and any possible continuation on the adjacent row.
+        (input.column..cursor.col.0)
+            .zip(expected.chars())
+            .all(|(column, expected)| {
+                character(column)
+                    .is_some_and(|actual| actual.eq_ignore_ascii_case(&expected))
+            })
+            && (cursor.col.0..row.occ.min(self.grid.columns()))
+                .all(|column| matches!(character(column), Some(' ' | '\0')))
+            && (cursor.row == self.grid.bottommost_line()
+                || self.grid[cursor.row + 1i32].is_clear())
+    }
+
+    #[cfg(any(windows, test))]
+    pub(super) fn note_wsl_host_prompt(&mut self, redraws_live_prompt: bool) {
+        if !redraws_live_prompt && self.windows_host_prompt_shell().is_some() {
+            self.clear_wsl_host_enter();
+            self.workflow_input.host_prompt_generation =
+                self.workflow_input.host_prompt_generation.saturating_add(1);
+        }
+    }
+
+    #[cfg(any(windows, test))]
+    pub(super) fn note_wsl_prompt_capability(&mut self, advertised: bool) {
+        if advertised
+            && self.windows_host_prompt_shell() == Some(PromptInputShell::Native)
+            && self.workflow_input.host_prompt_generation != 0
+            && self.active_semantic_prompt.as_ref().is_some_and(|prompt| {
+                prompt.id.is_some() && prompt.phase == ActivePromptPhase::Input
+            })
+        {
+            self.workflow_input.wsl_prompt_capability = self.wsl_setup_receipt();
+        }
+    }
+
+    #[cfg(any(windows, test))]
+    pub(crate) fn note_wsl_host_enter(
+        &mut self,
+        now: Instant,
+    ) -> Option<WslSetupReceipt> {
+        let owner = self.wsl_setup_receipt()?;
+        if self.workflow_input.wsl_prompt_capability != Some(owner) {
+            return self.is_bare_wsl_prompt_input().then_some(owner);
+        }
+
+        // A capable editor identifies the accepted line after processing Enter.
+        // Its final echo may not be readable yet and can span multiple rows.
+        if self.windows_host_prompt_shell() == Some(PromptInputShell::Native)
+            && !self.mode.intersects(
+                Mode::ALT_SCREEN
+                    | Mode::VI
+                    | Mode::MOUSE_MODE
+                    | Mode::KITTY_KEYBOARD_PROTOCOL,
+            )
+            && self
+                .user_vars
+                .get("automexia_prompt_active")
+                .map(String::as_str)
+                == Some("1")
+            && self.active_semantic_prompt.as_ref().is_some_and(|prompt| {
+                prompt.id.is_some() && prompt.phase == ActivePromptPhase::Input
+            })
+        {
+            self.workflow_input.wsl_host_enter = Some(WslHostEnter {
+                owner,
+                received_at: now,
+            });
+        }
+        None
+    }
+
+    #[cfg(any(windows, test))]
+    pub(super) fn accept_wsl_command_start(
+        &mut self,
+        accepted_bare_wsl: bool,
+        now: impl FnOnce() -> Instant,
+    ) -> Option<WslSetupReceipt> {
+        let enter = self.workflow_input.wsl_host_enter.take();
+        let capability = self.workflow_input.wsl_prompt_capability.take();
+        let enter = enter?;
+        (accepted_bare_wsl
+            && capability == Some(enter.owner)
+            && self.windows_host_prompt_shell() == Some(PromptInputShell::Native)
+            && self.wsl_setup_hint_still_current(enter.owner)
+            && now().saturating_duration_since(enter.received_at)
+                < WSL_HOST_ENTER_LIFETIME)
+            .then_some(enter.owner)
+    }
+
+    #[cfg(any(windows, test))]
+    pub(super) fn clear_wsl_host_enter(&mut self) {
+        self.workflow_input.wsl_prompt_capability = None;
+        self.workflow_input.wsl_host_enter = None;
+    }
+
+    #[cfg(any(windows, test))]
+    pub(super) fn wsl_setup_receipt(&self) -> Option<WslSetupReceipt> {
+        let host_prompt_generation = self.workflow_input.host_prompt_generation;
+        (host_prompt_generation != u64::MAX).then(|| WslSetupReceipt {
+            host_prompt_generation,
+            integration_scope_revision: self.integration_scope_revision(),
+        })
+    }
+
+    #[cfg(any(windows, test))]
+    pub fn wsl_setup_hint_still_current(&self, receipt: WslSetupReceipt) -> bool {
+        !self.integration_scope_active() && self.wsl_setup_receipt() == Some(receipt)
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn notify_wsl_setup_hint(&self, receipt: WslSetupReceipt) {
+        self.event_proxy.send_event(
+            crate::event::RioEvent::WslSetupHint {
+                route: self.route_id,
+                receipt,
+            },
+            self.window_id,
+        );
+    }
+
     /// Only integrated legacy shell editors receive compatibility word keys.
     /// Foreground applications and enhanced keyboard protocols keep their keys.
     pub fn shell_word_delete_sequence(&self, forward: bool) -> Option<&'static str> {

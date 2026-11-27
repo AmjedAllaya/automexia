@@ -64,6 +64,10 @@ impl<T: rio_backend::event::EventListener + Clone + Send + 'static> ContextManag
         #[cfg(not(test))]
         context._io_thread.as_ref()?;
         let launch = &context.launch_descriptor;
+        #[cfg(windows)]
+        if launch.is_wsl_setup_install() {
+            return None;
+        }
         let direct_ssh = launch.program().is_some_and(|program| {
             let name = program.rsplit(['/', '\\']).next().unwrap_or(program);
             name.eq_ignore_ascii_case("ssh") || name.eq_ignore_ascii_case("ssh.exe")

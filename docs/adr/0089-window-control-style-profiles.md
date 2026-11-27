@@ -41,8 +41,9 @@ their older snapshots; they do not interpret or overwrite version-11 choices.
 ## Boundaries and alternatives
 
 No dependencies, workers, I/O, caches or OS action adapters are added. Appearance
-choices vary only visible geometry within the existing caption hit slots. Paint
-uses finite bounded logical-pixel geometry and existing CPU/WGPU primitives;
+choices vary only visible geometry within the existing caption hit slots. Size
+sets the painted dimensions and spacing offsets the outer buttons within their
+slots. Paint uses finite bounded logical-pixel geometry and existing CPU/WGPU primitives;
 only Glass uses the existing static reflection layers. There is no idle animation.
 
 A second preview painter would risk visual drift. Unbounded named profiles would

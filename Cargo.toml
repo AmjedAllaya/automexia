@@ -34,6 +34,7 @@ members = [
     "librio-wasm",
     "tools/xtask",
     "tools/renderer-benchmarks",
+    "tests/support/process-fixture",
     "third-party/inout",
     "third-party/accesskit-windows",
     "third-party/accesskit-unix",

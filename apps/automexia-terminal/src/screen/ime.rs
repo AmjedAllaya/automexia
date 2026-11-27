@@ -84,16 +84,31 @@ impl Screen<'_> {
     }
 
     fn composition_is_visible(&self) -> bool {
-        self.renderer.is_window_focused
-            && !self.settings_view.is_open()
+        #[cfg(windows)]
+        if self.wsl_setup_dialog_active() {
+            return false;
+        }
+        self.renderer.is_window_focused && self.terminal_input_is_visible()
+    }
+
+    fn terminal_input_is_visible(&self) -> bool {
+        !self.settings_view.is_open()
             && !self.renderer.command_palette.is_enabled()
             && !self.renderer.connection_hub.is_active()
             && !self.renderer.assistant.is_active()
             && !self.renderer.compatibility_inspector.is_active()
             && !self.renderer.confirm_quit.is_active()
+            && self.paste_preview.is_none()
             && !self.table_view.is_open()
             && !self.image_preview.is_visible()
             && !self.search_active()
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn terminal_accepts_wsl_setup_dialog(&self) -> bool {
+        self.terminal_input_is_visible()
+            && !self.hint_state.is_active()
+            && self.context_manager.current().ime.preedit().is_none()
     }
 
     pub(super) fn draw_terminal_composition(&mut self) {

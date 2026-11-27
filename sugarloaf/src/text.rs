@@ -370,18 +370,48 @@ impl Text {
     /// Draw `text` at logical top-left `(x, y)` with `opts`. Returns
     /// rendered width in **logical** pixels.
     pub fn draw(&mut self, x: f32, y: f32, text: &str, opts: &DrawOpts) -> f32 {
+        self.draw_label(x, y, text, opts, |_, _| opts.color)
+    }
+
+    /// Draw a label with the same shaping and logical advance as [`Self::draw`].
+    /// `color_at` receives a glyph cluster's UTF-8 byte offset in `text`.
+    /// Offsets can repeat or arrive in visual order. Color fonts keep their ink.
+    pub fn draw_colored(
+        &mut self,
+        x: f32,
+        y: f32,
+        text: &str,
+        opts: &DrawOpts,
+        mut color_at: impl FnMut(usize) -> [u8; 4],
+    ) -> f32 {
+        self.draw_label(x, y, text, opts, |byte_start, cluster| {
+            byte_start
+                .checked_add(cluster)
+                .filter(|&byte| byte < text.len() && text.is_char_boundary(byte))
+                .map_or(opts.color, &mut color_at)
+        })
+    }
+
+    fn draw_label(
+        &mut self,
+        x: f32,
+        y: f32,
+        text: &str,
+        opts: &DrawOpts,
+        mut color_at: impl FnMut(usize, usize) -> [u8; 4],
+    ) -> f32 {
         let runs = self.shape_label(text, opts);
         let mut advance = 0.0;
         // Fallback faces share the primary run's baseline, not their tops.
         let ascent = runs
             .first()
-            .map_or(0.0, |run| f32::from(run.ascent_px) / self.scale_factor);
-        for shaped in runs {
+            .map_or(0.0, |(_, run)| f32::from(run.ascent_px) / self.scale_factor);
+        for (byte_start, shaped) in runs {
             self.emit_instances(
                 x + advance,
                 y + ascent - f32::from(shaped.ascent_px) / self.scale_factor,
                 &shaped,
-                opts,
+                |cluster| color_at(byte_start, cluster),
             );
             advance += shaped_width(&shaped) / self.scale_factor;
         }
@@ -607,7 +637,7 @@ impl Text {
     pub fn measure(&mut self, text: &str, opts: &DrawOpts) -> f32 {
         self.shape_label(text, opts)
             .iter()
-            .map(|run| shaped_width(run) / self.scale_factor)
+            .map(|(_, run)| shaped_width(run) / self.scale_factor)
             .sum()
     }
 
@@ -618,7 +648,7 @@ impl Text {
         &mut self,
         text: &str,
         opts: &DrawOpts,
-    ) -> smallvec::SmallVec<[Arc<ShapedRun>; 4]> {
+    ) -> smallvec::SmallVec<[(usize, Arc<ShapedRun>); 4]> {
         let mut result = smallvec::SmallVec::new();
         if text.is_empty() {
             return result;
@@ -635,7 +665,7 @@ impl Text {
                     ..*opts
                 };
                 if let Some(run) = self.shape_for(text, &run_opts) {
-                    result.push(run);
+                    result.push((0, run));
                 }
                 return result;
             }
@@ -663,7 +693,7 @@ impl Text {
                         ..*opts
                     };
                     if let Some(run) = self.shape_for(&text[start..offset], &run_opts) {
-                        result.push(run);
+                        result.push((start, run));
                     }
                     start = offset;
                     current = Some((font, script));
@@ -680,7 +710,7 @@ impl Text {
                 ..*opts
             };
             if let Some(run) = self.shape_for(&text[start..], &run_opts) {
-                result.push(run);
+                result.push((start, run));
             }
         }
         result
@@ -959,13 +989,19 @@ impl Text {
 
     //  Emit pipeline — rasterize + push TextInstance
 
-    fn emit_instances(&mut self, x: f32, y: f32, run: &ShapedRun, opts: &DrawOpts) {
+    fn emit_instances(
+        &mut self,
+        x: f32,
+        y: f32,
+        run: &ShapedRun,
+        mut color_at: impl FnMut(usize) -> [u8; 4],
+    ) {
         let scale = self.scale_factor;
         let mut pen_x = x * scale;
         let py = y * scale;
         for glyph in &run.glyphs {
-            if self.emit_glyph(run, glyph.id, [pen_x + glyph.x, py - glyph.y], opts.color)
-            {
+            let color = color_at(glyph.cluster as usize);
+            if self.emit_glyph(run, glyph.id, [pen_x + glyph.x, py - glyph.y], color) {
                 pen_x += glyph.advance;
             }
         }

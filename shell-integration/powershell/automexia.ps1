@@ -9,6 +9,7 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
     $script:AutomexiaBel = [char]7
     [uint64]$script:AutomexiaPromptGeneration = 0
     $script:AutomexiaCommandAwaitingCompletion = $false
+    $script:AutomexiaWslInputOption = ''
     $script:AutomexiaCachedPromptPath = $null
     $script:AutomexiaCachedStyledPromptPath = ''
     $script:AutomexiaWrappedNativeExitCode = $null
@@ -301,6 +302,16 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
             function global:PSConsoleHostReadLine {
                 $line = & $script:AutomexiaOriginalPSConsoleHostReadLine
                 if ($null -ne $line) {
+                    # Signal only the recognized action. Editor repaint and
+                    # prediction cells need not reflect the line PowerShell accepted.
+                    $acceptedWsl = ''
+                    if ($line -is [string]) {
+                        $command = $line.Trim()
+                        if ([string]::Equals($command, 'wsl', [StringComparison]::OrdinalIgnoreCase) -or
+                            [string]::Equals($command, 'wsl.exe', [StringComparison]::OrdinalIgnoreCase)) {
+                            $acceptedWsl = $script:AutomexiaWslInputOption
+                        }
+                    }
                     # A resize can leave obsolete PSReadLine repaint cells below
                     # the accepted line. At this point the editor has returned
                     # and command output has not started, so ED(0) can retire
@@ -309,11 +320,12 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
                     # characters belonging to an earlier wrapped repaint.
                     [Console]::Write("$script:AutomexiaEsc[0J")
                     [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_prompt_active=MA==$script:AutomexiaBel")
-                    [Console]::Write("$script:AutomexiaEsc]133;C$script:AutomexiaBel")
+                    [Console]::Write("$script:AutomexiaEsc]133;C$acceptedWsl$script:AutomexiaBel")
                     $script:AutomexiaCommandAwaitingCompletion = $true
                 }
                 return $line
             }
+            $script:AutomexiaWslInputOption = ';amx-wsl=1'
         }
     }
 
@@ -403,7 +415,7 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         $ready = "$script:AutomexiaEsc]1337;SetUserVar=automexia_prompt_active=MQ==$script:AutomexiaBel"
         $start = "$script:AutomexiaEsc]133;A;aid=$script:AutomexiaPromptGeneration$script:AutomexiaBel"
         $continuation = "$script:AutomexiaEsc]133;P;k=c;aid=$script:AutomexiaPromptGeneration$script:AutomexiaBel"
-        $input = "$script:AutomexiaEsc]133;B$script:AutomexiaBel"
+        $input = "$script:AutomexiaEsc]133;B$script:AutomexiaWslInputOption$script:AutomexiaBel"
         $pathPrompt = Format-AutomexiaPromptPath -Path $promptPath
         $lambdaColor = if ($exitCode -eq 0) { '38;2;124;255;178' } else { '38;2;255;111;145' }
         $lambdaGlyph = [char]0x03BB

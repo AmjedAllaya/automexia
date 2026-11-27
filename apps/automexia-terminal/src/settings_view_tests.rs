@@ -2540,39 +2540,98 @@ fn window_style_choices_compact_layout_and_refresh_preserve_one_selection() {
 }
 
 #[test]
-#[ignore = "same-host production style choice and state preview paint benchmark"]
+#[ignore = "same-host production window control preview and settings refresh benchmark"]
 fn window_style_choices_paint_benchmark() {
+    use rio_backend::config::presentation::{
+        WindowControlSize, WindowControlSpacing, WindowControlStyle,
+    };
+
     let base = rio_backend::config::Config::default();
-    let mut view = dependent_settings_view(
-        &base,
-        &Default::default(),
-        crate::settings_catalog::WINDOW_CONTROLS,
-    );
-    let mut raster = Raster::new(1.0);
-    for (width, height) in [(960.0, 740.0), (1920.0, 1080.0)] {
-        view.fit(width, height, 16.0);
-        let mut samples = Vec::with_capacity(200);
-        for iteration in 0..220 {
-            raster.rects.clear();
-            raster.shapes.clear();
-            raster.text.clear();
-            let start = std::time::Instant::now();
-            view.paint(
-                std::hint::black_box(&mut raster),
-                UiTheme::from_colors(&base.colors),
-            );
-            let ns = start.elapsed().as_nanos();
-            assert_eq!(view.preview_targets.len(), 4);
-            assert!(raster.rects.len() < 1200, "preview draw work is bounded");
-            if iteration >= 20 {
-                samples.push(ns);
-            }
+    for (workload, change_geometry) in [
+        ("default_paint", false),
+        ("circles_size_spacing_refresh_and_paint", true),
+    ] {
+        let mut prefs = crate::automexia::preferences::UserPreferences::default();
+        if change_geometry {
+            prefs.visual.window_controls.style = Some(WindowControlStyle::Circles);
         }
-        samples.sort_unstable();
-        println!(
-            "{}",
-            serde_json::json!({"benchmark":"window_style_choices_paint","viewport":[width,height],"samples":200,"p50_ns":samples[99],"p95_ns":samples[189],"excludes":["GPU","presentation"]})
+        let mut view = dependent_settings_view(
+            &base,
+            &prefs,
+            crate::settings_catalog::WINDOW_CONTROLS,
         );
+        let mut raster = Raster::new(1.0);
+        for (width, height) in [(960.0, 740.0), (1920.0, 1080.0)] {
+            view.fit(width, height, 16.0);
+            let mut samples = Vec::with_capacity(200);
+            for iteration in 0..220 {
+                let (size, spacing) = if iteration % 2 == 0 {
+                    (WindowControlSize::Compact, WindowControlSpacing::Tight)
+                } else {
+                    (WindowControlSize::Large, WindowControlSpacing::Airy)
+                };
+                raster.rects.clear();
+                raster.shapes.clear();
+                raster.text.clear();
+                let start = std::time::Instant::now();
+                if change_geometry {
+                    prefs.visual.window_controls.circles.size = Some(size);
+                    prefs.visual.window_controls.circles.spacing = Some(spacing);
+                    view.refresh_with_resources(
+                        crate::settings_catalog::catalog(
+                            iteration + 2,
+                            &base,
+                            &prefs,
+                            &[],
+                        )
+                        .unwrap(),
+                        None,
+                        Some(crate::settings_catalog::slot_page_snapshot_with_config(
+                            &prefs,
+                            &prefs.apply_to(&base),
+                            &base,
+                            &crate::settings_catalog::test_installed_extensions(),
+                        )),
+                    );
+                }
+                view.paint(
+                    std::hint::black_box(&mut raster),
+                    UiTheme::from_colors(&base.colors),
+                );
+                let ns = start.elapsed().as_nanos();
+                assert_eq!(view.preview_targets.len(), 4);
+                assert!(raster.rects.len() < 1200, "preview draw work is bounded");
+                if change_geometry {
+                    let (controls, _) = view
+                        .customizations
+                        .as_ref()
+                        .unwrap()
+                        .slot_pages
+                        .as_ref()
+                        .unwrap()
+                        .preview_window_controls();
+                    assert_eq!(controls.circles.size, Some(size));
+                    assert_eq!(controls.circles.spacing, Some(spacing));
+                }
+                if iteration >= 20 {
+                    samples.push(ns);
+                }
+            }
+            samples.sort_unstable();
+            println!(
+                "{}",
+                serde_json::json!({
+                    "benchmark": "window_style_choices_paint",
+                    "workload": workload,
+                    "viewport": [width, height],
+                    "warmup": 20,
+                    "samples": samples.len(),
+                    "p50_ns": samples[99],
+                    "p95_ns": samples[189],
+                    "excludes": ["GPU", "presentation"],
+                })
+            );
+        }
     }
 }
 

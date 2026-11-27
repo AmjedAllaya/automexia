@@ -98,8 +98,16 @@ evaluation are outside these command contracts.
 | Command | Behavior |
 |---|---|
 | `automexia shell-integration doctor` | Read-only health and resource-root report. |
+| `automexia shell-integration doctor --wsl [<distro>] [--offer-install]` | On Windows, check the managed hook and `eza` in the selected WSL distribution, or in the default distribution when omitted. `--offer-install` opens a native setup dialog. |
 | `automexia shell-integration install [--force] [--quiet]` | Explicitly install or repair only Automexia-owned persistent integration. |
 | `automexia shell-integration uninstall [--quiet]` | Remove only Automexia-owned persistent integration. |
+
+For supported Ubuntu and Debian distributions with missing `eza`, choosing
+**Install eza** in the dialog starts `sudo apt-get install eza` in that WSL
+distribution. The terminal handles the usual authentication and package
+confirmation prompts. Name the target distribution explicitly when Windows has
+more than one registered. For the desktop entry point and shell requirements, see
+[WSL shell integration and setup](SHELL-INTEGRATION.md#wsl-and-remote-shells).
 
 Normal application launch uses session-local integration and does not require
 these mutation commands. On Windows, effective PowerShell execution policy is

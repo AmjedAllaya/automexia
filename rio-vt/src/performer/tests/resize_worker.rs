@@ -180,6 +180,171 @@ fn machine() -> Machine<BoundaryPty, VoidListener> {
     .unwrap()
 }
 
+#[cfg(windows)]
+#[derive(Clone)]
+struct WslHintEvents(Arc<AtomicUsize>);
+
+#[cfg(windows)]
+impl EventListener for WslHintEvents {
+    fn send_event(&self, event: RioEvent, _: WindowId) {
+        if matches!(event, RioEvent::WslSetupHint { .. }) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn wsl_setup_hint_uses_ordered_host_enter_and_delivers_original_bytes() {
+    for (draft, host_enter, hints) in [
+        (b"wsl".as_slice(), true, 1),
+        (b"wsl --list", true, 0),
+        (b"wsl", false, 0),
+    ] {
+        let seen = Arc::new(AtomicUsize::new(0));
+        let listener = WslHintEvents(seen.clone());
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(80, 24),
+            CursorShape::Block,
+            listener.clone(),
+            WindowId::from(0),
+            0,
+            100,
+        );
+        for (key, value) in [
+            ("automexia_shell", "1"),
+            ("automexia_shell_name", "PowerShell"),
+            ("automexia_prompt_active", "1"),
+        ] {
+            terminal.user_vars.insert(key.into(), value.into());
+        }
+        handler::Processor::default()
+            .advance(&mut terminal, b"\x1b]133;A;aid=1\x07> \x1b]133;B\x07");
+        let pty = BoundaryPty {
+            writable_bytes: 128,
+            ..BoundaryPty::default()
+        };
+        let mut machine = Machine::new(
+            Arc::new(FairMutex::new(terminal)),
+            pty,
+            listener,
+            WindowId::from(0),
+            0,
+        )
+        .unwrap();
+        let input = machine.channel();
+        input.send(Msg::Input(Cow::Borrowed(draft))).unwrap();
+        let enter = Cow::Borrowed(b"\x1b[13;28;13;1;0;1_".as_slice());
+        input
+            .send(if host_enter {
+                Msg::HostEnter(enter.clone())
+            } else {
+                Msg::Input(enter.clone())
+            })
+            .unwrap();
+        input.send(Msg::Input(Cow::Borrowed(b"after"))).unwrap();
+        let mut state = State::default();
+        assert!(machine.drain_recv_channel(&mut state));
+        machine.pty_write(&mut state).unwrap();
+        assert_eq!(machine.pty.output, draft);
+        assert_eq!(seen.load(Ordering::Relaxed), 0);
+
+        machine.pty.reader.final_bytes = Some(draft.to_vec());
+        machine.pty_read(&mut state, &mut [0; 128], true).unwrap();
+        assert!(machine.drain_recv_channel(&mut state));
+        machine.pty_write(&mut state).unwrap();
+        let expected = [draft, enter.as_ref()].concat();
+        assert_eq!(machine.pty.output, expected);
+        assert_eq!(seen.load(Ordering::Relaxed), hints);
+
+        assert!(machine.drain_recv_channel(&mut state));
+        machine.pty_write(&mut state).unwrap();
+        assert_eq!(machine.pty.output, [expected.as_slice(), b"after"].concat());
+        assert_eq!(seen.load(Ordering::Relaxed), hints);
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn wsl_setup_hint_waits_for_power_shell_acceptance_when_echo_is_delayed() {
+    let marked_start = b"\x1b]133;C;amx-wsl=1\x07".as_slice();
+    for (host_enter, command_start, hints) in [
+        (true, marked_start, 1),
+        (false, marked_start, 0),
+        (true, b"\x1b]133;C\x07", 0),
+        (true, b"\x1b]133;C;amx-wsl=1;extra\x07", 0),
+    ] {
+        let seen = Arc::new(AtomicUsize::new(0));
+        let listener = WslHintEvents(seen.clone());
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(80, 24),
+            CursorShape::Block,
+            listener.clone(),
+            WindowId::from(0),
+            0,
+            100,
+        );
+        for (key, value) in [
+            ("automexia_shell", "1"),
+            ("automexia_shell_name", "PowerShell"),
+            ("automexia_prompt_active", "1"),
+        ] {
+            terminal.user_vars.insert(key.into(), value.into());
+        }
+        handler::Processor::default().advance(
+            &mut terminal,
+            b"\x1b]133;A;aid=1\x07> \x1b]133;B;amx-wsl=1\x07",
+        );
+        let pty = BoundaryPty {
+            writable_bytes: 128,
+            ..BoundaryPty::default()
+        };
+        let mut machine = Machine::new(
+            Arc::new(FairMutex::new(terminal)),
+            pty,
+            listener,
+            WindowId::from(0),
+            0,
+        )
+        .unwrap();
+        let input = machine.channel();
+        let draft = b"wsl".as_slice();
+        let enter = b"\x1b[13;28;13;1;0;1_".as_slice();
+        let key_up = b"\x1b[13;28;13;0;0;1_".as_slice();
+        input.send(Msg::Input(Cow::Borrowed(draft))).unwrap();
+        input
+            .send(if host_enter {
+                Msg::HostEnter(Cow::Borrowed(enter))
+            } else {
+                Msg::Input(Cow::Borrowed(enter))
+            })
+            .unwrap();
+        input.send(Msg::Input(Cow::Borrowed(key_up))).unwrap();
+        let mut state = State::default();
+        for _ in 0..3 {
+            assert!(machine.drain_recv_channel(&mut state));
+            machine.pty_write(&mut state).unwrap();
+        }
+        assert_eq!(machine.pty.output, [draft, enter, key_up].concat());
+        assert_eq!(seen.load(Ordering::Relaxed), 0);
+
+        // Model the shell's output after accepting Enter, including a late
+        // partial echo and the transition out of prompt ownership before C.
+        machine.pty.reader.final_bytes = Some(
+            [
+                b"w\x1b]1337;SetUserVar=automexia_prompt_active=MA==\x07",
+                command_start,
+            ]
+            .concat(),
+        );
+        machine.pty_read(&mut state, &mut [0; 128], true).unwrap();
+        assert_eq!(seen.load(Ordering::Relaxed), hints);
+        machine.pty.reader.final_bytes = Some(marked_start.to_vec());
+        machine.pty_read(&mut state, &mut [0; 128], true).unwrap();
+        assert_eq!(seen.load(Ordering::Relaxed), hints);
+    }
+}
+
 #[test]
 fn cmd_word_delete_drains_output_revalidates_and_is_a_queue_barrier() {
     for changed in [false, true] {
@@ -471,6 +636,71 @@ fn paste_encoder_preserves_current_newline_and_control_contract() {
         unbracketed.as_ref(),
         "界e\u{301}\rb\r\x1b[201~\x03".as_bytes()
     );
+}
+
+#[test]
+fn clipboard_paste_normalizes_line_endings_and_removes_terminal_controls() {
+    let input = "\x04echo 界\r\n\r\n\tprintf '🦀'\rnext\x03\x1b\x08\x7f\u{009b}\n";
+    for (mode, expected) in [
+        (
+            b"\x1b[?2004h".as_slice(),
+            "\x1b[200~echo 界\n\n\tprintf '🦀'\nnext\n\x1b[201~",
+        ),
+        (b"\x1b[?2004l", "echo 界\r\r\tprintf '🦀'\rnext\r"),
+    ] {
+        let mut machine = machine();
+        machine.pty.reader.tail_chunks = VecDeque::from([mode.to_vec()]);
+        machine.pty.writable_bytes = 128;
+        machine
+            .channel()
+            .send(Msg::Paste(
+                PasteRequest::from_clipboard(input.into()).unwrap(),
+            ))
+            .unwrap();
+        let mut state = State::default();
+        assert!(machine.drain_recv_channel(&mut state));
+        machine
+            .resolve_pending_paste(&mut state, &mut [0; 64])
+            .unwrap();
+        machine.pty_write(&mut state).unwrap();
+        assert_eq!(machine.pty.output, expected.as_bytes());
+    }
+}
+
+#[test]
+fn clipboard_paste_review_rejects_a_changed_shell_or_input_mode_in_the_same_pty() {
+    for (pending_output, accepted) in [
+        (b"ordinary output".as_slice(), true),
+        (
+            b"\x1b]1337;SetUserVar=automexia_shell_name=cG93ZXJzaGVsbA==\x07",
+            false,
+        ),
+        (b"\x1b[?2004l", false),
+    ] {
+        let mut machine = machine();
+        let mut state = State::default();
+        state.parser.advance(
+            &mut *machine.terminal.lock(),
+            b"\x1b[?2004h\x1b]1337;SetUserVar=automexia_shell_name=YmFzaA==\x07",
+        );
+        let mut paste =
+            PasteRequest::from_clipboard("echo one\necho two".into()).unwrap();
+        paste.guard_clipboard_review(machine.terminal.lock().paste_destination());
+        machine.pty.reader.tail_chunks = VecDeque::from([pending_output.to_vec()]);
+        machine.pty.writable_bytes = 128;
+        machine.channel().send(Msg::Paste(paste)).unwrap();
+        assert!(machine.drain_recv_channel(&mut state));
+        machine
+            .resolve_pending_paste(&mut state, &mut [0; 128])
+            .unwrap();
+        machine.pty_write(&mut state).unwrap();
+        let expected = if accepted {
+            b"\x1b[200~echo one\necho two\x1b[201~".as_slice()
+        } else {
+            b""
+        };
+        assert_eq!(machine.pty.output, expected);
+    }
 }
 
 #[derive(Clone, Copy)]

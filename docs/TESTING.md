@@ -314,12 +314,19 @@ Window-button style choices have a separate `window_style_choices_` test group.
 It exercises real catalog edits, mouse/keyboard selection, selected radio
 semantics, all built-in themes, compact layouts, scaling, bounded drawing and
 repeated refresh. State examples must never become window-action targets.
+The `window_controls` renderer tests check that spacing changes both visible
+gaps at the selected size and that all buttons stay inside their caption hit slots.
 The native Windows mode `resize-stress-windows.ps1 -WindowControlChoicesOnly`
-checks repeated style selection, saved refresh, keyboard activation and inert
-state examples; run with `visual-test-hooks,wgpu` and repeat with
-`-UseCpuRenderer`. Use `-ModalCaptureDirectory` for private visual review.
+checks repeated style selection, keyboard activation and inert state examples.
+It also edits Button size and Button spacing separately for Circles, measures
+the painted buttons in the live preview and title bar, and checks both choices
+again after restarting with the same isolated preferences. Run with
+`visual-test-hooks,wgpu` and repeat with `-UseCpuRenderer`. Use
+`-ModalCaptureDirectory` for private visual review.
 The explicit `window_style_choices_paint_benchmark` test (`--ignored --show-output`)
-reports production paint p50/p95 JSON at two viewports, excluding GPU/presentation.
+reports p50/p95 JSON at two viewports for default paint and for preview refresh
+and paint while switching Circles between Compact/Tight and Large/Airy. Both
+workloads exclude GPU and presentation time.
 
 Shared color selection has `shared_color_picker_` application tests for real
 keyboard/pointer edits, palette-first Tab order, F1/F2/F3 shortcuts, wrapping
@@ -387,9 +394,94 @@ all resource samples within the existing bounded settling period.
 `-PlainOutputColorsOnly -CommandInputWslDistro <installed-distro>` reuses the
 isolated shell/input fixture to check real glyph pixels for paths, empty-result
 notices and all five configured output severities in PowerShell, CMD and WSL
-Bash/Zsh/Fish. Add `-CommandInputPowerShell7` to exercise PowerShell 7. The
+Bash/Zsh/Fish. Its synthetic package-manager output checks distinct colors for
+APT and dpkg phases, package names, incoming and previous versions, repository
+URLs, transfer figures, and a tzdata clock report without installing packages.
+Use `-CommandInputWslShells bash` to run only Bash in a distro that lacks the
+other shells. The distro-wide fixture defaults to Bash, Zsh and Fish.
+`-CommandInputSkipCmd` runs the PowerShell and selected WSL cases then reports
+CMD as skipped. Use the default scope to collect CMD evidence.
+Add `-CommandInputPowerShell7` to exercise PowerShell 7. The
 `-OutputColorsOnly` workflow also edits Information through the preview and
 checks retained path/notice pixels through an on/off/on toggle without new output.
+Shared grid regressions cover phase and field colors through soft wrapping,
+prompt and viewport boundaries, and precedence for ANSI text and selection.
+The `semantic_statuses` group in `automexia_services` measures row classification
+for APT downloads, dpkg upgrades, and tzdata clock reports. It verifies the field
+counts before timing and excludes PTY I/O and rendering.
+Run `package_progress_viewport_benchmark` as an ignored release-profile binary
+test with `--show-output` for p50 and p95 classification and accent projection
+at 40 and 120 columns. It reuses a parsed viewport with 48 package records and
+16 ordinary lines, excluding glyph rendering and presentation.
+
+For a Bash distro with installed hooks and `eza`, add
+`-CommandInputWslInstalledBash` to `-CommandInputColorsOnly` with an explicit
+`-CommandInputWslDistro`. This enters through ordinary WSL startup and checks
+prompt tags, typed colors, and a file icon without a fixture startup hook.
+The Windows `wsl_setup` Rust filter covers probe decoding, distro selection,
+and which confirmation can launch the fixed install command. The native
+`amx_process_background_capture_keeps_child_out_of_caller_console` test
+checks that WSL's capture mode redirects both streams and keeps the inventory
+and file-input probes out of the caller's console. Run the test from an
+attached Windows console so the ordinary capture control can prove inheritance.
+The POSIX shell
+harness exercises the actual probe without sourcing the startup files. In a
+disposable Windows desktop with an Ubuntu or Debian distro lacking `eza`, use
+**Settings → Profiles → Check WSL setup**. Cancel once and confirm that `eza`
+is still absent. Reopen the check, choose **Install eza**, complete the APT
+prompts in the diagnostic tab, then check the same distro again. The probe
+should report `eza` and preserve the original startup-hook status. Measure report
+decoding and formatting with `cargo bench --locked -p automexia-terminal --bench
+automexia_services -- wsl_setup_prerequisites --noplot`. The workload uses
+synthetic probe bytes. Measure native WSL startup separately when required.
+
+For the automatic offer, use a disposable interactive Windows desktop with a
+sole Ubuntu or Debian fixture distro, a default Bash shell and no `eza`. Build
+the candidate with `visual-test-hooks` and run from the staged checkout.
+
+```powershell
+tests/integration/resize-stress-windows.ps1 -CommandInputWslSetupOnly -CommandInputWslDistro Ubuntu
+```
+
+The test launches PowerShell through the ordinary Automexia bootstrap with
+temporary history settings. It checks that `wsl --list --quiet` opens no popup,
+then types bare `wsl` and presses Enter in one native input batch. It confirms
+the popup stays in the original Automexia window and verifies
+that **Cancel** leaves the original WSL session open with `eza` absent. It then
+repeats the launch with `WSL.EXE` and clicks **Install eza** after the test-only dialog
+confirms simulation mode. A separate terminal runs APT with `--simulate`, and
+the original WSL session still works with `eza` absent. The positive check
+requires a debug build and a distro with `eza` available in its APT indexes.
+`-ModalCaptureDirectory` can retain a private image of the in-app popup.
+
+Validate **Install Bash integration** on a disposable interactive Windows
+desktop with a WSL fixture whose default non-root user runs Bash. Start with
+an unmanaged `.bashrc` that contains a known user setting. Record its contents
+and the initial `eza` status. Open **Check WSL setup** for the named distro and
+confirm that cancelling preserves the file and the running session. Reopen the
+popup and select **Install Bash integration**. Confirm that the popup reports
+the verified hook and tells you to open a new Bash session. Check that the
+original user setting is present, the managed block occurs once, and the `eza`
+status is unchanged. In a fresh WSL Bash session, check prompt tags and command
+colors. Repeat the setup check to verify that it reports the hook as installed.
+Repeat the offer on a fresh fixture by typing `wsl` in the integrated Windows
+shell. Use a non-Bash fixture to check that it offers only applicable actions.
+
+Measure layout and hit-testing for both actions on the same Windows guest.
+
+```powershell
+cargo test --locked -p automexia-terminal --bin automexia wsl_setup_layout_benchmark -- --ignored --nocapture
+```
+
+The layout benchmark measures the popup model. For native install latency,
+measure from the click through the verified completion message with each
+sample starting from a clean fixture account. Measure fresh Bash startup
+separately.
+
+The command-input fixture checks command names, flags and positional arguments
+as drafts. The VT snapshot regression covers an owned multiline Bash draft
+through submission and keeps command-shaped output and password prompts outside
+the input color ranges.
 
 The tag customization journey also repeats feature and global Reset, closes and
 reopens the sheet during a temporary preview, and restores the original choices.
@@ -787,14 +879,37 @@ limits and interrupted writes, and mutate scanner upload flags and signing
 order. Synthetic metadata cannot establish fresh native package, Syft execution,
 signing or hosted publication evidence. Keep those gates separate.
 
-The current-source paste regression is
-`cargo test -p automexia-terminal --bin automexia --locked context::paste::`.
-It feeds bracketed-paste mode through the VT parser and checks actual channel
-bytes, focus changes, terminal replacement/shutdown, empty/oversized input and
-selection preservation. Pair it with application/layout/mouse tests for pointer
-ownership. This does not test a native clipboard, physical mouse, IME or pixels;
-manual native validation must include both panes, active selection, Shift mouse
-override, overlays, and a clipboard read that fails or delays.
+Run `cargo test -p automexia-terminal --bin automexia --locked paste` for
+paste routing and preview behavior. It checks actual channel messages, focus
+changes, terminal replacement/shutdown, empty/oversized input and selection
+preservation. Run `cargo test -p rio-vt --locked clipboard_paste` for exact PTY
+bytes after the VT parser handles bracketed-paste mode. Exercise both panes,
+active selection, Shift mouse override, overlays, and a failed or delayed
+clipboard read in native desktop validation. Include keyboard, mouse, IME, and
+visual review of the preview on Windows (including a WSL pane), Linux and macOS.
+The opt-in `native_powershell_wsl_powershell_metadata_roundtrip` test also
+checks that a WSL review becomes stale when the same ConPTY returns to PowerShell.
+Before the explicit WSL exit, it submits a reviewed Bash batch containing a
+missing command and checks status 127, fail-fast behavior, and the original
+guest shell's directory and strict options.
+
+The opt-in tests matching `native_wsl_bash_batch_keeps_shell_` run the batch
+through Windows ConPTY in fresh profile-free WSL Bash sessions, with and
+without bracketed paste. Their six-command fixture hides installed tools and
+uses shell functions for the successful and skipped checks so Node is always
+missing. They verify that submission requires Enter and that the same shell
+accepts input after the batch fails.
+
+On native Linux or macOS, `cargo test -p automexia-terminal --lib --locked bash_paste_tests`
+includes the system Bash regression. It checks exact script delivery, live
+stdin independent from the script path, and failure isolation in a strict
+parent. Native clipboard and compositor behavior still need an interactive
+desktop run for Windows, X11, Wayland, and macOS.
+
+Run `cargo bench -p rio-vt --bench vt_input --locked -- clipboard_paste_preparation --noplot`
+in a controlled guest to measure text preparation for single-line, multiline,
+near-limit and oversized clipboard inputs. The checked cases exclude OS
+clipboard access, preview rendering, and PTY I/O.
 
 Automexia uses layered evidence for its public free-terminal behavior. This page
 does not document or authorize unreleased advanced features or commercial
@@ -1171,6 +1286,11 @@ is signaled immediately after capture; post-cleanup PID lookup is not an exact
 identity oracle. The descendant regression runs four concurrent workers with
 25 cycles each, both inherited-pipe and closed-pipe children. Failure-only later
 observations remain diagnostic and never convert a failed assertion into a pass.
+The full Cargo runner still owns the process-control tests. On Windows the
+short-lived child workloads use a native fixture built with Cargo's target
+compiler through a dev dependency. The tests exercise the same handle, byte,
+and cleanup limits without making child retirement depend on unloading the
+full application test image.
 
 Directory handoff tests use `cargo test -p automexia-terminal --lib --locked amx_open_`.
 Editor tests use `cargo test -p automexia-terminal --lib --locked amx_edit_`.
@@ -1202,10 +1322,10 @@ be recorded separately from Windows-backed WSL. Preferences remain untouched
 outside isolated fixtures; do not run this test using a real user configuration.
 Windows local-tool cleanup additionally verifies empty job accounting and native
 signals from bounded member handles pinned before termination. The process suite
-includes 100 concurrent descendant cycles and an isolated 20-cycle exact handle-
-recovery measurement. A later diagnostic wait does not erase an immediate failure;
-leader exit and pipe EOF alone are insufficient. No native Unix equivalence or
-interactive performance is inferred from these Windows fixtures.
+includes 100 concurrent descendant cycles and an isolated exact handle-recovery
+measurement with 20 captures per console mode. A later diagnostic wait preserves
+the immediate failure. Verify member handle signals alongside leader exit and
+pipe EOF. These fixtures measure Windows process capture and cleanup.
 Run the ignored `amx_open_benchmark_checked_guest_mapping` test explicitly with
 `-- --ignored --nocapture` for checked pure conversion timing, not desktop latency.
 The post-build native CLI harness verifies exact directory previews and no writes;

@@ -196,7 +196,6 @@ fn run_child(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
 
     #[test]
     fn helper_scope_and_projection_are_explicit_and_bounded() {
@@ -229,34 +228,9 @@ mod tests {
         assert_eq!(helper_executable(&desktop), console);
     }
 
-    #[test]
-    fn helper_process_fixture() {
-        let Ok(mode) = std::env::var("AUTOMEXIA_PROMPT_FIXTURE") else {
-            return;
-        };
-        match mode.as_str() {
-            "stall" => loop {
-                std::thread::park();
-            },
-            "overflow" => {
-                std::io::stdout().write_all(&vec![b'x'; 4097]).unwrap();
-            }
-            "output" => {
-                std::io::stdout().write_all(b"fixture-response").unwrap();
-            }
-            _ => std::process::exit(7),
-        }
-    }
-
     fn fixture(mode: &str) -> Command {
-        let mut command = Command::new(std::env::current_exe().unwrap());
-        command
-            .args([
-                "--exact",
-                "automexia::prompt_discovery::tests::helper_process_fixture",
-                "--nocapture",
-            ])
-            .env("AUTOMEXIA_PROMPT_FIXTURE", mode);
+        let mut command = Command::new(automexia_process_test_fixture::EXECUTABLE);
+        command.arg(mode);
         command
     }
 
@@ -264,20 +238,22 @@ mod tests {
     fn native_helper_bounds_output_deadline_and_cancellation() {
         let token = CancellationToken::default();
         assert_eq!(
-            run_child(&mut fixture("overflow"), &token, DEADLINE),
+            run_child(&mut fixture("prompt-overflow"), &token, DEADLINE),
             Err(Failure::Oversized)
         );
         assert_eq!(
-            run_child(&mut fixture("stall"), &token, Duration::from_millis(100)),
+            run_child(
+                &mut fixture("prompt-stall"),
+                &token,
+                Duration::from_millis(100),
+            ),
             Err(Failure::Timeout)
         );
-        let bytes = run_child(&mut fixture("output"), &token, DEADLINE).unwrap();
-        assert!(bytes
-            .windows(b"fixture-response".len())
-            .any(|slice| slice == b"fixture-response"));
+        let bytes = run_child(&mut fixture("prompt-output"), &token, DEADLINE).unwrap();
+        assert_eq!(bytes, b"fixture-response");
         token.cancel();
         assert_eq!(
-            run_child(&mut fixture("output"), &token, DEADLINE),
+            run_child(&mut fixture("prompt-output"), &token, DEADLINE),
             Err(Failure::Cancelled)
         );
     }

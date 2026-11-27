@@ -16,6 +16,7 @@ mod visual_quality_tests;
 fn concealed_runs_preserve_cells_without_emitting_ink_through_selection_or_hints() {
     let fonts = crate::visual_quality::fonts();
     let renderer = fixture_renderer(true);
+    let theme = UiTheme::from_colors(&renderer.named_colors);
     let mut rasterizer = GridGlyphRasterizer::new();
     let mut grid = GridRenderer::Cpu(CpuGridRenderer::new(80, 12));
     for text in [
@@ -62,7 +63,8 @@ fn concealed_runs_preserve_cells_without_emitting_ink_through_selection_or_hints
                         Some(1),
                         &mut glyphs,
                         None,
-                        &[true; 80],
+                        Some((&[Some(CommandSpanKind::Command); 80], &theme)),
+                        None,
                     );
                     assert!(!glyphs.is_empty());
                     assert!(glyphs.iter().all(|glyph| glyph.grid_pos[0] == 0 || glyph.grid_pos[0] == last),
@@ -111,7 +113,8 @@ fn parsed_combining_marks_shape_without_moving_following_cells() {
             None,
             &mut glyphs,
             None,
-            &[],
+            None,
+            None,
         );
         emitted.push(
             glyphs
@@ -158,7 +161,8 @@ fn native_emoji_grid(input: &str) -> (Vec<CellText>, usize) {
         None,
         &mut glyphs,
         None,
-        &[],
+        None,
+        None,
     );
     (glyphs, cursor)
 }
@@ -530,6 +534,221 @@ fn plain_output_colors_follow_logical_rows_without_coloring_prompts() {
     }
 }
 
+const APT_DOWNLOAD: &str =
+    "Get:1 https://repo.invalid stable/main amd64 pkg-error amd64 1.2-3 [241 kB]";
+
+#[test]
+fn package_progress_accents_follow_complete_output_through_reflow() {
+    use crate::automexia::api::SemanticSeverity;
+    use crate::automexia::output_semantics::{
+        OperationalPart, OutputClassification, OutputDomain,
+    };
+    use rio_backend::crosswords::grid::row::SemanticPrompt;
+    use rio_backend::crosswords::grid::Scroll;
+
+    let mut term = terminal(&format!(
+        "{APT_DOWNLOAD}\r\n\x1b]133;A\x07{APT_DOWNLOAD}\x1b]133;B\x07"
+    ));
+    let mut selection = Selection::new(
+        SelectionType::Simple,
+        Pos::new(Line(0), Column(0)),
+        Side::Left,
+    );
+    selection.update(
+        Pos::new(Line(0), Column(APT_DOWNLOAD.len() - 1)),
+        Side::Right,
+    );
+    term.selection = Some(selection);
+
+    for width in [80, 23, 80] {
+        term.resize(CrosswordsSize::new(width, 12));
+        // Shrinking can move the oldest fragments into scrollback. Show the
+        // entire output record before testing its viewport-relative spans.
+        term.scroll_display(Scroll::Top);
+        let (rows, _, _) = snapshot(&mut term);
+        let mut classes = Vec::new();
+        let mut accents = Vec::new();
+        let mut scratch = String::new();
+        classify_visible_output_with_accents(
+            &rows,
+            width,
+            false,
+            &mut classes,
+            &mut accents,
+            &mut scratch,
+        );
+
+        let output_rows = APT_DOWNLOAD.len().div_ceil(width);
+        assert!(
+            classes[..output_rows].iter().all(|class| {
+                *class
+                    == Some(OutputClassification {
+                        domain: OutputDomain::General,
+                        severity: Some(SemanticSeverity::Info),
+                    })
+            }),
+            "width {width}, output classes {:?}",
+            &classes[..output_rows],
+        );
+        assert_eq!(rows[output_rows].semantic_prompt, SemanticPrompt::Prompt);
+        let fields = [
+            ("Get:1", OperationalPart::Phase),
+            ("https://repo.invalid", OperationalPart::Detail),
+            ("pkg-error", OperationalPart::Subject),
+            ("1.2-3", OperationalPart::Version),
+            ("[241 kB]", OperationalPart::Measurement),
+        ]
+        .map(|(text, part)| {
+            let start = APT_DOWNLOAD.find(text).unwrap();
+            (start..start + text.len(), part)
+        });
+        for offset in 0..APT_DOWNLOAD.len() {
+            let column = offset % width;
+            let actual = output_accents_at(&accents, offset / width).and_then(|spans| {
+                spans
+                    .iter()
+                    .flatten()
+                    .find(|span| (span.start..span.end).contains(&column))
+                    .map(|span| span.role)
+            });
+            let expected = fields
+                .iter()
+                .find_map(|(range, part)| range.contains(&offset).then_some(*part));
+            assert_eq!(actual, expected, "width {width}, byte {offset}");
+        }
+        for index in output_rows..rows.len() {
+            assert!(output_accents_at(&accents, index).is_none());
+        }
+        assert_eq!(term.selection_to_string().as_deref(), Some(APT_DOWNLOAD));
+
+        if output_rows > 1 {
+            classify_visible_output_with_accents(
+                &rows[1..output_rows],
+                width,
+                true,
+                &mut classes,
+                &mut accents,
+                &mut scratch,
+            );
+            assert!(output_accents_at(&accents, 0).is_none());
+            assert!(classes.iter().all(|class| {
+                class.is_some_and(|entry| entry.domain == OutputDomain::Uncertain)
+            }));
+        }
+    }
+}
+
+#[test]
+fn package_progress_colors_reach_glyphs_and_respect_terminal_styles() {
+    use rio_backend::config::presentation::HighlightStyle;
+
+    let ansi =
+        APT_DOWNLOAD.replacen("pkg-error", "\x1b[38;2;9;19;29mpkg-error\x1b[0m", 1);
+    let mut term = terminal(&format!("{APT_DOWNLOAD}\r\n{ansi}\r\n"));
+    let (rows, styles, extras) = snapshot(&mut term);
+    let mut classes = Vec::new();
+    let mut accents = Vec::new();
+    classify_visible_output_with_accents(
+        &rows,
+        80,
+        false,
+        &mut classes,
+        &mut accents,
+        &mut String::new(),
+    );
+
+    let fonts = crate::visual_quality::fonts();
+    let mut renderer = visual_renderer("foreground");
+    renderer.named_colors.foreground = [0.75, 0.75, 0.75, 1.0];
+    renderer.named_colors.light_blue = [0.25, 0.5, 0.75, 1.0];
+    renderer.named_colors.light_magenta = [0.75, 0.375, 0.875, 1.0];
+    renderer.named_colors.light_cyan = [0.25, 0.5, 1.0, 1.0];
+    let mut rasterizer = GridGlyphRasterizer::new();
+    let mut grid = GridRenderer::Cpu(CpuGridRenderer::new(80, 12));
+    let term_colors = TermColors::default();
+    let package = APT_DOWNLOAD.find("pkg-error").unwrap() as u16;
+    let amount = APT_DOWNLOAD.find("241").unwrap() as u16;
+    let url = APT_DOWNLOAD.find("repo.invalid").unwrap() as u16;
+    let suite = APT_DOWNLOAD.find("stable/main").unwrap() as u16;
+    let version = APT_DOWNLOAD.find("1.2-3").unwrap() as u16;
+
+    for (style, enabled) in [
+        (HighlightStyle::Foreground, true),
+        (HighlightStyle::Both, true),
+        (HighlightStyle::Background, true),
+        (HighlightStyle::Foreground, false),
+    ] {
+        renderer.presentation.output_highlighting = enabled;
+        renderer.presentation.highlight.style = style;
+        for (index, row) in rows[..2].iter().enumerate() {
+            let mut glyphs = Vec::new();
+            build_row_fg_classified(
+                row,
+                80,
+                index as u16,
+                &styles,
+                &extras,
+                &renderer,
+                &term_colors,
+                &mut rasterizer,
+                &mut grid,
+                16.0,
+                10.0,
+                24.0,
+                Some(RowSelection { lo: 0, hi: 0 }),
+                &[],
+                &fonts,
+                0,
+                None,
+                &mut glyphs,
+                classes[index],
+                None,
+                output_accents_at(&accents, index),
+            );
+            let color_at = |column| {
+                glyphs
+                    .iter()
+                    .find(|glyph| glyph.grid_pos[0] == column)
+                    .unwrap()
+                    .color
+            };
+            let square = |column: u16| row[Column(usize::from(column))];
+            let original = |column| {
+                let cell = square(column);
+                cell_fg(cell, resolve_style(&styles, cell), &renderer, &term_colors)
+            };
+            assert_eq!(
+                color_at(0),
+                cell_fg_selected(
+                    square(0),
+                    resolve_style(&styles, square(0)),
+                    &renderer,
+                    &term_colors
+                )
+            );
+            assert_eq!(color_at(suite), original(suite));
+            if enabled && style != HighlightStyle::Background {
+                assert_eq!(color_at(1), [160, 176, 192, 255]);
+                assert_eq!(color_at(url), [159, 175, 207, 255]);
+                assert_eq!(color_at(version), [191, 95, 223, 255]);
+                assert_eq!(color_at(amount), [208, 224, 240, 255]);
+                if index == 0 {
+                    assert_eq!(color_at(package), [63, 127, 191, 255]);
+                }
+            } else {
+                assert_eq!(color_at(1), original(1));
+                assert_eq!(color_at(url), original(url));
+                assert_eq!(color_at(version), original(version));
+                assert_eq!(color_at(amount), original(amount));
+                assert_eq!(color_at(package), original(package));
+            }
+            if index == 1 {
+                assert_eq!(color_at(package), [9, 19, 29, 255]);
+            }
+        }
+    }
+}
+
 #[test]
 fn plain_shell_output_reaches_retained_grid_and_obeys_customization() {
     use rio_backend::config::presentation::{HighlightStyle, Rgb, Rgba};
@@ -636,7 +855,8 @@ fn plain_shell_errors_reach_glyphs_with_independent_domains() {
             None,
             &mut glyphs,
             classified[1],
-            &[],
+            None,
+            None,
         );
         assert!(!glyphs.is_empty());
         assert!(
@@ -669,6 +889,15 @@ fn typed_input_accents_reach_glyphs_preserve_native_styles_and_selection() {
         inner: Arc::new(parking_lot::RwLock::new(data)),
     };
     let renderer = fixture_renderer(false);
+    let theme = UiTheme::from_colors(&renderer.named_colors);
+    let colors = [
+        CommandSpanKind::Command.ink(&theme),
+        CommandSpanKind::Argument.ink(&theme),
+        CommandSpanKind::Option.ink(&theme),
+    ];
+    assert_ne!(colors[0], colors[1]);
+    assert_ne!(colors[1], colors[2]);
+    assert_ne!(colors[0], colors[2]);
     let mut grid = GridRenderer::Cpu(CpuGridRenderer::new(80, 12));
     let mut rasterizer = GridGlyphRasterizer::new();
     let mut glyphs = Vec::new();
@@ -696,23 +925,14 @@ fn typed_input_accents_reach_glyphs_preserve_native_styles_and_selection() {
                 &mut glyphs,
             );
             assert!(!glyphs.is_empty());
-            let accent_count = glyphs
-                .iter()
-                .filter(|glyph| glyph.color == [181, 140, 255, 255])
-                .count();
-            if selected || y == 5 {
-                assert_eq!(accent_count, 0);
-            } else if y == 0 {
-                assert_eq!(
-                    accent_count, 8,
-                    "command plus option, no positional argument"
-                );
-            } else {
-                assert_eq!(
-                    accent_count, 2,
-                    "only the option, native command style wins"
-                );
-            }
+            let counts = colors
+                .map(|color| glyphs.iter().filter(|glyph| glyph.color == color).count());
+            let expected = match (selected, y) {
+                (true, _) | (_, 5) => [0, 0, 0],
+                (_, 0) => [6, 2, 2],
+                _ => [0, 2, 2],
+            };
+            assert_eq!(counts, expected, "row {y}, selected {selected}");
             if !selected && y == 1 {
                 assert_eq!(
                     glyphs
@@ -1781,7 +2001,8 @@ fn parsed_stacked_marks_keep_the_same_ink_placement_as_ui_text() {
         None,
         &mut glyphs,
         None,
-        &[],
+        None,
+        None,
     );
     let mut text = Text::new(&fonts);
     text.init_cpu();

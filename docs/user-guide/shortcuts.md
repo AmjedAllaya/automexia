@@ -206,10 +206,11 @@ In current source, right-click and middle-click first target the terminal pane
 under the pointer. Right-click preserves that pane's selection long enough to
 copy it; it does not copy another pane's selection. Pane rails/footers and an
 active search or command palette do not forward these gestures to the terminal.
-Paste is queued once for its captured terminal and cancelled if that destination
-closed. Text over 1 MiB is rejected with a warning, not truncated. No Enter is
-added, but embedded newlines can execute commands when the shell does not support
-bracketed paste. The published Linux 0.4.0 prerelease predates this correction.
+Multiline clipboard text opens a preview for the captured pane. Scroll to review
+the text, select **Paste** to send it, or press `Escape` to cancel. A detected
+change of shell or terminal input mode cancels the paste. The 1 MiB clipboard
+limit still applies. Automexia adds no Enter. A shell without bracketed-paste
+support may execute lines as soon as you confirm.
 - Rotating the mouse wheel or starting a trackpad scroll selects the pane under
   the pointer and sends that initiating scroll to it; pointer hover alone does
   not change pane selection.

@@ -381,9 +381,10 @@ Processes are launched from a typed executable plus an exact argument array.
 Structured actions do not use shell command concatenation or implicit Enter.
 
 Clipboard delivery stays in the application context owner. It captures route
-and terminal identity before the OS read, validates that owner again, and queues
-one bounded paste frame without redirecting to later focus. Selection and scroll
-changes apply only to the accepting context. See
+and terminal identity before the OS read. The screen previews multiline text for
+that pane. After confirmation, the context validates the owner again and queues
+one bounded paste frame. Selection and scroll changes apply only to the accepting
+context. See
 [ADR 0042](adr/0042-route-bound-paste-transactions.md) for limits, pointer
 ownership, rejection and the remaining native evidence requirements.
 

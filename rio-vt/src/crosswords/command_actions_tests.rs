@@ -32,6 +32,173 @@ fn cmd_edit(t: &mut Crosswords<VoidListener>, text: &str) {
     feed(t, "\r\x1b[2C");
 }
 
+fn wsl_prompt(t: &mut Crosswords<VoidListener>, shell: &str, draft: &str) {
+    for (key, value) in [
+        ("automexia_shell", "1"),
+        ("automexia_shell_name", shell),
+        ("automexia_prompt_active", "1"),
+    ] {
+        t.user_vars.insert(key.into(), value.into());
+    }
+    let prompt = if shell == "CMD" {
+        "\x1b]133;A\x07> \x1b]133;B\x07"
+    } else {
+        "\x1b]133;A;aid=1\x07> \x1b]133;B\x07"
+    };
+    feed(t, prompt);
+    feed(t, draft);
+}
+
+#[test]
+fn wsl_setup_hint_only_matches_exact_bare_commands_at_owned_host_prompts() {
+    for shell in ["PowerShell", "CMD"] {
+        for (draft, expected) in [
+            ("wsl", true),
+            ("WSL.EXE", true),
+            ("wsl\x1b[K", true),
+            ("wsl --list", false),
+            ("echo wsl", false),
+            ("wsl & echo text", false),
+            ("wsl --list\x1b[7D", false),
+            ("wsl\x1b[8m\x1b[1C\x1b[0m", false),
+            ("\x1b[8mwsl\x1b[0m", false),
+            ("wsl\u{0301}", false),
+            ("wsl\r\nother\x1b[1;6H", false),
+        ] {
+            let mut t = terminal();
+            wsl_prompt(&mut t, shell, draft);
+            assert_eq!(t.is_bare_wsl_prompt_input(), expected, "{shell}: {draft:?}");
+        }
+    }
+}
+
+#[test]
+fn wsl_setup_hint_rejects_nonlocal_and_inactive_prompts() {
+    let mut t = terminal();
+    feed(&mut t, "> wsl");
+    assert!(!t.is_bare_wsl_prompt_input());
+
+    for mode in [Mode::ALT_SCREEN, Mode::VI, Mode::MOUSE_MODE] {
+        let mut t = terminal();
+        wsl_prompt(&mut t, "PowerShell", "wsl");
+        t.mode.insert(mode);
+        assert!(!t.is_bare_wsl_prompt_input());
+    }
+    for (name, value) in [
+        ("automexia_distro", "Fixture-Distro"),
+        ("automexia_env_pending", "1"),
+        ("automexia_prompt_active", "0"),
+        ("automexia_shell_name", "bash"),
+    ] {
+        let mut t = terminal();
+        wsl_prompt(&mut t, "PowerShell", "wsl");
+        t.user_vars.insert(name.into(), value.into());
+        assert!(!t.is_bare_wsl_prompt_input());
+    }
+    let mut t = terminal();
+    wsl_prompt(&mut t, "PowerShell", "wsl");
+    t.apply_integration_scope("AMXSCOPE1|begin|66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925|1|2|bash");
+    assert!(!t.is_bare_wsl_prompt_input());
+}
+
+#[test]
+fn wsl_setup_hint_expires_when_the_windows_shell_returns() {
+    for shell in ["PowerShell", "CMD"] {
+        let mut t = terminal();
+        wsl_prompt(&mut t, shell, "wsl");
+        let receipt = t.wsl_setup_receipt().unwrap();
+        assert!(t.wsl_setup_hint_still_current(receipt));
+
+        // PowerShell can redraw the same logical prompt without returning.
+        if shell == "PowerShell" {
+            feed(&mut t, "\r\x1b]133;A;aid=1\x07> \x1b]133;B\x07wsl");
+            assert!(t.wsl_setup_hint_still_current(receipt));
+        }
+        feed(&mut t, "\x1b]133;C\x07\r\n");
+        assert!(t.wsl_setup_hint_still_current(receipt));
+        t.user_vars
+            .insert("automexia_shell_name".into(), "bash".into());
+        feed(&mut t, "\x1b]133;A;aid=50\x07~ $ \x1b]133;B\x07");
+        assert!(t.wsl_setup_hint_still_current(receipt));
+
+        t.user_vars
+            .insert("automexia_shell_name".into(), shell.into());
+        let returned = if shell == "CMD" {
+            "\x1b]133;A\x07> \x1b]133;B\x07"
+        } else {
+            "\x1b]133;A;aid=2\x07> \x1b]133;B\x07"
+        };
+        feed(&mut t, returned);
+        assert!(!t.wsl_setup_hint_still_current(receipt), "{shell}");
+    }
+}
+
+#[test]
+fn wsl_setup_hint_expires_when_remote_scope_takes_over() {
+    let mut t = terminal();
+    wsl_prompt(&mut t, "PowerShell", "wsl");
+    let receipt = t.wsl_setup_receipt().unwrap();
+    t.apply_integration_scope("AMXSCOPE1|begin|66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925|1|2|bash");
+    assert!(!t.wsl_setup_hint_still_current(receipt));
+}
+
+#[test]
+fn wsl_host_enter_receipt_matches_only_the_current_capable_prompt() {
+    use std::time::{Duration, Instant};
+
+    let now = Instant::now();
+    for preceding_boundary in [
+        "",
+        "\r\x1b]133;A;aid=1\x07> \x1b]133;B;amx-wsl=1\x07",
+        "\r\x1b]133;A;aid=2\x07> \x1b]133;B;amx-wsl=1\x07",
+        "\x1b]133;D;0\x07",
+        "\x1bc",
+    ] {
+        let mut t = terminal();
+        wsl_prompt(&mut t, "PowerShell", "");
+        feed(&mut t, "\x1b]133;B;amx-wsl=1\x07");
+        let owner = t.wsl_setup_receipt().unwrap();
+        assert!(!t.is_bare_wsl_prompt_input());
+        assert_eq!(t.note_wsl_host_enter(now), None);
+        feed(&mut t, preceding_boundary);
+        t.note_interactive_input(); // Win32 Enter release is ordinary input.
+        let expected = (preceding_boundary.is_empty()
+            || preceding_boundary.contains("aid=1"))
+        .then_some(owner);
+        assert_eq!(
+            t.accept_wsl_command_start(true, || now + Duration::from_millis(50)),
+            expected,
+            "{preceding_boundary:?}"
+        );
+        assert_eq!(t.accept_wsl_command_start(true, || now), None);
+    }
+
+    let mut t = terminal();
+    wsl_prompt(&mut t, "PowerShell", "");
+    feed(&mut t, "\x1b]133;B;amx-wsl=1\x07");
+    assert_eq!(t.note_wsl_host_enter(now), None);
+    assert_eq!(
+        t.accept_wsl_command_start(true, || now + Duration::from_secs(2)),
+        None
+    );
+}
+
+#[test]
+fn wsl_host_enter_receipt_does_not_survive_remote_scope_rollover() {
+    let now = std::time::Instant::now();
+    let mut t = terminal();
+    wsl_prompt(&mut t, "PowerShell", "");
+    feed(&mut t, "\x1b]133;B;amx-wsl=1\x07");
+    assert_eq!(t.note_wsl_host_enter(now), None);
+    t.apply_integration_scope("AMXSCOPE1|begin|66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925|1|2|bash");
+    assert!(t.integration_scope_active());
+    t.apply_integration_scope(
+        "AMXSCOPE1|end|0000000000000000000000000000000000000000000000000000000000000000",
+    );
+    assert!(!t.integration_scope_active());
+    assert_eq!(t.accept_wsl_command_start(true, || now), None);
+}
+
 #[test]
 fn cmd_word_delete_uses_live_input_graphemes_and_never_submits() {
     for (text, count) in [

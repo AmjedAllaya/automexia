@@ -125,7 +125,7 @@
         "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/src/renderer/command_palette.rs", "apps/automexia-terminal/src/renderer/search.rs", "apps/automexia-terminal/src/bindings/mod.rs", "apps/automexia-terminal/src/renderer/command_palette/shortcut_editor.rs"]},
         "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/context/title.rs", "apps/automexia-terminal/src/renderer/command_palette/navigation_tests.rs", "apps/automexia-terminal/src/context/launch.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/bindings/mod.rs", "apps/automexia-terminal/src/screen/mod.rs", "apps/automexia-terminal/src/renderer/command_palette.rs", "apps/automexia-terminal/src/renderer/search.rs", "rio-vt/src/crosswords/mod.rs", "automexia-keybindings/src/lib.rs", "automexia-keybindings/tests/properties.rs", "tests/integration/resize-stress-windows.ps1", "apps/automexia-terminal/src/application.rs", "tools/ci/test_feature_test_reinforcement.py", "apps/automexia-terminal/src/renderer/command_palette/shortcut_editor.rs", "apps/automexia-terminal/src/automexia/ui/command_info.rs", "apps/automexia-terminal/src/renderer/command_info.rs", "apps/automexia-terminal/src/screen/settings.rs", "apps/automexia-terminal/src/settings_view_tests.rs"], "rationale": "Shared route decisions mark dirty state before redraw suppression and preserve every affected pane across restore without changing input or selection ownership. Menu Back regressions cover Alt+Left and Backspace, exact modifiers, empty versus nonempty search, IME and value-field ownership, one-level editor and confirmation cancellation, consumed parent query/selection, pointer parity and held-key isolation through modal dismissal. Native Windows exercises repeated Back through the Settings-to-command-menu handoff; other native desktop evidence remains external."},
         "security": {"level": "pr", "evidence": ["apps/automexia-terminal/src/context/launch.rs", "apps/automexia-terminal/src/mouse/mod.rs", "automexia-keybindings/src/parser.rs", "automexia-keybindings/tests/properties.rs"]},
-        "performance": {"level": "controlled", "evidence": ["automexia-keybindings/benches/registry.rs", "rio-vt/benches/vt_input.rs", "tests/integration/session-clone-wsl-windows.ps1", "tests/integration/resize-stress-windows.ps1", "apps/automexia-terminal/src/renderer/command_palette/shortcut_editor.rs"]},
+        "performance": {"level": "controlled", "evidence": ["automexia-keybindings/benches/registry.rs", "rio-vt/benches/vt_input.rs", "tests/integration/session-clone-wsl-windows.ps1", "tests/integration/resize-stress-windows.ps1", "apps/automexia-terminal/src/renderer/command_palette/shortcut_editor.rs"], "rationale": "The vt_input_clipboard_paste_preparation benchmark group checks exact normalized text or rejection before measuring preparation for short and near-limit inputs. Native clipboard, preview rendering and PTY latency require separate evidence."},
         "resource_lifetime": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1", "tests/integration/appverifier-windows.ps1"]},
         "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/preferences.rs", "apps/automexia-terminal/tests/user_preferences_restart.rs"]},
         "resilience": {"level": "pr", "evidence": ["automexia-ui-model/tests/tables.rs", "apps/automexia-terminal/src/table_view_tests.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/router/mod.rs", "automexia-keybindings/src/sequence.rs", "apps/automexia-terminal/src/settings_catalog.rs", "apps/automexia-terminal/src/application.rs"], "rationale": "Regression cases cover unfocused, occluded, visible and stale routes plus multiple pending panes; no new polling or PTY input is introduced."},
@@ -183,7 +183,7 @@
           "evidence": [
             "apps/automexia-terminal/src/application/recovery.rs",
             "apps/automexia-terminal/src/automexia/session_recovery/store.rs",
-            "tests/integration/session-recovery-windows.ps1"
+            "tests/integration/session-recovery-native-windows.ps1"
           ],
           "rationale": "Bounded capture, coalescing and paced native restore; broader startup latency remains external."
         },
@@ -192,7 +192,7 @@
           "evidence": [
             "apps/automexia-terminal/src/automexia/session_recovery/store.rs",
             "apps/automexia-terminal/src/context/recovery.rs",
-            "tests/integration/session-recovery-windows.ps1"
+            "tests/integration/session-recovery-native-windows.ps1"
           ]
         },
         "storage_hygiene": {
@@ -207,14 +207,14 @@
           "evidence": [
             "apps/automexia-terminal/src/automexia/session_recovery/store.rs",
             "apps/automexia-terminal/src/application/recovery.rs",
-            "tests/integration/session-recovery-windows.ps1"
+            "tests/integration/session-recovery-native-windows.ps1"
           ]
         },
         "visual_quality": {
           "level": "controlled",
           "evidence": [
             "apps/automexia-terminal/src/renderer/confirm_quit.rs",
-            "tests/integration/session-recovery-windows.ps1"
+            "tests/integration/session-recovery-native-windows.ps1"
           ]
         },
         "accessibility": {
@@ -230,7 +230,7 @@
         "windows": {
           "level": "controlled",
           "evidence": [
-            "tests/integration/session-recovery-windows.ps1"
+            "tests/integration/session-recovery-native-windows.ps1"
           ]
         },
         "linux": {
@@ -565,7 +565,7 @@
     {
       "id": "shell-integration-listings",
       "title": "PowerShell, CMD, WSL, Bash, Zsh, prompt integration, and icon-aware listings",
-      "components": ["shell-integration"],
+      "components": ["shell-integration", "tests/support/process-fixture"],
       "documentation": {
         "guide": ["docs/SHELL-INTEGRATION.md#session-only-integration-by-default", "docs/user-guide/google-search.md", "docs/guide/shell-productivity.md#typed-command-colors"],
         "reference": ["docs/SHELL-INTEGRATION.md#icon-aware-listings", "docs/CLI-REFERENCE.md#google-search"],
@@ -576,7 +576,7 @@
         "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/native_wsl_metadata_roundtrip.rs", "tools/ci/test_powershell.ps1", "tools/ci/test_shell_integration.sh", "tools/ci/test_zsh_integration.zsh", "apps/automexia-terminal/src/automexia/shell.rs", "apps/automexia-terminal/tests/powershell_startup.rs", "tools/ci/test_cmd_prompt.py", "apps/automexia-terminal/src/renderer/session_metadata_tests.rs", "rio-vt/src/crosswords/input_color_tests.rs", "apps/automexia-terminal/src/renderer/command_input.rs", "apps/automexia-terminal/src/renderer/output_snapshot_tests.rs", "apps/automexia-terminal/src/grid_emit_semantics_tests.rs", "tests/integration/command-input-colors-windows.ps1", "tests/integration/unix-session-ui.py", "rio-vt/src/crosswords/mod.rs"]},
         "security": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_sources.sh", "tools/ci/check_runtime_trust.py", "tools/ci/test_runtime_trust.py"]},
         "performance": {"level": "external", "evidence": ["docs/STABILIZATION-ROADMAP.md#performance-proof-plan", "rio-vt/benches/vt_input.rs"]},
-        "resource_lifetime": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_shell_integration.ps1"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_shell_integration.ps1", "apps/automexia-terminal/src/automexia/cli_process.rs", "tests/support/process-fixture/src/workload.rs"]},
         "storage_hygiene": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_shell_integration.ps1"]},
         "resilience": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_powershell.ps1"]},
         "visual_quality": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_integration.sh", "tests/integration/unix-session-ui.py"]}
@@ -585,6 +585,56 @@
         "windows": {"level": "external", "evidence": ["tools/ci/test_powershell.ps1", ".github/workflows/ci.yml#quality"]},
         "linux": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tests/integration/unix-session-ui.py", ".github/workflows/ci.yml#quality"]},
         "macos": {"level": "external", "evidence": ["tools/ci/test_shell_sources.sh", "tests/integration/unix-session-ui.py", ".github/workflows/accessibility-native.yml"]}
+      }
+    },
+    {
+      "id": "vscode-wsl-cli-profile",
+      "title": "Automexia CLI profile for the VS Code Terminal panel on Windows, macOS, Linux, and WSL",
+      "components": ["apps/automexia-vscode"],
+      "documentation": {
+        "guide": ["apps/automexia-vscode/README.md"],
+        "reference": ["apps/automexia-vscode/README.md#prepare-the-cli"],
+        "explanation": ["docs/adr/0099-vscode-wsl-cli-terminal-profile.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "external", "evidence": ["apps/automexia-vscode/README.md"], "rationale": "The profile uses the VS Code picker and Terminal panel. Keyboard activation requires a native editor session."},
+        "correctness": {"level": "external", "evidence": ["apps/automexia-vscode/test/profile.test.js", "apps/automexia-vscode/README.md"]},
+        "security": {"level": "external", "evidence": ["apps/automexia-vscode/test/profile.test.js", "docs/adr/0099-vscode-wsl-cli-terminal-profile.md"]},
+        "performance": {"level": "external", "evidence": ["apps/automexia-vscode/test/bench-profile.js"]},
+        "resource_lifetime": {"level": "external", "evidence": ["apps/automexia-vscode/README.md"], "rationale": "VS Code owns the shell process and PTY through terminal close."},
+        "storage_hygiene": {"level": "not_applicable", "rationale": "The profile delegates its saved setting to VS Code and writes no application files."},
+        "resilience": {"level": "external", "evidence": ["apps/automexia-vscode/test/profile.test.js"]},
+        "visual_quality": {"level": "external", "evidence": ["apps/automexia-vscode/README.md"], "rationale": "VS Code draws the profile picker and renders shell output in its existing Terminal panel."}
+      },
+      "platforms": {
+        "windows": {"level": "external", "evidence": ["apps/automexia-vscode/test/profile.test.js", "apps/automexia-vscode/README.md"], "rationale": "Local Windows and WSL-connected VS Code sessions exercise different CLI binaries and user settings."},
+        "linux": {"level": "external", "evidence": ["apps/automexia-vscode/test/profile.test.js", "apps/automexia-vscode/README.md"], "rationale": "The extension uses Linux binaries in both native Linux and WSL-connected editor sessions."},
+        "macos": {"level": "external", "evidence": ["apps/automexia-vscode/test/profile.test.js", "apps/automexia-vscode/README.md"], "rationale": "Native VS Code must exercise the configured shell with the macOS CLI binaries."}
+      }
+    },
+    {
+      "id": "vscode-docked-automexia-preview",
+      "title": "Docked Automexia shell sessions and session information for desktop VS Code and WSL",
+      "components": ["apps/automexia-vscode", "librio/src/bin/automexia-vscode-host.rs", "librio/src/bin/vscode/context.rs", "tools/ci/package_vscode.py"],
+      "documentation": {
+        "guide": ["apps/automexia-vscode/README.md#open-the-docked-view"],
+        "reference": ["apps/automexia-vscode/README.md#build-platform-packages", "apps/automexia-vscode/README.md#build-the-native-companion"],
+        "explanation": ["docs/adr/0100-vscode-docked-terminal-host.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "external", "evidence": ["apps/automexia-vscode/README.md"], "rationale": "Verify focus, selection, high contrast, and screen readers in native VS Code."},
+        "correctness": {"level": "external", "evidence": ["apps/automexia-vscode/test/docked-view.test.js", "apps/automexia-vscode/test/docked-context.test.js", "apps/automexia-vscode/test/desktop-catalog.test.js", "apps/automexia-vscode/test/native-runtime.test.js", "tools/ci/test_package_vscode.py", "librio/src/bin/automexia-vscode-host.rs", "librio/src/bin/vscode/context.rs"]},
+        "security": {"level": "external", "evidence": ["apps/automexia-vscode/test/docked-context.test.js", "librio/src/lib.rs", "docs/adr/0100-vscode-docked-terminal-host.md"], "rationale": "Session metadata feeds display and in-memory repository matching. Native verification must exercise scoped SSH and separate pane lifetimes."},
+        "performance": {"level": "external", "evidence": ["apps/automexia-vscode/test/bench-profile.js"], "rationale": "The benchmark covers bridge validation and matching context to known Git repositories. Native shell and rendering throughput require separate evidence."},
+        "resource_lifetime": {"level": "external", "evidence": ["docs/adr/0100-vscode-docked-terminal-host.md"], "rationale": "Native tests must exercise child exit and cleanup on session close and view disposal."},
+        "storage_hygiene": {"level": "external", "evidence": ["tools/ci/test_package_vscode.py", "docs/adr/0100-vscode-docked-terminal-host.md"], "rationale": "VS Code owns installed runtime files. Verify upgrade and uninstall with a running session and with a clean profile."},
+        "resilience": {"level": "external", "evidence": ["apps/automexia-vscode/test/docked-view.test.js", "apps/automexia-vscode/test/windows-companion.test.js", "librio/src/bin/automexia-vscode-host.rs"]},
+        "visual_quality": {"level": "external", "evidence": ["apps/automexia-vscode/README.md"], "rationale": "Verify rendering and interaction in the native VS Code webview."}
+      },
+      "platforms": {
+        "windows": {"level": "external", "evidence": ["apps/automexia-vscode/README.md"], "rationale": "Verify ConPTY locally and the Unix companion from a WSL-connected editor."},
+        "linux": {"level": "external", "evidence": ["apps/automexia-vscode/README.md"], "rationale": "Verify the Unix companion in native Linux and WSL."},
+        "macos": {"level": "external", "evidence": ["apps/automexia-vscode/README.md"], "rationale": "Verify the Unix companion and configured shell in native VS Code."}
       }
     },
     {

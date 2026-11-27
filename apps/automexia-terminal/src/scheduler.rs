@@ -30,6 +30,8 @@ pub enum Topic {
     CursorBlinking,
     UpdateTitles,
     SelectionScrolling,
+    #[cfg(windows)]
+    WslSetup,
 }
 
 /// Event scheduled to be emitted at a specific time.

@@ -17,6 +17,7 @@ use crate::{
     ChildEvent, EventedPty, ExactExecutable, ManagedPtyShutdown, ProcessReadWrite,
     Winsize, WinsizeBuilder,
 };
+use windows_sys::Win32::Foundation::MAX_PATH;
 use windows_sys::Win32::System::Threading::{CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW};
 
 use conpty::Conpty as Backend;
@@ -94,6 +95,7 @@ pub fn create_exact_pty(
             "the exact executable path is not valid Unicode",
         )
     })?;
+    let program = win32_launch_path(program);
     let command_line = build_command_line(program, &args)?;
     let _replacement_guard = &executable.file;
     conpty::new(
@@ -106,6 +108,32 @@ pub fn create_exact_pty(
         columns,
         rows,
     )
+}
+
+fn win32_launch_path(program: &str) -> &str {
+    let Some(ordinary) = program.strip_prefix(r"\\?\") else {
+        return program;
+    };
+    let [drive, b':', b'\\', ..] = ordinary.as_bytes() else {
+        return program;
+    };
+    let limit = MAX_PATH as usize;
+    if !drive.is_ascii_alphabetic()
+        || ordinary.encode_utf16().take(limit).count() == limit
+    {
+        return program;
+    }
+
+    // Older .NET Framework applications can fail when the image is launched
+    // through a verbatim path. Only change its spelling when Win32 confirms
+    // that it would not normalize the ordinary path to a different target.
+    if std::path::absolute(ordinary)
+        .is_ok_and(|path| path.as_os_str() == OsStr::new(ordinary))
+    {
+        ordinary
+    } else {
+        program
+    }
 }
 
 fn invalid_command_line() -> io::Error {

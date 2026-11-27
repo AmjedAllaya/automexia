@@ -211,6 +211,10 @@ if [[ ${AUTOMEXIA_PLAIN_LS:-0} != 1 ]] && builtin whence -p eza >/dev/null 2>&1;
   function la { __automexia_eza -la "$@"; }
   function lA { __automexia_eza -lA "$@"; }
   function tree { __automexia_run_eza --tree "$@"; }
+elif [[ ${AUTOMEXIA_PLAIN_LS:-0} != 1 && $- == *i* && -t 2 &&
+        -n ${WSL_DISTRO_NAME:-} ]]; then
+  # The session-load guard above also makes this notice one-time.
+  builtin printf '%s\n' 'Automexia warning: eza is missing. Install it in this WSL distribution for file icons.' >&2 || :
 fi
 
 __automexia_print_colored_path() {

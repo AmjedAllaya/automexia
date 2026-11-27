@@ -159,10 +159,10 @@ pub trait Handler {
     }
 
     /// OSC 133 `B`: the prompt has entered its editable input phase.
-    fn semantic_prompt_input(&mut self) {}
+    fn semantic_prompt_input(&mut self, _wsl_capability: bool) {}
 
     /// OSC 133 `C`: the command associated with the latest prompt started.
-    fn semantic_command_start(&mut self) {}
+    fn semantic_command_start(&mut self, _accepted_bare_wsl: bool) {}
 
     /// OSC 133 `D`: the command associated with the latest prompt completed.
     fn semantic_command_end(&mut self, _exit_code: Option<i32>) {}
@@ -1281,11 +1281,11 @@ impl<U: Handler> Perform for Performer<'_, U> {
                     self.handler.set_semantic_prompt(mark, prompt_id);
                 } else if let Some(command) = osc::parse_semantic_command(params) {
                     match command {
-                        osc::SemanticCommand::Input => {
-                            self.handler.semantic_prompt_input();
+                        osc::SemanticCommand::Input { wsl_capability } => {
+                            self.handler.semantic_prompt_input(wsl_capability);
                         }
-                        osc::SemanticCommand::Start => {
-                            self.handler.semantic_command_start();
+                        osc::SemanticCommand::Start { accepted_bare_wsl } => {
+                            self.handler.semantic_command_start(accepted_bare_wsl);
                         }
                         osc::SemanticCommand::End { exit_code } => {
                             self.handler.semantic_command_end(exit_code);
@@ -2999,8 +2999,37 @@ mod tests {
     fn semantic_command_lifecycle_parsing() {
         use crate::performer::osc::{parse_semantic_command as parse, SemanticCommand};
 
-        assert_eq!(parse(&[b"133", b"B"]), Some(SemanticCommand::Input));
-        assert_eq!(parse(&[b"133", b"C"]), Some(SemanticCommand::Start));
+        assert_eq!(
+            parse(&[b"133", b"B"]),
+            Some(SemanticCommand::Input {
+                wsl_capability: false
+            })
+        );
+        assert_eq!(
+            parse(&[b"133", b"B", b"amx-wsl=1"]),
+            Some(SemanticCommand::Input {
+                wsl_capability: true
+            })
+        );
+        assert_eq!(
+            parse(&[b"133", b"C", b"amx-wsl=1"]),
+            Some(SemanticCommand::Start {
+                accepted_bare_wsl: true
+            })
+        );
+        for params in [
+            &[b"133".as_slice(), b"C"][..],
+            &[b"133", b"C", b"amx-wsl=11"],
+            &[b"133", b"C", b"amx-wsl=1", b"extra"],
+            &[b"133", b"CA", b"amx-wsl=1"],
+        ] {
+            assert_eq!(
+                parse(params),
+                Some(SemanticCommand::Start {
+                    accepted_bare_wsl: false
+                })
+            );
+        }
         assert_eq!(
             parse(&[b"133", b"D", b"17"]),
             Some(SemanticCommand::End {

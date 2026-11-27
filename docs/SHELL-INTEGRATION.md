@@ -156,7 +156,7 @@ automexia shell-integration install [--force] [--quiet]
 automexia shell-integration uninstall [--quiet]
 ```
 
-`doctor` is read-only. Install and uninstall affect only exact
+The default `doctor` command is read-only. Install and uninstall affect only exact
 Automexia-owned content, use preview/recovery behavior where documented, and
 honor operating-system and enterprise policy. Automexia never supplies an
 execution-policy bypass.
@@ -167,6 +167,37 @@ WSL distributions and remote hosts own their shell configuration. Session-local
 integration is scoped to the launched session and must not silently edit
 distribution or remote profiles. Missing integration leaves the ordinary shell
 usable.
+
+From Windows, check the managed startup hook and `eza` availability for the
+default WSL distribution or name one explicitly. The check supports Bash, Zsh,
+and Fish.
+
+With one registered distribution, submitting `wsl` or `wsl.exe` at an
+integrated Windows PowerShell or CMD prompt checks for missing prerequisites
+as WSL starts. Ordinary WSL profiles opened in the current window run the
+same check. Automexia's in-app popup can offer **Install Bash integration** and
+**Install eza** independently. The original WSL session stays open during setup.
+
+```powershell
+automexia shell-integration doctor --wsl
+automexia shell-integration doctor --wsl Ubuntu --offer-install
+```
+
+`--offer-install` opens the native setup dialog. For a WSL profile, select
+**Check WSL setup** under **Settings → Profiles** to open the in-app popup.
+The check reads shell setup and listing-tool availability for the
+distribution's default user. A supported Ubuntu or Debian distribution with missing `eza` can offer
+**Install eza**. Choosing it starts `sudo apt-get install eza` in that
+distribution's terminal, where `sudo` and apt handle authentication and package
+confirmation. Choose **Cancel** to close the offer. When Windows has multiple
+registered distributions, select a profile that names the intended distribution
+to install `eza`.
+
+**Install Bash integration** adds Automexia's bundled hook and managed `.bashrc`
+block for the selected distro's default non-root Bash user. This works offline
+and requires no administrator access. Open a fresh interactive Bash session that
+loads `.bashrc` to activate prompt tags and command metadata. The manual
+`automexia shell-integration install` command covers other shell setup.
 
 ## Security
 

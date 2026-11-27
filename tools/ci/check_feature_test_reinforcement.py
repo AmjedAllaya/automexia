@@ -893,7 +893,9 @@ def _validate_local_tool_sources(sources: dict[str, str]) -> None:
     native = _source_slice(process, "fninteractive_native(", "enumOwnership", "native interactive ownership")
     _require_fragments(native, ("interactive_inner(command,cancelled,Ownership::Leader,|_|Ok(()))",), "native Leader ownership")
     capture = _source_slice(process, "fncapture_inner(", "fncancelled_error(", "captured process ownership")
-    _require_fragments(capture, ("spawn_owned(command,true,Ownership::Tree)?",), "captured Tree ownership")
+    _require_fragments(capture, (
+        "spawn_owned(command,true,Ownership::Tree,console_window)?",
+    ), "captured Tree ownership")
     _require_fragments(capture, (
         "(!upload&&limits.timeout>Duration::from_secs(60))",
         "(upload&&limits.timeout>Duration::from_secs(120))",
@@ -912,7 +914,7 @@ def _validate_local_tool_sources(sources: dict[str, str]) -> None:
         "letmutforeground=ifownership==Ownership::Tree{unix_foreground::Foreground::prepare()?}else{None};",
         "#[cfg(unix)]letisolated_group=ownership==Ownership::Tree;",
         "#[cfg(not(unix))]letisolated_group=false;",
-        "spawn_owned(command,isolated_group,ownership)?",
+        "spawn_owned(command,isolated_group,ownership,ConsoleWindow::Default)?",
         "foreground.attach(child.inner.id())?",
         "foreground.poll_stopped(&cancelled)?",
         "ifownership==Ownership::Tree{child.retire()?;}",

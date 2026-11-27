@@ -312,8 +312,8 @@ pub fn core_descriptors(
         (
             OUTPUT_HIGHLIGHTING,
             "Highlight recognized output",
-            "Color logs, paths, informational messages and Docker status.",
-            "log path pwd notice docker status color severity output",
+            "Color logs, paths, package progress and operational statuses.",
+            "log path pwd notice apt dpkg docker status color severity",
             current.output_highlighting,
             configured.output_highlighting,
             origins.output_highlighting,

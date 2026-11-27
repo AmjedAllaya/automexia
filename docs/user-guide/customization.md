@@ -205,9 +205,15 @@ pressed/restore and inactive states. These examples update with your edits;
 they are not additional styles or working window buttons. Compact layouts retain
 the style setting and fit as many state examples as space permits.
 
-Each style remembers its own size, spacing, icon size and weight, colors,
-background and border opacity, hover tint and inactive intensity. Soft, Glass and
-Outline also offer corner roundness. Colors follow
+Use **Button size** for Compact, Standard, or Large buttons and **Button spacing**
+for a Tight, Balanced, or Airy gap at that size. If you saved a size or spacing
+choice, choose **Use config.toml for size** or **Use config.toml for spacing**
+to clear that field's override for the current style. That field then follows
+`config.toml`, including later edits when the file reloads.
+
+Each style remembers its size, spacing, icon size and weight, colors, background
+and border opacity, hover tint and inactive intensity. Soft, Glass and Outline
+also offer corner roundness. Colors follow
 the theme until edited, with readable icon contrast on custom fills. Reset default
 resets and saves all four profiles; Restore saved can undo the last reset.
 These options apply to Automexia's title bar, which is the default on Windows,

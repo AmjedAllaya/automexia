@@ -252,6 +252,10 @@ if [[ ${AUTOMEXIA_PLAIN_LS:-0} != 1 ]] && command -v eza >/dev/null 2>&1; then
   function la { __automexia_eza -la "$@"; }
   function lA { __automexia_eza -lA "$@"; }
   function tree { __automexia_run_eza --tree "$@"; }
+elif [[ ${AUTOMEXIA_PLAIN_LS:-0} != 1 && $- == *i* && -t 2 &&
+        -n ${WSL_DISTRO_NAME:-} && ${__automexia_eza_notice_shown:-0} != 1 ]]; then
+  __automexia_eza_notice_shown=1
+  builtin printf '%s\n' 'Automexia warning: eza is missing. Install it in this WSL distribution for file icons.' >&2 || :
 fi
 
 __automexia_osc7() {
@@ -347,39 +351,59 @@ __automexia_pre_prompt() {
 # Preserve a user's PROMPT_COMMAND rather than replacing it. Bash 5 may expose
 # it as either a string or array; normalize only the common string case and do
 # no external work on the prompt hot path.
+# Keep each Automexia hook on the left of && so forwarding a nonzero command
+# status to the next hook cannot trigger errexit or a second ERR trap.
+__automexia_pc_capture='__automexia_capture_status && :'
+__automexia_pc_prompt='__automexia_pre_prompt && :'
 # shellcheck disable=SC2178 # The two runtime variants are handled explicitly.
 case "$(declare -p PROMPT_COMMAND 2>/dev/null)" in
   'declare -a'*)
   __automexia_has_pc=0
   __automexia_has_capture=0
-  for __automexia_pc in "${PROMPT_COMMAND[@]}"; do
-    [[ $__automexia_pc == __automexia_pre_prompt ]] && __automexia_has_pc=1
-    [[ $__automexia_pc == __automexia_capture_status ]] && __automexia_has_capture=1
+  for __automexia_pc_index in "${!PROMPT_COMMAND[@]}"; do
+    case ${PROMPT_COMMAND[__automexia_pc_index]} in
+      "$__automexia_pc_prompt") __automexia_has_pc=1 ;;
+      "$__automexia_pc_capture") __automexia_has_capture=1 ;;
+      __automexia_pre_prompt)
+        PROMPT_COMMAND[__automexia_pc_index]=$__automexia_pc_prompt
+        __automexia_has_pc=1 ;;
+      __automexia_capture_status)
+        PROMPT_COMMAND[__automexia_pc_index]=$__automexia_pc_capture
+        __automexia_has_capture=1 ;;
+    esac
   done
   # Capture first without changing the status seen by existing hooks; emit
   # metadata only after the user hooks have completed.
-  (( __automexia_has_capture )) || PROMPT_COMMAND=(__automexia_capture_status "${PROMPT_COMMAND[@]}")
-  (( __automexia_has_pc )) || PROMPT_COMMAND+=(__automexia_pre_prompt)
-  unset __automexia_has_pc __automexia_has_capture __automexia_pc
+  (( __automexia_has_capture )) || PROMPT_COMMAND=("$__automexia_pc_capture" "${PROMPT_COMMAND[@]}")
+  (( __automexia_has_pc )) || PROMPT_COMMAND+=("$__automexia_pc_prompt")
+  unset __automexia_has_pc __automexia_has_capture __automexia_pc_index
 ;;
   *)
-  case ";${PROMPT_COMMAND:-};" in
-    *';__automexia_pre_prompt;'*) ;;
-    ';;') PROMPT_COMMAND='__automexia_pre_prompt' ;;
+  __automexia_pc_string=${PROMPT_COMMAND[0]:-}
+  # A pending legacy installer is reattached after the prompt hooks below.
+  __automexia_pc_string=${__automexia_pc_string#'__automexia_legacy_install && :;'}
+  __automexia_pc_string=${__automexia_pc_string#'__automexia_legacy_install;'}
+  case ";${__automexia_pc_string};" in
+    *";$__automexia_pc_prompt;"*) ;;
+    *';__automexia_pre_prompt;') __automexia_pc_string+=' && :' ;;
+    ';;') __automexia_pc_string=$__automexia_pc_prompt ;;
     *)
       # Avoid creating `;;` when an existing string hook already ends in a
       # semicolon. `eval "$PROMPT_COMMAND"` must remain valid Bash syntax.
-      __automexia_pc_string=${PROMPT_COMMAND%';'}
-      PROMPT_COMMAND="${__automexia_pc_string};__automexia_pre_prompt"
-      unset __automexia_pc_string
+      __automexia_pc_string="${__automexia_pc_string%';'};$__automexia_pc_prompt"
       ;;
   esac
-  case "${PROMPT_COMMAND[0]}" in
-    __automexia_capture_status\;*) ;;
-    *) PROMPT_COMMAND="__automexia_capture_status;${PROMPT_COMMAND[0]}" ;;
+  case $__automexia_pc_string in
+    "$__automexia_pc_capture;"*) ;;
+    *) __automexia_pc_string="$__automexia_pc_capture;${__automexia_pc_string#__automexia_capture_status;}" ;;
   esac
+  if [[ ${PROMPT_COMMAND[0]:-} != "$__automexia_pc_string" ]]; then
+    PROMPT_COMMAND=$__automexia_pc_string
+  fi
+  unset __automexia_pc_string
   ;;
 esac
+unset __automexia_pc_capture __automexia_pc_prompt
 
 # Readline owns only the short lambda/input row. The path was already emitted
 # by `__automexia_pre_prompt` as terminal-owned content.
@@ -886,7 +910,7 @@ if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) ))
   __automexia_legacy_install() {
     local status=$? declaration action='' canonical
     local prefix="trap -- '" suffix="' DEBUG" escaped_quote="'\\''"
-    PROMPT_COMMAND=${PROMPT_COMMAND#__automexia_legacy_install;}
+    PROMPT_COMMAND=${PROMPT_COMMAND#'__automexia_legacy_install && :;'}
     __automexia_prompt_is_active=0
     # A traced user hook can print before trap -p. Route only the builtin's
     # declaration through the capture FD; restore all descriptors on return.
@@ -902,8 +926,11 @@ if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) ))
       [[ $declaration == "$prefix$canonical$suffix" ]] || return "$status"
     fi
     case $action in
-      '__automexia_legacy_preexec;'*) ;; # Re-sourcing never wraps the hook twice.
-      *) builtin trap -- "__automexia_legacy_preexec;${action:-:}" DEBUG ;;
+      '__automexia_legacy_preexec && :;'*) ;; # Re-sourcing never wraps the hook twice.
+      *)
+        action=${action#__automexia_legacy_preexec;}
+        builtin trap -- "__automexia_legacy_preexec && :;${action:-:}" DEBUG
+        ;;
     esac
     return "$status"
   }
@@ -911,7 +938,7 @@ if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) ))
   # caller's DEBUG trap across this function without changing shell options.
   builtin declare -ft __automexia_legacy_install
   case ${PROMPT_COMMAND[0]} in
-    '__automexia_legacy_install;'*) ;;
-    *) PROMPT_COMMAND="__automexia_legacy_install;${PROMPT_COMMAND[0]}" ;;
+    '__automexia_legacy_install && :;'*) ;;
+    *) PROMPT_COMMAND="__automexia_legacy_install && :;${PROMPT_COMMAND[0]}" ;;
   esac
 fi

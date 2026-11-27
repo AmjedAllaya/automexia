@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}}; script-src 'nonce-{{nonce}}'; base-uri 'none'; form-action 'none'">
+  <title>Automexia</title>
+  <link rel="stylesheet" href="{{styleUri}}">
+</head>
+<body>
+  <main>
+    <header class="workspace-bar">
+      <div id="tabs" class="tabs" role="tablist" aria-label="Automexia tabs"></div>
+      <div class="tools" role="group" aria-label="Terminal actions">
+        <button id="new-tab" type="button" title="New tab" aria-label="New tab">+</button>
+        <button id="split" type="button" title="Split pane" aria-label="Split pane" disabled>◫</button>
+        <button id="find" type="button" title="Find in visible output" aria-label="Find in visible output" disabled>⌕</button>
+        <button id="palette" type="button" title="Automexia command palette" aria-label="Automexia command palette">⋯</button>
+      </div>
+    </header>
+    <div id="notice" role="status" hidden></div>
+    <section id="workspaces" aria-label="Automexia sessions">
+      <div id="welcome" class="welcome">
+        <p>Start a shell in Automexia.</p>
+        <button id="first-tab" type="button">New terminal</button>
+      </div>
+    </section>
+    <span id="cell-sample" class="cell-sample" aria-hidden="true">0</span>
+  </main>
+  <dialog id="actions" aria-labelledby="actions-label">
+    <h2 id="actions-label">Automexia commands</h2>
+    <label id="action-query-label" class="sr-only" for="action-query">Find a command</label>
+    <input id="action-query" type="search" placeholder="Find a command" autocomplete="off" role="combobox" aria-expanded="true" aria-controls="action-list">
+    <div id="action-list" role="listbox" aria-label="Commands"></div>
+  </dialog>
+  <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
+</body>
+</html>

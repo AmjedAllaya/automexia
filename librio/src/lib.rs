@@ -143,6 +143,8 @@ pub trait SurfaceDelegate: MaybeSendSync + 'static {
     fn wakeup(&self, surface: SurfaceId);
     fn action(&self, _surface: SurfaceId, _action: Action) {}
     fn clipboard_write(&self, _surface: SurfaceId, _kind: ClipboardType, _text: String) {}
+    /// Native child wait status, published after final PTY output and before close.
+    fn child_exited(&self, _surface: SurfaceId, _raw_status: Option<i32>) {}
     fn close_surface(&self, _surface: SurfaceId) {}
     /// Bytes the terminal wants delivered to the child process. Only called
     /// on non-`pty` builds, where the host owns the transport (a WebSocket
@@ -202,6 +204,9 @@ impl Listener {
                 }
                 #[cfg(not(feature = "pty"))]
                 self.delegate.output(self.surface_id, text.as_bytes());
+            }
+            RioEvent::ChildExited(_, raw_status) => {
+                self.delegate.child_exited(self.surface_id, raw_status);
             }
             RioEvent::CloseTerminal(_) | RioEvent::Exit => {
                 self.delegate.close_surface(self.surface_id);
@@ -270,6 +275,12 @@ pub struct Engine {
     next_surface_id: AtomicUsize,
 }
 
+enum SurfaceLaunch {
+    Legacy,
+    #[cfg(feature = "pty")]
+    Owned(Vec<(String, String)>),
+}
+
 impl Engine {
     pub fn new(delegate: Arc<dyn SurfaceDelegate>) -> Self {
         Self {
@@ -282,7 +293,18 @@ impl Engine {
         &self,
         desc: &SurfaceDesc,
     ) -> Result<Surface, Box<dyn Error + Send + Sync>> {
-        Surface::new(self, desc)
+        Surface::new(self, desc, SurfaceLaunch::Legacy)
+    }
+
+    /// Open the exact executable in `desc.shell` and let the native PTY own
+    /// shutdown of the shell process and its managed process group or job.
+    #[cfg(feature = "pty")]
+    pub fn create_owned_surface(
+        &self,
+        desc: &SurfaceDesc,
+        environment: Vec<(String, String)>,
+    ) -> Result<Surface, Box<dyn Error + Send + Sync>> {
+        Surface::new(self, desc, SurfaceLaunch::Owned(environment))
     }
 }
 
@@ -435,9 +457,101 @@ pub struct Surface {
     #[cfg(all(feature = "pty", not(target_os = "windows")))]
     shell_pid: u32,
     #[cfg(all(feature = "pty", not(target_os = "windows")))]
+    owned_process: bool,
+    #[cfg(all(feature = "pty", not(target_os = "windows")))]
     main_fd: std::os::fd::RawFd,
     #[cfg(feature = "pty")]
     _io_thread: Option<rio_vt::performer::PtyWorkerHandle<()>>,
+}
+
+const MAX_DOCKED_CWD_BYTES: usize = 4096;
+const MAX_DOCKED_LABEL_BYTES: usize = 384;
+
+/// Display-only metadata from the docked terminal's output. The child can
+/// emit these values, so they cannot authorize filesystem or process actions.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DockedMetadata {
+    pub reported_cwd: Option<String>,
+    pub os_name: Option<String>,
+    pub distro: Option<String>,
+    pub shell_user: Option<String>,
+    pub shell_path: Option<String>,
+    /// A scoped integration is active or quarantined. Local reports are withheld.
+    pub remote: bool,
+}
+
+impl DockedMetadata {
+    fn from_terminal<T: EventListener>(terminal: &Crosswords<T>) -> Self {
+        if terminal.integration_scope_active() {
+            return Self {
+                remote: true,
+                ..Self::default()
+            };
+        }
+
+        let mut metadata = Self {
+            reported_cwd: terminal
+                .current_directory
+                .as_ref()
+                .and_then(|path| path.to_str())
+                .and_then(|path| docked_display_text(path, MAX_DOCKED_CWD_BYTES)),
+            ..Self::default()
+        };
+        let Some((begin, end)) = docked_prompt_frame(terminal) else {
+            return metadata;
+        };
+        let field = |name| {
+            let serial = terminal.user_var_write_stamp(name)?.latest.get();
+            if serial <= begin || serial >= end {
+                return None;
+            }
+            docked_display_text(terminal.user_vars.get(name)?, MAX_DOCKED_LABEL_BYTES)
+        };
+        metadata.os_name = field("automexia_os_name");
+        metadata.distro = field("automexia_distro");
+        metadata.shell_user = field("automexia_shell_user");
+        metadata.shell_path = field("automexia_shell_path");
+        metadata
+    }
+}
+
+fn docked_prompt_frame<T: EventListener>(terminal: &Crosswords<T>) -> Option<(u64, u64)> {
+    const FRAME_MARKER: &str = "automexia_env_pending";
+    const ACTIVATION: &str = "automexia_shell";
+    if terminal.user_vars.get(FRAME_MARKER)?.as_str() != "0"
+        || !terminal.user_var_previous_was_one(FRAME_MARKER)
+        || terminal.user_vars.get(ACTIVATION)?.as_str() != "1"
+    {
+        return None;
+    }
+    let stamp = terminal.user_var_write_stamp(FRAME_MARKER)?;
+    let begin = stamp.previous?.get();
+    let end = stamp.latest.get();
+    let activated = terminal.user_var_write_stamp(ACTIVATION)?.latest.get();
+    if !(begin < activated && activated < end)
+        || terminal
+            .last_user_var_rejection()
+            .is_some_and(|serial| serial.get() > begin)
+    {
+        return None;
+    }
+    Some((begin, end))
+}
+
+fn docked_display_text(value: &str, byte_limit: usize) -> Option<String> {
+    if value.len() > byte_limit
+        || value.trim().is_empty()
+        || value.chars().any(|character| {
+            character.is_control()
+                || matches!(
+                    character,
+                    '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{2028}'..='\u{202e}' | '\u{2066}'..='\u{206f}'
+                )
+        })
+    {
+        return None;
+    }
+    Some(value.to_owned())
 }
 
 /// Encode one mouse report. SGR (`CSI < b ; x ; y M`) when the program
@@ -480,6 +594,7 @@ impl Surface {
     fn new(
         engine: &Engine,
         desc: &SurfaceDesc,
+        launch: SurfaceLaunch,
     ) -> Result<Surface, Box<dyn Error + Send + Sync>> {
         let id = engine.next_surface_id.fetch_add(1, Ordering::SeqCst);
         #[cfg(feature = "pty")]
@@ -512,6 +627,7 @@ impl Surface {
 
         #[cfg(not(feature = "pty"))]
         {
+            let _ = launch;
             Ok(Surface {
                 id,
                 // Terminals default alt to meta; the host may override it.
@@ -528,6 +644,21 @@ impl Surface {
             // No shell in the descriptor means "whatever the user's default is",
             // which teletypewriter resolves (and starts as a login shell).
             let shell = desc.shell.as_deref();
+            let owned_launch = match launch {
+                SurfaceLaunch::Legacy => None,
+                SurfaceLaunch::Owned(environment) => {
+                    let program = shell.ok_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            "an owned surface must specify a shell executable",
+                        )
+                    })?;
+                    let executable = teletypewriter::ExactExecutable::open(
+                        std::path::Path::new(program),
+                    )?;
+                    Some((executable, environment))
+                }
+            };
 
             // The child inherits the host process's environment, which for GUI
             // hosts has no TERM at all (or a stale one). Prefer Automexia's
@@ -551,28 +682,54 @@ impl Surface {
             };
 
             #[cfg(not(target_os = "windows"))]
-            let pty = create_pty_with_spawn(
-                shell,
-                desc.args.clone(),
-                &desc.working_dir,
-                env,
-                desc.cols,
-                desc.rows,
-                desc.pixel_width,
-                desc.pixel_height,
-            )
-            .map_err(|err| Box::new(err) as Box<dyn Error + Send + Sync>)?;
+            let owned_process = owned_launch.is_some();
+            #[cfg(not(target_os = "windows"))]
+            let pty = if let Some((executable, mut environment)) = owned_launch {
+                environment.retain(|(name, _)| name != "TERM" && name != "COLORTERM");
+                environment.extend(env.into_iter().flatten());
+                teletypewriter::create_exact_pty(
+                    executable,
+                    desc.args.clone(),
+                    &desc.working_dir,
+                    environment,
+                    desc.cols,
+                    desc.rows,
+                    desc.pixel_width,
+                    desc.pixel_height,
+                )
+            } else {
+                create_pty_with_spawn(
+                    shell,
+                    desc.args.clone(),
+                    &desc.working_dir,
+                    env,
+                    desc.cols,
+                    desc.rows,
+                    desc.pixel_width,
+                    desc.pixel_height,
+                )
+            }?;
 
             #[cfg(target_os = "windows")]
-            let pty = create_pty(
-                shell,
-                desc.args.clone(),
-                &desc.working_dir,
-                None,
-                desc.cols,
-                desc.rows,
-            )
-            .map_err(|err| Box::new(err) as Box<dyn Error + Send + Sync>)?;
+            let pty = if let Some((executable, environment)) = owned_launch {
+                teletypewriter::create_exact_pty(
+                    executable,
+                    desc.args.clone(),
+                    &desc.working_dir,
+                    environment,
+                    desc.cols,
+                    desc.rows,
+                )
+            } else {
+                create_pty(
+                    shell,
+                    desc.args.clone(),
+                    &desc.working_dir,
+                    None,
+                    desc.cols,
+                    desc.rows,
+                )
+            }?;
 
             #[cfg(not(target_os = "windows"))]
             let shell_pid = *pty.child.pid.clone() as u32;
@@ -601,6 +758,8 @@ impl Surface {
                 channel,
                 #[cfg(not(target_os = "windows"))]
                 shell_pid,
+                #[cfg(not(target_os = "windows"))]
+                owned_process,
                 #[cfg(not(target_os = "windows"))]
                 main_fd,
                 _io_thread: Some(io_thread),
@@ -934,6 +1093,11 @@ impl Surface {
         None
     }
 
+    /// Take a display-only snapshot without probing the OS or reading files.
+    pub fn docked_metadata(&self) -> DockedMetadata {
+        DockedMetadata::from_terminal(&self.terminal.lock())
+    }
+
     /// Lines currently held in scrollback (the ring, not counting
     /// eviction). Search coordinates are relative to the top of this ring.
     pub fn history_size(&self) -> usize {
@@ -1228,7 +1392,9 @@ impl Drop for Surface {
     fn drop(&mut self) {
         let _ = self.channel.send(Msg::Shutdown);
         #[cfg(not(target_os = "windows"))]
-        teletypewriter::kill_pid(self.shell_pid as i32);
+        if !self.owned_process {
+            teletypewriter::kill_pid(self.shell_pid as i32);
+        }
         if let Some(mut worker) = self._io_thread.take() {
             if !worker.join_timeout(std::time::Duration::from_secs(10)) {
                 tracing::warn!(
@@ -1237,6 +1403,58 @@ impl Drop for Surface {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod child_exit_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum LifecycleEvent {
+        ChildExited(SurfaceId, Option<i32>),
+        Closed(SurfaceId),
+    }
+
+    #[derive(Default)]
+    struct ExitRecorder(Mutex<Vec<LifecycleEvent>>);
+
+    impl SurfaceDelegate for ExitRecorder {
+        fn wakeup(&self, _surface: SurfaceId) {}
+
+        fn child_exited(&self, surface: SurfaceId, raw_status: Option<i32>) {
+            self.0
+                .lock()
+                .unwrap()
+                .push(LifecycleEvent::ChildExited(surface, raw_status));
+        }
+
+        fn close_surface(&self, surface: SurfaceId) {
+            self.0.lock().unwrap().push(LifecycleEvent::Closed(surface));
+        }
+    }
+
+    #[test]
+    fn listener_forwards_raw_child_status_before_close() {
+        let delegate = Arc::new(ExitRecorder::default());
+        let listener = Listener {
+            surface_id: 7,
+            delegate: delegate.clone(),
+            #[cfg(feature = "pty")]
+            pty_writer: Arc::new(Mutex::new(None)),
+        };
+
+        listener.dispatch(RioEvent::ChildExited(7, Some(37)));
+        listener.dispatch(RioEvent::CloseTerminal(7));
+
+        assert_eq!(
+            *delegate.0.lock().unwrap(),
+            [
+                LifecycleEvent::ChildExited(7, Some(37)),
+                LifecycleEvent::Closed(7)
+            ]
+        );
     }
 }
 
@@ -1916,6 +2134,121 @@ mod tests {
         // The RGBA copy path serves virtual images the same way.
         let mut buf = [0u8; 16];
         assert_eq!(state.kitty_image_rgba(7, &mut buf), 16);
+    }
+}
+
+#[cfg(test)]
+mod docked_metadata_tests {
+    use super::*;
+    use rio_vt::event::VoidListener;
+    use rio_vt::performer::handler::Processor;
+
+    fn terminal() -> Crosswords<VoidListener> {
+        Crosswords::new(
+            GridSize::new(80, 24, 720, 432),
+            CursorShape::Block,
+            VoidListener,
+            WindowId::from(0),
+            0,
+            128,
+        )
+    }
+
+    const PROMPT: &[u8] = b"\x1b]1337;SetUserVar=automexia_env_pending=MQ==\x07\
+                           \x1b]1337;SetUserVar=automexia_os_name=TGludXg=\x07\
+                           \x1b]1337;SetUserVar=automexia_distro=VWJ1bnR1\x07\
+                           \x1b]1337;SetUserVar=automexia_shell_user=YWxpY2U=\x07\
+                           \x1b]1337;SetUserVar=automexia_shell_path=L2Jpbi96c2g=\x07\
+                           \x1b]1337;SetUserVar=automexia_shell=MQ==\x07";
+    const COMMIT: &[u8] = b"\x1b]1337;SetUserVar=automexia_env_pending=MA==\x07";
+
+    #[test]
+    fn docked_metadata_reads_only_current_completed_prompt_fields() {
+        let mut terminal = terminal();
+        let mut processor = Processor::default();
+        assert_eq!(
+            DockedMetadata::from_terminal(&terminal),
+            DockedMetadata::default()
+        );
+        processor.advance(
+            &mut terminal,
+            b"\x1b]7;file://localhost/example/working%20tree\x07",
+        );
+        processor.advance(&mut terminal, PROMPT);
+        let pending = DockedMetadata::from_terminal(&terminal);
+        assert_eq!(
+            pending.reported_cwd.as_deref(),
+            Some("/example/working tree")
+        );
+        assert_eq!(pending.shell_user, None);
+
+        processor.advance(&mut terminal, COMMIT);
+        let complete = DockedMetadata::from_terminal(&terminal);
+        assert_eq!(complete.os_name.as_deref(), Some("Linux"));
+        assert_eq!(complete.distro.as_deref(), Some("Ubuntu"));
+        assert_eq!(complete.shell_user.as_deref(), Some("alice"));
+        assert_eq!(complete.shell_path.as_deref(), Some("/bin/zsh"));
+        assert!(!complete.remote);
+
+        processor.advance(
+            &mut terminal,
+            b"\x1b]1337;SetUserVar=automexia_shell_user=Z3Vlc3Q=\x07",
+        );
+        assert_eq!(DockedMetadata::from_terminal(&terminal).shell_user, None);
+    }
+
+    #[test]
+    fn docked_metadata_hides_local_fields_until_nested_scope_closes() {
+        let mut terminal = terminal();
+        let mut processor = Processor::default();
+        processor.advance(&mut terminal, b"\x1b]7;file:///example/local\x07");
+        processor.advance(&mut terminal, PROMPT);
+        processor.advance(&mut terminal, COMMIT);
+        let local = DockedMetadata::from_terminal(&terminal);
+
+        // Begin a scoped shell with the digest of the fixture's zeroed secret.
+        processor.advance(&mut terminal, concat!(
+            "\x1b]1337;SetUserVar=terminal_scope_v1=QU1YU0NPUEUxfGJlZ2lufDY2Njg3YWFkZjg2MmJk",
+            "Nzc2YzhmYzE4YjhlOWY4ZTIwMDg5NzE0ODU2ZWUyMzNiMzkwMmE1OTFkMGQ1ZjI5MjV8MXwyfGJhc2g=\x07",
+        ).as_bytes());
+        processor.advance(&mut terminal, b"\x1b]7;file:///example/remote\x07");
+        processor.advance(&mut terminal, PROMPT);
+        processor.advance(&mut terminal, COMMIT);
+        assert_eq!(
+            DockedMetadata::from_terminal(&terminal),
+            DockedMetadata {
+                remote: true,
+                ..Default::default()
+            },
+        );
+
+        processor.advance(&mut terminal, concat!(
+            "\x1b]1337;SetUserVar=terminal_scope_v1=QU1YU0NPUEUxfGVuZHwwMDAwMDAwMDAwMDAwMDAwMDAw",
+            "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw\x07",
+        ).as_bytes());
+        assert_eq!(DockedMetadata::from_terminal(&terminal), local);
+    }
+
+    #[test]
+    fn docked_metadata_drops_unsafe_or_oversized_display_values() {
+        let mut terminal = terminal();
+        let mut processor = Processor::default();
+        processor.advance(
+            &mut terminal,
+            b"\x1b]7;file://localhost/example/%E2%80%AEname\x07",
+        );
+        processor.advance(&mut terminal, PROMPT);
+        let oversized = format!(
+            "\x1b]1337;SetUserVar=automexia_shell_user={}\x07",
+            "YWFh".repeat(129),
+        );
+        processor.advance(&mut terminal, oversized.as_bytes());
+        processor.advance(&mut terminal, COMMIT);
+
+        let metadata = DockedMetadata::from_terminal(&terminal);
+        assert_eq!(metadata.reported_cwd, None);
+        assert_eq!(metadata.shell_user, None);
+        assert_eq!(metadata.shell_path.as_deref(), Some("/bin/zsh"));
     }
 }
 

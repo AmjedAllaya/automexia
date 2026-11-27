@@ -33,7 +33,13 @@ pub(crate) fn capture(
     limits: Limits,
     cancelled: impl Fn() -> bool,
 ) -> io::Result<Captured> {
-    capture_inner(command, limits, cancelled, CaptureInput::Null)
+    capture_inner(
+        command,
+        limits,
+        cancelled,
+        CaptureInput::Null,
+        ConsoleWindow::Default,
+    )
 }
 
 pub(crate) fn capture_leased(
@@ -41,7 +47,45 @@ pub(crate) fn capture_leased(
     limits: Limits,
     cancelled: impl Fn() -> bool,
 ) -> io::Result<Captured> {
-    capture_inner(command, limits, cancelled, CaptureInput::Lease)
+    capture_inner(
+        command,
+        limits,
+        cancelled,
+        CaptureInput::Lease,
+        ConsoleWindow::Default,
+    )
+}
+
+/// A background query with captured streams never needs a visible console.
+#[cfg(windows)]
+pub(crate) fn capture_background(
+    command: Command,
+    limits: Limits,
+    cancelled: impl Fn() -> bool,
+) -> io::Result<Captured> {
+    capture_inner(
+        command,
+        limits,
+        cancelled,
+        CaptureInput::Null,
+        ConsoleWindow::Hidden,
+    )
+}
+
+#[cfg(windows)]
+pub(crate) fn capture_background_with_input_file(
+    command: Command,
+    input: std::fs::File,
+    limits: Limits,
+    cancelled: impl Fn() -> bool,
+) -> io::Result<Captured> {
+    capture_inner(
+        command,
+        limits,
+        cancelled,
+        CaptureInput::File(input),
+        ConsoleWindow::Hidden,
+    )
 }
 
 /// Explicit SSH staging consumes an immutable bounded snapshot, leaves native
@@ -67,13 +111,23 @@ pub(crate) fn capture_upload(
         },
         cancelled,
         CaptureInput::Upload(snapshot),
+        ConsoleWindow::Default,
     )
 }
 
 enum CaptureInput {
     Null,
     Lease,
+    #[cfg(windows)]
+    File(std::fs::File),
     Upload(std::fs::File),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ConsoleWindow {
+    Default,
+    #[cfg(windows)]
+    Hidden,
 }
 
 /// Explicit interactive CLI work borrows the caller's terminal. Enhanced Unix
@@ -136,7 +190,8 @@ fn interactive_inner(
     let isolated_group = ownership == Ownership::Tree;
     #[cfg(not(unix))]
     let isolated_group = false;
-    let mut child = spawn_owned(command, isolated_group, ownership)?;
+    let mut child =
+        spawn_owned(command, isolated_group, ownership, ConsoleWindow::Default)?;
     let result = (|| {
         #[cfg(unix)]
         if let Some(foreground) = &mut foreground {
@@ -233,6 +288,7 @@ fn spawn_owned(
     command: Command,
     isolated_group: bool,
     ownership: Ownership,
+    console_window: ConsoleWindow,
 ) -> io::Result<OwnedChild> {
     let mut command = CommandWrap::from(command);
     #[cfg(windows)]
@@ -242,16 +298,27 @@ fn spawn_owned(
         None
     };
     #[cfg(not(windows))]
-    let _ = ownership;
+    let _ = (ownership, console_window);
     #[cfg(unix)]
     if isolated_group {
         command.wrap(process_wrap::std::ProcessGroup::leader());
     }
     #[cfg(windows)]
     {
+        use windows_sys::Win32::System::Threading::{
+            CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW,
+        };
+
+        // JobObject re-applies the flags from this wrapper when it launches
+        // the suspended child. Flags on the raw Command would be replaced.
+        let mut flags = process_wrap::std::CreationFlags(Default::default());
         if isolated_group {
-            let mut flags = process_wrap::std::CreationFlags(Default::default());
-            flags.0 .0 = windows_sys::Win32::System::Threading::CREATE_NEW_PROCESS_GROUP;
+            flags.0 .0 |= CREATE_NEW_PROCESS_GROUP;
+        }
+        if console_window == ConsoleWindow::Hidden {
+            flags.0 .0 |= CREATE_NO_WINDOW;
+        }
+        if flags.0 .0 != 0 {
             command.wrap(flags);
         }
         if let Some(completion) = &completion {
@@ -279,6 +346,7 @@ fn capture_inner(
     limits: Limits,
     cancelled: impl Fn() -> bool,
     input: CaptureInput,
+    console_window: ConsoleWindow,
 ) -> io::Result<Captured> {
     let upload = matches!(input, CaptureInput::Upload(_));
     if limits.timeout.is_zero()
@@ -301,6 +369,8 @@ fn capture_inner(
         .stdin(match input {
             CaptureInput::Null => Stdio::null(),
             CaptureInput::Lease => Stdio::piped(),
+            #[cfg(windows)]
+            CaptureInput::File(file) => Stdio::from(file),
             CaptureInput::Upload(snapshot) => Stdio::from(snapshot),
         })
         .stdout(Stdio::piped())
@@ -315,7 +385,7 @@ fn capture_inner(
     } else {
         None
     };
-    let mut child = spawn_owned(command, true, Ownership::Tree)?;
+    let mut child = spawn_owned(command, true, Ownership::Tree, console_window)?;
     let result = (|| {
         #[cfg(unix)]
         if let Some(foreground) = &mut foreground {
@@ -666,6 +736,7 @@ fn leader_exited(child: &dyn ChildWrapper) -> io::Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use automexia_process_test_fixture::Workload;
     use std::io::Write;
 
     #[test]
@@ -907,6 +978,16 @@ mod tests {
     }
 
     fn fixture(mode: &str) -> Command {
+        // Keep the full test runner for the supervisors that exercise the
+        // production capture or cancellation owner. Windows child workloads
+        // must signal their native handles within the same bounds as tools.
+        #[cfg(windows)]
+        if Workload::parse(mode).is_some() {
+            let mut command = Command::new(automexia_process_test_fixture::EXECUTABLE);
+            command.arg(mode);
+            return command;
+        }
+
         let mut command = Command::new(std::env::current_exe().unwrap());
         command.args([
             "--exact",
@@ -937,6 +1018,41 @@ mod tests {
                 |value| value == b"AMX_PAYLOAD_BEGIN\nfixture & output\nAMX_PAYLOAD_END"
             ));
         assert_eq!(result.stderr, b"fixture diagnostic");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn amx_process_background_capture_keeps_child_out_of_caller_console() {
+        use std::io::Seek;
+
+        let console_probe = || {
+            let mut command = fixture("console-association");
+            command.env("AMX_PROCESS_CONSOLE_OWNER", std::process::id().to_string());
+            command
+        };
+        let inherited = capture(console_probe(), limits(), || false).unwrap();
+        let null_input = capture_background(console_probe(), limits(), || false).unwrap();
+        let mut input = tempfile::tempfile().unwrap();
+        input.write_all(b"fixture probe input").unwrap();
+        input.rewind().unwrap();
+        let probe = console_probe();
+        let file_input =
+            capture_background_with_input_file(probe, input, limits(), || false).unwrap();
+
+        let receipts = [&inherited, &null_input, &file_input].map(|output| {
+            assert!(output.status.success());
+            assert_eq!(output.stderr, b"fixture console diagnostic");
+            let text = std::str::from_utf8(&output.stdout).unwrap();
+            text.lines()
+                .find_map(|line| line.strip_prefix("AMX_CONSOLE_ASSOCIATION "))
+                .unwrap()
+                .to_owned()
+        });
+        assert_eq!(
+            receipts[0], "shared empty",
+            "control must share the console"
+        );
+        assert_eq!(&receipts[1..], &["separate empty", "separate file"]);
     }
 
     #[test]
@@ -1348,23 +1464,34 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn amx_process_completion_recovers_native_handles_and_measures_capture() {
-        // Isolate the counter from other concurrently executing test fixtures.
-        let result =
-            capture(fixture("completion-resources"), limits(), || false).unwrap();
-        assert!(
-            result.status.success(),
-            "isolated native resource fixture failed"
-        );
-        let text = String::from_utf8(result.stdout).unwrap();
-        let report = text
-            .lines()
-            .find(|line| line.starts_with("AMX_CAPTURE_RESOURCES "))
-            .unwrap();
-        println!("{report}");
+        for (mode, workload) in [
+            ("completion-resources", "inherited"),
+            ("completion-background-resources", "background"),
+        ] {
+            // Isolate each counter from other concurrently executing test fixtures.
+            // The worker performs 23 captures and 20 failed-spawn checks.
+            // Its overall budget is separate from each child's capture limit.
+            let worker_limits = Limits {
+                timeout: Duration::from_secs(60),
+                ..limits()
+            };
+            let result = capture(fixture(mode), worker_limits, || false).unwrap();
+            assert!(
+                result.status.success(),
+                "isolated native resource fixture failed for {workload}"
+            );
+            let text = String::from_utf8(result.stdout).unwrap();
+            let prefix = format!("AMX_CAPTURE_RESOURCES mode={workload} ");
+            let report = text.lines().find(|line| line.starts_with(&prefix)).unwrap();
+            println!("{report}");
+        }
     }
 
     #[cfg(windows)]
-    fn completion_resources() {
+    fn completion_resources(
+        workload: &str,
+        capture_child: impl Fn(Command) -> io::Result<Captured>,
+    ) {
         use windows_sys::Win32::System::Threading::{
             GetCurrentProcess, GetProcessHandleCount,
         };
@@ -1376,29 +1503,40 @@ mod tests {
             );
             count
         }
+        // Measure a real console utility so loading another copy of the full
+        // Cargo test executable does not dominate the capture workload.
+        let tool = std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+            .join("System32/findstr.exe");
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("input.txt"),
+            b"skip\r\nfixture & output\r\n",
+        )
+        .unwrap();
+        let query = || {
+            let mut command = Command::new(&tool);
+            command.current_dir(directory.path()).args([
+                "/l",
+                "/x",
+                "/c:fixture & output",
+                "input.txt",
+            ]);
+            command
+        };
         // Warm the test runtime, then require exact recovery after each lifecycle.
         for _ in 0..3 {
-            assert!(capture(fixture("success"), limits(), || false)
-                .unwrap()
-                .status
-                .success());
+            assert!(capture_child(query()).unwrap().status.success());
         }
         let baseline = handles();
         let mut timings = Vec::new();
         for _ in 0..20 {
             let start = Instant::now();
-            let result = capture(fixture("success"), limits(), || false).unwrap();
+            let result = capture_child(query()).unwrap();
             assert!(result.status.success());
-            assert_eq!(result.stderr, b"fixture diagnostic");
-            assert!(result
-                .stdout
-                .windows(b"fixture & output".len())
-                .any(|text| text == b"fixture & output"));
+            assert_eq!(result.stdout, b"fixture & output\r\n");
+            assert!(result.stderr.is_empty());
             timings.push(start.elapsed().as_micros());
-            assert!(
-                capture(Command::new("missing-resource-fixture"), limits(), || false)
-                    .is_err()
-            );
+            assert!(capture_child(Command::new("missing-resource-fixture")).is_err());
             assert_eq!(
                 handles(),
                 baseline,
@@ -1406,7 +1544,9 @@ mod tests {
             );
         }
         timings.sort_unstable();
-        println!("AMX_CAPTURE_RESOURCES cycles=20 handle_delta=0 median_us={} p95_us={}; native fixture capture, not interactive latency", timings[10], timings[19]);
+        let median = (timings[9] + timings[10]) / 2;
+        let p95 = timings[18];
+        println!("AMX_CAPTURE_RESOURCES mode={workload} cycles=20 handle_delta=0 median_us={median} p95_us={p95}; native fixture capture, not interactive latency");
     }
 
     struct PinnedIdentity {
@@ -1522,44 +1662,60 @@ mod tests {
                 .unwrap();
             }
             #[cfg(windows)]
-            Ok("completion-resources") => completion_resources(),
+            Ok("completion-resources") => completion_resources("inherited", |command| {
+                capture(command, limits(), || false)
+            }),
+            #[cfg(windows)]
+            Ok("completion-background-resources") => {
+                completion_resources("background", |command| {
+                    capture_background(command, limits(), || false)
+                })
+            }
+            #[cfg(windows)]
+            Ok("console-association") => {
+                use windows_sys::Win32::System::Console::GetConsoleProcessList;
+
+                let owner: u32 = std::env::var("AMX_PROCESS_CONSOLE_OWNER")
+                    .unwrap()
+                    .parse()
+                    .unwrap();
+                let mut attached = [0; 256];
+                // SAFETY: the API writes at most the declared number of u32s.
+                let count = unsafe {
+                    GetConsoleProcessList(attached.as_mut_ptr(), attached.len() as u32)
+                } as usize;
+                assert!(
+                    count <= attached.len(),
+                    "fixture console has too many processes"
+                );
+                let console = if attached[..count].contains(&owner) {
+                    "shared"
+                } else {
+                    "separate"
+                };
+                let mut input = Vec::new();
+                std::io::stdin().take(32).read_to_end(&mut input).unwrap();
+                let input = match input.as_slice() {
+                    b"" => "empty",
+                    b"fixture probe input" => "file",
+                    _ => panic!("unexpected fixture input"),
+                };
+                println!("AMX_CONSOLE_ASSOCIATION {console} {input}");
+                std::io::stderr()
+                    .write_all(b"fixture console diagnostic")
+                    .unwrap();
+            }
             Ok("success") => {
                 print!("AMX_PAYLOAD_BEGIN\nfixture & output\nAMX_PAYLOAD_END");
                 std::io::stderr().write_all(b"fixture diagnostic").unwrap();
             }
             Ok("failure") => std::process::exit(7),
-            Ok("upload-echo") => {
-                let mut input = Vec::new();
-                std::io::stdin()
-                    .take(65537)
-                    .read_to_end(&mut input)
-                    .unwrap();
-                assert!(input.len() <= 65536);
-                std::io::stdout().write_all(&input).unwrap();
-                std::io::stdout().flush().unwrap();
-                std::process::exit(7);
-            }
-            Ok("stdout-flood") => {
-                std::io::stdout()
-                    .write_all(&vec![b'x'; 1024 * 1024])
-                    .unwrap();
-            }
-            Ok("stderr-flood") => {
-                std::io::stderr()
-                    .write_all(&vec![b'x'; 1024 * 1024])
-                    .unwrap();
-            }
             Ok("retirement-lease") => {
                 let mut byte = [0; 1];
                 assert_eq!(std::io::stdin().read(&mut byte).unwrap(), 0);
                 std::process::exit(7);
             }
             Ok("retirement-wait") => std::thread::park_timeout(Duration::from_secs(30)),
-            Ok("wait") => {
-                let ready = std::env::var_os("AMX_PROCESS_READY").unwrap();
-                std::fs::write(ready, std::process::id().to_string()).unwrap();
-                std::thread::park_timeout(Duration::from_secs(30));
-            }
             Ok("lease") => {
                 std::fs::write(std::env::var_os("AMX_PROCESS_READY").unwrap(), b"ready")
                     .unwrap();
@@ -1585,61 +1741,10 @@ mod tests {
                         .unwrap();
                 assert_eq!(error.kind(), io::ErrorKind::Interrupted);
             }
-            Ok("native-persistent-parent") => {
-                let mut child = fixture("native-persistent-helper");
-                child
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null());
-                let _child = child.spawn().unwrap();
-                let release = std::env::var_os("AMX_PROCESS_RELEASE").unwrap();
-                let deadline = Instant::now() + Duration::from_secs(5);
-                while !std::path::Path::new(&release).is_file() {
-                    assert!(Instant::now() < deadline, "native leader release timed out");
-                    std::thread::sleep(POLL_INTERVAL);
-                }
-                std::process::exit(7);
-            }
-            Ok("native-persistent-helper") => {
-                std::fs::write(
-                    std::env::var_os("AMX_PROCESS_READY").unwrap(),
-                    std::process::id().to_string(),
-                )
-                .unwrap();
-                let release = std::env::var_os("AMX_PROCESS_BACKGROUND_RELEASE").unwrap();
-                let deadline = Instant::now() + Duration::from_secs(5);
-                while !std::path::Path::new(&release).is_file() {
-                    if Instant::now() >= deadline {
-                        return;
-                    }
-                    std::thread::sleep(POLL_INTERVAL);
-                }
-                std::fs::write(
-                    std::env::var_os("AMX_PROCESS_RETIRED").unwrap(),
-                    b"retired",
-                )
-                .unwrap();
-            }
-            Ok("descendant") | Ok("descendant-no-pipes") => {
-                let ready = std::env::var_os("AMX_PROCESS_READY").unwrap();
-                let release = std::env::var_os("AMX_PROCESS_RELEASE").unwrap();
-                let mut command = fixture("wait");
-                command.env("AMX_PROCESS_READY", &ready);
-                if std::env::var("AMX_PROCESS_FIXTURE").unwrap() == "descendant-no-pipes"
-                {
-                    command.stdout(Stdio::null()).stderr(Stdio::null());
-                }
-                let _child = command.spawn().unwrap();
-                let deadline = Instant::now() + Duration::from_secs(5);
-                while !std::path::Path::new(&release).is_file() {
-                    assert!(Instant::now() < deadline, "descendant readiness timed out");
-                    std::thread::sleep(Duration::from_millis(5));
-                }
-                // Intentionally exit before the descendant: the supervising
-                // parent must retire the whole native group, not only its leader.
-                std::process::exit(0);
-            }
-            _ => panic!("fixture mode required"),
+            Ok(mode) => Workload::parse(mode)
+                .expect("unknown fixture mode")
+                .run(fixture),
+            Err(_) => panic!("fixture mode required"),
         }
     }
 }

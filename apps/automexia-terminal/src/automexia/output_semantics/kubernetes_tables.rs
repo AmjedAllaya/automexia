@@ -1,6 +1,9 @@
 //! Bounded presentation hints for kubectl/oc table columns. No API parsing,
 //! provider access, or health inference from resource names lives here.
-use super::{classify_row, OutputClassification, OutputDomain, MAX_ROW_BYTES};
+use super::{
+    classify_row_without_operational, operational_progress, OutputClassification,
+    OutputDomain, MAX_ROW_BYTES,
+};
 use automexia_extension_api::SemanticSeverity as Severity;
 
 const MAX_COLUMNS: usize = 32;
@@ -65,6 +68,18 @@ impl RowClassifier {
     }
 
     pub fn classify(&mut self, text: &str) -> Option<OutputClassification> {
+        if let Some(row) = operational_progress(text) {
+            self.reset();
+            return Some(row.classification());
+        }
+        self.classify_after_operational_check(text)
+    }
+
+    #[doc(hidden)]
+    pub fn classify_after_operational_check(
+        &mut self,
+        text: &str,
+    ) -> Option<OutputClassification> {
         if text.len() > MAX_ROW_BYTES || text.trim().is_empty() {
             self.reset();
             return None;
@@ -76,7 +91,7 @@ impl RowClassifier {
         }
         let Some(fields) = Fields::parse(text) else {
             self.reset();
-            return classify_row(text);
+            return classify_row_without_operational(text);
         };
         if let Some(schema) = Schema::header(&fields) {
             self.schema = Some(schema);
@@ -98,7 +113,7 @@ impl RowClassifier {
             }
             self.reset();
         }
-        classify_row(text)
+        classify_row_without_operational(text)
     }
 }
 

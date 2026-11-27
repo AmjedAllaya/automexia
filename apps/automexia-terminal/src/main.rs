@@ -151,7 +151,22 @@ fn execute_cli_command(
             automexia::ssh_wrapper::exit_with_status(status)
         }
         CliCommand::ShellIntegration(command) => match &command.action {
-            ShellIntegrationAction::Doctor => {
+            ShellIntegrationAction::Doctor { wsl, offer_install } => {
+                if let Some(distro) = wsl {
+                    #[cfg(windows)]
+                    return automexia::wsl::setup::run(
+                        crate::context::launch_broker::windows_system_directory()
+                            .map(|directory| directory.join("wsl.exe")),
+                        (!distro.is_empty()).then_some(distro.as_str()),
+                        *offer_install,
+                    )
+                    .map_err(Into::into);
+                    #[cfg(not(windows))]
+                    {
+                        let _ = (distro, offer_install);
+                        return Err("The WSL setup check requires Windows.".into());
+                    }
+                }
                 println!("{}", shell_integration::status());
                 Ok(())
             }

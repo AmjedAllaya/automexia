@@ -13,13 +13,22 @@ publish = false
 [lib]
 crate-type = ["rlib", "staticlib"]
 
+[[bin]]
+name = "automexia-vscode-host"
+path = "src/bin/automexia-vscode-host.rs"
+required-features = ["vscode-host"]
+
 [dependencies]
+automexia-extension-api = { workspace = true, optional = true }
+automexia-ui-model = { workspace = true, optional = true }
 rio-vt = { path = "../rio-vt", version = "0.4.0", default-features = false }
 rio-fonts = { workspace = true, features = ["symbols-nerd-font"] }
 rio-graphics = { workspace = true }
 rustc-hash = { workspace = true }
 bitflags = { workspace = true }
 tracing = { workspace = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 teletypewriter = { workspace = true, optional = true }
@@ -37,3 +46,4 @@ pty = ["rio-vt/pty", "dep:teletypewriter", "dep:corcovado"]
 # machinery are most of the binary, and the protocol paths still parse
 # without them; only pixel decode is stubbed out.
 graphics = ["rio-vt/graphics"]
+vscode-host = ["pty", "dep:automexia-extension-api", "dep:automexia-ui-model", "dep:serde", "dep:serde_json"]

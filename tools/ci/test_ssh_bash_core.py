@@ -425,6 +425,22 @@ class AdditionalContracts(unittest.TestCase):
 
 
 class CommandLifecycle(unittest.TestCase):
+    def test_enabling_errexit_preserves_the_native_prompt_and_failures(self):
+        profile = (
+            'PROMPT_COMMAND=\'printf "NATIVE_STATUS=%s\\n" "$?"\'\n'
+            'trap \'printf "NATIVE_ERR=%s\\n" "$?"\' ERR'
+        )
+        with Shell(profile) as shell:
+            self.assertEqual(advertised(shell.initial), 7)
+            shell.command('set -euo pipefail')
+            data = shell.command('(exit 23) && :')
+            self.assertIn(b'NATIVE_STATUS=23', data)
+            self.assertIn(b'\x1b]133;D;23\x07', data)
+            self.assertNotIn(b'NATIVE_ERR=', data)
+            self.assertIn(b'\x1b]133;D;0\x07', shell.command('[[ $- == *e* ]]'))
+            os.write(shell.fd, b'(exit 29)\n')
+            self.assertEqual(shell.wait_for_exit(), 29)
+
     def test_context_spacer_and_editor_share_one_stable_prompt_identity(self):
         with Shell(echo_input=True) as shell:
             self.assertIn(b'\x1b]133;A;aid=1\x07 \r\n', shell.initial)

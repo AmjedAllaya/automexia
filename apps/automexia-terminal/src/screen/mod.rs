@@ -14,9 +14,12 @@ mod connection_hub;
 mod grid_lifecycle;
 pub mod hint;
 mod ime;
+mod paste_preview;
 mod settings;
 pub(crate) mod suggestions;
 pub mod touch;
+#[cfg(windows)]
+mod wsl_setup;
 
 use crate::bindings::kitty_keyboard::build_key_sequence;
 use crate::bindings::{
@@ -523,6 +526,8 @@ struct NativeWindowSnapshot {
     palette_total_results: usize,
     palette_accessibility_summary: Option<String>,
     confirm_quit_active: bool,
+    #[cfg(windows)]
+    wsl_setup: serde_json::Value,
     recovery_active: bool,
     recovery_ready: bool,
     settings: serde_json::Value,
@@ -741,6 +746,10 @@ fn write_native_resize_snapshot(
         "panels": panels,
     });
     snapshot["chrome"] = window.chrome;
+    #[cfg(windows)]
+    {
+        snapshot["wsl_setup"] = window.wsl_setup;
+    }
     snapshot["font_primary"] = serde_json::json!(window.font_primary);
     snapshot["recovery_active"] = serde_json::json!(window.recovery_active);
     snapshot["recovery_ready"] = serde_json::json!(window.recovery_ready);
@@ -948,6 +957,9 @@ pub struct Screen<'screen> {
     image_preview: crate::image_preview::ImagePreview,
     pub(crate) table_view: crate::table_view::TableView,
     pub(crate) settings_view: crate::settings_view::SettingsView,
+    paste_preview: Option<paste_preview::PastePreview>,
+    #[cfg(windows)]
+    wsl_setup: Option<wsl_setup::WslSetupPopup>,
     profile_base_config: rio_backend::config::Config,
     profile_theme_route: Option<usize>,
     overlay_key_releases: Vec<PhysicalKey>,
@@ -1224,6 +1236,9 @@ impl Screen<'_> {
             image_preview: crate::image_preview::ImagePreview::default(),
             table_view: crate::table_view::TableView::default(),
             settings_view: crate::settings_view::SettingsView::default(),
+            paste_preview: None,
+            #[cfg(windows)]
+            wsl_setup: None,
             profile_base_config: config.clone(),
             profile_theme_route: None,
             overlay_key_releases: Vec::new(),
@@ -2113,6 +2128,13 @@ impl Screen<'_> {
         key: &rio_window::event::KeyEvent,
         clipboard: &mut Clipboard,
     ) {
+        #[cfg(windows)]
+        if self.handle_wsl_setup_key(key) {
+            return;
+        }
+        if self.handle_paste_preview_key(key) {
+            return;
+        }
         // Native Edit menu hooks and physical keys share the same modal owner.
         if self.handle_settings_key(key, clipboard) {
             return;
@@ -2268,9 +2290,7 @@ impl Screen<'_> {
         #[cfg(windows)]
         if mode.contains(Mode::WIN32_INPUT) {
             if let Some(bytes) = build_win32_key_sequence(key) {
-                self.scroll_bottom_when_cursor_not_visible();
-                self.clear_selection();
-                self.ctx_mut().current_mut().messenger.send_write(bytes);
+                self.forward_pressed_key(key, mods, bytes);
             }
             return;
         }
@@ -2278,11 +2298,55 @@ impl Screen<'_> {
         let bytes = self.encode_pressed_key_event(key, text, mode, mods);
 
         if !bytes.is_empty() {
-            self.scroll_bottom_when_cursor_not_visible();
-            self.clear_selection();
-
-            self.ctx_mut().current_mut().messenger.send_write(bytes);
+            self.forward_pressed_key(key, mods, bytes);
         }
+    }
+
+    fn forward_pressed_key(
+        &mut self,
+        key: &rio_window::event::KeyEvent,
+        mods: ModifiersState,
+        bytes: Vec<u8>,
+    ) {
+        self.scroll_bottom_when_cursor_not_visible();
+        self.clear_selection();
+        let current = self.ctx().current();
+
+        #[cfg(windows)]
+        if matches!(key.logical_key, Key::Named(NamedKey::Enter))
+            && matches!(
+                key.physical_key,
+                PhysicalKey::Code(
+                    rio_window::keyboard::KeyCode::Enter
+                        | rio_window::keyboard::KeyCode::NumpadEnter
+                )
+            )
+            && !key.repeat
+            && mods.is_empty()
+            && !current.renderable_content.remote_session.active()
+            && current.launch_descriptor.program().is_some_and(|program| {
+                let executable = program.rsplit(['/', '\\']).next().unwrap_or(program);
+                [
+                    "cmd",
+                    "cmd.exe",
+                    "powershell",
+                    "powershell.exe",
+                    "pwsh",
+                    "pwsh.exe",
+                ]
+                .iter()
+                .any(|shell| executable.eq_ignore_ascii_case(shell))
+            })
+        {
+            let _ = current
+                .messenger
+                .channel
+                .send(crate::event::Msg::HostEnter(bytes.into()));
+            return;
+        }
+        #[cfg(not(windows))]
+        let _ = (key, mods);
+        current.messenger.send_write(bytes);
     }
 
     /// Encode one pressed key exactly as the current PTY would receive it.
@@ -6197,6 +6261,13 @@ impl Screen<'_> {
         clipboard: &mut Clipboard,
         source: ClipboardType,
     ) -> bool {
+        #[cfg(windows)]
+        if self.wsl_setup_dialog_active() {
+            return false;
+        }
+        if self.paste_preview.is_some() {
+            return false;
+        }
         if self.settings_view.is_open() {
             let content = clipboard.get(source);
             let changed = self.settings_view.paste(&content);
@@ -6208,13 +6279,45 @@ impl Screen<'_> {
         }
         // Capture identity before asking the OS provider. No caller may derive
         // the destination from focus after a delayed clipboard read.
-        let target = self.context_manager.current().paste_target();
+        let context = self.context_manager.current();
+        let target = context.paste_target();
+        let (destination, mode, shell) = {
+            use rio_backend::crosswords::grid::row::PromptInputShell;
+            let terminal = context.terminal.lock();
+            let mode = terminal.mode();
+            let native_cmd = mode.contains(Mode::WIN32_INPUT)
+                && context.launch_descriptor.is_native_command_prompt_active(
+                    terminal
+                        .user_vars
+                        .get("automexia_shell_name")
+                        .map(String::as_str),
+                );
+            let shell = if native_cmd {
+                PromptInputShell::Cmd
+            } else {
+                PromptInputShell::Posix
+            };
+            (terminal.paste_destination(), mode, shell)
+        };
         let content = clipboard.get(source);
         if self.search_active() {
             self.paste(&content, true);
-            !content.is_empty()
-        } else {
-            self.finish_paste(target, &content, true)
+            return !content.is_empty();
+        }
+        let Some(paste) = crate::event::PasteRequest::from_clipboard(content) else {
+            self.report_paste_rejected();
+            return false;
+        };
+        if paste.text().contains('\n') {
+            self.open_paste_preview(target, destination, paste, mode, shell);
+            return true;
+        }
+        match self.context_manager.deliver_paste_request(target, paste) {
+            Ok(sent) => sent,
+            Err(_) => {
+                self.report_paste_rejected();
+                false
+            }
         }
     }
 
@@ -6227,18 +6330,29 @@ impl Screen<'_> {
         match self.context_manager.deliver_paste(target, text, bracketed) {
             Ok(sent) => sent,
             Err(_) => {
-                self.renderer.assistant.set_error(RioError {
-                    level: RioErrorLevel::Warning,
-                    report: RioErrorType::PasteRejected,
-                });
-                self.context_manager.request_render();
+                self.report_paste_rejected();
                 false
             }
         }
     }
 
+    fn report_paste_rejected(&mut self) {
+        self.renderer.assistant.set_error(RioError {
+            level: RioErrorLevel::Warning,
+            report: RioErrorType::PasteRejected,
+        });
+        self.context_manager.request_render();
+    }
+
     #[inline]
     pub fn paste(&mut self, text: &str, bracketed: bool) {
+        #[cfg(windows)]
+        if self.wsl_setup_dialog_active() {
+            return;
+        }
+        if self.paste_preview.is_some() {
+            return;
+        }
         if self.settings_view.is_open() {
             self.settings_view.paste(text);
             self.mark_dirty();
@@ -6599,7 +6713,7 @@ impl Screen<'_> {
         {
             return true;
         }
-        if key.state != ElementState::Released {
+        if key.repeat {
             return false;
         }
         let Some(index) = self
@@ -6609,11 +6723,13 @@ impl Screen<'_> {
         else {
             return false;
         };
+        // A fresh press also retires an old entry whose release was missed
+        // while the window was unfocused. It still reaches the current owner.
         self.overlay_key_releases.swap_remove(index);
         #[cfg(windows)]
         self.consumed_win32_key_releases
             .take_release(&key.physical_key);
-        true
+        key.state == ElementState::Released
     }
 
     pub fn open_extension_marketplace(&mut self) {
@@ -6887,6 +7003,8 @@ impl Screen<'_> {
                     palette_total_results: palette_scroll_state.3,
                     palette_accessibility_summary: self.renderer.command_palette.accessibility_summary(),
                     confirm_quit_active: self.renderer.confirm_quit.is_active(),
+                    #[cfg(windows)]
+                    wsl_setup: self.wsl_setup_snapshot(),
                     recovery_active: self.renderer.confirm_quit.is_recovery(),
                     recovery_ready: self.renderer.confirm_quit.recovery_ready(),
                     settings: self.settings_view.native_test_snapshot(),
@@ -7107,6 +7225,9 @@ impl Screen<'_> {
             }
         }
 
+        self.render_paste_preview();
+        #[cfg(windows)]
+        self.render_wsl_setup_dialog();
         self.renderer.render_close_confirmation(&mut self.sugarloaf);
 
         // Phase 2.2/2.3: per-panel CellBg + CellText emission with
@@ -7150,7 +7271,9 @@ impl Screen<'_> {
                 inline_tables: crate::automexia::inline_tables::InlineTables,
                 output_classifications:
                     Vec<Option<crate::automexia::output_semantics::OutputClassification>>,
-                input_accents: Vec<Vec<bool>>,
+                output_accents: Vec<crate::grid_emit::OutputAccentRow>,
+                input_accents:
+                    Vec<Vec<Option<crate::renderer::command_input::CommandSpanKind>>>,
                 cursor_visible: bool,
                 /// Terminal-side cursor shape (block / underline /
                 /// beam / hidden). Driven by DECSCUSR + the
@@ -7366,6 +7489,9 @@ impl Screen<'_> {
                     output_classifications: std::mem::take(
                         &mut ctx.renderable_content.output_classifications,
                     ),
+                    output_accents: std::mem::take(
+                        &mut ctx.renderable_content.output_accents,
+                    ),
                     input_accents: std::mem::take(
                         &mut ctx.renderable_content.input_accents.rows,
                     ),
@@ -7410,6 +7536,7 @@ impl Screen<'_> {
             let rasterizer = &mut self.grid_rasterizer;
             let row_scratch = &mut self.row_render_scratch;
             let renderer_ref = &self.renderer;
+            let command_theme = std::cell::OnceCell::new();
             for (route_id, grid) in self.grids.iter_mut() {
                 let Some(p) = panels.iter_mut().find(|p| p.route_id == *route_id) else {
                     continue;
@@ -7534,6 +7661,11 @@ impl Screen<'_> {
                         } else {
                             None
                         };
+                        let input_accents = p.input_accents.get(source_y)
+                            .filter(|row| !row.is_empty())
+                            .map(|row| (row.as_slice(), command_theme.get_or_init(|| {
+                                crate::renderer::ui_theme::UiTheme::from_colors(&renderer_ref.named_colors)
+                            })));
                         crate::grid_emit::build_row_fg_classified(
                             row,
                             cols,
@@ -7554,7 +7686,8 @@ impl Screen<'_> {
                             cursor_col_for_row,
                             &mut row_scratch.foregrounds,
                             classification,
-                            p.input_accents.get(source_y).map_or(&[], Vec::as_slice),
+                            input_accents,
+                            crate::grid_emit::output_accents_at(&p.output_accents, source_y),
                         );
                         grid.write_row(
                             y as u32,
@@ -7817,6 +7950,7 @@ impl Screen<'_> {
                     item.val.renderable_content.visible_rows = p.visible_rows;
                     item.val.renderable_content.output_classifications =
                         p.output_classifications;
+                    item.val.renderable_content.output_accents = p.output_accents;
                     item.val.renderable_content.input_accents.rows = p.input_accents;
                     item.val.renderable_content.command_rows = p.command_rows;
                     item.val.renderable_content.inline_tables = p.inline_tables;

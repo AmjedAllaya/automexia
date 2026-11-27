@@ -34,6 +34,12 @@ use rio_backend::selection::SelectionRange;
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 
+use crate::automexia::output_semantics::{
+    operational_progress, OperationalPart, OperationalSpan, OutputClassification,
+    OutputDomain, MAX_OPERATIONAL_SPANS,
+};
+use crate::renderer::{command_input::CommandSpanKind, ui_theme::UiTheme};
+
 /// Snapshot's per-frame extras map. Keyed by the cell's `extras_id`,
 /// populated by `Crosswords::snapshot_visible` from a walk of visible
 /// cells. The renderer reads via `extras.get(&id)`.
@@ -335,17 +341,60 @@ fn cell_fg_hinted(tag: HintTag, renderer: &Renderer) -> [u8; 4] {
     }
 }
 
-/// Classify complete, proven soft-wrapped logical rows in the existing visible
-/// snapshot. No history lookbehind or guessing across CR/LF boundaries. A
-/// clipped prefix/suffix and an over-budget row remain neutral.
+#[cfg(test)]
 pub(crate) fn classify_visible_output(
     rows: &[Row<Square>],
     cols: usize,
     first_row_continues: bool,
-    output: &mut Vec<Option<crate::automexia::output_semantics::OutputClassification>>,
+    output: &mut Vec<Option<OutputClassification>>,
     scratch: &mut String,
 ) {
-    use crate::automexia::output_semantics::{OutputClassification, OutputDomain};
+    classify_visible_output_with_accents(
+        rows,
+        cols,
+        first_row_continues,
+        output,
+        &mut Vec::new(),
+        scratch,
+    );
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct OutputAccent {
+    pub start: usize,
+    pub end: usize,
+    pub role: OperationalPart,
+}
+
+pub(crate) type OutputAccentSpans = [Option<OutputAccent>; MAX_OPERATIONAL_SPANS];
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct OutputAccentRow {
+    pub(crate) row: usize,
+    spans: OutputAccentSpans,
+}
+
+pub(crate) fn output_accents_at(
+    accents: &[OutputAccentRow],
+    row: usize,
+) -> Option<&OutputAccentSpans> {
+    let index = accents
+        .binary_search_by_key(&row, |accent| accent.row)
+        .ok()?;
+    Some(&accents[index].spans)
+}
+
+/// Classify complete, proven soft-wrapped logical rows in the existing visible
+/// snapshot. No history lookbehind or guessing across CR/LF boundaries. A
+/// clipped prefix/suffix and an over-budget row remain neutral.
+pub(crate) fn classify_visible_output_with_accents(
+    rows: &[Row<Square>],
+    cols: usize,
+    first_row_continues: bool,
+    output: &mut Vec<Option<OutputClassification>>,
+    accents: &mut Vec<OutputAccentRow>,
+    scratch: &mut String,
+) {
     let uncertain = Some(OutputClassification {
         domain: OutputDomain::Uncertain,
         severity: None,
@@ -354,6 +403,7 @@ pub(crate) fn classify_visible_output(
     const MAX_CELLS: usize = 64 * 1024;
     output.clear();
     output.resize(rows.len().min(MAX_ROWS), None);
+    accents.clear();
     scratch.clear();
     let mut first = 0;
     let mut cells = 0usize;
@@ -386,8 +436,18 @@ pub(crate) fn classify_visible_output(
             let classification = if incomplete {
                 classifier.reset();
                 uncertain
+            } else if let Some(operational) = operational_progress(scratch) {
+                classifier.reset();
+                project_output_accents(
+                    &rows[first..=index],
+                    first,
+                    cols,
+                    &operational.spans,
+                    accents,
+                );
+                Some(operational.classification())
             } else {
-                classifier.classify(scratch)
+                classifier.classify_after_operational_check(scratch)
             };
             output[first..=index].fill(classification);
             first = index + 1;
@@ -402,24 +462,31 @@ pub(crate) fn classify_visible_output(
     scratch.clear();
 }
 
-fn append_semantic_row(row: &Row<Square>, cols: usize, scratch: &mut String) -> bool {
+fn semantic_cell_character(square: Square) -> Option<char> {
     use rio_backend::crosswords::square::{CellFlags, Wide};
-    for square in row.inner.iter().take(cols) {
-        if matches!(square.wide(), Wide::Spacer | Wide::LeadingSpacer)
-            || square.contains_cell_flag(CellFlags::REFLOW_PADDING)
-        {
-            continue;
-        }
-        // Erased/default blank cells still separate fields. Compact RGB cells
-        // have no character or extras despite reusing their packed bit slots.
-        let character = if square.is_bg_only() || matches!(square.c(), '\0' | '\t') {
-            ' '
-        } else {
-            square.c()
-        };
-        if character.is_control() {
-            continue;
-        }
+    if matches!(square.wide(), Wide::Spacer | Wide::LeadingSpacer)
+        || square.contains_cell_flag(CellFlags::REFLOW_PADDING)
+    {
+        return None;
+    }
+    // Erased/default blank cells still separate fields. Compact RGB cells
+    // have no character or extras despite reusing their packed bit slots.
+    let character = if square.is_bg_only() || matches!(square.c(), '\0' | '\t') {
+        ' '
+    } else {
+        square.c()
+    };
+    (!character.is_control()).then_some(character)
+}
+
+fn append_semantic_row(row: &Row<Square>, cols: usize, scratch: &mut String) -> bool {
+    for character in row
+        .inner
+        .iter()
+        .take(cols)
+        .copied()
+        .filter_map(semantic_cell_character)
+    {
         if scratch.len().saturating_add(character.len_utf8())
             > crate::automexia::output_semantics::MAX_ROW_BYTES
         {
@@ -428,6 +495,51 @@ fn append_semantic_row(row: &Row<Square>, cols: usize, scratch: &mut String) -> 
         scratch.push(character);
     }
     true
+}
+
+fn project_output_accents(
+    rows: &[Row<Square>],
+    first_row: usize,
+    cols: usize,
+    fields: &[Option<OperationalSpan>; MAX_OPERATIONAL_SPANS],
+    accents: &mut Vec<OutputAccentRow>,
+) {
+    // Fields are disjoint and sorted by byte offset in the logical row.
+    let mut fields = fields
+        .iter()
+        .enumerate()
+        .filter_map(|(index, field)| field.as_ref().map(|field| (index, field)))
+        .peekable();
+    let mut byte = 0;
+    for (row_offset, row) in rows.iter().enumerate() {
+        let mut spans: OutputAccentSpans = [None; MAX_OPERATIONAL_SPANS];
+        for (column, square) in row.inner.iter().copied().take(cols).enumerate() {
+            while fields.peek().is_some_and(|(_, field)| byte >= field.end) {
+                fields.next();
+            }
+            let Some(&(index, field)) = fields.peek() else {
+                break;
+            };
+            let Some(character) = semantic_cell_character(square) else {
+                continue;
+            };
+            if byte >= field.start {
+                let span = spans[index].get_or_insert(OutputAccent {
+                    start: column,
+                    end: column + 1,
+                    role: field.role,
+                });
+                span.end = column + 1;
+            }
+            byte += character.len_utf8();
+        }
+        // Fragments without a field still belong to the structured row.
+        // Their raw text keeps its ordinary foreground.
+        accents.push(OutputAccentRow {
+            row: first_row + row_offset,
+            spans,
+        });
+    }
 }
 
 #[cfg(test)]
@@ -549,21 +661,69 @@ fn semantic_or_cell_fg(
     cell_fg(sq, style, renderer, term_colors)
 }
 
-fn input_or_output_accent(
-    mask: &[bool],
+pub(crate) type InputColorRow<'a> = (&'a [Option<CommandSpanKind>], &'a UiTheme);
+
+fn output_accent_colors(
+    spans: Option<&OutputAccentSpans>,
+    classification: Option<OutputClassification>,
+    renderer: &Renderer,
+) -> [Option<(OutputAccent, [u8; 4])>; MAX_OPERATIONAL_SPANS] {
+    use crate::automexia::api::SemanticSeverity;
+    use crate::automexia::output_semantics::appearance_for;
+    use crate::automexia::presentation::output_foreground;
+    use rio_backend::config::presentation::HighlightStyle;
+
+    let (Some(spans), Some(classification)) = (spans, classification) else {
+        return [None; MAX_OPERATIONAL_SPANS];
+    };
+    let Some(appearance) = appearance_for(&renderer.presentation, classification) else {
+        return [None; MAX_OPERATIONAL_SPANS];
+    };
+    if appearance.style == HighlightStyle::Background {
+        return [None; MAX_OPERATIONAL_SPANS];
+    }
+    spans.map(|span| {
+        let span = span?;
+        let colors = &renderer.named_colors;
+        let color = match span.role {
+            OperationalPart::Phase => {
+                output_foreground(appearance, colors, classification.severity?)
+            }
+            OperationalPart::Subject => normalized_to_u8(colors.light_blue),
+            OperationalPart::Version => normalized_to_u8(colors.light_magenta),
+            OperationalPart::Detail => normalized_to_u8(std::array::from_fn(|channel| {
+                0.75 * colors.foreground[channel] + 0.25 * colors.light_cyan[channel]
+            })),
+            OperationalPart::Measurement => {
+                output_foreground(appearance, colors, SemanticSeverity::Debug)
+            }
+        };
+        Some((span, color))
+    })
+}
+
+#[inline]
+fn structured_output_fg(
+    accents: &[Option<(OutputAccent, [u8; 4])>; MAX_OPERATIONAL_SPANS],
     column: usize,
+    sq: Square,
     style: Style,
-    output: Option<[u8; 4]>,
 ) -> Option<[u8; 4]> {
-    if mask.get(column) == Some(&true)
+    if !has_plain_field_style(sq, style) {
+        return None;
+    }
+    accents.iter().flatten().find_map(|(span, color)| {
+        (span.start..span.end).contains(&column).then_some(*color)
+    })
+}
+
+fn has_plain_field_style(square: Square, style: Style) -> bool {
+    !square.has_hyperlink()
         && !style
             .flags
-            .intersects(StyleFlags::DIM | StyleFlags::INVERSE | StyleFlags::HIDDEN)
-    {
-        Some(crate::renderer::command_input::ACCENT)
-    } else {
-        output
-    }
+            .intersects(StyleFlags::DIM | StyleFlags::HIDDEN | StyleFlags::INVERSE)
+        && matches!(style.fg, AnsiColor::Named(NamedColor::Foreground))
+        && matches!(style.bg, AnsiColor::Named(NamedColor::Background))
 }
 
 use rio_backend::sugarloaf::font::FontLibrary;
@@ -1982,6 +2142,12 @@ pub fn build_row_fg(
         semantic_row_classification(row, cols, &mut rasterizer.semantic_text_scratch);
     let mut input = crate::renderer::command_input::InputAccents::default();
     input.refresh(&mut [row.clone()], cols, true);
+    let theme = UiTheme::from_colors(&renderer.named_colors);
+    let input_colors = input
+        .rows
+        .first()
+        .filter(|row| !row.is_empty())
+        .map(|row| (row.as_slice(), &theme));
     build_row_fg_classified(
         row,
         cols,
@@ -2002,12 +2168,13 @@ pub fn build_row_fg(
         cursor_col_for_row,
         fg_scratch,
         classification,
-        input.rows.first().map_or(&[], Vec::as_slice),
+        input_colors,
+        None,
     );
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn build_row_fg_classified(
+pub(crate) fn build_row_fg_classified(
     row: &Row<Square>,
     cols: usize,
     y: u16,
@@ -2032,8 +2199,9 @@ pub fn build_row_fg_classified(
     // the user is mid-typing.
     cursor_col_for_row: Option<u16>,
     fg_scratch: &mut Vec<CellText>,
-    classification: Option<crate::automexia::output_semantics::OutputClassification>,
-    input_accents: &[bool],
+    classification: Option<OutputClassification>,
+    input_accents: Option<InputColorRow<'_>>,
+    output_accents: Option<&OutputAccentSpans>,
 ) {
     fg_scratch.clear();
 
@@ -2050,9 +2218,41 @@ pub fn build_row_fg_classified(
     // the row has no selection / no color-changing hints.
     let has_sel = row_sel.is_some();
     let has_color_hints = row_hints.iter().any(|rh| rh.tag != HintTag::HyperlinkHover);
-    let semantic_fg = semantic_classification_fg(classification, renderer);
-    let needs_per_cell_check =
-        has_sel || has_color_hints || semantic_fg.is_some() || !input_accents.is_empty();
+    let semantic_fg = if output_accents.is_some() {
+        None
+    } else {
+        semantic_classification_fg(classification, renderer)
+    };
+    let output_colors = output_accent_colors(output_accents, classification, renderer);
+    let has_output_colors = output_colors.iter().any(Option::is_some);
+    let needs_per_cell_check = has_sel
+        || has_color_hints
+        || semantic_fg.is_some()
+        || input_accents.is_some()
+        || has_output_colors;
+    let foreground_for_cell = |square: Square, style: Style, column: usize| {
+        if !needs_per_cell_check {
+            return cell_fg(square, style, renderer, term_colors);
+        }
+        if cell_in_row_sel(row_sel, column as u16) {
+            return cell_fg_selected(square, style, renderer, term_colors);
+        }
+        if let Some(tag) = cell_in_row_hints(row_hints, column as u16) {
+            return cell_fg_hinted(tag, renderer);
+        }
+        let command_color = input_accents.and_then(|(spans, theme)| {
+            let role = spans.get(column).copied().flatten()?;
+            has_plain_field_style(square, style).then(|| role.ink(theme))
+        });
+        let accent = command_color.or_else(|| {
+            if has_output_colors {
+                structured_output_fg(&output_colors, column, square, style)
+            } else {
+                semantic_fg
+            }
+        });
+        semantic_or_cell_fg(accent, square, style, renderer, term_colors)
+    };
     // Consulted in the per-cell sprite hook and the run-extension break.
     let use_drawable_chars = renderer.use_drawable_chars();
 
@@ -2139,29 +2339,7 @@ pub fn build_row_fg_classified(
             // fg colour, mirroring the regular emit loop's
             // selection / hint precedence.
             let style = resolve_style(style_table, sq);
-            let color = if !needs_per_cell_check {
-                cell_fg(sq, style, renderer, term_colors)
-            } else {
-                let is_sel = cell_in_row_sel(row_sel, x as u16);
-                let hint_tag = if is_sel {
-                    None
-                } else {
-                    cell_in_row_hints(row_hints, x as u16)
-                };
-                if is_sel {
-                    cell_fg_selected(sq, style, renderer, term_colors)
-                } else if let Some(tag) = hint_tag {
-                    cell_fg_hinted(tag, renderer)
-                } else {
-                    semantic_or_cell_fg(
-                        input_or_output_accent(input_accents, x, style, semantic_fg),
-                        sq,
-                        style,
-                        renderer,
-                        term_colors,
-                    )
-                }
-            };
+            let color = foreground_for_cell(sq, style, x);
 
             // The render span comes from the registration's declared
             // `width` (a render hint), NOT the cell layout: a width=2
@@ -2231,34 +2409,7 @@ pub fn build_row_fg_classified(
                     // fg colour, mirroring the regular emit loop's
                     // selection / hint precedence.
                     let style = resolve_style(style_table, sq);
-                    let color = if !needs_per_cell_check {
-                        cell_fg(sq, style, renderer, term_colors)
-                    } else {
-                        let is_sel = cell_in_row_sel(row_sel, x as u16);
-                        let hint_tag = if is_sel {
-                            None
-                        } else {
-                            cell_in_row_hints(row_hints, x as u16)
-                        };
-                        if is_sel {
-                            cell_fg_selected(sq, style, renderer, term_colors)
-                        } else if let Some(tag) = hint_tag {
-                            cell_fg_hinted(tag, renderer)
-                        } else {
-                            semantic_or_cell_fg(
-                                input_or_output_accent(
-                                    input_accents,
-                                    x,
-                                    style,
-                                    semantic_fg,
-                                ),
-                                sq,
-                                style,
-                                renderer,
-                                term_colors,
-                            )
-                        }
-                    };
+                    let color = foreground_for_cell(sq, style, x);
                     fg_scratch.push(CellText {
                         glyph_pos: [slot.x as u32, slot.y as u32],
                         glyph_size: [slot.w as u32, slot.h as u32],
@@ -2585,47 +2736,11 @@ pub fn build_row_fg_classified(
                 // hint-fg swap — behaviour for
                 // bitmap/COLR atlas entries.
                 (CellText::ATLAS_COLOR, [255, 255, 255, 255])
-            } else if !needs_per_cell_check {
-                // Fast path — no selection / color-changing hints on
-                // this row.
+            } else {
                 (
                     CellText::ATLAS_GRAYSCALE,
-                    cell_fg(src_sq, src_style, renderer, term_colors),
+                    foreground_for_cell(src_sq, src_style, src_col),
                 )
-            } else {
-                let is_sel = cell_in_row_sel(row_sel, src_col as u16);
-                let hint_tag = if is_sel {
-                    None
-                } else {
-                    cell_in_row_hints(row_hints, src_col as u16)
-                };
-                if is_sel {
-                    (
-                        CellText::ATLAS_GRAYSCALE,
-                        cell_fg_selected(src_sq, src_style, renderer, term_colors),
-                    )
-                } else if let Some(tag) = hint_tag {
-                    // Hint-fg wins over the cell's own fg, matching
-                    // `.search` / `.search_selected` branches at
-                    // `generic.zig:2829-2833` (the fg picker mirrors bg).
-                    (CellText::ATLAS_GRAYSCALE, cell_fg_hinted(tag, renderer))
-                } else {
-                    (
-                        CellText::ATLAS_GRAYSCALE,
-                        semantic_or_cell_fg(
-                            input_or_output_accent(
-                                input_accents,
-                                src_col,
-                                src_style,
-                                semantic_fg,
-                            ),
-                            src_sq,
-                            src_style,
-                            renderer,
-                            term_colors,
-                        ),
-                    )
-                }
             };
 
             let bearings = if nerd_icon_size.is_some() {

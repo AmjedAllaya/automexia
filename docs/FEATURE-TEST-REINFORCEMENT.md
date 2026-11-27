@@ -170,6 +170,10 @@ bytes after each transition.
 
 ### pty-scheduler-process-lifecycle
 
+Windows process-control tests use `tests/support/process-fixture` to launch
+synthetic native children within the existing cleanup limits. The full Cargo
+runner still owns the cancellation, process-tree and exact handle assertions.
+
 Linux/macOS PTY descriptors are atomically close-on-exec; real unrelated child executions cannot inherit sibling PTYs. Native process paths preserve non-UTF-8 bytes and bounded C-string lifetimes; macOS Foundation locale getters survive autorelease pools without releasing borrowed objects.
 
 The pinned ConPTY package uses the existing DLL loader and PTY lifecycle owner.
@@ -695,10 +699,13 @@ Clipboard regressions must traverse the real terminal mode parser and capture
 one complete queue transaction, including bracket delimiters and exact Unicode
 bytes. Assert sibling silence after a focus change between target capture and
 delivery, and reject removed, replaced, closing and disconnected destinations.
-Cover empty/byte-limit text, ESC/ETX injection, raw input and newline semantics;
-rejection must preserve selection and scroll. Pointer tests must distinguish
-terminal cells from pane chrome and preserve copy-before-paste selection and
-per-button release ownership. Native clipboard/IME evidence remains separate.
+Cover empty/byte-limit text, terminal control filtering, raw input and newline
+semantics. Verify that a reviewed paste is rejected when the input mode or shell
+changes in the same PTY. The preview must consume its own keys and pointer
+gestures and show the prepared text. A context-level rejection preserves
+selection and scroll. Pointer tests must distinguish terminal cells from pane
+chrome and preserve copy-before-paste selection and per-button release ownership.
+Native clipboard, IME and preview presentation evidence remains separate.
 
 Reinforce independent windows, global and pane-local tabs, fresh/cloned splits,
 route and focus isolation, geometric navigation, pointer routing, divider
@@ -1012,6 +1019,9 @@ native process-exit evidence. A later diagnostic wait must not turn an initial
 failure into success. Require the Windows observer to attach before resume, pin
 bounded member handles before termination, and gate completion on both native
 signals and an empty job. Over-limit and unqueryable state must not report success.
+The full Cargo suite drives these Windows assertions with the test-only
+workloads in `tests/support/process-fixture`. The fixture launches real native
+children and preserves the two-second cleanup and exact handle checks.
 Use an isolated native fixture to assert exact handle recovery after each capture
 and measure checked capture latency. Do not move this work onto the GUI path.
 The WSL import-path canary must prove project Python modules
@@ -1077,6 +1087,32 @@ PowerShell assurance must capture real identity control bytes in a child process
 verify internally that user and path fields exist, and discard those bytes before
 they reach local or hosted logs. CMD identity fixtures must use stable fictional
 values rather than contributor account or executable-path data.
+
+### vscode-wsl-cli-profile
+
+Verify the stable profile contribution, default-shell delegation, and exact
+profile-local PATH options for trusted local Windows, macOS, Linux, and
+WSL-connected hosts. Reject malformed directories and unsupported remotes, and
+check cancellation before publishing a profile. The Node checks and PATH
+benchmark exercise the provider. The installed VSIX still needs native evidence
+for keyboard activation, shell startup, and PTY cleanup on terminal close.
+
+### vscode-docked-automexia-preview
+
+Check the typed bridge and companion protocol with malformed and oversized
+messages, invalid dimensions and colors, session and queue ceilings, and view
+visibility transitions. Measure styled-frame validation separately from shell
+and rendering throughput. Verify native input, resizing, search, split and tab
+isolation, and child cleanup on close or disposal. Native webview pixels, focus,
+high contrast, and accessibility events require installed editor evidence.
+Verify that a native PowerShell session stays open for typed input and reports
+the shell status and available final output at exit. Compare the default launch
+with a `-NoProfile` control when diagnosing a startup exit.
+Verify that the editor applies the shared information-bar presets, retries
+undelivered context, and bounds user-invoked desktop catalog requests.
+Reject incomplete or mismatched native runtimes when assembling the VSIX.
+Check first install, launch with bundled discovery, upgrade, and uninstall
+in a clean native guest without Automexia on PATH or in user settings.
 
 ### packaging-release-provenance
 

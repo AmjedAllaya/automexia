@@ -27,11 +27,12 @@ pub(super) fn style_row(
         ),
     )?;
     row.description =
-        "Customize Automexia's title-bar buttons; each style remembers its appearance."
+        "Change the size, spacing, and style of the minimize, maximize, and close buttons."
             .into();
     row.keywords = vec![
         "window controls buttons caption".into(),
         "minimize maximize restore close".into(),
+        "button size spacing gap".into(),
         "soft glass circles outline".into(),
     ];
     Ok(row)
@@ -101,7 +102,7 @@ pub(super) fn descriptors(
         "spacing",
         "Button spacing",
         WindowControlSpacing,
-        "Space between the visible buttons."
+        "Moves the visible buttons closer together or farther apart at the selected size."
     );
     choice!(
         icon_size,

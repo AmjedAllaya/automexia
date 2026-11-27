@@ -13,6 +13,12 @@ pub(crate) struct PasteTarget {
     rich_text_id: usize,
 }
 
+impl PasteTarget {
+    pub(crate) fn matches(&self, context: &Context<impl EventListener>) -> bool {
+        self.route_id == context.route_id && self.rich_text_id == context.rich_text_id
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum PasteError {
     StaleTarget,
@@ -37,7 +43,7 @@ impl<T: EventListener + Clone + Send + 'static> ContextManager<T> {
     ) -> Result<bool, PasteError> {
         let paste =
             PasteRequest::reviewed_action_insert(text).ok_or(PasteError::TooLarge)?;
-        self.deliver_paste_request(target, paste, None)
+        self.deliver_paste_request(target, paste)
     }
     pub(crate) fn deliver_workflow_command(
         &mut self,
@@ -47,7 +53,7 @@ impl<T: EventListener + Clone + Send + 'static> ContextManager<T> {
     ) -> Result<bool, PasteError> {
         let paste = PasteRequest::reviewed_workflow_command(text, receipt)
             .ok_or(PasteError::TooLarge)?;
-        self.deliver_paste_request(target, paste, Some(receipt))
+        self.send_paste(target, paste, Some(receipt))
     }
 
     pub(crate) fn deliver_paste(
@@ -57,10 +63,18 @@ impl<T: EventListener + Clone + Send + 'static> ContextManager<T> {
         bracketed: bool,
     ) -> Result<bool, PasteError> {
         let paste = PasteRequest::new(text, bracketed).ok_or(PasteError::TooLarge)?;
-        self.deliver_paste_request(target, paste, None)
+        self.deliver_paste_request(target, paste)
     }
 
-    fn deliver_paste_request(
+    pub(crate) fn deliver_paste_request(
+        &mut self,
+        target: PasteTarget,
+        paste: PasteRequest,
+    ) -> Result<bool, PasteError> {
+        self.send_paste(target, paste, None)
+    }
+
+    fn send_paste(
         &mut self,
         target: PasteTarget,
         paste: PasteRequest,
@@ -68,7 +82,7 @@ impl<T: EventListener + Clone + Send + 'static> ContextManager<T> {
     ) -> Result<bool, PasteError> {
         let context = self
             .get_by_route_id(target.route_id)
-            .filter(|context| context.rich_text_id == target.rich_text_id)
+            .filter(|context| target.matches(context))
             .ok_or(PasteError::StaleTarget)?;
         if context.shutdown_requested.load(Ordering::Acquire) {
             return Err(PasteError::Closed);
@@ -77,7 +91,9 @@ impl<T: EventListener + Clone + Send + 'static> ContextManager<T> {
             return Ok(false);
         }
         let mut terminal = context.terminal.lock();
-        if receipt.is_some_and(|receipt| terminal.workflow_prompt() != Some(receipt)) {
+        if !paste.is_for_terminal(&terminal)
+            || receipt.is_some_and(|receipt| terminal.workflow_prompt() != Some(receipt))
+        {
             return Err(PasteError::StaleTarget);
         }
         // One queue message prevents resize/keyboard producers from entering
@@ -135,6 +151,20 @@ mod tests {
             )
             .is_none());
         }
+
+        let exact_limit = "x".repeat(PasteRequest::MAX_BYTES - 3) + "界";
+        assert_eq!(
+            PasteRequest::from_clipboard(exact_limit.clone())
+                .unwrap()
+                .text(),
+            exact_limit
+        );
+        // Apply the limit before removing control bytes.
+        assert!(PasteRequest::from_clipboard(exact_limit + "\x04").is_none());
+        assert!(PasteRequest::from_clipboard("\x03\x04".into())
+            .unwrap()
+            .text()
+            .is_empty());
     }
 
     #[test]
@@ -212,6 +242,52 @@ mod tests {
             manager.current().renderable_content.command_rows,
             projection
         );
+    }
+
+    #[test]
+    fn clipboard_paste_delivers_the_reviewed_payload_without_extra_input() {
+        let mut manager =
+            ContextManager::start_with_capacity(1, VoidListener {}, WindowId::from(0))
+                .unwrap();
+        let (sender, receiver) = corcovado::channel::channel();
+        manager.current_mut().messenger = Messenger::new(sender);
+        let target = manager.current().paste_target();
+        let mut paste =
+            PasteRequest::from_clipboard("echo 界\r\necho e\u{301}\x04".into()).unwrap();
+        paste.guard_clipboard_review(
+            manager.current().terminal.lock().paste_destination(),
+        );
+        assert_eq!(paste.text(), "echo 界\necho e\u{301}");
+
+        assert_eq!(manager.deliver_paste_request(target, paste), Ok(true));
+        let Msg::Paste(paste) = receiver.try_recv().unwrap() else {
+            panic!("expected one PTY paste");
+        };
+        assert_eq!(paste.text(), "echo 界\necho e\u{301}");
+        assert!(paste.is_bracketed_request());
+        assert!(receiver.try_recv().is_err());
+    }
+
+    #[test]
+    fn clipboard_review_does_not_queue_after_input_changes_during_review() {
+        let mut manager =
+            ContextManager::start_with_capacity(1, VoidListener {}, WindowId::from(0))
+                .unwrap();
+        let (sender, receiver) = corcovado::channel::channel();
+        manager.current_mut().messenger = Messenger::new(sender);
+        let target = manager.current().paste_target();
+        let mut paste =
+            PasteRequest::from_clipboard("echo one\necho two".into()).unwrap();
+        paste.guard_clipboard_review(
+            manager.current().terminal.lock().paste_destination(),
+        );
+        manager.current().terminal.lock().note_interactive_input();
+
+        assert_eq!(
+            manager.deliver_paste_request(target, paste),
+            Err(PasteError::StaleTarget)
+        );
+        assert!(receiver.try_recv().is_err());
     }
 
     #[test]

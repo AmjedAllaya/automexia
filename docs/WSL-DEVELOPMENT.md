@@ -88,6 +88,14 @@ Do not use the override for routine work, CI, benchmarks, fuzzing, or release
 evidence. It only acknowledges the known performance penalty; it cannot remove
 it.
 
+## Use the Automexia CLI in VS Code
+
+The [Automexia Terminal extension](../apps/automexia-vscode/README.md)
+adds an **Automexia** profile to the Terminal dropdown in a WSL-connected VS
+Code window. It uses the window's default terminal profile to run your shell
+in the panel. Use the distribution's `amx` and `automexia` binaries in that
+session.
+
 ## Windows-triggered fuzzing
 
 `cargo xtask test image-decoder-fuzz --seconds N` remains a supported Windows

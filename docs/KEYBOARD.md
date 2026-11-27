@@ -87,8 +87,13 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 
 Automexia's Windows `Ctrl+V` is a host shortcut, so the clipboard reaches the selected
 pane through the same bracketed-paste and control-filtering path for every child
-session without synthesizing an extra Enter. To let a terminal application receive the
-original control character instead, add:
+session without synthesizing an extra Enter. Multiline clipboard text opens a
+review in the current terminal window. Use the arrow keys or the mouse wheel to
+scroll, Tab to switch between Paste and Cancel, Enter to choose, or Escape to
+cancel. A shell without bracketed-paste support can run lines when you choose Paste.
+
+Configure `ReceiveChar` to send the original control character to the terminal
+application.
 
 ```toml
 [bindings]
@@ -350,8 +355,8 @@ limited to 4 KiB of UTF-8 and never reaches the PTY.
 - Right-click copies and clears an existing selection. With no selection it
   pastes through the normal bracketed-paste and control filtering path.
 - Middle-click pastes the primary selection on platforms that provide it.
-- Left-click never pastes; it owns focus, selection, links, local image
-  preview, and pane activation.
+- Left-click in the terminal grid handles focus, selection, links, local image
+  previews, and pane activation.
 - Mouse-reporting applications keep mouse ownership. Hold `Shift` for the
   established host-UI override where supported.
 

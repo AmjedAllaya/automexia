@@ -10,6 +10,63 @@ use automexia_ui_model::{layout_segments, project_status};
 use criterion::{criterion_group, criterion_main, Criterion};
 
 fn services(c: &mut Criterion) {
+    #[cfg(windows)]
+    c.bench_function("wsl_setup_prerequisites", |b| {
+        use automexia_terminal::automexia::wsl::setup::SetupReport;
+
+        let response =
+            b"amx-wsl-setup-v2\nUbuntu-24.04\nbash\nmissing\nmissing\napt\n1000\n";
+        b.iter(|| {
+            let report = SetupReport::from_probe(black_box(response)).unwrap();
+            black_box(report.summary());
+        });
+    });
+
+    #[cfg(windows)]
+    {
+        use automexia_terminal::automexia::wsl::setup::SetupOffer;
+
+        let mut group = c.benchmark_group("wsl_setup_automatic_offer");
+        let target = "Fixture";
+        for (case, response, shown) in [
+            (
+                "missing",
+                b"amx-wsl-setup-v2\nFixture\nbash\nmissing\nmissing\napt\n1000\n"
+                    .as_slice(),
+                true,
+            ),
+            (
+                "eza_present_bash_missing",
+                b"amx-wsl-setup-v2\nFixture\nbash\nmissing\npresent\napt\n1000\n",
+                true,
+            ),
+            (
+                "healthy",
+                b"amx-wsl-setup-v2\nFixture\nbash\nmanaged\npresent\napt\n1000\n",
+                false,
+            ),
+        ] {
+            assert_eq!(
+                SetupOffer::from_probe(response, target).unwrap().is_some(),
+                shown
+            );
+            group.bench_function(case, |b| {
+                b.iter(|| {
+                    let offer =
+                        SetupOffer::from_probe(black_box(response), target).unwrap();
+                    black_box(offer.map(|offer| {
+                        (
+                            offer.summary(),
+                            offer.install_arguments(),
+                            offer.bash_install(),
+                        )
+                    }));
+                });
+            });
+        }
+        group.finish();
+    }
+
     let session = SessionFacts {
         session_id: usize::MAX - 17,
         cwd: None,
@@ -103,6 +160,8 @@ fn services(c: &mut Criterion) {
 }
 
 fn semantic_statuses(c: &mut Criterion) {
+    use automexia_terminal::automexia::output_semantics::operational_progress;
+
     let facts = SessionFacts {
         session_id: 17,
         cwd: None,
@@ -152,6 +211,29 @@ fn semantic_statuses(c: &mut Criterion) {
                     ),
                 )
             })
+        });
+    }
+    for (name, row, field_count) in [
+        (
+            "apt_download",
+            "Get:1 https://repo.invalid stable/main amd64 demo amd64 1.2.3 [241 kB]",
+            5,
+        ),
+        (
+            "dpkg_upgrade",
+            "Unpacking demo:amd64 (5:29.10.1-1~stable+1) over (5:29.10.0-1~stable) ...",
+            4,
+        ),
+        (
+            "tzdata_clock",
+            "Universal Time is now: Mon Jan 5 08:00:00 UTC 2026.",
+            2,
+        ),
+    ] {
+        let result = operational_progress(row).expect("recognized package output");
+        assert_eq!(result.spans.iter().flatten().count(), field_count);
+        group.bench_function(name, |b| {
+            b.iter(|| black_box(operational_progress(black_box(row))))
         });
     }
     group.finish();

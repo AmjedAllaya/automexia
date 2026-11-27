@@ -1,4 +1,7 @@
 //! Windows WSL inventory adapter. Call only from a cancellable background worker.
+
+#[cfg(windows)]
+pub mod setup;
 #[cfg(windows)]
 #[derive(Default)]
 struct InventoryOwner {
@@ -41,11 +44,8 @@ pub fn validate_distribution(
     distro: &str,
     cancelled: &std::sync::atomic::AtomicBool,
 ) -> Result<(), &'static str> {
-    use super::cli_process::{capture, Limits};
-    use std::{
-        os::windows::process::CommandExt, process::Command, sync::atomic::Ordering,
-        time::Duration,
-    };
+    use super::cli_process::{capture_background, Limits};
+    use std::{process::Command, sync::atomic::Ordering, time::Duration};
     // One app-wide process slot also bounds retained cleanup failures. Try-lock
     // fails promptly under contention; input/render never calls this adapter.
     static OWNER: std::sync::Mutex<InventoryOwner> =
@@ -58,12 +58,10 @@ pub fn validate_distribution(
     }
     owner.admit()?;
     let mut command = Command::new(program);
-    command
-        .args(["--list", "--quiet"])
-        .creation_flags(0x0800_0000);
+    command.args(["--list", "--quiet"]);
     // The existing process owner bounds both pipes, cancellation and cleanup.
     // This query never terminates a distro or another terminal's processes.
-    let output = owner.finish(capture(
+    let output = owner.finish(capture_background(
         command,
         Limits {
             timeout: Duration::from_secs(3),
@@ -85,11 +83,20 @@ pub fn validate_distribution(
 }
 
 fn inventory_contains(bytes: &[u8], distro: &str) -> Result<bool, &'static str> {
+    let decoded = decode_inventory(bytes)?;
+    Ok(decoded
+        .trim_start_matches('\u{feff}')
+        .lines()
+        .map(|line| line.trim().trim_start_matches('*').trim())
+        .any(|installed| installed.eq_ignore_ascii_case(distro)))
+}
+
+fn decode_inventory(bytes: &[u8]) -> Result<String, &'static str> {
     let invalid = "WSL returned an invalid distribution list.";
     if bytes.len() > 65536 {
         return Err(invalid);
     }
-    let decoded = if bytes.contains(&0) || bytes.starts_with(&[0xff, 0xfe]) {
+    if bytes.contains(&0) || bytes.starts_with(&[0xff, 0xfe]) {
         if !bytes.len().is_multiple_of(2) {
             return Err(invalid);
         }
@@ -97,15 +104,12 @@ fn inventory_contains(bytes: &[u8], distro: &str) -> Result<bool, &'static str> 
             .chunks_exact(2)
             .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
             .collect();
-        String::from_utf16(&words).map_err(|_| invalid)?
+        String::from_utf16(&words).map_err(|_| invalid)
     } else {
-        std::str::from_utf8(bytes).map_err(|_| invalid)?.to_owned()
-    };
-    Ok(decoded
-        .trim_start_matches('\u{feff}')
-        .lines()
-        .map(|line| line.trim().trim_start_matches('*').trim())
-        .any(|installed| installed.eq_ignore_ascii_case(distro)))
+        std::str::from_utf8(bytes)
+            .map(str::to_owned)
+            .map_err(|_| invalid)
+    }
 }
 
 #[cfg(test)]

@@ -767,7 +767,7 @@ fn filename_matches(executable: OpenSshExecutable, path: &Path) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn windows_system_directory() -> Option<PathBuf> {
+pub(crate) fn windows_system_directory() -> Option<PathBuf> {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
     use windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW;

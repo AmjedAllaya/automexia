@@ -926,7 +926,7 @@ pub(crate) fn customization_groups(catalog: &Catalog) -> Vec<CustomizationGroup>
         ),
         (
             "Window controls",
-            "Choose a button style and customize its appearance.",
+            "Change the size, spacing, and style of the title-bar buttons.",
             WINDOW_CONTROLS,
             [
                 "minimize maximize restore close",

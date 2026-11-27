@@ -1,11 +1,17 @@
 use automexia_extension_api::SemanticSeverity;
 
 mod kubernetes_tables;
+mod operational;
 mod workloads;
 pub use kubernetes_tables::RowClassifier;
+#[doc(hidden)]
+pub use operational::operational_progress;
 
 /// Shared byte ceiling for library classification and desktop snapshot capture.
 pub const MAX_ROW_BYTES: usize = 32 * 1024;
+
+#[doc(hidden)]
+pub const MAX_OPERATIONAL_SPANS: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OutputDomain {
@@ -22,6 +28,41 @@ pub enum OutputDomain {
 pub struct OutputClassification {
     pub domain: OutputDomain,
     pub severity: Option<SemanticSeverity>,
+}
+
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OperationalPart {
+    Phase,
+    Subject,
+    Measurement,
+    Version,
+    Detail,
+}
+
+/// Half-open byte range in the original logical row.
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OperationalSpan {
+    pub start: usize,
+    pub end: usize,
+    pub role: OperationalPart,
+}
+
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OperationalRow {
+    pub severity: SemanticSeverity,
+    pub spans: [Option<OperationalSpan>; MAX_OPERATIONAL_SPANS],
+}
+
+impl OperationalRow {
+    pub fn classification(&self) -> OutputClassification {
+        OutputClassification {
+            domain: OutputDomain::General,
+            severity: Some(self.severity),
+        }
+    }
 }
 
 /// Kubernetes and incomplete provenance always own their rows. General log
@@ -53,6 +94,12 @@ pub fn appearance_for(
 }
 
 pub fn classify_row(text: &str) -> Option<OutputClassification> {
+    operational_progress(text)
+        .map(|row| row.classification())
+        .or_else(|| classify_row_without_operational(text))
+}
+
+fn classify_row_without_operational(text: &str) -> Option<OutputClassification> {
     if text.len() > MAX_ROW_BYTES {
         return None;
     }

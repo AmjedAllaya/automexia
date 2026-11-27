@@ -25,6 +25,12 @@ Linux binary repository is no longer a publication destination.
 | Release packaging target (not proof of publication) | Signed MSI and ZIP | DEB, RPM, tar.gz | Signed/notarized universal app in DMG |
 | Native deep evidence | ConPTY/resize/clone/image/AppVerifier/WPR controlled gates | controlled X11/Wayland GPU/PTY and package containers | controlled Metal/GPU/PTY, VoiceOver, Gatekeeper/notarization |
 
+Multiline clipboard review uses the terminal input mode reported by the
+receiving application. **Bash batch** prepares one line for a Bash prompt even
+when its editor lacks bracketed paste. Windows WSL, Unix Bash execution, and
+the native clipboard and window backends have separate verification paths.
+[Paste verification](TESTING.md#windows-tabs-panes-and-input)
+
 Ordinary pull requests run the locked all-feature Rust quality gate on the
 GitHub-Free Ubuntu runner. Windows and macOS native, package, graphics, shell,
 and accessibility evidence is collected by controlled release and assurance

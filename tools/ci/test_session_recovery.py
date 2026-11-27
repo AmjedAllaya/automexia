@@ -65,7 +65,7 @@ try {
 $ErrorActionPreference = 'Stop'
 # Get-Location can carry a provider-qualified UNC path under WSL. The .NET
 # parser requires a filesystem path, not PowerShell's provider syntax.
-$source = (Get-Item -LiteralPath 'tests/integration/session-recovery-windows.ps1').FullName
+$source = (Get-Item -LiteralPath 'tests/integration/session-recovery-native-windows.ps1').FullName
 $parseErrors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile(
     $source, [ref]$null, [ref]$parseErrors)

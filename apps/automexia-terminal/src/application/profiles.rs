@@ -12,6 +12,7 @@ pub(super) struct PendingProfile {
     generation: u64,
     launch: Option<(NamedProfile, bool)>,
 }
+
 impl Application<'_> {
     pub(super) fn open_profiles(&mut self, window: WindowId) {
         self.open_settings(window, false);
@@ -45,6 +46,15 @@ impl Application<'_> {
         };
         let operation = match intent {
             ProfileIntent::Load => ProfileOperation::Load,
+            #[cfg(windows)]
+            ProfileIntent::WslSetup(distro) => {
+                if let Some(route) = self.router.routes.get_mut(&window) {
+                    route.window.screen.close_settings_view();
+                    route.request_overlay_redraw();
+                }
+                self.start_wsl_setup(window, target.route, distro, None, true);
+                return;
+            }
             ProfileIntent::Launch(profile, new_window) => {
                 // Snapshot shell metadata only; no filesystem/process discovery on the UI thread.
                 let cwd = route
@@ -199,6 +209,22 @@ impl Application<'_> {
                         .apply_profile_presentation(&profile, &config);
                     route.window.screen.close_settings_view();
                     route.request_redraw();
+                    #[cfg(windows)]
+                    {
+                        let active = route.window.screen.ctx().current();
+                        if let Some(distribution) = super::wsl_setup::profile_distribution(
+                            &active.launch_descriptor,
+                        ) {
+                            let route_id = active.route_id;
+                            self.start_wsl_setup(
+                                target.window,
+                                route_id,
+                                distribution,
+                                None,
+                                false,
+                            );
+                        }
+                    }
                 } else {
                     route.window.screen.settings_view.profile_notice("Could not open this profile. Check the executable and available tab capacity.",false);
                     route.request_overlay_redraw();

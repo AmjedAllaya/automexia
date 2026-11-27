@@ -17,11 +17,30 @@ before changing scroll or selection, with a fixed, content-free warning.
 This bounds application conversion and individual queue messages, not OS-owned
 clipboard allocation or aggregate input queue growth.
 
+The clipboard path converts CRLF and lone CR to LF before review and removes
+terminal control characters except Tab and LF. Multiline clipboard text opens a
+preview for the captured pane. The preview owns its input and keeps the prepared
+transaction until the user accepts or cancels it. Acceptance queues the same
+text used by the preview. The context and PTY worker both check the observed
+input destination. A recorded shell, prompt or input-mode change cancels the
+transaction even when the same pane and PTY remain open.
+
+An explicit **Bash batch** choice on the normal screen opens a second review
+of the exact generated text for an empty Bash prompt. The application quotes
+the normalized text into one printable ASCII line. The line contains no
+control input, including on terminals without bracketed paste. When the user
+submits it, Bash supplies a process-substitution path to the child Bash and
+the interactive shell reports a child failure. The child owns fail-fast
+behavior and terminal stdin remains available. Selecting the batch option
+queues nothing. Confirming the second review uses the same guarded paste
+transaction and size limit as ordinary paste.
+
 [XTerm's control-sequence specification](https://www.invisible-island.net/xterm/ctlseqs/ctlseqs.html)
-defines bracketed paste framing. Existing ESC/ETX filtering is retained inside
-the frame. Unbracketed clipboard paste retains CRLF/LF normalization; literal
-input remains byte-identical. No Enter is appended. Embedded newlines can still
-execute commands in a shell without bracketed-paste support.
+defines bracketed paste framing. The PTY worker reads the live mode before
+encoding the transaction. Unbracketed paste encodes line breaks as CR. Embedded
+newlines can execute commands when the receiving application lacks bracketed
+paste support. Paste never appends an extra Enter, and literal key input keeps
+its own byte contract.
 
 Secondary pointer gestures select the hit-tested terminal pane before resolving
 selection and clipboard actions. Target selection survives this focus change

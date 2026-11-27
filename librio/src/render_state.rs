@@ -242,6 +242,14 @@ impl RenderState {
         &self.styles
     }
 
+    pub fn combining_chars(&self, square: &Square) -> &[char] {
+        square
+            .extras_id()
+            .and_then(|id| self.extras.get(&id))
+            .map(|extras| extras.zerowidth.as_slice())
+            .unwrap_or(&[])
+    }
+
     pub fn cursor(&self) -> (usize, usize) {
         (self.cursor_line, self.cursor_column)
     }
@@ -320,11 +328,7 @@ impl RenderState {
                 }
 
                 let style = self.style_of(square);
-                let combining: &[char] = square
-                    .extras_id()
-                    .and_then(|eid| self.extras.get(&eid))
-                    .map(|extras| extras.zerowidth.as_slice())
-                    .unwrap_or(&[]);
+                let combining = self.combining_chars(square);
                 let mut cell = IncompletePlacement::from_cell(
                     style.fg,
                     style.underline_color,

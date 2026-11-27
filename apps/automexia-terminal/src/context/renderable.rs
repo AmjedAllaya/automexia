@@ -93,6 +93,8 @@ pub struct RenderableContent {
         Vec<Option<crate::automexia::output_semantics::OutputClassification>>,
     pub output_classification_pending:
         Vec<Option<crate::automexia::output_semantics::OutputClassification>>,
+    pub(crate) output_accents: Vec<crate::grid_emit::OutputAccentRow>,
+    pub(crate) output_accents_pending: Vec<crate::grid_emit::OutputAccentRow>,
     pub output_classification_scratch: String,
     pub output_colors_eligible: bool,
     /// Source styles/semantic rows protected from optional command backgrounds.
@@ -223,6 +225,8 @@ impl RenderableContent {
             visible_rows: Vec::new(),
             output_classifications: Vec::new(),
             output_classification_pending: Vec::new(),
+            output_accents: Vec::new(),
+            output_accents_pending: Vec::new(),
             output_classification_scratch: String::new(),
             output_colors_eligible: false,
             output_background_protected: Vec::new(),

@@ -11,6 +11,8 @@ pub(crate) enum ProfileIntent {
     Load,
     Io(ProfileOperation),
     Launch(NamedProfile, bool),
+    #[cfg(windows)]
+    WslSetup(Option<String>),
 }
 #[derive(Clone, Copy)]
 pub(super) enum ProfileConfirmation {
@@ -64,6 +66,31 @@ pub(crate) fn settings_entry() -> Result<SettingDescriptor, SettingsError> {
 fn action(id: &str, label: &str, help: &str) -> Result<SettingDescriptor, SettingsError> {
     row(id, label, help, SettingKind::Action, SettingValue::Action)
 }
+
+#[cfg(windows)]
+fn wsl_setup_intent(profile: &NamedProfile) -> Option<ProfileIntent> {
+    if !profile.platform.supports(ProfilePlatform::Windows) {
+        return None;
+    }
+    let launch = crate::context::launch::SessionLaunchDescriptor::new(
+        profile.program.clone(),
+        profile.args.clone(),
+        Vec::new(),
+        None,
+        None,
+    );
+    if !launch.is_wsl() {
+        return None;
+    }
+    match launch.wsl_distro() {
+        Some(name) if !name.trim().is_empty() && !name.starts_with('-') => {
+            Some(ProfileIntent::WslSetup(Some(name.to_owned())))
+        }
+        None if profile.args.is_empty() => Some(ProfileIntent::WslSetup(None)),
+        _ => None,
+    }
+}
+
 fn text_row(
     id: &str,
     label: &str,
@@ -262,6 +289,14 @@ impl ProfilesView {
                 "Open in new window",
                 "A separate window uses this profile's complete theme.",
             )?);
+            #[cfg(windows)]
+            if wsl_setup_intent(p).is_some() {
+                rows.push(action(
+                    "wsl-setup",
+                    "Check WSL setup",
+                    "Check shell hooks and listing tools for the distro's default user. If eza is missing, you can choose to install it.",
+                )?);
+            }
             rows.push(action(
                 "edit",
                 "Edit profile",
@@ -560,6 +595,8 @@ impl SettingsView {
                         Some(ProfileIntent::Launch(profile, id == "launch-window"));
                 }
             }
+            #[cfg(windows)]
+            "wsl-setup" => p.pending = p.selected.as_ref().and_then(wsl_setup_intent),
             "export" => {
                 if let Some(profile) = p.selected.clone() {
                     p.pending = Some(ProfileIntent::Io(ProfileOperation::Export {
@@ -907,6 +944,34 @@ mod tests {
         ));
         v.profile_back();
         assert!(v.take_profile_intent().is_none());
+    }
+    #[cfg(windows)]
+    #[test]
+    fn wsl_setup_is_explicit_and_keeps_the_selected_distribution() {
+        let mut v = view();
+        let mut wsl = NamedProfile::new("wsl".into(), "WSL".into());
+        wsl.program = Some(r"C:\Windows\System32\wsl.exe".into());
+        for (args, expected) in [
+            (&[][..], None),
+            (&["--distribution", "Fixture"][..], Some("Fixture")),
+            (&["-d", "Another"][..], Some("Another")),
+        ] {
+            wsl.args = args.iter().map(|arg| (*arg).into()).collect();
+            v.profiles.as_mut().unwrap().selected = Some(wsl.clone());
+            assert!(v.take_profile_intent().is_none());
+            v.profile_action("wsl-setup");
+            let Some(ProfileIntent::WslSetup(actual)) = v.take_profile_intent() else {
+                panic!("the explicit WSL setup action should target this profile");
+            };
+            assert_eq!(actual.as_deref(), expected);
+        }
+        wsl.args = vec!["--distribution".into()];
+        assert!(wsl_setup_intent(&wsl).is_none());
+        wsl.args = vec!["--exec".into(), "tool".into(), "-d".into(), "guest".into()];
+        assert!(wsl_setup_intent(&wsl).is_none());
+        wsl.program = Some("powershell.exe".into());
+        wsl.args.clear();
+        assert!(wsl_setup_intent(&wsl).is_none());
     }
     #[test]
     fn backing_out_of_launch_preparation_invalidates_the_request() {

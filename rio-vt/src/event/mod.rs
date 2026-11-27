@@ -133,6 +133,10 @@ pub enum Msg {
     /// Data that should be written to the PTY.
     Input(Cow<'static, [u8]>),
 
+    /// Physical Enter on a Windows host shell, eligible for an advisory WSL check.
+    #[cfg(windows)]
+    HostEnter(Cow<'static, [u8]>),
+
     /// Paste text whose terminal-mode-dependent encoding belongs to this PTY worker.
     Paste(PasteRequest),
 
@@ -154,18 +158,72 @@ pub struct PasteRequest {
     pub(crate) reviewed_command: bool,
     pub(crate) reviewed_submission:
         Option<crate::crosswords::command_actions::WorkflowPrompt>,
+    pub(crate) review_destination: Option<crate::crosswords::PasteDestination>,
 }
 
 impl PasteRequest {
     pub const MAX_BYTES: usize = 1024 * 1024;
 
     pub fn new(text: &str, bracketed: bool) -> Option<Self> {
-        (text.len() <= Self::MAX_BYTES).then(|| Self {
-            text: text.to_owned(),
+        (text.len() <= Self::MAX_BYTES)
+            .then(|| Self::from_text(text.to_owned(), bracketed))
+    }
+
+    /// Share normalized line endings and filtered text between clipboard
+    /// review and PTY delivery. Tabs and line breaks remain available to paste.
+    pub fn from_clipboard(text: String) -> Option<Self> {
+        if text.len() > Self::MAX_BYTES {
+            return None;
+        }
+        // Retain the clipboard allocation when the text is already canonical.
+        if !text
+            .chars()
+            .any(|ch| ch.is_control() && !matches!(ch, '\n' | '\t'))
+        {
+            return Some(Self::from_text(text, true));
+        }
+
+        let mut normalized = String::with_capacity(text.len());
+        let mut chars = text.chars().peekable();
+        while let Some(ch) = chars.next() {
+            match ch {
+                '\r' => {
+                    let _ = chars.next_if_eq(&'\n');
+                    normalized.push('\n');
+                }
+                '\n' | '\t' => normalized.push(ch),
+                ch if !ch.is_control() => normalized.push(ch),
+                _ => {}
+            }
+        }
+        Some(Self::from_text(normalized, true))
+    }
+
+    fn from_text(text: String, bracketed: bool) -> Self {
+        Self {
+            text,
             bracketed,
             reviewed_command: false,
             reviewed_submission: None,
-        })
+            review_destination: None,
+        }
+    }
+
+    /// Record the input surface shown in a clipboard review. No text or
+    /// shell-provided identifiers are retained by this guard.
+    pub fn guard_clipboard_review(
+        &mut self,
+        destination: crate::crosswords::PasteDestination,
+    ) {
+        self.review_destination = Some(destination);
+    }
+
+    pub fn is_for_terminal(
+        &self,
+        terminal: &crate::crosswords::Crosswords<impl EventListener>,
+    ) -> bool {
+        self.review_destination
+            .is_none_or(|expected| expected == terminal.paste_destination())
     }
 
     /// Reviewed one-line command insertion, without Enter. Unlike clipboard
@@ -178,6 +236,7 @@ impl PasteRequest {
             bracketed: true,
             reviewed_command: true,
             reviewed_submission: None,
+            review_destination: None,
         })
     }
 
@@ -196,6 +255,7 @@ impl PasteRequest {
             bracketed: true,
             reviewed_command: true,
             reviewed_submission: Some(prompt),
+            review_destination: None,
         })
     }
 
@@ -245,6 +305,16 @@ pub enum TerminalDamage {
 pub enum FontSizeRequest {
     Set(f32),
     Reset,
+}
+
+/// Explicit selection made in the Windows WSL setup dialog.
+#[cfg(windows)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WslSetupChoice {
+    #[default]
+    Dismiss,
+    InstallBash,
+    InstallEza,
 }
 
 #[derive(Clone)]
@@ -298,6 +368,18 @@ pub enum RioEvent {
     OpenThemeGallery,
     RestorePreviousSession,
     OpenProfiles,
+    /// A host Enter submitted the visible bare WSL command on this route.
+    /// Contains no terminal data and grants no installation authority.
+    #[cfg(windows)]
+    WslSetupHint {
+        route: usize,
+        receipt: crate::crosswords::command_actions::WslSetupReceipt,
+    },
+    #[cfg(windows)]
+    WslSetupResponse {
+        route: usize,
+        choice: WslSetupChoice,
+    },
     ExtensionInventoryChanged,
     PreferencesWritten,
     Scroll(Scroll),
@@ -510,6 +592,14 @@ impl Debug for RioEvent {
             RioEvent::OpenTerminalAppearance => write!(f, "OpenTerminalAppearance"),
             RioEvent::RestorePreviousSession => write!(f, "RestorePreviousSession"),
             RioEvent::OpenProfiles => write!(f, "OpenProfiles"),
+            #[cfg(windows)]
+            RioEvent::WslSetupHint { route, .. } => {
+                write!(f, "WslSetupHint route {route}")
+            }
+            #[cfg(windows)]
+            RioEvent::WslSetupResponse { route, choice } => {
+                write!(f, "WslSetupResponse route {route} {choice:?}")
+            }
             RioEvent::OpenThemeGallery => write!(f, "OpenThemeGallery"),
             RioEvent::ExtensionInventoryChanged => write!(f, "ExtensionInventoryChanged"),
             RioEvent::PreferencesWritten => write!(f, "PreferencesWritten"),

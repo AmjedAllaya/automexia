@@ -43,6 +43,12 @@ param(
     [switch]$WordDeletionOnly,
     [switch]$MenuNavigationOnly,
     [string]$CommandInputWslDistro,
+    [ValidateSet('bash', 'zsh', 'fish')]
+    [ValidateNotNullOrEmpty()]
+    [string[]]$CommandInputWslShells = @('bash', 'zsh', 'fish'),
+    [switch]$CommandInputWslInstalledBash,
+    [switch]$CommandInputWslSetupOnly,
+    [switch]$CommandInputSkipCmd,
     [switch]$CommandInputPowerShell7,
     [switch]$ConnectionHubOnly,
     [switch]$UseCpuRenderer,
@@ -63,6 +69,38 @@ param(
 
 $ErrorActionPreference = 'Stop'
 if ($ClearShortcutOnly -or $WordDeletionOnly -or $PlainOutputColorsOnly) { $CommandInputColorsOnly = $true }
+if ($CommandInputWslSetupOnly) {
+    if ([string]::IsNullOrWhiteSpace($CommandInputWslDistro) -or $CommandInputWslInstalledBash -or
+        $PlainOutputColorsOnly -or $ClearShortcutOnly -or $WordDeletionOnly -or
+        $PSBoundParameters.ContainsKey('CommandInputWslShells')) {
+        throw 'CommandInputWslSetupOnly requires an explicit sole fixture distro and runs separately from shell input checks'
+    }
+    $CommandInputColorsOnly = $true
+}
+if ($PSBoundParameters.ContainsKey('CommandInputWslShells') -and
+    (-not $CommandInputColorsOnly -or [string]::IsNullOrWhiteSpace($CommandInputWslDistro))) {
+    throw 'CommandInputWslShells requires a command-input fixture mode and CommandInputWslDistro'
+}
+if ($CommandInputWslInstalledBash) {
+    if (-not $CommandInputColorsOnly -or $PlainOutputColorsOnly -or $ClearShortcutOnly -or
+        $WordDeletionOnly -or [string]::IsNullOrWhiteSpace($CommandInputWslDistro)) {
+        throw 'CommandInputWslInstalledBash requires CommandInputColorsOnly and CommandInputWslDistro'
+    }
+    if ($PSBoundParameters.ContainsKey('CommandInputWslShells') -and
+        ($CommandInputWslShells.Count -ne 1 -or $CommandInputWslShells[0] -ne 'bash')) {
+        throw 'CommandInputWslInstalledBash supports only the default Bash login shell'
+    }
+    $CommandInputWslShells = @('bash')
+}
+if ($CommandInputSkipCmd -and
+    (-not $CommandInputColorsOnly -or $ClearShortcutOnly -or $WordDeletionOnly -or
+        [string]::IsNullOrWhiteSpace($CommandInputWslDistro))) {
+    throw 'CommandInputSkipCmd requires CommandInputColorsOnly or PlainOutputColorsOnly and CommandInputWslDistro'
+}
+if ($WindowControlChoicesOnly -and ($CommandInputColorsOnly -or
+        -not [string]::IsNullOrWhiteSpace($CommandInputWslDistro))) {
+    throw 'WindowControlChoicesOnly runs separately from command-input and WSL scenarios'
+}
 if ($TagShapesOnly -or $MenuNavigationOnly) { $TagCustomizationOnly = $true }
 # A Windows PowerShell child can inherit PowerShell 7's module search paths.
 # Resolve Get-FileHash from the executing host for saved-file preservation checks.
@@ -1542,41 +1580,110 @@ function Send-AutomexiaTestControl {
     }
 }
 
+function Restart-AutomexiaWindowControlsFixture {
+    $script:testStage = 'window controls restart: close original process'
+    $previousProcess = $script:process
+    $previousWindow = $script:window
+    if (-not $WindowControlChoicesOnly -or $null -eq $previousProcess -or
+        $previousProcess.HasExited -or
+        $previousWindow -notin @([AutomexiaNativeWindowLocator]::VisibleApplicationWindows($previousProcess.Id))) {
+        throw 'Window controls restart requires the owned running fixture window'
+    }
+    $frame = Read-AutomexiaSnapshot
+    if ($frame.settings.open -or $frame.confirm_quit_active) {
+        throw 'Close window control settings before restarting the fixture'
+    }
+    # Retain these handles in the outer cleanup scope until graceful shutdown
+    # proves that the old application and its original children have exited.
+    $script:ownedDescendantsAtShutdown = @(
+        Get-AutomexiaPinnedOwnedProcesses $previousProcess $configRoot $fixtureStartedAt)
+    if ($script:ownedDescendantsAtShutdown.Count -eq 0) {
+        throw 'Window controls restart could not pin the original fixture descendants'
+    }
+    if (-not [AutomexiaResizeDriver]::PostMessage(
+            $previousWindow, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)) {
+        throw 'Could not request close on the owned window control fixture'
+    }
+    $confirmDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $remaining = [int][Math]::Max(1, ($confirmDeadline - [DateTime]::UtcNow).TotalMilliseconds)
+        $frame = Read-AutomexiaSnapshot -AfterSequence ([int64]$frame.sequence) -TimeoutMilliseconds $remaining
+    } while (-not $frame.confirm_quit_active -and [DateTime]::UtcNow -lt $confirmDeadline)
+    if (-not $frame.confirm_quit_active -or
+        -not [AutomexiaResizeDriver]::SendModifiedKeyTap($previousWindow, 0x59, $false, $false, $false)) {
+        throw 'Window controls restart could not confirm native close'
+    }
+    if (-not $previousProcess.WaitForExit(15000) -or $previousProcess.ExitCode -ne 0) {
+        throw 'The original window control fixture did not exit cleanly'
+    }
+    $childExitDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    foreach ($owned in $script:ownedDescendantsAtShutdown) {
+        $remaining = [int][Math]::Max(0, ($childExitDeadline - [DateTime]::UtcNow).TotalMilliseconds)
+        if (-not $owned.WaitForExit($remaining)) {
+            throw 'Window controls restart left an original fixture descendant running'
+        }
+    }
+    $retiredProcesses = @($script:ownedDescendantsAtShutdown) + @($previousProcess)
+    $script:ownedDescendantsAtShutdown = @()
+    $script:process = $null
+    $script:window = [IntPtr]::Zero
+    Stop-AutomexiaPinnedProcesses $retiredProcesses
+
+    # A new process must load the same preference files. Retire only the old
+    # fixture messages before using the existing environment and file paths.
+    [IO.File]::Delete($snapshotPath)
+    [IO.File]::Delete($controlPath)
+    $script:lastSnapshot = $null
+    $script:testStage = 'window controls restart: open new process'
+    $script:process = Start-Process -FilePath $Binary -WorkingDirectory $root -WindowStyle Hidden -PassThru
+    [void]$script:process.Handle
+    $windows = @(Wait-AutomexiaWindowCount -Expected 1)
+    $script:window = $windows[0]
+    $frame = Read-AutomexiaSnapshot
+    if ($frame.renderer_backend -cne $expectedRendererBackend -or
+        $frame.visual_test_fixture -cne 's1-standard-v1') {
+        throw 'The restarted window control fixture did not present its expected renderer and fixture'
+    }
+}
+
 try {
     [void](New-Item -ItemType Directory -Path $configRoot)
     # Exercise the installed flat layout, not repository-only relative fallbacks.
-    # CMD identity contains account-specific Base64 values generated by the
-    # installer, so the native test must reproduce that exact deployed contract.
     $integrationRoot = Join-Path $configRoot 'shell-integration'
     [void](New-Item -ItemType Directory -Path $integrationRoot)
     Copy-Item -LiteralPath (Join-Path $root 'shell-integration\powershell\automexia.ps1') -Destination $integrationRoot
     Copy-Item -LiteralPath (Join-Path $root 'shell-integration\powershell\automexia.format.ps1xml') -Destination $integrationRoot
-    Copy-Item -LiteralPath (Join-Path $root 'shell-integration\cmd\automexia-ls.cmd') -Destination $integrationRoot
-    Copy-Item -LiteralPath (Join-Path $root 'shell-integration\cmd\automexia-ls.ps1') -Destination $integrationRoot
-    Copy-Item -LiteralPath (Join-Path $root 'shell-integration\cmd\automexia-alias-loader.ps1') -Destination $integrationRoot
+    if ($CommandInputSkipCmd) {
+        Write-Host 'SKIP: native CMD coverage explicitly omitted by CommandInputSkipCmd.'
+    } elseif (-not ($CommandInputWslSetupOnly -or $SessionRecoveryOnly -or $WindowControlChoicesOnly)) {
+        Copy-Item -LiteralPath (Join-Path $root 'shell-integration\cmd\automexia-ls.cmd') -Destination $integrationRoot
+        Copy-Item -LiteralPath (Join-Path $root 'shell-integration\cmd\automexia-ls.ps1') -Destination $integrationRoot
+        Copy-Item -LiteralPath (Join-Path $root 'shell-integration\cmd\automexia-alias-loader.ps1') -Destination $integrationRoot
 
-    $cmdSource = [IO.File]::ReadAllText(
-        (Join-Path $root 'shell-integration\cmd\automexia.cmd'),
-        [Text.Encoding]::UTF8)
-    $cmdSource = $cmdSource.Replace(
-        '__AUTOMEXIA_CMD_USER_BASE64__',
-        [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([Environment]::UserName)))
-    $cmdSource = $cmdSource.Replace(
-        '__AUTOMEXIA_CMD_PATH_BASE64__',
-        [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:ComSpec)))
-    $cmdSource = [regex]::Replace($cmdSource, "\r?\n", [Environment]::NewLine)
-    [IO.File]::WriteAllText(
-        (Join-Path $integrationRoot 'automexia.cmd'),
-        $cmdSource,
-        [Text.Encoding]::ASCII)
+        # Reproduce the account-specific Base64 identities generated by the installer.
+        $cmdSource = [IO.File]::ReadAllText(
+            (Join-Path $root 'shell-integration\cmd\automexia.cmd'),
+            [Text.Encoding]::UTF8)
+        $cmdSource = $cmdSource.Replace(
+            '__AUTOMEXIA_CMD_USER_BASE64__',
+            [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([Environment]::UserName)))
+        $cmdSource = $cmdSource.Replace(
+            '__AUTOMEXIA_CMD_PATH_BASE64__',
+            [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:ComSpec)))
+        $cmdSource = [regex]::Replace($cmdSource, "\r?\n", [Environment]::NewLine)
+        [IO.File]::WriteAllText(
+            (Join-Path $integrationRoot 'automexia.cmd'),
+            $cmdSource,
+            [Text.Encoding]::ASCII)
 
-    $cmdListingFixture = Join-Path $configRoot 'cmd-listing-fixture'
-    [void](New-Item -ItemType Directory -Path $cmdListingFixture)
-    [void](New-Item -ItemType Directory -Path (Join-Path $cmdListingFixture 'apps'))
-    [IO.File]::WriteAllText(
-        (Join-Path $cmdListingFixture 'Cargo.toml'),
-        '[workspace]',
-        [Text.Encoding]::ASCII)
+        $cmdListingFixture = Join-Path $configRoot 'cmd-listing-fixture'
+        [void](New-Item -ItemType Directory -Path $cmdListingFixture)
+        [void](New-Item -ItemType Directory -Path (Join-Path $cmdListingFixture 'apps'))
+        [IO.File]::WriteAllText(
+            (Join-Path $cmdListingFixture 'Cargo.toml'),
+            '[workspace]',
+            [Text.Encoding]::ASCII)
+    }
 
     $integration = (Join-Path $integrationRoot 'automexia.ps1').Replace('\', '/')
     $rendererConfig = if ($UseCpuRenderer) {
@@ -1597,16 +1704,26 @@ try {
     }
     $shellProgram = if ($CommandInputColorsOnly -and $CommandInputPowerShell7) { 'pwsh.exe' } else { 'powershell.exe' }
     $inputHistorySetup = ''
-    if ($CommandInputColorsOnly) {
+    if ($CommandInputColorsOnly -or $SessionRecoveryOnly -or $WindowControlChoicesOnly) {
         $inputHistory = (Join-Path $configRoot 'input-history.txt').Replace('\', '/')
         $inputHistorySetup = "; Set-PSReadLineOption -HistorySavePath '$inputHistory' -HistorySaveStyle SaveNothing"
+    }
+    $shellArgs = @"
+["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'$inputHistorySetup"]
+"@
+    if ($CommandInputWslSetupOnly) {
+        # Exercise the application's ordinary interactive bootstrap. Supply an
+        # isolated resource copy so PSReadLine cannot write to personal history.
+        Copy-Item -LiteralPath (Join-Path $root 'shell-integration\cmd\automexia.cmd') -Destination $integrationRoot
+        [IO.File]::AppendAllText($integration, "`n$($inputHistorySetup.TrimStart([char[]]'; '))`n", [Text.UTF8Encoding]::new($false))
+        $shellArgs = '["-NoLogo", "-NoProfile"]'
     }
     $config = @"
 confirm-before-quit = true
 
 [shell]
 program = "$shellProgram"
-args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'$inputHistorySetup"]
+args = $shellArgs
 $rendererConfig
 $wallpaperConfig
 "@
@@ -1615,17 +1732,29 @@ $wallpaperConfig
         # This applies only to the fixture's disposable configuration root.
         $config += "`n[presentation.tags]`nstyle = 'tinted'`nopacity = 100`n"
     }
+    if ($WindowControlChoicesOnly) {
+        # An opaque accent isolates the real caption fill from adjacent ink.
+        $config += "`n[presentation.window-controls.circles]`nbackground = '#26C95AFF'`n"
+    }
     if ($ThemeGalleryOnly -or $ResetCustomizationsOnly) {
         # Exercise dense table decoration in each applied dark/light theme.
         # These choices belong only to this disposable fixture configuration.
         $config += "`n[presentation]`ncommand-output-highlighting = false`noutput-highlighting = false`n[presentation.tables]`nborder-style = 'dashed'`nborder-weight = 'thick'`nbanding = 'columns'`nheader-bold = true`n"
     }
     if ($CommandInputColorsOnly) {
-        # Literal palette oracle for Fish's native ANSI styles. It must not be
-        # replaced by the terminal's purple plain-input fallback.
+        # Literal palette oracle for Fish's native ANSI styles and the
+        # terminal's theme-based fallback for plain command input.
         # Moderate saturation keeps the literal pixel tolerance useful across
         # the native compositor's color-space conversion.
         $config += "`n[colors]`nyellow = '#B4D2B4'`ncyan = '#B4B4D2'`n"
+        if ($PlainOutputColorsOnly) {
+            # Literal palette for package names, versions and subdued details.
+            $config += "foreground = '#F0F0F0'`nlight-blue = '#EEA4CD'`nlight-magenta = '#C695F0'`nlight-cyan = '#00A0FF'`n"
+        } elseif (-not ($WordDeletionOnly -or $ClearShortcutOnly)) {
+            # Dark background keeps the three literal input inks above the
+            # chrome contrast floor without adjusting their RGB values.
+            $config += "background = '#0B1222'`nmagenta = '#CE7AFF'`n"
+        }
     }
     if ($PlainOutputColorsOnly) {
         # Fixed non-default colours prove real output consumes customization,
@@ -1647,7 +1776,20 @@ $wallpaperConfig
     $env:AUTOMEXIA_NATIVE_TEST_CONTROL = $controlPath
     $env:AUTOMEXIA_CONFIG_HOME = $configRoot
     $env:AUTOMEXIA_VISUAL_TEST_FIXTURE = 's1-standard-v1'
-    $process = Start-Process -FilePath $Binary -WorkingDirectory $root -WindowStyle Hidden -PassThru
+    $previousAptSimulation = $env:AUTOMEXIA_TEST_WSL_APT_SIMULATE
+    $previousSetupIntegrationRoot = $env:AUTOMEXIA_SHELL_INTEGRATION_ROOT
+    try {
+        if ($CommandInputWslSetupOnly) {
+            $env:AUTOMEXIA_TEST_WSL_APT_SIMULATE = '1'
+            $env:AUTOMEXIA_SHELL_INTEGRATION_ROOT = $integrationRoot
+        }
+        $process = Start-Process -FilePath $Binary -WorkingDirectory $root -WindowStyle Hidden -PassThru
+    } finally {
+        if ($CommandInputWslSetupOnly) {
+            $env:AUTOMEXIA_TEST_WSL_APT_SIMULATE = $previousAptSimulation
+            $env:AUTOMEXIA_SHELL_INTEGRATION_ROOT = $previousSetupIntegrationRoot
+        }
+    }
     [void]$process.Handle
 
     # Process.MainWindowHandle can transiently select Winit's internal event
@@ -1699,7 +1841,7 @@ $wallpaperConfig
         throw 'The deterministic S1 visual fixture did not freeze clock and animation state'
     }
     if ($SessionRecoveryOnly) {
-        . (Join-Path $PSScriptRoot 'session-recovery-windows.ps1')
+        . (Join-Path $PSScriptRoot 'session-recovery-native-windows.ps1')
         return
     }
     if ($QuickActionsOnly) {

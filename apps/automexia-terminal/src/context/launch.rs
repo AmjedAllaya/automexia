@@ -6,6 +6,9 @@ use automexia_extension_api::{
     LaunchRequest, OperationId, SessionId,
 };
 
+#[cfg(windows)]
+pub(crate) const WSL_SETUP_INSTALL_PROFILE_ID: &str = "automexia:wsl-setup-install";
+
 /// Immutable description of how a terminal session was launched.
 ///
 /// This intentionally contains launch intent only. Runtime process state,
@@ -135,6 +138,11 @@ impl SessionLaunchDescriptor {
         matches!(self.kind, SessionKind::Wsl(_))
     }
 
+    #[cfg(windows)]
+    pub(crate) fn is_wsl_setup_install(&self) -> bool {
+        self.is_wsl() && self.profile_identity() == Some(WSL_SETUP_INSTALL_PROFILE_ID)
+    }
+
     /// The executable, rather than a profile label or displayed title, owns
     /// whether a native CMD-specific host shortcut is safe to use.
     pub fn is_native_command_prompt(&self) -> bool {
@@ -232,6 +240,12 @@ impl SessionLaunchDescriptor {
         &self,
         live: &LiveSessionMetadata,
     ) -> Result<Self, CloneLaunchError> {
+        #[cfg(windows)]
+        if self.is_wsl_setup_install() {
+            return Err(CloneLaunchError(
+                "The WSL installation tab cannot be cloned.".into(),
+            ));
+        }
         let live_distro = nonempty(live.distro.as_deref());
         // A native Linux process may itself run inside WSL. Its distro is
         // display metadata, not a request to invoke the Windows WSL launcher.

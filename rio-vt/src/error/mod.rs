@@ -64,6 +64,7 @@ pub enum RioErrorType {
 
     /// Fixed public text: clipboard content and provider diagnostics are never included.
     PasteRejected,
+    PasteDestinationChanged,
 
     // reports that are ignored by RioErrorType
     IgnoredReport,
@@ -88,7 +89,8 @@ impl std::fmt::Display for RioErrorType {
                 write!(f, "Error initializing Automexia Terminal:\n{message}")
             }
             RioErrorType::IgnoredReport => write!(f, ""),
-            RioErrorType::PasteRejected => write!(f, "Paste cancelled. The destination closed or the text exceeds 1 MiB. Select a live pane and paste a smaller selection."),
+            RioErrorType::PasteRejected => write!(f, "Paste cancelled. Check the destination pane and keep clipboard text at or below 1 MiB."),
+            RioErrorType::PasteDestinationChanged => write!(f, "Paste cancelled. The terminal input could not be verified. Check the active shell and paste again."),
             RioErrorType::InvalidConfigurationFormat(message) => {
                 write!(f, "Found an issue loading the configuration file:\n\n{message}\n\nAutomexia kept the last known-good configuration; safe defaults are used only when no prior configuration exists")
             }
@@ -125,6 +127,7 @@ mod tests {
 
     #[test]
     fn paste_warning_is_fixed_actionable_text_without_payload_or_provider_error() {
-        assert_eq!(RioErrorType::PasteRejected.to_string(), "Paste cancelled. The destination closed or the text exceeds 1 MiB. Select a live pane and paste a smaller selection.");
+        assert_eq!(RioErrorType::PasteRejected.to_string(), "Paste cancelled. Check the destination pane and keep clipboard text at or below 1 MiB.");
+        assert_eq!(RioErrorType::PasteDestinationChanged.to_string(), "Paste cancelled. The terminal input could not be verified. Check the active shell and paste again.");
     }
 }

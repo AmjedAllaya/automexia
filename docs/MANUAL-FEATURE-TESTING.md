@@ -124,6 +124,27 @@ paste, and an application that enables mouse reporting.
 Expected result: copy does not send interrupt, paste does not add an implicit
 Enter, and mouse events go to the correct owner.
 
+Paste three lines with a blank line, indentation, Unicode and a command long
+enough to scroll horizontally. Check the same review from a keyboard shortcut,
+the command palette and a right-click with an empty selection. Scroll in both
+directions, then cancel once with Escape and once with the mouse. Retry and
+confirm in Bash with bracketed paste enabled. The text appears at the prompt
+only after confirmation and runs after a separate Enter. Repeat in a split
+pane, then bring another window to the foreground while reviewing. The review
+dismisses and no text reaches either pane. Check the risk text before confirming
+harmless lines in a shell with bracketed paste disabled.
+
+At an empty Bash prompt with bracketed paste enabled, enter
+`set -euo pipefail`. Paste a short batch with a successful command, a missing
+fixture command, and a final marker. Choose **Bash batch** and verify that
+reviewing the prepared text sends no input. Choose **Paste**, then press Enter
+at the Bash prompt. Expect status 127, no final marker, and a usable prompt in
+the original shell with its strict options still enabled. Repeat without
+bracketed paste and verify the prepared line still waits for Enter. On Windows,
+exercise WSL Bash and verify that ordinary clipboard paste remains available in
+PowerShell and CMD. Open and dismiss the preview during a scrollbar or divider
+drag. Subsequent pointer movement must leave the scrollbar and divider still.
+
 ### INPUT-04 — command navigation and palette isolation
 
 Run at least six output-producing commands with visibly different text, resize

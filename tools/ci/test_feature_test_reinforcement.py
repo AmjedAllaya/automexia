@@ -76,8 +76,10 @@ class FeatureTestReinforcementTests(unittest.TestCase):
              "interactive_inner(command, cancelled, Ownership::Leader, |_| Ok(()))"),
             ("interactive_inner(command, cancelled, Ownership::Leader, |_| Ok(()))",
              "interactive_inner(command, cancelled, Ownership::Tree, |_| Ok(()))"),
-            ("spawn_owned(command, true, Ownership::Tree)?",
-             "spawn_owned(command, true, Ownership::Leader)?"),
+            ("spawn_owned(command, true, Ownership::Tree, console_window)?",
+             "spawn_owned(command, true, Ownership::Leader, console_window)?"),
+            ("spawn_owned(command, isolated_group, ownership, ConsoleWindow::Default)?",
+             "spawn_owned(command, isolated_group, ownership, ConsoleWindow::Hidden)?"),
             ("let completion = if ownership == Ownership::Tree",
              "let completion = if ownership == Ownership::Leader"),
             ("Some(windows_completion::CompletionJob::new()?)", "None"),
@@ -679,7 +681,7 @@ class FeatureTestReinforcementTests(unittest.TestCase):
 
     def test_canonical_contract_covers_every_feature_with_detailed_reinforcement(self) -> None:
         counts = self.validate(copy.deepcopy(self.document))
-        self.assertEqual(counts["features"], 41)
+        self.assertEqual(counts["features"], 43)
         self.assertGreaterEqual(counts["needed_tests"], counts["features"] * 3)
         self.assertGreaterEqual(counts["evidence_owners"], counts["features"])
         self.assertEqual(counts["plan_anchors"], counts["features"])

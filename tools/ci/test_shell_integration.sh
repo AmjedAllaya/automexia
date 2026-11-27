@@ -98,6 +98,308 @@ with tempfile.TemporaryDirectory(prefix="automexia-os-") as temporary:
 PY_OS_IDENTITY
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+
+# Exercise Bash's own interactive PROMPT_COMMAND dispatch. Running the hook
+# with eval inside a conditional would mask the errexit failure under test.
+python3 - "$root" "$BASH" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" <<'PY_STRICT_PROMPT'
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+import sys
+import tempfile
+
+root, bash, major, minor = sys.argv[1:]
+adapter = shlex.quote(str(Path(root) / 'shell-integration/bash/automexia.bash'))
+user_hook = "printf 'user-status=%s\\n' \"$?\""
+user_err_trap = "trap 'printf \"user-err=%s\\n\" \"$?\"' ERR"
+commands = b'''set -euo pipefail
+! :
+printf 'strict-negation=%s\\n' "$?"
+(exit 7) && :
+printf 'strict-and-list=%s\\n' "$?"
+set +e
+(exit 11)
+printf 'normal-failure=%s\\n' "$?"
+set -e
+command __automexia_test_missing_command
+printf 'strict-command-continued\\n'
+'''
+
+with tempfile.TemporaryDirectory(prefix='automexia-bash-prompt-') as temporary:
+    env = dict(os.environ, HOME=temporary, XDG_CONFIG_HOME=temporary,
+               AUTOMEXIA_CONFIG_HOME=temporary, HISTFILE=os.devnull,
+               TERM_PROGRAM='Automexia', AUTOMEXIA_SHELL_INTEGRATION='1',
+               AUTOMEXIA_PLAIN_LS='1', AUTOMEXIA_AMX='0')
+    for inherited in ('BASH_ENV', 'BASHOPTS', 'SHELLOPTS', 'ENV', 'PROMPT_COMMAND'):
+        env.pop(inherited, None)
+    rcfile = Path(temporary) / 'bashrc'
+    prompt_forms = {'string': 'PROMPT_COMMAND=' + shlex.quote(user_hook)}
+    if (int(major), int(minor)) >= (5, 1):
+        prompt_forms['array'] = (
+            'PROMPT_COMMAND=(' + shlex.quote(user_hook) + " 'printf \"second-hook\\n\"')"
+        )
+    for form, prompt in prompt_forms.items():
+        for integrated in [False, True]:
+            integration = f'. {adapter}\n' if integrated else ''
+            rcfile.write_text(f'{prompt}\n{integration}{user_err_trap}\n')
+            setup = f'. {shlex.quote(str(rcfile))}\n'.encode()
+            result = subprocess.run(
+                [bash, '--noprofile', '--norc', '--noediting', '-i'],
+                input=setup + commands, env=env, capture_output=True, timeout=10,
+            )
+            case = (form, integrated, result.returncode)
+            output = result.stdout
+            assert result.returncode == 127, case
+            for marker in (b'strict-negation=', b'strict-and-list=', b'normal-failure='):
+                assert marker in output, (case, marker)
+            assert b'strict-command-continued' not in output, case
+            assert re.findall(rb'user-err=(\d+)\n', output) == [b'11', b'127'], case
+            for status in (1, 7, 11):
+                assert f'user-status={status}\n'.encode() in output, (case, status)
+                if integrated:
+                    assert f'\x1b]133;D;{status}\x07'.encode() in output, (case, status)
+            if integrated:
+                for marker in (b'strict-negation=1\n', b'strict-and-list=7\n', b'normal-failure=11\n'):
+                    assert marker in output, (case, marker)
+            if form == 'array':
+                assert output.count(b'second-hook\n') == output.count(b'user-status='), case
+    print('PASS: interactive Bash preserves conditional failures and native strict-mode exit')
+PY_STRICT_PROMPT
+
+# Exercise the real startup notice with a PTY for diagnostics and a pipe for
+# listing output. The fixture PATH makes eza availability deterministic.
+python3 - "$root" "$BASH" <<'PY_WSL_LISTING_NOTICE'
+import errno
+import os
+from pathlib import Path
+import pty
+import shutil
+import subprocess
+import sys
+import tempfile
+
+root, bash = sys.argv[1:]
+notice = b'Automexia warning: eza is missing. Install it in this WSL distribution for file icons.'
+with tempfile.TemporaryDirectory(prefix='automexia-wsl-listing-') as temporary:
+    directory = Path(temporary)
+    fixture_bin = directory / 'bin'
+    fixture_bin.mkdir()
+    for program in ('sh', 'uname', 'awk', 'dd', 'base64', 'tr', 'zsh'):
+        if source := shutil.which(program):
+            (fixture_bin / program).symlink_to(source)
+    native_ls = fixture_bin / 'ls'
+    native_ls.write_text("#!/bin/sh\nprintf '%s\\n' native-listing\n")
+    native_ls.chmod(0o755)
+    eza = fixture_bin / 'eza'
+    drivers = [('bash', bash, ['--noprofile', '--norc', '--noediting'])]
+    if zsh := shutil.which('zsh'):
+        drivers.append(('zsh', zsh, ['-f']))
+    else:
+        print('EXTERNAL: optional-listing notice test needs zsh')
+    for shell, executable, flags in drivers:
+        adapter = str(Path(root) / 'shell-integration' / shell / f'automexia.{shell}')
+        for case, wsl, interactive, tty, opt_out, installed, enabled in [
+            ('missing', True, True, True, False, False, True),
+            ('installed', True, True, True, False, True, True),
+            ('disabled listings', True, True, True, True, False, True),
+            ('disabled integration', True, True, True, False, False, False),
+            ('non-WSL', False, True, True, False, False, True),
+            ('non-interactive', True, False, True, False, False, True),
+            ('redirected stderr', True, True, False, False, False, True),
+        ]:
+            if installed:
+                eza.write_text("#!/bin/sh\nprintf 'enhanced %s\\n' \"$*\"\n")
+                eza.chmod(0o755)
+            else:
+                eza.unlink(missing_ok=True)
+            env = dict(PATH=str(fixture_bin), HOME=temporary, ZDOTDIR=temporary,
+                       AUTOMEXIA_CONFIG_HOME=temporary, XDG_CONFIG_HOME=temporary,
+                       TERM='xterm-256color', TERM_PROGRAM='Automexia',
+                       AUTOMEXIA_SHELL_INTEGRATION=str(int(enabled)), AUTOMEXIA_AMX='0')
+            if wsl:
+                env['WSL_DISTRO_NAME'] = 'Fixture-Distro'
+            if opt_out:
+                env['AUTOMEXIA_PLAIN_LS'] = '1'
+            argv = [executable, *flags, *(['-i'] if interactive else []), '-c',
+                    '. "$1" >/dev/null; . "$1" >/dev/null; ls | while IFS= read -r row; do printf "%s\\n" "$row"; done',
+                    'listing-notice-fixture', adapter]
+            if tty:
+                master, slave = pty.openpty()
+                try:
+                    try:
+                        result = subprocess.run(argv, env=env, stdin=subprocess.DEVNULL,
+                                                stdout=subprocess.PIPE, stderr=slave, check=True, timeout=10)
+                    finally:
+                        os.close(slave)
+                    output = bytearray()
+                    while True:
+                        try:
+                            chunk = os.read(master, 4096)
+                        except OSError as error:
+                            if error.errno != errno.EIO:
+                                raise
+                            break
+                        if not chunk:
+                            break
+                        output.extend(chunk)
+                finally:
+                    os.close(master)
+            else:
+                result = subprocess.run(argv, env=env, stdin=subprocess.DEVNULL,
+                                        capture_output=True, check=True, timeout=10)
+                output = result.stderr
+            assert output.count(notice) == int(case == 'missing'), (shell, case, output)
+            expected = (b'enhanced --icons=auto --color=auto --group-directories-first\n'
+                        if installed else b'native-listing\n')
+            assert result.stdout == expected, (shell, case, result.stdout)
+    print('PASS: WSL listing notice is bounded and preserves pipeline output')
+PY_WSL_LISTING_NOTICE
+
+# The diagnostic reads the managed block without executing shell startup code.
+python3 - "$root" <<'PY_WSL_SETUP_REPORT'
+from pathlib import Path
+import os
+import shlex
+import subprocess
+import sys
+import tempfile
+
+probe = (Path(sys.argv[1]) / 'apps/automexia-terminal/src/automexia/wsl/setup_probe.sh').read_bytes()
+with tempfile.TemporaryDirectory(prefix='automexia-wsl-setup-') as temporary:
+    home = Path(temporary)
+    tools = home / 'bin'
+    tools.mkdir()
+    hook_dir = home / '.config' / 'automexia'
+    hook_dir.mkdir(parents=True)
+    env = dict(HOME=temporary, SHELL='/bin/bash', PATH=str(tools),
+               WSL_DISTRO_NAME='Fixture-Distro')
+
+    def check(hook, listing, *, script=probe, installer=None, **overrides):
+        result = subprocess.run(['/bin/sh', '-s'], input=script,
+                                env=env | overrides, capture_output=True, check=True, timeout=5)
+        *payload, capability, uid = result.stdout.decode().splitlines()
+        assert payload == ['amx-wsl-setup-v2', 'Fixture-Distro', 'bash', hook, listing], payload
+        expected_uid = str(os.getuid()) if os.getuid() and overrides.get('AUTOMEXIA_SHELL_INTEGRATION') != '0' else '-'
+        assert uid == expected_uid, (uid, expected_uid)
+        assert capability in {'apt', 'unavailable'} and result.stderr == b'', result
+        if installer is not None:
+            assert capability == installer, result.stdout
+
+    check('missing', 'missing')
+    (hook_dir / 'shell-integration.bash').write_text('exit 99\n')
+    check('adapter-only', 'missing')
+    source = '${AUTOMEXIA_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/automexia}/shell-integration.bash'
+    (home / '.bashrc').write_text(
+        'exit 99\n# >>> AUTOMEXIA SHELL INTEGRATION >>>\n'
+        f'[ -r "{source}" ] && . "{source}"\n'
+        '# <<< AUTOMEXIA SHELL INTEGRATION <<<\n'
+    )
+    check('managed', 'missing')
+    check('managed', 'disabled', AUTOMEXIA_PLAIN_LS='1')
+    check('managed', 'disabled', AUTOMEXIA_SHELL_INTEGRATION='0')
+    (tools / 'eza').symlink_to('/bin/sh')
+    check('managed', 'present')
+
+    # Redirect only the system paths in the fixture. None of the stand-in
+    # programs should run. Ubuntu's sudo path traverses an alternatives link.
+    sudo = home / 'sudo'
+    alternative = home / 'sudo-alternative'
+    sudo_target = home / 'sudo-rs'
+    apt_get = home / 'apt-get'
+    release = home / 'os-release'
+    for executable in [sudo_target, apt_get]:
+        executable.write_text('#!/bin/sh\nexit 99\n')
+        executable.chmod(0o755)
+    alternative.symlink_to(sudo_target.name)
+    sudo.symlink_to(alternative.name)
+    fixture = probe
+    for system_path, path in [(b'/usr/bin/sudo', sudo), (b'/usr/bin/apt-get', apt_get),
+                              (b'/etc/os-release', release)]:
+        fixture = fixture.replace(system_path, shlex.quote(str(path)).encode())
+    release.write_text('ID=ubuntu\n')
+    check('managed', 'present', script=fixture, installer='apt')
+    release.write_text('ID=fedora\n')
+    check('managed', 'present', script=fixture, installer='unavailable')
+    release.write_text('ID=ubuntu\n')
+    sudo_target.unlink()
+    check('managed', 'present', script=fixture, installer='unavailable')
+print('PASS: WSL setup probe reports prerequisites and accepts valid APT alternatives links')
+PY_WSL_SETUP_REPORT
+
+# Exercise the guest writer against disposable profiles using the bundled bytes.
+if [[ $(uname -s) == Linux ]]; then
+python3 - "$root" <<'PY_WSL_BASH_INSTALL'
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+root = Path(sys.argv[1])
+installer = (root / 'apps/automexia-terminal/src/automexia/wsl/install_bash.sh').read_bytes()
+bundle = root / 'shell-integration'
+assets = {
+    'shell-integration.bash': (bundle / 'bash/automexia.bash').read_bytes(),
+    'automexia-completion.bash': (bundle / 'completion/bash/automexia-completion.bash').read_bytes(),
+    'automexia-os.sh': (bundle / 'posix/automexia-os.sh').read_bytes(),
+    'automexia-eza-filter.pl': (bundle / 'posix/automexia-eza-filter.pl').read_bytes(),
+}
+payload = b'install_bash_assets() {\n' + b''.join(
+    f'install_asset "$cfg/{name}" <<\'AMX_FIXTURE_ASSET\'\n'.encode()
+    + content + b'AMX_FIXTURE_ASSET\n' for name, content in assets.items()
+) + b'}\n' + installer
+uid = os.geteuid() or 65534
+child_account = {'user': uid, 'group': uid, 'extra_groups': []} if os.geteuid() == 0 else {}
+
+with tempfile.TemporaryDirectory(prefix='automexia-wsl-bash-') as temporary:
+    home = Path(temporary).resolve()
+    if child_account:
+        os.chown(home, uid, uid)
+    rc = home / '.bashrc'
+    original = b'# keep user startup bytes\nprintf custom-command'
+    rc.write_bytes(original)
+    rc.chmod(0o640)
+    if child_account:
+        os.chown(rc, uid, uid)
+    env = dict(HOME=str(home), SHELL='/bin/bash', WSL_DISTRO_NAME='Fixture')
+
+    def install(distro='Fixture', account=uid, **overrides):
+        return subprocess.run(['/bin/sh', '-s', '--', distro, str(account)],
+                              input=payload, env=env | overrides, capture_output=True,
+                              timeout=10, **child_account)
+
+    assert install('Elsewhere').returncode != 0
+    assert install(account=uid + 1).returncode != 0
+    assert install(AUTOMEXIA_SHELL_INTEGRATION='0').returncode != 0
+    assert rc.read_bytes() == original and not (home / '.config').exists()
+
+    result = install()
+    assert result.returncode == 0 and result.stdout == b'amx-wsl-bash-install-v1\n', result
+    cfg = home / '.config/automexia'
+    assert {file.name: file.read_bytes() for file in cfg.iterdir()} == assets
+    installed = rc.read_bytes()
+    assert installed.startswith(original + b'\n')
+    assert installed.count(b'# >>> AUTOMEXIA SHELL INTEGRATION >>>\n') == 1
+    assert rc.stat().st_mode & 0o777 == 0o640
+    before = {path: path.stat().st_ino for path in [rc, *cfg.iterdir()]}
+    assert install().returncode == 0 and rc.read_bytes() == installed
+    assert before == {path: path.stat().st_ino for path in before}
+
+    rc.write_bytes(original + b'\n# >>> AUTOMEXIA SHELL INTEGRATION >>>\n')
+    assert install().returncode != 0
+    assert rc.read_bytes() == original + b'\n# >>> AUTOMEXIA SHELL INTEGRATION >>>\n'
+    rc.unlink()
+    sibling = home / '.zshrc'
+    sibling.write_bytes(b'custom-zsh-content\n')
+    rc.symlink_to(sibling)
+    assert install().returncode != 0 and sibling.read_bytes() == b'custom-zsh-content\n'
+    assert not list(home.glob('.automexia-bash.*'))
+print('PASS: WSL Bash installation requires confirmed consent scope and preserves profile contents')
+PY_WSL_BASH_INSTALL
+fi
+
 export TERM_PROGRAM=Automexia
 PROMPT_COMMAND='printf user-hook >/dev/null'
 
@@ -138,7 +440,7 @@ source "$root/shell-integration/bash/automexia.bash" >/dev/null
 
 count=$(grep -o '__automexia_pre_prompt' <<<"$PROMPT_COMMAND" | wc -l)
 [[ $count -eq 1 ]]
-[[ $PROMPT_COMMAND == __automexia_capture_status\;printf\ user-hook* ]]
+[[ ${PROMPT_COMMAND#'__automexia_legacy_install && :;'} == '__automexia_capture_status && :;printf user-hook'* ]]
 [[ $(grep -o __automexia_capture_status <<<"$PROMPT_COMMAND" | wc -l) -eq 1 ]]
 
 failure_marker="$fixture_bin/bash-failure-marker"

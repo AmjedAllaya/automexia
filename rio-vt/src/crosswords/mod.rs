@@ -589,6 +589,17 @@ enum ActivePromptPhase {
     Input,
 }
 
+/// Text-free identity of the input surface shown during clipboard review.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PasteDestination {
+    scope: u64,
+    generation: u64,
+    input_revision: u64,
+    shell_stamp: Option<NonZeroU64>,
+    prompt: Option<(Option<u64>, ActivePromptPhase)>,
+    mode_bits: u32,
+}
+
 /// Lifecycle for the prompt currently being edited. Physical rows are still
 /// owned by `Grid`; this state prevents a repeated shell repaint from leaving
 /// two blocks carrying the same stable OSC 133 identity.
@@ -917,6 +928,27 @@ impl<U: EventListener> Crosswords<U> {
         self.user_var_write_stamps
             .get(name)
             .map(|record| record.stamp)
+    }
+
+    pub fn paste_destination(&self) -> PasteDestination {
+        PasteDestination {
+            scope: self.integration_scope_revision(),
+            generation: self.workflow_generation(),
+            input_revision: self.workflow_input_revision(),
+            shell_stamp: self
+                .user_var_write_stamp("automexia_shell_name")
+                .map(|stamp| stamp.latest),
+            prompt: self
+                .active_semantic_prompt
+                .as_ref()
+                .map(|prompt| (prompt.id, prompt.phase)),
+            mode_bits: (self.mode
+                & (Mode::BRACKETED_PASTE
+                    | Mode::WIN32_INPUT
+                    | Mode::ALT_SCREEN
+                    | Mode::VI))
+                .bits(),
+        }
     }
 
     /// Whether the preceding accepted write to this name was exactly "1".
@@ -4819,6 +4851,8 @@ impl<U: EventListener> Handler for Crosswords<U> {
         self.shell_clear_rehome_deadline = None;
         self.semantic_command_candidate = None;
         self.semantic_command_started = None;
+        #[cfg(any(windows, test))]
+        self.clear_wsl_host_enter();
         self.semantic_command_output_observed = false;
         self.pending_semantic_command_boundary = None;
         self.vi_mode_cursor = Default::default();
@@ -5025,6 +5059,8 @@ impl<U: EventListener> Handler for Crosswords<U> {
             self.grid[row].set_semantic_prompt(mark, prompt_id);
         }
         if mark == crate::crosswords::grid::row::SemanticPrompt::Prompt {
+            #[cfg(any(windows, test))]
+            self.note_wsl_host_prompt(redraws_live_prompt);
             self.release_active_prompt_follow();
             self.shell_clear_deadline = None;
             if let Some(boundary) = self
@@ -5056,7 +5092,7 @@ impl<U: EventListener> Handler for Crosswords<U> {
         self.damage_cursor_line();
     }
 
-    fn semantic_prompt_input(&mut self) {
+    fn semantic_prompt_input(&mut self, _wsl_capability: bool) {
         use crate::crosswords::grid::row::{
             PromptInputShell, SemanticInput, SemanticPrompt,
         };
@@ -5065,6 +5101,8 @@ impl<U: EventListener> Handler for Crosswords<U> {
             active.phase = ActivePromptPhase::Input;
             active.context_row_open = false;
         }
+        #[cfg(any(windows, test))]
+        self.note_wsl_prompt_capability(_wsl_capability);
         // Readline/ZLE replay B without A: their prompt contains only the
         // editor prefix, while Automexia owns the saved context. Wait for this
         // boundary, never restore from an intermediate ED/home/EL fragment.
@@ -5129,7 +5167,10 @@ impl<U: EventListener> Handler for Crosswords<U> {
         self.damage_cursor_line();
     }
 
-    fn semantic_command_start(&mut self) {
+    fn semantic_command_start(&mut self, _accepted_bare_wsl: bool) {
+        #[cfg(any(windows, test))]
+        let _wsl_setup =
+            self.accept_wsl_command_start(_accepted_bare_wsl, std::time::Instant::now);
         self.complete_command_input_boundary();
         self.release_active_prompt_follow();
         self.active_semantic_prompt = None;
@@ -5141,9 +5182,15 @@ impl<U: EventListener> Handler for Crosswords<U> {
         if prompt_id.is_some() || candidate.is_some() {
             self.semantic_command_started = Some((prompt_id, std::time::Instant::now()));
         }
+        #[cfg(windows)]
+        if let Some(receipt) = _wsl_setup {
+            self.notify_wsl_setup_hint(receipt);
+        }
     }
 
     fn semantic_command_end(&mut self, exit_code: Option<i32>) {
+        #[cfg(any(windows, test))]
+        self.clear_wsl_host_enter();
         self.release_active_prompt_follow();
         self.shell_clear_deadline = None;
         self.shell_clear_rehome_deadline = None;

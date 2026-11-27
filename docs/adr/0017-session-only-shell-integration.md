@@ -35,9 +35,11 @@ Automexia are useful, but that is a separate user decision.
    suppression may prepend `-NoLogo`. Linux/macOS ordinary interactive Bash, Zsh
    and Fish launches use the session adapters below; other Unix launches retain
    their native arguments. The shell remains responsible for parsing arguments.
-4. Persistent integration is exposed only as
-   `automexia shell-integration install|uninstall`. The Windows command honors
-   the effective execution policy and never requests `Bypass`.
+4. Persistent integration requires an explicit
+   `automexia shell-integration install|uninstall` command or the scoped
+   **Install Bash integration** action in the Windows WSL setup popup. The
+   Windows PowerShell compatibility command honors the effective execution
+   policy.
 5. Release packaging signs/timestamps every PowerShell script and format file
    before creating MSI/ZIP artifacts. Portable and ARM64 MSI builders include
    the complete resource tree under fixed file-count and byte ceilings.
@@ -46,6 +48,25 @@ Automexia are useful, but that is a separate user decision.
    payload-derived command lines are forbidden.
 7. Static policy and hostile mutation tests pin these boundaries. Installer
    behavior remains covered in isolated homes, but it is not a launch phase.
+8. WSL setup checks inspect bounded guest prerequisites without sourcing
+   startup files. An ordinary WSL profile in the current window or an
+   interactive submission of a bare WSL command can request this check off
+   the input path. The supported PowerShell adapter marks the accepted line
+   with a fixed option, correlated with an explicit Enter on the current
+   Windows prompt. The option carries no command text or distro selection.
+   The Windows distribution inventory or the explicit profile
+   selection binds the target. On supported Debian and Ubuntu distributions,
+   affirmative confirmation can launch a fixed `sudo apt-get install eza`
+   invocation in the diagnostic terminal. The selected distribution appears in
+   the confirmation. APT retains its own password and package-change prompts.
+   Checking is read-only. Only affirmative confirmation starts installation.
+9. **Install Bash integration** binds the approved action to the selected WSL
+   distribution and verifies its default non-root Bash account again before
+   writing. A bounded background operation uses the trusted Windows launcher
+   and a fixed guest installer with bundled Bash assets. It writes the user's
+   integration files and a managed `.bashrc` block. The guest runs with the
+   default user's permissions and uses local resources. Automexia verifies the
+   hook after installation and prompts the user to open a fresh Bash session.
 
 ## Linux and macOS launch delivery
 

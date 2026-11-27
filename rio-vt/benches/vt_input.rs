@@ -11,7 +11,7 @@ use rio_vt::crosswords::pos::{Column, Line, Pos, Side};
 use rio_vt::crosswords::square::{Extras, Square};
 use rio_vt::crosswords::style::Style;
 use rio_vt::crosswords::{Crosswords, CrosswordsSize};
-use rio_vt::event::{TerminalDamage, VoidListener, WindowId};
+use rio_vt::event::{PasteRequest, TerminalDamage, VoidListener, WindowId};
 use rio_vt::performer::handler::Processor;
 use rio_vt::selection::{Anchor, Selection, SelectionMotion, SelectionType};
 
@@ -170,6 +170,47 @@ impl rio_vt::performer::handler::Handler for FragmentedInputSink {
     fn carriage_return(&mut self) {
         self.carriage_returns += 1;
     }
+}
+
+fn clipboard_paste_preparation(c: &mut Criterion) {
+    let ordinary = "echo ready".to_owned();
+    let mixed_line = "\x1b\techo '日本語🦀'\r\n\rnext\x04\n";
+    let expected_line = "\techo '日本語🦀'\n\nnext\n";
+    let lf = expected_line.repeat(12);
+    let near_limit_repeats = PasteRequest::MAX_BYTES / mixed_line.len();
+    let cases = [
+        ("single_line", ordinary.clone(), Some(ordinary)),
+        ("multiline_lf", lf.clone(), Some(lf)),
+        (
+            "multiline_mixed_endings",
+            mixed_line.repeat(12),
+            Some(expected_line.repeat(12)),
+        ),
+        (
+            "near_limit",
+            mixed_line.repeat(near_limit_repeats),
+            Some(expected_line.repeat(near_limit_repeats)),
+        ),
+        ("oversized", "x".repeat(PasteRequest::MAX_BYTES + 1), None),
+    ];
+    let mut group = c.benchmark_group("vt_input_clipboard_paste_preparation");
+    for (name, input, expected) in &cases {
+        let actual = PasteRequest::from_clipboard(input.clone());
+        assert_eq!(actual.as_ref().map(PasteRequest::text), expected.as_deref());
+        let batch_size = if input.len() >= PasteRequest::MAX_BYTES / 2 {
+            criterion::BatchSize::NumIterations(4)
+        } else {
+            criterion::BatchSize::SmallInput
+        };
+        group.bench_function(*name, |b| {
+            b.iter_batched(
+                || input.clone(),
+                |input| std::hint::black_box(PasteRequest::from_clipboard(input)),
+                batch_size,
+            );
+        });
+    }
+    group.finish();
 }
 
 fn fragmented_utf8(c: &mut Criterion) {
@@ -973,6 +1014,52 @@ fn pane_close_repaint(c: &mut Criterion) {
     });
 }
 
+fn wsl_setup_input_hint(c: &mut Criterion) {
+    let mut group = c.benchmark_group("wsl_setup_input_hint");
+    for (name, draft, expected) in [
+        ("bare_wsl", b"wsl.exe\x1b[K".as_slice(), true),
+        ("ordinary_command", b"docker ps", false),
+    ] {
+        let mut terminal = term();
+        let mut parser = Processor::default();
+        parser.advance(
+            &mut terminal,
+            b"\x1b]1337;SetUserVar=automexia_shell=MQ==\x07\
+              \x1b]1337;SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==\x07\
+              \x1b]1337;SetUserVar=automexia_prompt_active=MQ==\x07\
+              \x1b]133;A;aid=1\x07> \x1b]133;B\x07",
+        );
+        parser.advance(&mut terminal, draft);
+        assert_eq!(terminal.is_bare_wsl_prompt_input(), expected);
+        group.bench_function(name, |b| {
+            b.iter(|| {
+                std::hint::black_box(
+                    std::hint::black_box(&terminal).is_bare_wsl_prompt_input(),
+                );
+            })
+        });
+    }
+    #[cfg(windows)]
+    {
+        let mut terminal = term();
+        let mut parser = Processor::default();
+        parser.advance(
+            &mut terminal,
+            b"\x1b]1337;SetUserVar=automexia_shell=MQ==\x07\
+              \x1b]1337;SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==\x07\
+              \x1b]1337;SetUserVar=automexia_prompt_active=MQ==\x07",
+        );
+        // Measure the capable prompt and accepted-command parser path. A
+        // marker without a native Enter must remain advisory and inert.
+        let marks =
+            b"\r\x1b]133;A;aid=1\x07> \x1b]133;B;amx-wsl=1\x07\x1b]133;C;amx-wsl=1\x07";
+        group.bench_function("powershell_accepted_marker", |b| {
+            b.iter(|| parser.advance(&mut terminal, std::hint::black_box(marks)))
+        });
+    }
+    group.finish();
+}
+
 fn native_untrusted_output(c: &mut Criterion) {
     use rio_vt::ansi::kitty_graphics_protocol::{parse, KittyGraphicsState};
     let mut group = c.benchmark_group("native_untrusted_output");
@@ -1012,7 +1099,9 @@ fn native_untrusted_output(c: &mut Criterion) {
 criterion_group!(
     benches,
     native_untrusted_output,
+    wsl_setup_input_hint,
     color_setup,
+    clipboard_paste_preparation,
     fragmented_utf8,
     bench,
     grid_resize,

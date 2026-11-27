@@ -66,20 +66,32 @@ cargo automexia
 ```
 
 If the command exits, read the first failed phase and run `cargo xtask doctor`.
-Provisioning errors intentionally stop launch rather than opening a terminal
-without prompt/context/listing features.
+The launch phases check the application and its runtime assets. Shell startup
+behavior depends on the integration available to the configured shell.
 
 ## Context or path appears only after the first keypress
 
-1. Run `cargo automexia` once to repair shell integration.
+1. Relaunch with `cargo automexia` to load the current session resources.
 2. Inside the session, verify `TERM_PROGRAM=Automexia` and
    `AUTOMEXIA_SHELL_INTEGRATION=1`.
-3. Confirm the shell is PowerShell, CMD, Bash, or Zsh; unsupported shells remain
-   usable but may not emit enhanced metadata.
+3. Confirm the shell is PowerShell, CMD, Bash, Zsh, or Fish. For a nested WSL
+   shell, check the guest hook as described below.
 4. Run the native checks in [Shell integration](SHELL-INTEGRATION.md#testing).
 
 Do not add prompt escape sequences manually before testing the repository-owned
 integration; duplicate hooks can create repeated semantic generations.
+
+## WSL shows a stock prompt with no tags or command colors
+
+An ordinary `wsl` launch uses the distro's shell startup files. A stock Bash
+prompt together with missing command colors and tags usually means the guest
+hook did not load. Automexia passes activation settings into WSL. The guest
+shell must also load its integration hook.
+
+For persistent integration, use the explicit installer from a complete
+Automexia package. In a source checkout, the [WSL guide](user-guide/remote-and-wsl.md#wsl)
+also describes how to install the hooks inside one distro. Open a new WSL
+shell after installation so its startup files load the adapter.
 
 ## `ls` has no icons or category colors
 
@@ -87,6 +99,7 @@ integration; duplicate hooks can create repeated semantic generations.
   `AUTOMEXIA_PLAIN_LS` is not `1`.
 - Bash/Zsh: install `eza` for enhanced listings. Without it, Automexia
   deliberately falls back to native `ls`.
+- In WSL, the guest shell needs the Automexia hook and `eza` on its own `PATH`.
 - Use `command ls` on Unix or set `AUTOMEXIA_PLAIN_LS=1` before shell startup
   when you intentionally want plain output.
 

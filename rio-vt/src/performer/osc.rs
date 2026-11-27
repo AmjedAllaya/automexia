@@ -77,19 +77,25 @@ pub(super) fn parse_semantic_prompt(
 /// Non-row-marking parts of the OSC 133 command lifecycle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SemanticCommand {
-    Input,
-    Start,
+    Input { wsl_capability: bool },
+    Start { accepted_bare_wsl: bool },
     End { exit_code: Option<i32> },
 }
 
-/// Parse OSC 133 `C` (command starts executing) and `D` (command finished).
+/// Parse OSC 133 `B` (editable prompt), `C` (execution) and `D` (completion).
 /// Unknown options are deliberately ignored. A missing or malformed exit code
 /// stays unknown: OSC 133 explicitly permits a bare `D`, and terminals must not
 /// turn an absent status into a false success claim.
 pub(super) fn parse_semantic_command(params: &[&[u8]]) -> Option<SemanticCommand> {
-    match *params.get(1)?.first()? {
-        b'B' => Some(SemanticCommand::Input),
-        b'C' => Some(SemanticCommand::Start),
+    let command = *params.get(1)?;
+    let wsl = params.len() == 3 && params[2] == b"amx-wsl=1";
+    match *command.first()? {
+        b'B' => Some(SemanticCommand::Input {
+            wsl_capability: wsl && command == b"B",
+        }),
+        b'C' => Some(SemanticCommand::Start {
+            accepted_bare_wsl: wsl && command == b"C",
+        }),
         b'D' => {
             let exit_code = params
                 .get(2)

@@ -85,6 +85,18 @@ impl Default for Mouse {
 }
 
 impl Mouse {
+    /// Transfer a held primary gesture to an overlay until its physical release.
+    pub(crate) fn capture_left_for_overlay(&mut self) {
+        self.palette_press_latched = true;
+        self.clear_left_gesture();
+    }
+
+    fn clear_left_gesture(&mut self) {
+        self.left_button_state = ElementState::Released;
+        self.hint_click_latched = None;
+        self.image_preview_click_latched = false;
+    }
+
     pub fn palette_consumes_button(
         &mut self,
         button: MouseButton,
@@ -97,9 +109,7 @@ impl Mouse {
                 return false;
             }
             if std::mem::take(&mut self.palette_press_latched) || open {
-                self.left_button_state = ElementState::Released;
-                self.hint_click_latched = None;
-                self.image_preview_click_latched = false;
+                self.clear_left_gesture();
                 return true;
             }
         } else if open {
@@ -290,6 +300,28 @@ pub mod test {
             assert_eq!(mouse.right_button_state, ElementState::Released);
             assert_eq!(mouse.middle_button_state, ElementState::Released);
         }
+    }
+
+    #[test]
+    fn overlay_capture_ends_left_drag_and_consumes_release_after_dismissal() {
+        let mut mouse = Mouse {
+            left_button_state: ElementState::Pressed,
+            image_preview_click_latched: true,
+            ..Mouse::default()
+        };
+        mouse.capture_left_for_overlay();
+        assert_eq!(mouse.left_button_state, ElementState::Released);
+        assert!(!mouse.image_preview_click_latched);
+        assert!(mouse.palette_consumes_button(
+            MouseButton::Left,
+            ElementState::Released,
+            false,
+        ));
+        assert!(!mouse.palette_consumes_button(
+            MouseButton::Left,
+            ElementState::Released,
+            false,
+        ));
     }
 
     /// Canonical stride: cell width = 9 (u32). Boundaries at 0, 9, 18, 27.

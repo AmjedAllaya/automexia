@@ -467,15 +467,17 @@ Per-face named styles, symbol maps and additional font directories remain in
 
 ## Window controls
 
-**Window controls** styles Automexia-owned minimize, maximize/restore and close
-buttons. `[presentation.window-controls]` accepts `style = "soft"` (the default),
+Open **Customizations → Terminal Appearance → Window controls** to change
+**Button size** and **Button spacing** for the current style. These settings
+apply to Automexia-owned minimize, maximize/restore and close buttons.
+`[presentation.window-controls]` accepts `style = "soft"` (the default),
 `"glass"`, `"outline"` or `"circles"`. Each style has its own optional profile,
 such as `[presentation.window-controls.glass]`:
 
 | Key | Default | Values / effect |
 |---|---|---|
 | `size` | `"standard"` | `"compact"`, `"standard"`, `"large"`; changes visible size within the existing click targets. |
-| `spacing` | `"balanced"` | `"tight"`, `"balanced"`, `"airy"`; gap between visible buttons. |
+| `spacing` | `"balanced"` | `"tight"`, `"balanced"`, `"airy"`; adjusts the horizontal gap at the selected button size. |
 | `roundness` | `45` | Integer 0–100 percent; Circles always stays circular. |
 | `icon-size` | `"standard"` | `"compact"`, `"standard"`, `"large"`; fits inside the chosen button size. |
 | `icon-weight` | `"regular"` | `"fine"`, `"regular"`, `"bold"`. |
@@ -483,6 +485,12 @@ such as `[presentation.window-controls.glass]`:
 | `inactive-opacity` | `65` | Integer 0–100 percent; inactive surfaces dim while icons retain readable contrast. |
 | `minimize`, `maximize`, `close` | Theme colors | Six-digit RGB icon colors. `maximize` also colors the restore icon. |
 | `background`, `border` | Style and theme | RGB or RGBA hex colors; the alpha channel controls opacity. |
+
+**Use config.toml for size** and **Use config.toml for spacing** each clear the
+corresponding saved UI override for the current style. An action is available
+when that field has a saved override. The field immediately inherits the current
+configured value, or the built-in default if omitted, and follows later reloads
+of `config.toml`.
 
 Automexia caption controls are the default on Windows, Linux and macOS. On macOS,
 `Buttonless` keeps the native resizable frame with its traffic lights hidden.
@@ -523,7 +531,7 @@ command-timestamps = true
 |---|---|---|
 | `presentation.inline-tables` | `true` | Add borders and per-cell wrapping to recognized header tables. Disabled output uses the original terminal grid. |
 | `presentation.command-output-highlighting` | `true` | Tint ordinary completed-command output by exit status in Customizations → Terminal output colors. |
-| `presentation.output-highlighting` | `true` | Color detected logs and general statuses, independently of command backgrounds and Kubernetes. |
+| `presentation.output-highlighting` | `true` | Color detected logs, package progress and general statuses, independently of command backgrounds and Kubernetes. |
 | `presentation.kubernetes-highlighting` | `true` | Color recognized Kubernetes readiness and status rows in Customizations → Kubernetes status colors. |
 | `presentation.command-timestamps` | `true` | Show completion timestamps. Disabling this keeps exit status, duration and terminal-owned command metadata. |
 
@@ -629,6 +637,15 @@ Detected-log highlighting also controls plain shell and CLI errors, including
 `Error from server (NotFound)` from kubectl. These diagnostics use the general
 error palette even when Kubernetes status colors are off. The Kubernetes
 palette continues to own resource readiness, status and condition rows.
+
+Recognized English APT, dpkg, and tzdata output uses the same general highlighting
+in local, WSL, and SSH sessions. In the **Text** and **Text and background** styles,
+phase labels use their status color. Package names use the theme's light blue and
+incoming versions use light magenta. Repository URLs and previous versions use
+a subtler accent, while transfer figures, disk-space figures, and reported times
+use the Debug text color. Selection and application-provided ANSI styles take
+precedence, and copied text keeps its original wording and spacing. The
+**Background** style uses the row's status tint.
 
 Open **Kubernetes status colors** for an independent switch, style and palette.
 Select a sample status to edit its text or background. An incomplete `0/1 Running`

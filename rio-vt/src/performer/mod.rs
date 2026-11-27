@@ -173,6 +173,8 @@ fn coalesce_channel_messages(messages: impl IntoIterator<Item = Msg>) -> Vec<Msg
             input @ (Msg::Input(_) | Msg::Paste(_) | Msg::CmdWordDelete(_)) => {
                 coalesced.push(input)
             }
+            #[cfg(windows)]
+            input @ Msg::HostEnter(_) => coalesced.push(input),
         }
     }
     coalesced
@@ -191,10 +193,7 @@ fn next_channel_batch(
         }
         let message = receiver.recv()?;
         remaining -= 1;
-        if matches!(
-            message,
-            Msg::Input(_) | Msg::Paste(_) | Msg::CmdWordDelete(_) | Msg::Shutdown
-        ) {
+        if !matches!(message, Msg::Resize(_)) {
             remaining = 0;
         }
         Some(message)
@@ -204,7 +203,7 @@ fn next_channel_batch(
 #[cfg(feature = "pty")]
 trait PtyMessageSink {
     fn resize(&mut self, size: crate::event::WindowSize) -> io::Result<()>;
-    fn input(&mut self, input: Cow<'static, [u8]>);
+    fn input(&mut self, input: Cow<'static, [u8]>, check_wsl_prompt: bool);
     fn paste(&mut self, paste: PasteRequest);
     fn word_delete(
         &mut self,
@@ -248,15 +247,26 @@ impl<T: teletypewriter::EventedPty, U: EventListener> PtyMessageSink
         Ok(())
     }
 
-    fn input(&mut self, input: Cow<'static, [u8]>) {
+    fn input(&mut self, input: Cow<'static, [u8]>, check_wsl_prompt: bool) {
+        #[cfg(not(windows))]
+        let _ = check_wsl_prompt;
         if !input.is_empty() {
-            self.terminal.lock().note_interactive_input();
+            {
+                let mut terminal = self.terminal.lock();
+                terminal.note_interactive_input();
+                #[cfg(windows)]
+                if check_wsl_prompt {
+                    if let Some(receipt) = terminal.note_wsl_host_enter(Instant::now()) {
+                        terminal.notify_wsl_setup_hint(receipt);
+                    }
+                }
+            }
             self.write_list.push_back(input);
         }
     }
 
     fn paste(&mut self, paste: PasteRequest) {
-        if paste.reviewed_submission.is_none() {
+        if paste.reviewed_submission.is_none() && paste.review_destination.is_none() {
             self.terminal.lock().note_interactive_input();
         }
         *self.pending_paste = Some(paste);
@@ -290,7 +300,9 @@ fn deliver_channel_messages(
 ) -> bool {
     for msg in coalesce_channel_messages(messages) {
         match msg {
-            Msg::Input(input) => sink.input(input),
+            Msg::Input(input) => sink.input(input, false),
+            #[cfg(windows)]
+            Msg::HostEnter(input) => sink.input(input, true),
             Msg::Paste(paste) => sink.paste(paste),
             Msg::CmdWordDelete(receipt) => sink.word_delete(receipt),
             Msg::Resize(window_size) => {
@@ -646,17 +658,31 @@ where
         if drained || state.paste_drain_rounds >= MAX_PASTE_DRAIN_ROUNDS {
             if let Some(paste) = state.pending_paste.take() {
                 let mut terminal = self.terminal.lock();
-                let accepted = paste.reviewed_submission.is_none_or(|receipt| {
+                let guarded = paste.review_destination.is_some();
+                if guarded && (!drained || !paste.is_for_terminal(&terminal)) {
+                    drop(terminal);
+                    self.event_proxy.send_event(
+                        RioEvent::ReportToAssistant(crate::error::RioError {
+                            level: crate::error::RioErrorLevel::Warning,
+                            report: crate::error::RioErrorType::PasteDestinationChanged,
+                        }),
+                        self.window_id,
+                    );
+                    self.event_proxy
+                        .send_event(RioEvent::Render, self.window_id);
+                } else if paste.reviewed_submission.is_none_or(|receipt| {
                     if !drained {
                         terminal.note_interactive_input();
                         return false;
                     }
                     terminal.accept_workflow_submission(receipt)
-                });
-                if accepted {
-                    state
-                        .write_list
-                        .push_back(encode_paste(paste, terminal.mode()));
+                }) {
+                    if guarded {
+                        terminal.note_interactive_input();
+                    }
+                    let mode = terminal.mode();
+                    drop(terminal);
+                    state.write_list.push_back(encode_paste(paste, mode));
                 }
             }
             state.paste_drain_rounds = 0;
@@ -903,8 +929,8 @@ where
                 }
                 #[cfg(windows)]
                 if self.receiver.peek().is_some() {
-                    // Parse available old-size output before committing a new
-                    // native/grid size; the SPSC adapter keeps this nonblocking.
+                    // Parse available output before a resize commits its new
+                    // grid size or a host Enter inspects the echoed draft.
                     if let Err(err) = self.pty_read(&mut state, &mut buf, true) {
                         error!("Error draining output before native resize: {err}");
                         self.finish_child_exit(&mut state, &mut buf);
@@ -1174,6 +1200,8 @@ mod tests {
             Msg::Paste(_) | Msg::CmdWordDelete(_) => {
                 unreachable!("model generates only input, resize, and shutdown")
             }
+            #[cfg(windows)]
+            Msg::HostEnter(_) => unreachable!("model does not generate host Enter"),
             Msg::Shutdown => ResizeQueueModelOutput::Shutdown,
         })
         .collect()
@@ -1202,7 +1230,7 @@ mod tests {
             Ok(())
         }
 
-        fn input(&mut self, input: Cow<'static, [u8]>) {
+        fn input(&mut self, input: Cow<'static, [u8]>, _: bool) {
             self.events
                 .push(RecordedPtyEvent::Input(input.into_owned()));
         }

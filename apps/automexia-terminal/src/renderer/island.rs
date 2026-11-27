@@ -159,12 +159,39 @@ fn window_control_visual_layout(
     header_height: f32,
     controls_x: f32,
     button_width: f32,
+    style: WindowControlStyle,
+    profile: WindowControlProfile,
 ) -> WindowControlVisualLayout {
+    let scale = match profile.size.unwrap_or_default() {
+        WindowControlSize::Compact => 0.8,
+        WindowControlSize::Standard => 1.0,
+        WindowControlSize::Large => 1.12,
+    };
+    let mut width = ((button_width - WINDOW_CONTROL_BUTTON_INSET_X * 2.0) * scale)
+        .clamp(4.0, button_width - 2.0);
+    let mut height = ((header_height - WINDOW_CONTROL_BUTTON_INSET_Y * 2.0) * scale)
+        .clamp(4.0, header_height - 4.0);
+    if style == WindowControlStyle::Circles {
+        width = width.min(height);
+        height = width;
+    }
+    let spacing_offset: f32 = match profile.spacing.unwrap_or_default() {
+        WindowControlSpacing::Tight => -6.0,
+        WindowControlSpacing::Balanced => 0.0,
+        WindowControlSpacing::Airy => 6.0,
+    };
+    // Keep the painted buttons inside their existing click and accessibility slots.
+    let inset = (button_width - width) * 0.5;
+    let max_offset = (inset - 1.0).max(0.0);
+    let offset = spacing_offset.clamp(-max_offset, max_offset);
     let buttons = std::array::from_fn(|index| WindowControlRect {
-        x: controls_x + index as f32 * button_width + WINDOW_CONTROL_BUTTON_INSET_X,
-        y: WINDOW_CONTROL_BUTTON_INSET_Y,
-        width: (button_width - WINDOW_CONTROL_BUTTON_INSET_X * 2.0).max(1.0),
-        height: (header_height - WINDOW_CONTROL_BUTTON_INSET_Y * 2.0).max(1.0),
+        x: controls_x
+            + index as f32 * button_width
+            + inset
+            + (index as f32 - 1.0) * offset,
+        y: (header_height - height) * 0.5,
+        width,
+        height,
     });
     WindowControlVisualLayout { buttons }
 }
@@ -3017,7 +3044,13 @@ pub(crate) fn draw_window_controls(
     }
     let style = appearance.style.unwrap_or_default();
     let profile = *appearance.profile(style);
-    let layout = window_control_visual_layout(header_height, controls_x, button_width);
+    let layout = window_control_visual_layout(
+        header_height,
+        controls_x,
+        button_width,
+        style,
+        profile,
+    );
     for (index, action) in [
         ChromeAction::Minimize,
         ChromeAction::Maximize,
@@ -3026,34 +3059,9 @@ pub(crate) fn draw_window_controls(
     .into_iter()
     .enumerate()
     {
-        let mut button = layout.buttons[index];
+        let button = layout.buttons[index];
         let center_x = button.x + button.width * 0.5;
-        let center_y = header_height * 0.5;
-        let scale = match profile.size.unwrap_or_default() {
-            WindowControlSize::Compact => 0.8,
-            WindowControlSize::Standard => 1.0,
-            WindowControlSize::Large => 1.12,
-        };
-        let inset = match profile.spacing.unwrap_or_default() {
-            WindowControlSpacing::Tight => 2.0,
-            WindowControlSpacing::Balanced => 5.0,
-            WindowControlSpacing::Airy => 8.0,
-        };
-        button.width = ((button_width - inset * 2.0) * scale)
-            .clamp(4.0, (button_width - 2.0).max(4.0));
-        button.height =
-            (button.height * scale).clamp(4.0, (header_height - 4.0).max(4.0));
-        if style == WindowControlStyle::Circles {
-            // Circles are normally height-limited. Apply the spacing inset to
-            // their diameter too, so each gap choice remains visible without
-            // moving the action centers or changing the full click targets.
-            button.width = (button.height + (5.0 - inset) * 2.0)
-                .min(button.width)
-                .clamp(4.0, (header_height - 4.0).max(4.0));
-            button.height = button.width;
-        }
-        button.x = center_x - button.width * 0.5;
-        button.y = center_y - button.height * 0.5;
+        let center_y = button.y + button.height * 0.5;
         let radius = button.width.min(button.height)
             * 0.5
             * if style == WindowControlStyle::Circles {
@@ -3708,7 +3716,13 @@ mod tests {
 
     #[test]
     fn branded_window_control_visuals_are_bounded_and_distinct() {
-        let layout = window_control_visual_layout(42.0, 1_160.0, 40.0);
+        let layout = window_control_visual_layout(
+            42.0,
+            1_160.0,
+            40.0,
+            WindowControlStyle::Soft,
+            WindowControlProfile::default(),
+        );
         let mut previous_right = None;
         for button in layout.buttons {
             assert_eq!(button.width, 30.0);
@@ -3817,38 +3831,76 @@ mod tests {
     }
 
     #[test]
-    fn window_controls_circle_spacing_changes_the_visible_gap() {
-        let mut diameters = Vec::new();
-        for &spacing in WindowControlSpacing::ALL {
-            let mut appearance = WindowControlsAppearance {
-                style: Some(WindowControlStyle::Circles),
-                ..Default::default()
-            };
-            appearance.circles.spacing = Some(spacing);
-            let mut canvas = RecordingWindowControlCanvas::default();
-            draw_window_controls(
-                &mut canvas,
-                WindowControlRenderContext {
-                    appearance,
-                    theme: UiTheme::from_colors(&Default::default()),
-                    hover: None,
-                    pressed: None,
-                    maximized: false,
-                    focused: true,
-                    header_height: 38.0,
-                    controls_x: 0.0,
-                    button_width: 46.0,
-                },
-            );
-            let RecordedWindowControlOp::RoundedRect { width, height, .. } =
-                canvas.ops[0]
-            else {
-                panic!("the first primitive must be the button surface");
-            };
-            assert_eq!(width, height);
-            diameters.push(width);
+    fn window_controls_spacing_changes_the_gap_without_resizing_buttons() {
+        let controls_x = 37.0;
+        let slot_width = 46.0;
+        for &style in WindowControlStyle::ALL {
+            for &size in WindowControlSize::ALL {
+                let layouts = [
+                    WindowControlSpacing::Tight,
+                    WindowControlSpacing::Balanced,
+                    WindowControlSpacing::Airy,
+                ]
+                .map(|spacing| {
+                    window_control_visual_layout(
+                        38.0,
+                        controls_x,
+                        slot_width,
+                        style,
+                        WindowControlProfile {
+                            size: Some(size),
+                            spacing: Some(spacing),
+                            ..Default::default()
+                        },
+                    )
+                    .buttons
+                });
+                let [tight, balanced, airy] = layouts;
+                for buttons in layouts {
+                    for (index, button) in buttons.iter().enumerate() {
+                        let slot_x = controls_x + index as f32 * slot_width;
+                        assert!(button.x >= slot_x);
+                        assert!(button.x + button.width <= slot_x + slot_width);
+                        assert_eq!(button.width, balanced[index].width);
+                        assert_eq!(button.height, balanced[index].height);
+                    }
+                }
+                assert_eq!(tight[1], balanced[1]);
+                assert_eq!(airy[1], balanced[1]);
+                for index in 0..2 {
+                    let gap = |buttons: [WindowControlRect; 3]| {
+                        buttons[index + 1].x - buttons[index].x - buttons[index].width
+                    };
+                    assert!(gap(tight) < gap(balanced) && gap(balanced) < gap(airy));
+                }
+            }
         }
-        assert!(diameters[0] > diameters[1] && diameters[1] > diameters[2]);
+    }
+
+    #[test]
+    fn window_controls_size_presets_change_dimensions() {
+        for &style in WindowControlStyle::ALL {
+            let [compact, standard, large] = [
+                WindowControlSize::Compact,
+                WindowControlSize::Standard,
+                WindowControlSize::Large,
+            ]
+            .map(|size| {
+                window_control_visual_layout(
+                    38.0,
+                    0.0,
+                    46.0,
+                    style,
+                    WindowControlProfile {
+                        size: Some(size),
+                        ..Default::default()
+                    },
+                )
+                .buttons[0]
+            });
+            assert!(compact.width < standard.width && standard.width < large.width);
+            assert!(compact.height < standard.height && standard.height < large.height);
+        }
     }
 
     #[test]
@@ -4077,7 +4129,13 @@ mod tests {
 
     #[test]
     fn window_controls_render_as_independent_cards_without_a_group_container() {
-        let layout = window_control_visual_layout(42.0, 1_160.0, 40.0);
+        let layout = window_control_visual_layout(
+            42.0,
+            1_160.0,
+            40.0,
+            WindowControlStyle::Soft,
+            WindowControlProfile::default(),
+        );
 
         insta::assert_debug_snapshot!(layout, @r###"
         WindowControlVisualLayout {

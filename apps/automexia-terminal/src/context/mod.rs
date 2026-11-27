@@ -1290,6 +1290,18 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             .send_event(RioEvent::RenderRoute(self.current_route), self.window_id);
     }
 
+    #[cfg(windows)]
+    pub(crate) fn send_wsl_setup_response(
+        &self,
+        route: usize,
+        choice: rio_backend::event::WslSetupChoice,
+    ) {
+        self.event_proxy.send_event(
+            RioEvent::WslSetupResponse { route, choice },
+            self.window_id,
+        );
+    }
+
     /// Build a one-shot wake-up for an asynchronous DevOps context refresh.
     /// The route is captured explicitly so a result can never repaint or dirty
     /// whichever tab happens to be active when background discovery completes.
