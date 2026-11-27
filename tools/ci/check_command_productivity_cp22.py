@@ -333,14 +333,25 @@ def validate_workflow_boundary(root: Path | None = None) -> None:
         _lifecycle_fragment(accept, fragment, "one-use prompt receipt")
     performer = code("rio-vt/src/performer/mod.rs")
     resolve = _rust_item(performer, "fn resolve_pending_paste(")
-    for fragment in ("accept_workflow_submission(receipt)", "encode_paste(paste, terminal.mode())"):
+    for fragment in (
+        "terminal.accept_workflow_submission(*receipt)",
+        "let mode = terminal.mode(); drop(terminal); state.write_list.push_back(encode_paste(paste, mode));",
+    ):
         _lifecycle_fragment(resolve, fragment, "PTY writer revalidation")
     # Keep the revalidation after the bounded drain; comments/dead helpers do
     # not count as evidence of the live submission path.
     if resolve.find("drain") > resolve.find("accept_workflow_submission") or "drain" not in resolve:
         raise Cp22Error("workflow submission must follow output drain")
     request = code("rio-vt/src/event/mod.rs")
-    normal = _rust_item(_rust_item(request, "impl PasteRequest"), "pub fn new(")
+    paste_request = _rust_item(request, "impl PasteRequest")
+    _lifecycle_fragment(
+        _rust_item(paste_request, "pub fn new("),
+        "Self::from_text(text.to_owned(), bracketed)", "ordinary paste constructor",
+    )
+    clipboard = _rust_item(paste_request, "pub fn from_clipboard(")
+    for fragment in ("Self::from_text(text, true)", "Self::from_text(normalized, true)"):
+        _lifecycle_fragment(clipboard, fragment, "clipboard paste constructor")
+    normal = _rust_item(paste_request, "fn from_text(")
     _lifecycle_fragment(normal, "reviewed_submission: None", "ordinary paste cannot execute")
     _lifecycle_fragment(normal, "reviewed_command: false", "ordinary paste encoding unchanged")
     insert = _rust_item(request, "pub fn reviewed_action_insert(")
