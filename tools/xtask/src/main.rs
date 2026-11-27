@@ -4247,12 +4247,15 @@ fn verify_core_output_semantics(
             && classifier.contains("pub fn classify_row(")
             && classifier.contains("mod kubernetes_tables;")
             && classifier.contains("pub use kubernetes_tables::RowClassifier;")
+            && classifier.contains("mod operational;")
+            && classifier.contains("pub use operational::operational_progress;")
             && compact_classifier.contains("presentation.kubernetes_highlighting")
             && compact_classifier.contains("presentation.output_highlighting")
             && grid.contains("crate::automexia::output_semantics::appearance_for(")
             && grid.contains("crate::automexia::output_semantics::classify_row(scratch)")
             && grid.contains("crate::automexia::output_semantics::RowClassifier::default()")
-            && grid.contains("classifier.classify(scratch)")
+            && grid.contains("let Some(operational) = operational_progress(scratch)")
+            && grid.contains("classifier.classify_after_operational_check(scratch)")
             && inline_table.contains("crate::automexia::output_semantics::RowClassifier::default()")
             && inline_table.contains("classifier.classify(&surface.table.source()[ri])")
             && compact_renderer.contains(
@@ -6183,6 +6186,11 @@ mod tests {
                 "pub use kubernetes_tables::RowClassifier;",
                 "pub use unrelated_tables::RowClassifier;",
             ),
+            (
+                1,
+                "pub use operational::operational_progress;",
+                "pub use unrelated_output::operational_progress;",
+            ),
             (1, "kubernetes_highlighting", "unconditional_kubernetes"),
             (1, "output_highlighting", "unconditional_output"),
             (
@@ -6207,7 +6215,12 @@ mod tests {
             ),
             (
                 2,
-                "classifier.classify(scratch)",
+                "let Some(operational) = operational_progress(scratch)",
+                "let Some(operational) = unrelated_output::operational_progress(scratch)",
+            ),
+            (
+                2,
+                "classifier.classify_after_operational_check(scratch)",
                 "unrelated_classifier(scratch)",
             ),
             (
