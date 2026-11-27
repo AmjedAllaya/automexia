@@ -593,7 +593,7 @@
       "components": ["apps/automexia-vscode"],
       "documentation": {
         "guide": ["apps/automexia-vscode/README.md"],
-        "reference": ["apps/automexia-vscode/README.md#prepare-the-cli"],
+        "reference": ["apps/automexia-vscode/README.md#use-the-cli"],
         "explanation": ["docs/adr/0099-vscode-wsl-cli-terminal-profile.md"]
       },
       "quality": {

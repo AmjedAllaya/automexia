@@ -82,7 +82,7 @@ rio-backend = { workspace = true }
 time = { workspace = true }
 
 [dev-dependencies]
-automexia-process-test-fixture = { path = "../../tests/support/process-fixture" }
+automexia-process-test-fixture = { workspace = true }
 pretty_assertions = "1.4.1"
 criterion = { workspace = true }
 image_rs = { workspace = true }

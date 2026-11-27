@@ -87,6 +87,7 @@ automexia-connectivity = { path = "automexia-connectivity", version = "0.0.4-alp
 automexia-ssh-integration = { path = "automexia-ssh-integration", version = "0.0.4-alpha" }
 automexia-terminal-protocol = { path = "automexia-terminal-protocol", version = "0.0.4-alpha" }
 automexia-command-productivity = { path = "automexia-command-productivity", version = "0.0.4-alpha" }
+automexia-process-test-fixture = { path = "tests/support/process-fixture", version = "0.0.4-alpha" }
 automexia-devops = { path = "automexia-devops", version = "0.0.4-alpha" }
 automexia-devops-aws = { path = "extensions/devops-aws", version = "0.0.4-alpha" }
 automexia-devops-azure = { path = "extensions/devops-azure", version = "0.0.4-alpha" }

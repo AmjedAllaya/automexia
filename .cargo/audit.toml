@@ -1,6 +1,6 @@
-# Cargo Audit has no per-ignore reason field. Keep every exception mirrored in
-# deny.toml, review it when the renderer dependency graph changes, and remove
-# it as soon as an upstream-compatible replacement is available.
+# Cargo Audit has no per-ignore reason field. Mirror registry dependency
+# exceptions in deny.toml, review them when the dependency graph changes, and
+# remove each registry exception as soon as a compatible replacement is available.
 [advisories]
 ignore = [
   # RUSTSEC-2025-0141: bincode 2.0.1 is transitive through librashader-cache
@@ -26,8 +26,8 @@ ignore = [
   # standalone zvariant_derive release exists.
   "RUSTSEC-2026-0372",
   # The workspace rio-vt fork rejects external Kitty graphics transports
-  # before resource access. See tests for the local backport and the review
-  # in supply-chain/reviews/2026-11-security-lock-refresh.md.
+  # before resource access. Cargo Deny already distinguishes this path crate
+  # from crates.io. See supply-chain/reviews/2026-11-security-lock-refresh.md.
   "RUSTSEC-2026-0430",
 ]
 

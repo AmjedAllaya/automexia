@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 RIO_VT_BACKPORT = "RUSTSEC-2026-0430"
-EXCEPTIONS = {
+REGISTRY_EXCEPTIONS = {
     "RUSTSEC-2024-0436",
     "RUSTSEC-2025-0141",
     "RUSTSEC-2026-0192",
@@ -19,7 +19,6 @@ EXCEPTIONS = {
     "RUSTSEC-2026-0370",
     "RUSTSEC-2026-0371",
     "RUSTSEC-2026-0372",
-    RIO_VT_BACKPORT,
 }
 
 
@@ -29,12 +28,15 @@ def advisory_ids(path: Path) -> set[str]:
 
 class RustsecExceptionTests(unittest.TestCase):
     def test_audit_and_deny_exceptions_are_exactly_the_reviewed_set(self) -> None:
-        self.assertEqual(advisory_ids(ROOT / ".cargo/audit.toml"), EXCEPTIONS)
-        self.assertEqual(advisory_ids(ROOT / "deny.toml"), EXCEPTIONS)
+        self.assertEqual(
+            advisory_ids(ROOT / ".cargo/audit.toml"),
+            REGISTRY_EXCEPTIONS | {RIO_VT_BACKPORT},
+        )
+        self.assertEqual(advisory_ids(ROOT / "deny.toml"), REGISTRY_EXCEPTIONS)
 
     def test_every_exception_has_a_documented_upstream_remediation_path(self) -> None:
         source = (ROOT / ".cargo/audit.toml").read_text(encoding="utf-8")
-        for advisory in EXCEPTIONS - {RIO_VT_BACKPORT}:
+        for advisory in REGISTRY_EXCEPTIONS:
             with self.subTest(advisory=advisory):
                 position = source.index(advisory)
                 preceding = source[max(0, position - 260):position]
